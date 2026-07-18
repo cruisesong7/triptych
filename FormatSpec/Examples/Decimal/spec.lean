@@ -203,6 +203,19 @@ theorem Decimal.IsValid_equiv (s : String) : Decimal.IsValid s ↔ Decimal.isVal
     signOf_getD, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
   try grind
 
+theorem Decimal.computeValue_eq (s : String) :
+    Decimal.computeValue s =
+      (decode Decimal.grammar s).map
+        (fun _ =>
+          Decimal.value (FormatSpec.component Decimal.grammar s "Integer")
+            (FormatSpec.component Decimal.grammar s "Fraction")) :=
+  by
+  unfold Decimal.computeValue FormatSpec.computeValue FormatSpec.component FormatSpec.envOf Decimal.value
+    Decimal.valueExpr
+  cases h : decode Decimal.grammar s with
+  | none => simp
+  | some m => simp only [Option.map_some, natOf_getD, intOf_getD, lenOf_getD, signOf_getD, ValExpr.eval]
+
 -- ═══════════════════════════ contracts ═══════════════════════════
 -- The parser-correctness obligations against the external parser, stated over the
 -- SURFACE `IsValid`/`computeValue` (`sorry`d — the proof-facing deliverable,

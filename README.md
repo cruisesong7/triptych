@@ -11,10 +11,12 @@ it generates:
   reading like a hand-written spec;
 * an **analyzable/executable engine** — a deep-embedded grammar interpreter with a total
   capture-extracting `decode`, and a decidable validator;
-* **machine-checked reconciliation** — an auto-emitted, axiom-clean proof that the
-  readable surface spec and the engine agree (`IsWf_equiv`, the `decode ↔ IsWf`
-  roundtrip), plus `sorry`'d contract obligations tying an external hand-written parser
-  to the spec.
+* **machine-checked reconciliation** — auto-emitted, axiom-clean proofs that the readable
+  surface spec and the engine agree, on **both recognition and value**: `IsWf_equiv`
+  (recognition, via the `decode ↔ IsWf` roundtrip) and `computeValue_eq` (the extracted
+  value equals the readable `value` on the decoded captures). Plus `sorry`'d contract
+  obligations tying an external hand-written parser to the spec — the one seam that has no
+  formal oracle (conformance to the real-world format is inherently trusted).
 
 All generated equivalence/decidability results depend only on the standard axioms
 `propext, Classical.choice, Quot.sound` — no `sorry`, `native_decide`, or extra axioms.
@@ -30,7 +32,9 @@ format_spec IPv6 where
 ```
 
 produces `IPv6.IsWf.V6Addr`, `IPv6.IsValid`, a `DecidablePred` validator, and
-`IPv6.IsWf_equiv : ∀ s, IsWf IPv6.grammar s ↔ IPv6.IsWf.V6Addr s`.
+`IPv6.IsWf_equiv : ∀ s, IsWf IPv6.grammar s ↔ IPv6.IsWf.V6Addr s`. A spec with a value
+section additionally gets `<Name>.computeValue` and its reconciliation theorem
+`<Name>.computeValue_eq` (see Decimal, Duration, Datetime, Graph).
 
 See `FormatSpec/DESIGN.md` for the full design, and `FormatSpec/Examples/` for worked
 examples (Decimal, Duration, Datetime, IPv4, IPv6, Graph).

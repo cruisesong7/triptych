@@ -526,4 +526,33 @@ def isValidEquivProof (specName : Name)
   -- `wfPart`s then all `valPart`s, while the surface groups per-constraint. `grind` closes
   -- that ∧-reassociation/permutation (a no-op `try` when `simp` already finished the goal).
 
+/-- Emit the value bridge `<Name>.computeValue_eq : computeValue s = (decode g s).map (fun _ =>
+    value <components>)` — the engine's extracted value equals the READABLE `value` function
+    applied to the same decoded component strings, on every string (`none` when not
+    well-formed). This is the value analogue of `IsWf_equiv`: it exposes, as a standalone
+    theorem, the surface⟺engine value agreement that otherwise only appears folded into
+    `IsValid_equiv` (and only when the value is constrained). `caps` are the captures the
+    value reads, in `value`'s binder order; `isDsl` selects the tier — DSL unfolds the
+    `valueExpr` AST and discharges via the reader-agreement lemmas + `ValExpr.eval`, the
+    `value'` escape unfolds `valueFn` (surface and engine share the author's fn, so the two
+    sides are defeq after `Option.map_some`). -/
+def computeValueEqProof (specName : Name) (grammarId : TSyntax `ident)
+    (caps : List String) (isDsl : Bool) : CommandElabM (TSyntax `command) := do
+  let equivId := mkIdent (specName ++ `computeValue_eq)
+  let cvId    := mkIdent (specName ++ `computeValue)
+  let valId   := mkIdent (specName ++ `value)
+  -- `value <component g s "c₀"> <component g s "c₁"> …` — the readable value on decoded strings.
+  let compArgs : Array (TSyntax `term) ← caps.toArray.mapM (fun c =>
+    `(FormatSpec.component $grammarId s $(Syntax.mkStrLit c)))
+  -- Tier-specific unfolds: the engine value entry point + the value definition it reduces to.
+  let cvEntry  := mkIdent (if isDsl then `FormatSpec.computeValue else `FormatSpec.computeValueF)
+  let valDef   := mkIdent (specName ++ (if isDsl then `valueExpr else `valueFn))
+  `(theorem $equivId (s : String) :
+        $cvId s = (decode $grammarId s).map (fun _ => $valId $compArgs*) := by
+      unfold $cvId $cvEntry FormatSpec.component FormatSpec.envOf $valId $valDef
+      cases h : decode $grammarId s with
+      | none => simp
+      | some m =>
+        simp only [Option.map_some, natOf_getD, intOf_getD, lenOf_getD, signOf_getD, ValExpr.eval])
+
 end FormatSpec

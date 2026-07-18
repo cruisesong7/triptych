@@ -62,7 +62,7 @@ Grammar notation:
 * length suffix: `+` (one-or-more), `{n}` (exactly), `{lo,hi}` (between)
 
 Not yet: production-level alternation (`A ::= x | y`), the predicate/value DSLs, and
-generation of `IsWf` / `SatisfiesConstraints` / `IsAccepted` / `computeValue`. Those
+generation of `IsWf` / `SatisfiesConstraints` / `IsValid` / `computeValue`. Those
 are the next increments; this module currently generates the grammar value (+ captures
 the raw value/constraint terms) so the three-section shape is in place.
 -/
@@ -549,6 +549,11 @@ def elabFormatSpec : CommandElab := fun stx => do
       -- Soundness/decidability (SOUNDNESS section): the surface⟺engine `IsWf_equiv` + the
       -- derived `Decidable` instances. Runs after the engine bundle + surface `IsValid`.
       emitReconcile constrCaps.isSome veIdent?.isSome
+      -- VALUE equivalence (SOUNDNESS section): surface `value` ⟺ engine `computeValue`, as a
+      -- standalone theorem (the value analogue of `IsWf_equiv`). Emitted whenever a value
+      -- section is present — DSL tier (`veIdent?`) or `value'` escape (`hasValueEsc`).
+      if veIdent?.isSome || hasValueEsc then
+        emitSound (← FormatSpec.computeValueEqProof name.getId grammarIdent valueCaps veIdent?.isSome)
       -- Contract obligations (CONTRACTS section): with a `parser <p> projection <π>` clause,
       -- emit `<Name>.sound` / `.complete` / `.reject` as `sorry`d theorems (design §16.1),
       -- stated over the SURFACE `<Name>.IsValid` (and, for sound/complete, the surface

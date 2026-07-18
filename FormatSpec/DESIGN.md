@@ -144,7 +144,12 @@ Because the layout combinators are a closed, pre-verified library:
 - **Auto-discharged (no `sorry`)** — the *grammar-generic* contract theorems:
   `toString_injective`, `normalize_eq_iff_parse_eq` (generic over any
   `VerifiedParser`), `parse_toString_roundtrip` (reduces to combinator roundtrip
-  lemmas), and `DecidablePred IsWf`.
+  lemmas), and `DecidablePred IsWf`. As implemented, the emitted surface⟺engine
+  reconciliation is auto-discharged on **both** axes: `IsWf_equiv` /
+  `decodeSome_iff_IsWf` (recognition) and `computeValue_eq` (the extracted value equals
+  the readable `value` on the decoded captures). The value theorem holds for both tiers —
+  the DSL `value` (reconciled via the reader-agreement lemmas) and the `value'` escape
+  (surface and engine share the author's fn, so it is defeq).
 - **Emitted as `sorry`d statements** — the *parser-specific* bridge:
   `parse_sound`, `parse_complete`, `parse_eq_none_iff`. These relate the generated
   spec to the **hand-written, external** parser (`Std.Time`, `splitToList`), so they

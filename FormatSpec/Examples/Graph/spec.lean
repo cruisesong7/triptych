@@ -141,3 +141,12 @@ theorem Graph.IsValid_equiv (s : String) : Graph.IsValid s ↔ Graph.isValid s :
     Constraint.isValueDependent, Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD,
     signOf_getD, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
   try grind
+
+theorem Graph.computeValue_eq (s : String) :
+    Graph.computeValue s =
+      (decode Graph.grammar s).map (fun _ => Graph.value (FormatSpec.component Graph.grammar s "Cells")) :=
+  by
+  unfold Graph.computeValue FormatSpec.computeValueF FormatSpec.component FormatSpec.envOf Graph.value Graph.valueFn
+  cases h : decode Graph.grammar s with
+  | none => simp
+  | some m => simp only [Option.map_some, natOf_getD, intOf_getD, lenOf_getD, signOf_getD, ValExpr.eval]

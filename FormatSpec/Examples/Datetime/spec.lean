@@ -477,3 +477,19 @@ theorem Datetime.IsValid_equiv (s : String) : Datetime.IsValid s ↔ Datetime.is
     Constraint.isValueDependent, Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD,
     signOf_getD, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
   try grind
+
+theorem Datetime.computeValue_eq (s : String) :
+    Datetime.computeValue s =
+      (decode Datetime.grammar s).map
+        (fun _ =>
+          Datetime.value (FormatSpec.component Datetime.grammar s "YYYY") (FormatSpec.component Datetime.grammar s "MM")
+            (FormatSpec.component Datetime.grammar s "DD") (FormatSpec.component Datetime.grammar s "Time.hh")
+            (FormatSpec.component Datetime.grammar s "Time.mm") (FormatSpec.component Datetime.grammar s "ss")
+            (FormatSpec.component Datetime.grammar s "SSS") (FormatSpec.component Datetime.grammar s "Offset.hh")
+            (FormatSpec.component Datetime.grammar s "Offset.mm") (FormatSpec.component Datetime.grammar s "Offset")) :=
+  by
+  unfold Datetime.computeValue FormatSpec.computeValueF FormatSpec.component FormatSpec.envOf Datetime.value
+    Datetime.valueFn
+  cases h : decode Datetime.grammar s with
+  | none => simp
+  | some m => simp only [Option.map_some, natOf_getD, intOf_getD, lenOf_getD, signOf_getD, ValExpr.eval]

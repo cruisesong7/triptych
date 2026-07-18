@@ -402,3 +402,17 @@ theorem Duration.IsValid_equiv (s : String) : Duration.IsValid s ↔ Duration.is
     Constraint.isValueDependent, Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD,
     signOf_getD, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
   try grind
+
+theorem Duration.computeValue_eq (s : String) :
+    Duration.computeValue s =
+      (decode Duration.grammar s).map
+        (fun _ =>
+          Duration.value (FormatSpec.component Duration.grammar s "DDays")
+            (FormatSpec.component Duration.grammar s "DHours") (FormatSpec.component Duration.grammar s "DMinutes")
+            (FormatSpec.component Duration.grammar s "DSeconds") (FormatSpec.component Duration.grammar s "DMillis")) :=
+  by
+  unfold Duration.computeValue FormatSpec.computeValue FormatSpec.component FormatSpec.envOf Duration.value
+    Duration.valueExpr
+  cases h : decode Duration.grammar s with
+  | none => simp
+  | some m => simp only [Option.map_some, natOf_getD, intOf_getD, lenOf_getD, signOf_getD, ValExpr.eval]
