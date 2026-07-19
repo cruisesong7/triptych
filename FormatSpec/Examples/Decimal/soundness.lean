@@ -10,16 +10,15 @@ set_option linter.unusedSimpArgs false
 set_option linter.unusedVariables false
 
 /- ═══════════════════════════ soundness ═══════════════════════════
-Some common proof obligations for validating your own external parser against this
-specification: `sound`, `complete`, and `reject`, stated over the readable surface
-`IsValid`/`computeValue`. These are left as `sorry` — you have to prove them
-yourself for your parser (typically by bridging `IsValid` to `decode` via
-`IsWf_equiv`). -/
+Some common proof obligations for validating YOUR OWN external parser against this
+specification: `extparse_sound`, `extparse_complete`, and `extparse_reject`, stated
+over the readable surface `IsValid`/`computeValue`. These are left as `sorry` —
+they are claims about your parser, so you have to prove them yourself. -/
 
-theorem Decimal.reject_ext : RejectStmt Decimal.IsValid Cedar.Spec.Ext.Decimal.parse := by sorry
+theorem Decimal.extparse_reject : RejectStmt Decimal.IsValid Cedar.Spec.Ext.Decimal.parse := by sorry
 
-theorem Decimal.sound_ext : SoundStmt Decimal.IsValid Decimal.computeValue Cedar.Spec.Ext.Decimal.parse cedarProj := by
-  sorry
+theorem Decimal.extparse_sound :
+    SoundStmt Decimal.IsValid Decimal.computeValue Cedar.Spec.Ext.Decimal.parse cedarProj := by sorry
 
-theorem Decimal.complete_ext :
+theorem Decimal.extparse_complete :
     CompleteStmt Decimal.IsValid Decimal.computeValue Cedar.Spec.Ext.Decimal.parse cedarProj := by sorry

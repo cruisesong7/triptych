@@ -582,7 +582,7 @@ def elabFormatSpec : CommandElab := fun stx => do
       -- reference the external parser, so the soundness file re-imports the caller module.
       if let some prStx := pr then
         if let `(fmtParser| parser $parseT:term projection $projT:term) := prStx then
-          let rejIdent := mkIdentFrom name (name.getId ++ `reject_ext)
+          let rejIdent := mkIdentFrom name (name.getId ++ `extparse_reject)
           emitContract (← `(theorem $rejIdent :
               RejectStmt $accSurf $parseT := by sorry))
           -- `sound`/`complete` need a value function — emitted whenever a `value` OR `value'`
@@ -590,8 +590,8 @@ def elabFormatSpec : CommandElab := fun stx => do
           -- type is arbitrary, matched by the `projection`'s codomain).
           if veIdent?.isSome || hasValueEsc then
             let cvIdent := mkIdentFrom name (name.getId ++ `computeValue)
-            let soundIdent := mkIdentFrom name (name.getId ++ `sound_ext)
-            let compIdent  := mkIdentFrom name (name.getId ++ `complete_ext)
+            let soundIdent := mkIdentFrom name (name.getId ++ `extparse_sound)
+            let compIdent  := mkIdentFrom name (name.getId ++ `extparse_complete)
             emitContract (← `(theorem $soundIdent :
                 SoundStmt $accSurf $cvIdent $parseT $projT := by sorry))
             emitContract (← `(theorem $compIdent :
@@ -661,11 +661,12 @@ def elabFormatSpec : CommandElab := fun stx => do
             ++ (if needsCallerSurface then [callerImport] else [])
           let parserHeader := mkHeader parserImports needsCallerSurface
           let engineBanner := "/- ══════════════════════════════ engine ══════════════════════════════\n\
-            The executable engine, constructed by interpreting the input grammar's concrete\n\
-            syntax tree: the deep-embedded value/constraint ASTs plus the interpreter bundle\n\
-            (`isWf`, `isValid`, `computeValue`) built on top of the total capture-extracting\n\
-            `decode`. Unlike the `Prop`-level surface, these actually run — `decode`/evaluate\n\
-            a string and compute its captures, validity, and value. -/"
+            The executable counterpart of the spec. `decode` walks the grammar over an input\n\
+            string and returns its captured components; `computeValue` then evaluates the value\n\
+            function on those captures, and `isWf`/`isValid` decide well-formedness/acceptance.\n\
+            Where the surface `IsWf.*`/`IsValid` are `Prop`s you read, these are functions you\n\
+            RUN: `#eval isValid s`, `#eval computeValue s`. The `equivalence` section below\n\
+            proves the two describe the same language and value. -/"
           let proofBanner := "/- ════════════════════════════ equivalence ════════════════════════════\n\
             The auto-discharged guarantees relating the readable surface to the executable\n\
             engine: `IsWf_equiv` (+ its `Internal.matchesRef.*` lemmas) proves recognition\n\
@@ -686,11 +687,10 @@ def elabFormatSpec : CommandElab := fun stx => do
           if !contractDecls.isEmpty then
             let soundHeader := mkHeader [parserMod, callerImport] true
             let contractBanner := "/- ═══════════════════════════ soundness ═══════════════════════════\n\
-              Some common proof obligations for validating your own external parser against this\n\
-              specification: `sound`, `complete`, and `reject`, stated over the readable surface\n\
-              `IsValid`/`computeValue`. These are left as `sorry` — you have to prove them\n\
-              yourself for your parser (typically by bridging `IsValid` to `decode` via\n\
-              `IsWf_equiv`). -/"
+              Some common proof obligations for validating YOUR OWN external parser against this\n\
+              specification: `extparse_sound`, `extparse_complete`, and `extparse_reject`, stated\n\
+              over the readable surface `IsValid`/`computeValue`. These are left as `sorry` —\n\
+              they are claims about your parser, so you have to prove them yourself. -/"
             let soundPath := dir ++ "/soundness.lean"
             IO.FS.writeFile soundPath
               (soundHeader ++ "\n" ++ contractBanner ++ "\n\n" ++ joinDecls contractDecls ++ "\n")

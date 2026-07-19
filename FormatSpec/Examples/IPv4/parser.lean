@@ -13,11 +13,12 @@ set_option linter.unusedSimpArgs false
 set_option linter.unusedVariables false
 
 /- ══════════════════════════════ engine ══════════════════════════════
-The executable engine, constructed by interpreting the input grammar's concrete
-syntax tree: the deep-embedded value/constraint ASTs plus the interpreter bundle
-(`isWf`, `isValid`, `computeValue`) built on top of the total capture-extracting
-`decode`. Unlike the `Prop`-level surface, these actually run — `decode`/evaluate
-a string and compute its captures, validity, and value. -/
+The executable counterpart of the spec. `decode` walks the grammar over an input
+string and returns its captured components; `computeValue` then evaluates the value
+function on those captures, and `isWf`/`isValid` decide well-formedness/acceptance.
+Where the surface `IsWf.*`/`IsValid` are `Prop`s you read, these are functions you
+RUN: `#eval isValid s`, `#eval computeValue s`. The `equivalence` section below
+proves the two describe the same language and value. -/
 
 def IPv4.constraints : List ConstraintEntry :=
   [ConstraintEntry.dsl (Constraint.noLeadingZero "Oct1"),

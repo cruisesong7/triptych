@@ -100,8 +100,8 @@ example : DecidablePred Decimal.IsWf.Decimal := inferInstance
 
 -- The external-parser obligations (`soundness.lean`), stated over the SURFACE spec against the
 -- REAL Cedar parser (`sorry`d — the ONLY proofs left to the human).
-#check (Decimal.sound_ext    : SoundStmt    Decimal.IsValid Decimal.computeValue Cedar.Spec.Ext.Decimal.parse cedarProj)
-#check (Decimal.complete_ext : CompleteStmt Decimal.IsValid Decimal.computeValue Cedar.Spec.Ext.Decimal.parse cedarProj)
-#check (Decimal.reject_ext   : RejectStmt   Decimal.IsValid Cedar.Spec.Ext.Decimal.parse)
+#check (Decimal.extparse_sound    : SoundStmt    Decimal.IsValid Decimal.computeValue Cedar.Spec.Ext.Decimal.parse cedarProj)
+#check (Decimal.extparse_complete : CompleteStmt Decimal.IsValid Decimal.computeValue Cedar.Spec.Ext.Decimal.parse cedarProj)
+#check (Decimal.extparse_reject   : RejectStmt   Decimal.IsValid Cedar.Spec.Ext.Decimal.parse)
 
 end FormatSpec.Examples.Decimal
