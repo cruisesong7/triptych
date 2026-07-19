@@ -46,10 +46,8 @@ open FormatSpec
 --   Constraint: value ∈ [Int64.MIN, Int64.MAX]   (Int64 range; -2^63 .. 2^63-1)
 
 -- The REAL external parser: Cedar's own `Decimal.parse : String → Option Decimal` (where
--- `Decimal := Int64`), projected to its `Int` denotation via `Int64.toInt`. The emitted
+-- `Decimal := Int64`), projected to its `Int` denotation by `Int64.toInt`. The emitted
 -- `soundness.lean` states the `sorry`d obligations relating THIS parser to the surface spec.
-def cedarProj (d : Cedar.Spec.Ext.Decimal) : Int := d.toInt
-
 format_spec Decimal where
   grammar
     Decimal  ::= Integer "." Fraction
@@ -59,7 +57,7 @@ format_spec Decimal where
     int Integer * 10 ^ 4 + sign Integer * nat Fraction * 10 ^ (4 - len Fraction)
   constraints
     value ∈ [Int64.MIN, Int64.MAX]
-  parser Cedar.Spec.Ext.Decimal.parse projection cedarProj
+  parser Cedar.Spec.Ext.Decimal.parse projection Int64.toInt
   -- Write the generated modules `spec.lean` / `parser.lean` / `soundness.lean` into this dir.
   to "FormatSpec/Examples/Decimal"
 

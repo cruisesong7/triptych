@@ -18,10 +18,10 @@ they are claims about your parser, so you have to prove them yourself. -/
 theorem Decimal.extparse_reject (s : String) : Cedar.Spec.Ext.Decimal.parse s = none ↔ ¬Decimal.IsValid s := by sorry
 
 theorem Decimal.extparse_sound (s : String) (a : _) :
-    Cedar.Spec.Ext.Decimal.parse s = some a → Decimal.IsValid s ∧ Decimal.computeValue s = some (cedarProj a) := by
+    Cedar.Spec.Ext.Decimal.parse s = some a → Decimal.IsValid s ∧ Decimal.computeValue s = some (Int64.toInt a) := by
   sorry
 
 theorem Decimal.extparse_complete (s : String) (v : _) :
     Decimal.IsValid s →
-      Decimal.computeValue s = some v → ∃ a, Cedar.Spec.Ext.Decimal.parse s = some a ∧ cedarProj a = v :=
+      Decimal.computeValue s = some v → ∃ a, Cedar.Spec.Ext.Decimal.parse s = some a ∧ Int64.toInt a = v :=
   by sorry
