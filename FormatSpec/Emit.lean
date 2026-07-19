@@ -555,4 +555,39 @@ def computeValueEqProof (specName : Name) (grammarId : TSyntax `ident)
       | some m =>
         simp only [Option.map_some, natOf_getD, intOf_getD, lenOf_getD, signOf_getD, ValExpr.eval])
 
+/-- Emit the generated correct-by-construction parser and its three DISCHARGED contracts:
+    `<Name>.computeValue_isSome` (accepted ⟹ value present, straight from the ENGINE `isValid`
+    → engine `isWf` → `decode.isSome`), `<Name>.parse := gatedParse isValid computeValue`, and
+    `parse_sound`/`parse_complete`/`parse_reject` (instances of the generic `gatedParse_*`
+    lemmas, `π = id`). No `sorry` — this is the tool's OWN verified parser (distinct from the
+    external-parser obligations). Gated on the ENGINE `isValid` (structurally decidable, no
+    `IsValid_equiv` needed), so this whole bundle depends only on the engine — keeping the
+    generated `parser` file self-contained. `isDsl` selects the value entry point
+    (`computeValue` vs `computeValueF`) that `computeValue_isSome` unfolds. -/
+def parserContractsProof (specName : Name) (isDsl : Bool)
+    : CommandElabM (Array (TSyntax `command)) := do
+  let isSomeId := mkIdent (specName ++ `computeValue_isSome)
+  let parseId  := mkIdent (specName ++ `parse)
+  let soundId  := mkIdent (specName ++ `parse_sound)
+  let compId   := mkIdent (specName ++ `parse_complete)
+  let rejId    := mkIdent (specName ++ `parse_reject)
+  let validEng  := mkIdent (specName ++ `isValid)
+  let isWfEng   := mkIdent (specName ++ `isWf)
+  let cvId      := mkIdent (specName ++ `computeValue)
+  let cvEntry   := mkIdent (if isDsl then `FormatSpec.computeValue else `FormatSpec.computeValueF)
+  let isSomeThm ← `(theorem $isSomeId (s : String) : $validEng s → ($cvId s).isSome := by
+      intro h
+      unfold $validEng $isWfEng FormatSpec.isWf at h
+      unfold $cvId $cvEntry
+      rw [Option.isSome_map]
+      exact h.1.1)
+  let parseDef ← `(def $parseId (s : String) := FormatSpec.gatedParse $validEng $cvId s)
+  let soundThm ← `(theorem $soundId :
+      SoundStmt $validEng $cvId $parseId id := FormatSpec.gatedParse_sound _ _)
+  let compThm ← `(theorem $compId :
+      CompleteStmt $validEng $cvId $parseId id := FormatSpec.gatedParse_complete _ _)
+  let rejThm ← `(theorem $rejId :
+      RejectStmt $validEng $parseId := FormatSpec.gatedParse_reject _ _ $isSomeId)
+  return #[isSomeThm, parseDef, soundThm, compThm, rejThm]
+
 end FormatSpec

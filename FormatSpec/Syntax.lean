@@ -303,19 +303,30 @@ def elabFormatSpec : CommandElab := fun stx => do
   match stx with
   | `($[#show%$sh]? format_spec $name:ident where grammar $prods:fmtProd* $[$v:fmtValue]? $[$ve:fmtValueEsc]? $[$cs:fmtConstraints]? $[$cse:fmtConstraintsEsc]? $[$pr:fmtParser]? $[$to?:fmtTo]?) => do
       let showing := sh.isSome
-      let bufS ← IO.mkRef (#[] : Array String)   -- spec section
-      let bufE ← IO.mkRef (#[] : Array String)   -- engine section
-      let bufP ← IO.mkRef (#[] : Array String)   -- soundness (proofs) section
-      let bufC ← IO.mkRef (#[] : Array String)   -- contracts section (parser clause)
+      -- Buffers, one per GENERATED FILE (the output is split three ways by audience):
+      --   spec.lean     ← bufS: the readable surface (cite) — grammar, `IsWf.*`, `value`,
+      --                   `Constraints`, `SatisfiesConstraints`, `IsValid`. Proof-free.
+      --   parser.lean   ← bufE ++ bufP ++ bufR: the runnable + trusted artifact (run + trust)
+      --                   — engine bundle, ALL auto-discharged proofs (`IsWf_equiv`,
+      --                   `computeValue_eq`, decidability), and the generated verified `parse`
+      --                   + its discharged contracts. No `sorry`.
+      --   soundness.lean ← bufC: ONLY the external-parser obligations (`sorry`d), emitted only
+      --                   when a `parser … projection …` clause names a real external parser.
+      let bufS ← IO.mkRef (#[] : Array String)   -- spec file
+      let bufE ← IO.mkRef (#[] : Array String)   -- engine (→ parser file)
+      let bufP ← IO.mkRef (#[] : Array String)   -- reconciliation proofs (→ parser file)
+      let bufR ← IO.mkRef (#[] : Array String)   -- generated verified parser (→ parser file)
+      let bufC ← IO.mkRef (#[] : Array String)   -- external-parser obligations (→ soundness file)
       let record (buf : IO.Ref (Array String)) (cmd : TSyntax `command) : CommandElabM Unit := do
         let clean : TSyntax `command := ⟨deHygiene cmd.raw⟩
         let src := (← liftCoreM (Lean.PrettyPrinter.ppCommand clean)).pretty
         if showing then logInfo src
         buf.modify (·.push src)
-      -- All sections are elaborated AND recorded (the single generated file holds them all).
+      -- All sections are elaborated AND recorded (the generated files hold them, split by buffer).
       let emitSpec   (cmd : TSyntax `command) : CommandElabM Unit := do record bufS cmd; elabCommand cmd
       let emitEngine (cmd : TSyntax `command) : CommandElabM Unit := do record bufE cmd; elabCommand cmd
       let emitSound  (cmd : TSyntax `command) : CommandElabM Unit := do record bufP cmd; elabCommand cmd
+      let emitParser (cmd : TSyntax `command) : CommandElabM Unit := do record bufR cmd; elabCommand cmd
       let emitContract (cmd : TSyntax `command) : CommandElabM Unit := do record bufC cmd; elabCommand cmd
       -- Grammar data literal (SPEC): the auditable EBNF transcription; the interpreter,
       -- proofs, and `SatisfiesConstraints`'s decode bridge all reference it. The START symbol
@@ -554,16 +565,24 @@ def elabFormatSpec : CommandElab := fun stx => do
       -- section is present — DSL tier (`veIdent?`) or `value'` escape (`hasValueEsc`).
       if veIdent?.isSome || hasValueEsc then
         emitSound (← FormatSpec.computeValueEqProof name.getId grammarIdent valueCaps veIdent?.isSome)
-      -- Contract obligations (CONTRACTS section): with a `parser <p> projection <π>` clause,
-      -- emit `<Name>.sound` / `.complete` / `.reject` as `sorry`d theorems (design §16.1),
-      -- stated over the SURFACE `<Name>.IsValid` (and, for sound/complete, the surface
-      -- value function `<Name>.computeValue`) — the human-facing "the real parser accepts
-      -- iff the readable spec is valid, with matching value". Discharged (later) by bridging
-      -- `IsValid` to `decode` via `IsWf_equiv`; `sound`/`complete` need a value expr.
-      -- These reference the EXTERNAL parser, so the written file re-imports the caller module.
+      -- GENERATED VERIFIED PARSER (→ parser file): whenever a value section exists, emit the
+      -- tool's own `<Name>.parse := gatedParse isValid computeValue` and its three
+      -- AUTO-DISCHARGED contracts (`parse_sound`/`parse_complete`/`parse_reject`). Gated on the
+      -- engine `isValid` (structurally decidable), so the parser is self-contained relative to
+      -- the engine — no `sorry`. This is the correct-by-construction parser; the external
+      -- obligations below are the SEPARATE translation-validation surface.
+      if veIdent?.isSome || hasValueEsc then
+        for cmd in ← FormatSpec.parserContractsProof name.getId veIdent?.isSome do
+          emitParser cmd
+      -- EXTERNAL-PARSER obligations (→ soundness file): with a `parser <p> projection <π>`
+      -- clause naming an EXISTING external parser, emit `<Name>.sound`/`.complete`/`.reject` as
+      -- `sorry`d theorems (design §16.1), stated over the SURFACE `<Name>.IsValid`/
+      -- `computeValue` — the human-facing "the real parser accepts iff the readable spec is
+      -- valid, with matching value". These are the ONLY obligations left to the human; they
+      -- reference the external parser, so the soundness file re-imports the caller module.
       if let some prStx := pr then
         if let `(fmtParser| parser $parseT:term projection $projT:term) := prStx then
-          let rejIdent := mkIdentFrom name (name.getId ++ `reject)
+          let rejIdent := mkIdentFrom name (name.getId ++ `reject_ext)
           emitContract (← `(theorem $rejIdent :
               RejectStmt $accSurf $parseT := by sorry))
           -- `sound`/`complete` need a value function — emitted whenever a `value` OR `value'`
@@ -571,79 +590,110 @@ def elabFormatSpec : CommandElab := fun stx => do
           -- type is arbitrary, matched by the `projection`'s codomain).
           if veIdent?.isSome || hasValueEsc then
             let cvIdent := mkIdentFrom name (name.getId ++ `computeValue)
-            let soundIdent := mkIdentFrom name (name.getId ++ `sound)
-            let compIdent  := mkIdentFrom name (name.getId ++ `complete)
+            let soundIdent := mkIdentFrom name (name.getId ++ `sound_ext)
+            let compIdent  := mkIdentFrom name (name.getId ++ `complete_ext)
             emitContract (← `(theorem $soundIdent :
                 SoundStmt $accSurf $cvIdent $parseT $projT := by sorry))
             emitContract (← `(theorem $compIdent :
                 CompleteStmt $accSurf $cvIdent $parseT $projT := by sorry))
-      -- WRITE (optional `to "<dir>"` clause): emit the single generated module
-      -- `<dir>/spec.lean` (dir default `.`, must pre-exist). Four `═══`-banner sections in
-      -- dependency order: spec / engine / soundness / contracts. Single file because
-      -- everything the reader cares about (`IsWf.*`, the `Decidable` instance, the surface
-      -- contracts) transitively needs the proof + interpreter, so any split only fights a
-      -- dependency cycle. The contracts section names the EXTERNAL parser, so the generated
-      -- file re-imports the caller module (`getMainModule`) to bring it into scope.
+      -- WRITE (optional `to "<dir>"` clause): emit up to THREE generated modules into
+      -- `<dir>` (default `.`, must pre-exist), split by audience:
+      --   `spec.lean`     — the readable surface (cite): grammar, `IsWf.*`, `value`,
+      --                     `Constraints`, `SatisfiesConstraints`, `IsValid`. Proof-free.
+      --   `parser.lean`   — the runnable + trusted artifact (run + trust): the engine bundle,
+      --                     ALL auto-discharged proofs (`IsWf_equiv`, `computeValue_eq`,
+      --                     decidability), and the generated verified `parse` + its contracts.
+      --                     Imports `spec`. No `sorry`.
+      --   `soundness.lean`— ONLY the external-parser obligations (`sorry`d), emitted ONLY when a
+      --                     `parser … projection …` clause names an existing external parser.
+      --                     Imports `parser` + the caller module (the external parser lives there).
+      -- Splitting by file (vs the old single module) gives each a crisp contract; the
+      -- dependency chain spec ← parser ← soundness is acyclic.
       if let some toStx := to? then
         if let `(fmtTo| to $dirStx:str) := toStx then
           let nm := name.getId.toString
           let dir := dirStx.getString
           let specDecls ← bufS.get; let engineDecls ← bufE.get
-          let soundDecls ← bufP.get; let contractDecls ← bufC.get
+          let proofDecls ← bufP.get; let parserDecls ← bufR.get
+          let contractDecls ← bufC.get
           let callerImport := (← getMainModule).toString
           let callerNamespace := (← getCurrNamespace).toString
-          -- Header. `unusedSimpArgs`/`unusedVariables` off — the uniform proof closer
-          -- over-provisions simp lemmas by design, and some defs keep a uniform signature
-          -- with an unused parameter (`SatisfiesConstraints (s) := True`); neither is a defect.
-          -- Import (and `open`) the caller module when the generated file references
-          -- caller-local symbols: the `parser`-clause contracts (external parser/projection)
-          -- OR any `opaque` escape check (a caller-defined `String → … → Bool`, e.g.
-          -- Datetime's `dayBound`). The `open` lets those unqualified idents resolve.
-          let needsCaller := !contractDecls.isEmpty || hasOpaque || hasValueEsc
-          let header :=
-            s!"-- Generated by FormatSpec from `format_spec {nm}`. Do not edit by hand.\n\
-               \nimport FormatSpec.Denote\n\
-               import FormatSpec.Value\n\
-               import FormatSpec.Constraint\n\
-               import FormatSpec.Assemble\n\
-               import FormatSpec.Reconcile\n\
-               {if needsCaller then s!"import {callerImport}\n" else ""}\
+          -- Module path prefix of the output dir (`FormatSpec/Examples/Decimal` →
+          -- `FormatSpec.Examples.Decimal`), used to import sibling generated files.
+          let dirMod := (dir.replace "/" ".").replace "\\" "."
+          let specMod   := dirMod ++ ".spec"
+          let parserMod := dirMod ++ ".parser"
+          -- The surface `value`/`Constraints` reference caller fns for the escape tiers
+          -- (`toGraph`, `dayBound`, …); the engine bundle likewise. So both `spec` and
+          -- `parser` import (and `open`) the caller when an escape is present.
+          let needsCallerSurface := hasOpaque || hasValueEsc
+          -- `unusedSimpArgs`/`unusedVariables` off — the uniform proof closer over-provisions
+          -- simp lemmas by design, and some defs keep a uniform signature with an unused
+          -- parameter (`SatisfiesConstraints (s) := True`); neither is a defect.
+          let mkHeader (imports : List String) (openCaller : Bool) : String :=
+            let importLines := String.join (imports.map (fun i => s!"import {i}\n"))
+            s!"-- Generated by FormatSpec from `format_spec {nm}`. Do not edit by hand.\n\n\
+               {importLines}\
                \nopen FormatSpec\n\
-               {if needsCaller then s!"open {callerNamespace}\n" else ""}\
+               {if openCaller then s!"open {callerNamespace}\n" else ""}\
                \nset_option linter.unusedSimpArgs false\n\
-               set_option linter.unusedVariables false\n\n"
+               set_option linter.unusedVariables false\n"
+          let libImports := ["FormatSpec.Denote", "FormatSpec.Value", "FormatSpec.Constraint",
+            "FormatSpec.Assemble", "FormatSpec.Reconcile"]
+          let joinDecls (decls : Array String) : String :=
+            String.intercalate "\n\n" decls.toList
+          -- ── spec.lean ── the readable surface only.
+          let specHeader := mkHeader
+            (libImports ++ (if needsCallerSurface then [callerImport] else []))
+            needsCallerSurface
           let specBanner := "-- ═══════════════════════════════ spec ═══════════════════════════════\n\
             -- The reader-facing specification: the grammar, the readable per-production\n\
             -- well-formedness predicates `IsWf.*`, the `value` function, the `Constraints`,\n\
             -- and the acceptance predicates `SatisfiesConstraints` / `IsValid` (a string is\n\
             -- VALID iff it satisfies the grammar and constraints — Cedar's wording)."
+          let specPath := dir ++ "/spec.lean"
+          IO.FS.writeFile specPath
+            (specHeader ++ "\n" ++ specBanner ++ "\n\n" ++ joinDecls specDecls ++ "\n")
+          -- ── parser.lean ── engine + all auto-discharged proofs + the generated verified parser.
+          let parserImports := libImports ++ [specMod]
+            ++ (if needsCallerSurface then [callerImport] else [])
+          let parserHeader := mkHeader parserImports needsCallerSurface
           let engineBanner := "-- ══════════════════════════════ engine ══════════════════════════════\n\
             -- The analyzable/executable machinery behind the spec: the deep-embedded\n\
             -- value/constraint ASTs and the decode-backed interpreter bundle (`isWf`,\n\
             -- `isValid`, `computeValue`)."
-          let soundBanner := "-- ════════════════════════════ soundness ════════════════════════════\n\
-            -- The guarantees tying the two together: the surface⟺engine equivalence\n\
-            -- `IsWf_equiv` (+ its `Internal.matchesRef.*` lemmas) and the derived\n\
-            -- `DecidablePred IsWf.*` instance (an executable validator, via the interpreter)."
-          let contractBanner := "-- ═══════════════════════════ contracts ═══════════════════════════\n\
-            -- The parser-correctness obligations against the external parser, stated over the\n\
-            -- SURFACE `IsValid`/`computeValue` (`sorry`d — the proof-facing deliverable,\n\
-            -- discharged later by bridging `IsValid` to `decode` via `IsWf_equiv`)."
-          -- Assemble the present sections (skip empty ones), joined by blank lines.
-          let sections : List (String × Array String) :=
-            [(specBanner, specDecls), (engineBanner, engineDecls),
-             (soundBanner, soundDecls), (contractBanner, contractDecls)]
-          let body := String.intercalate "\n\n"
-            (sections.filterMap (fun (banner, decls) =>
-              if decls.isEmpty then none
-              else some (banner ++ "\n\n" ++ String.intercalate "\n\n" decls.toList)))
-          let path := dir ++ "/spec.lean"
-          IO.FS.writeFile path (header ++ body ++ "\n")
-          logInfo m!"FormatSpec: wrote {nm} → {path} ({specDecls.size} spec + \
-                     {engineDecls.size} engine + {soundDecls.size} soundness + \
-                     {contractDecls.size} contract decls)"
+          let proofBanner := "-- ════════════════════════════ soundness ════════════════════════════\n\
+            -- The auto-discharged guarantees tying surface to engine: `IsWf_equiv` (+ its\n\
+            -- `Internal.matchesRef.*` lemmas), `computeValue_eq`, and the derived\n\
+            -- `DecidablePred` instances (an executable validator, via the interpreter)."
+          let parserBanner := "-- ═══════════════════════════════ parser ══════════════════════════════\n\
+            -- The generated correct-by-construction parser `parse` (= `computeValue` gated on\n\
+            -- the decidable `isValid`) and its AUTO-DISCHARGED contracts `parse_sound` /\n\
+            -- `parse_complete` / `parse_reject`. A verified parser, no `sorry`."
+          let parserSections : List (String × Array String) :=
+            [(engineBanner, engineDecls), (proofBanner, proofDecls), (parserBanner, parserDecls)]
+          let parserBody := String.intercalate "\n\n"
+            (parserSections.filterMap (fun (banner, decls) =>
+              if decls.isEmpty then none else some (banner ++ "\n\n" ++ joinDecls decls)))
+          let parserPath := dir ++ "/parser.lean"
+          IO.FS.writeFile parserPath (parserHeader ++ "\n" ++ parserBody ++ "\n")
+          -- ── soundness.lean ── external-parser obligations only; written ONLY when present.
+          if !contractDecls.isEmpty then
+            let soundHeader := mkHeader [parserMod, callerImport] true
+            let contractBanner := "-- ═══════════════════════════ soundness ═══════════════════════════\n\
+              -- The parser-correctness OBLIGATIONS for the external, hand-written parser, stated\n\
+              -- over the SURFACE `IsValid`/`computeValue` (`sorry`d — the ONLY proofs left to the\n\
+              -- human; discharge by bridging `IsValid` to `decode` via `IsWf_equiv`)."
+            let soundPath := dir ++ "/soundness.lean"
+            IO.FS.writeFile soundPath
+              (soundHeader ++ "\n" ++ contractBanner ++ "\n\n" ++ joinDecls contractDecls ++ "\n")
+          let filesWritten := "spec.lean, parser.lean" ++
+            (if contractDecls.isEmpty then "" else ", soundness.lean")
+          logInfo m!"FormatSpec: wrote {nm} → {dir}/ [{filesWritten}] \
+                     ({specDecls.size} spec + {engineDecls.size} engine + {proofDecls.size} proof + \
+                     {parserDecls.size} verified-parser + {contractDecls.size} obligation decls)"
           -- CAVEAT: this write is an elaboration side-effect. `lake` replays cached modules
-          -- without re-running IO, so the file refreshes only on a genuine cache miss — after
+          -- without re-running IO, so the files refresh only on a genuine cache miss — after
           -- editing the generator, force a rebuild (delete oleans or `lake clean`).
   | _ => throwUnsupportedSyntax
 

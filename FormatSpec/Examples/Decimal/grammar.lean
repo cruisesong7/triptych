@@ -17,13 +17,16 @@
 import FormatSpec.Syntax
 import FormatSpec.Decode
 import FormatSpec.Roundtrip
+import Cedar.Spec.Ext.Decimal
 
 /-!
 # Decimal example: the grammar input
 
 Transcribes `doc/CedarDoc/Decimal.lean` into one `format_spec` block, exercises the
-generated spec end-to-end, and writes the two generated modules next to this file:
-`engine.lean` (foundation + proofs) and `spec.lean` (the citable, proof-free interface).
+generated spec end-to-end, and writes the generated modules next to this file:
+`spec.lean` (the citable, proof-free surface), `parser.lean` (the engine + auto-discharged
+proofs + the generated verified parser), and `soundness.lean` (the `sorry`d obligations for
+the REAL Cedar parser `Cedar.Spec.Ext.Decimal.parse`, emitted because of the `parser` clause).
 -/
 
 namespace FormatSpec.Examples.Decimal
@@ -42,13 +45,10 @@ open FormatSpec
 --   value(Decimal) = int(Integer)·10⁴ + sign·nat(Fraction)·10^(4 − |Fraction|)
 --   Constraint: value ∈ [Int64.MIN, Int64.MAX]   (Int64 range; -2^63 .. 2^63-1)
 
--- A stand-in "external" parser + projection, to exercise the `parser` clause (the emitted
--- contract obligations are stated over the SURFACE `Decimal.IsValid`/`computeValue`).
--- In real use these name the hand-written Cedar parser and its `Int` projection; here it is
--- an opaque stub (the `format_spec` command needs it in scope, so it precedes generation).
-structure DemoDec where val : Int
-opaque demoParse (s : String) : Option DemoDec
-def demoProj (d : DemoDec) : Int := d.val
+-- The REAL external parser: Cedar's own `Decimal.parse : String → Option Decimal` (where
+-- `Decimal := Int64`), projected to its `Int` denotation via `Int64.toInt`. The emitted
+-- `soundness.lean` states the `sorry`d obligations relating THIS parser to the surface spec.
+def cedarProj (d : Cedar.Spec.Ext.Decimal) : Int := d.toInt
 
 format_spec Decimal where
   grammar
@@ -59,9 +59,8 @@ format_spec Decimal where
     int Integer * 10 ^ 4 + sign Integer * nat Fraction * 10 ^ (4 - len Fraction)
   constraints
     value ∈ [Int64.MIN, Int64.MAX]
-  parser demoParse projection demoProj
-  -- Write the single generated module `spec.lean` (spec / engine / soundness / contracts
-  -- sections) into this example's directory.
+  parser Cedar.Spec.Ext.Decimal.parse projection cedarProj
+  -- Write the generated modules `spec.lean` / `parser.lean` / `soundness.lean` into this dir.
   to "FormatSpec/Examples/Decimal"
 
 -- ════════════════════════════════════════════════════════════════════════════
@@ -90,10 +89,19 @@ example : DecidablePred Decimal.IsWf.Decimal := inferInstance
 #eval decide (Decimal.IsWf.Decimal "1.5")   -- true
 #eval decide (Decimal.IsWf.Decimal "1.x")   -- false
 
--- The emitted contract obligations, stated over the SURFACE spec (`sorry`d — the
--- proof-facing deliverable a later pass discharges by bridging `IsValid` to `decode`).
-#check (Decimal.sound    : SoundStmt    Decimal.IsValid Decimal.computeValue demoParse demoProj)
-#check (Decimal.complete : CompleteStmt Decimal.IsValid Decimal.computeValue demoParse demoProj)
-#check (Decimal.reject   : RejectStmt   Decimal.IsValid demoParse)
+-- The GENERATED verified parser (`parser.lean`): `parse` gated on the decidable engine
+-- `isValid`, with its three contracts AUTO-DISCHARGED (no `sorry`, standard axioms only).
+#check (Decimal.parse         : String → Option Int)
+#check (Decimal.parse_sound   : SoundStmt    Decimal.isValid Decimal.computeValue Decimal.parse id)
+#check (Decimal.parse_complete : CompleteStmt Decimal.isValid Decimal.computeValue Decimal.parse id)
+#check (Decimal.parse_reject  : RejectStmt   Decimal.isValid Decimal.parse)
+#eval Decimal.parse "1.5"     -- some 15000
+#eval Decimal.parse "1.x"     -- none  (rejected)
+
+-- The external-parser obligations (`soundness.lean`), stated over the SURFACE spec against the
+-- REAL Cedar parser (`sorry`d — the ONLY proofs left to the human).
+#check (Decimal.sound_ext    : SoundStmt    Decimal.IsValid Decimal.computeValue Cedar.Spec.Ext.Decimal.parse cedarProj)
+#check (Decimal.complete_ext : CompleteStmt Decimal.IsValid Decimal.computeValue Cedar.Spec.Ext.Decimal.parse cedarProj)
+#check (Decimal.reject_ext   : RejectStmt   Decimal.IsValid Cedar.Spec.Ext.Decimal.parse)
 
 end FormatSpec.Examples.Decimal

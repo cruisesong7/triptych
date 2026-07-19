@@ -27,8 +27,9 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
 
 - **Axioms:** every generated equivalence/decidability result must depend ONLY on
   `propext, Classical.choice, Quot.sound`. NEVER introduce `sorry`, `native_decide`,
-  `ofReduceBool`, or new axioms. The only intentional `sorry`s are the 3 contract
-  obligations in `Examples/Decimal/spec.lean` (`sound`/`complete`/`reject` vs a demo parser).
+  `ofReduceBool`, or new axioms. The only intentional `sorry`s are the 3 external-parser
+  obligations in `Examples/Decimal/soundness.lean` (`sound_ext`/`complete_ext`/`reject_ext`
+  vs the REAL Cedar parser `Cedar.Spec.Ext.Decimal.parse`).
 - Verify axiom-cleanliness with a temp `#print axioms <name>` file, then delete it.
 - `simp` config syntax (v4.31): `simp (config := { maxSteps := N }) only [...]` — config
   BEFORE `only`. `grind` is available; `tauto` is NOT (no Mathlib).
@@ -57,10 +58,22 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
   contract statements `SoundStmt`/`CompleteStmt`/`RejectStmt` (over value type `β`, `π : α→β`).
 - `Emit.lean` — renders surface predicates (`symPred`/`termPred`), grammar literals,
   `matchesRefProof`/`isWfEquivProof`/`isValidEquivProof` (the uniform proof closer).
-- `Syntax.lean` — the `format_spec` command (DSL surface → core, elaborate, write `spec.lean`).
-- `Examples/{Decimal,Duration,Datetime,IPv4,IPv6,Graph}/{grammar,spec}.lean` — each
-  `grammar.lean` runs `format_spec` and writes `spec.lean` beside it. Importing `grammar`
-  regenerates; importing `spec` builds standalone (so they can't silently drift).
+- `Syntax.lean` — the `format_spec` command (DSL surface → core, elaborate, write the three
+  generated files). Emits `gatedParse`/`parserContractsProof` (the verified parser) and
+  splits output into `spec`/`parser`/`soundness` (see below).
+- `Examples/{Decimal,Duration,Datetime,IPv4,IPv6,Graph}/` — each `grammar.lean` runs
+  `format_spec` and writes up to THREE modules beside it: `spec.lean` (readable surface,
+  proof-free), `parser.lean` (engine bundle + auto-discharged proofs `IsWf_equiv`/
+  `computeValue_eq`/decidability + the generated correct-by-construction parser `parse` and its
+  discharged `parse_sound`/`parse_complete`/`parse_reject`), and — ONLY when the `format_spec`
+  has a `parser <p> projection <π>` clause — `soundness.lean` (the `sorry`d external-parser
+  obligations). File chain: spec ← parser ← soundness. Importing `grammar` regenerates;
+  importing the generated modules builds standalone (so they can't silently drift). Decimal's
+  `parser` clause names the real `Cedar.Spec.Ext.Decimal.parse` (see below).
+- **cedar-lean dependency:** `lakefile.lean` has `require Cedar from "../cedar-spec/cedar-lean"`
+  (same toolchain v4.31.0, same batteries commit) so `soundness.lean` can reference the real
+  Cedar ext parsers. After a generator edit affecting the dep, `lake build` twice (regeneration
+  timing quirk: a regenerated file's olean can lag its own source within one pass).
 
 ## DSL capabilities (current scope)
 

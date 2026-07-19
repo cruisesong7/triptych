@@ -25,22 +25,31 @@ import FormatSpec.Roundtrip
 import FormatSpec.Reconcile
 import FormatSpec.Syntax
 import FormatSpec.Examples
--- Worked examples: each `grammar.lean` inputs a `format_spec` and writes ONE generated
--- module beside it (`spec.lean`, in spec/engine/soundness banner sections). Importing the
--- `grammar` files (re)generates; importing the generated `spec` modules builds them
--- standalone, so they can't silently drift from the generator.
+-- Worked examples: each `grammar.lean` inputs a `format_spec` and writes the generated
+-- modules beside it — `spec.lean` (readable surface), `parser.lean` (engine + auto-discharged
+-- proofs + the generated verified parser), and, when the `format_spec` has a `parser` clause,
+-- `soundness.lean` (the `sorry`d external-parser obligations). Importing the `grammar` files
+-- (re)generates; importing the generated modules builds them standalone (so they can't
+-- silently drift from the generator).
 import FormatSpec.Examples.Decimal.grammar
 import FormatSpec.Examples.Decimal.spec
+import FormatSpec.Examples.Decimal.parser
+import FormatSpec.Examples.Decimal.soundness
 import FormatSpec.Examples.Duration.grammar
 import FormatSpec.Examples.Duration.spec
+import FormatSpec.Examples.Duration.parser
 import FormatSpec.Examples.Datetime.grammar
 import FormatSpec.Examples.Datetime.spec
+import FormatSpec.Examples.Datetime.parser
 import FormatSpec.Examples.IPv4.grammar
 import FormatSpec.Examples.IPv4.spec
+import FormatSpec.Examples.IPv4.parser
 import FormatSpec.Examples.IPv6.grammar
 import FormatSpec.Examples.IPv6.spec
+import FormatSpec.Examples.IPv6.parser
 import FormatSpec.Examples.Graph.grammar
 import FormatSpec.Examples.Graph.spec
+import FormatSpec.Examples.Graph.parser
 
 /-!
 # FormatSpec

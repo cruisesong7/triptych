@@ -118,4 +118,50 @@ def CompleteStmt (accepted : String → Prop) (val : String → Option β)
 def RejectStmt (accepted : String → Prop) (parse : String → Option α) : Prop :=
   ∀ s, parse s = none ↔ ¬ accepted s
 
+/-! ## The generated correct-by-construction parser
+
+Unlike the `sorry`'d contracts above (which relate an *external* hand-written parser to the
+spec), the tool can emit its OWN parser — `computeValue` gated on the decidable acceptance
+predicate — and DISCHARGE its three contracts for free. So every generated spec ships a real
+verified parser, not just an obligation surface. `gatedParse` yields the value exactly when
+the string is accepted; with `π = id` the three `*Stmt`s become the lemmas below, whose only
+per-spec input is `hsome` (accepted ⟹ value present), itself uniform (see `Syntax.lean`). -/
+
+/-- The tool's own parser: yield the value exactly when `accepted` holds. -/
+def gatedParse (accepted : String → Prop) [DecidablePred accepted]
+    (val : String → Option β) (s : String) : Option β :=
+  if decide (accepted s) then val s else none
+
+theorem gatedParse_sound (accepted : String → Prop) [DecidablePred accepted]
+    (val : String → Option β) :
+    SoundStmt accepted val (gatedParse accepted val) id := by
+  intro s a h
+  unfold gatedParse at h
+  simp only [decide_eq_true_eq] at h
+  by_cases hv : accepted s
+  · rw [if_pos hv] at h; exact ⟨hv, h⟩
+  · rw [if_neg hv] at h; exact absurd h (by simp)
+
+theorem gatedParse_complete (accepted : String → Prop) [DecidablePred accepted]
+    (val : String → Option β) :
+    CompleteStmt accepted val (gatedParse accepted val) id := by
+  intro s v hv hval
+  refine ⟨v, ?_, rfl⟩
+  unfold gatedParse
+  simp only [decide_eq_true_eq]
+  rw [if_pos hv]; exact hval
+
+theorem gatedParse_reject (accepted : String → Prop) [DecidablePred accepted]
+    (val : String → Option β) (hsome : ∀ s, accepted s → (val s).isSome) :
+    RejectStmt accepted (gatedParse accepted val) := by
+  intro s
+  unfold gatedParse
+  simp only [decide_eq_true_eq]
+  by_cases hv : accepted s
+  · rw [if_pos hv]
+    constructor
+    · intro h; exact absurd (hsome s hv) (by rw [h]; simp)
+    · intro h; exact absurd hv h
+  · rw [if_neg hv]; simp [hv]
+
 end FormatSpec

@@ -4,21 +4,24 @@ A Lean 4 library for **specifying and verifying flat, non-recursive string-forma
 parsers** — the "verified textual scalar/record parsing" niche.
 
 Given a `format_spec` DSL block (a grammar, plus optional value / constraint sections),
-it generates:
+it generates up to three files, split by audience:
 
-* a **readable surface specification** — inlined per-production well-formedness
+* **`spec.lean` — a readable surface specification** — inlined per-production well-formedness
   predicates (`IsWf.*`), a `value` function, and the `IsValid` acceptance predicate,
-  reading like a hand-written spec;
-* an **analyzable/executable engine** — a deep-embedded grammar interpreter with a total
-  capture-extracting `decode`, and a decidable validator;
-* **machine-checked reconciliation** — auto-emitted, axiom-clean proofs that the readable
-  surface spec and the engine agree, on **both recognition and value**: `IsWf_equiv`
-  (recognition, via the `decode ↔ IsWf` roundtrip) and `computeValue_eq` (the extracted
-  value equals the readable `value` on the decoded captures). Plus `sorry`'d contract
-  obligations tying an external hand-written parser to the spec — the one seam that has no
-  formal oracle (conformance to the real-world format is inherently trusted).
+  reading like a hand-written spec. Proof-free (what you *cite*);
+* **`parser.lean` — the runnable, verified artifact** — the analyzable deep-embedded engine
+  (total capture-extracting `decode`, decidable `isValid`, `computeValue`); the **generated
+  correct-by-construction parser** `parse` (= `computeValue` gated on the decidable `isValid`)
+  with its **auto-discharged** contracts `parse_sound`/`parse_complete`/`parse_reject`; and the
+  machine-checked, axiom-clean surface⟺engine reconciliation on **both recognition and value**
+  — `IsWf_equiv` (via the `decode ↔ IsWf` roundtrip) and `computeValue_eq`. No `sorry` (what
+  you *run + trust*);
+* **`soundness.lean` — the obligation surface** — emitted *only* when a `parser … projection …`
+  clause names an existing external parser: the `sorry`'d `sound`/`complete`/`reject` relating
+  that hand-written parser to the spec. The one seam with no formal oracle (real-world-format
+  conformance is inherently trusted); the *only* proofs left to the human.
 
-All generated equivalence/decidability results depend only on the standard axioms
+Every generated proof outside `soundness.lean` depends only on the standard axioms
 `propext, Classical.choice, Quot.sound` — no `sorry`, `native_decide`, or extra axioms.
 
 ## Example
@@ -33,8 +36,11 @@ format_spec IPv6 where
 
 produces `IPv6.IsWf.V6Addr`, `IPv6.IsValid`, a `DecidablePred` validator, and
 `IPv6.IsWf_equiv : ∀ s, IsWf IPv6.grammar s ↔ IPv6.IsWf.V6Addr s`. A spec with a value
-section additionally gets `<Name>.computeValue` and its reconciliation theorem
-`<Name>.computeValue_eq` (see Decimal, Duration, Datetime, Graph).
+section additionally gets the verified parser `<Name>.parse : String → Option α` (with its
+auto-discharged `parse_sound`/`parse_complete`/`parse_reject`) and the reconciliation theorem
+`<Name>.computeValue_eq` (see Decimal, Duration, Datetime, Graph). Adding a
+`parser <p> projection <π>` clause emits `soundness.lean` with the `sorry`'d obligations for an
+external parser — Decimal points it at the real `Cedar.Spec.Ext.Decimal.parse`.
 
 See `FormatSpec/DESIGN.md` for the full design, and `FormatSpec/Examples/` for worked
 examples (Decimal, Duration, Datetime, IPv4, IPv6, Graph).
@@ -61,10 +67,15 @@ decidability still auto-proven; value/constraint contract left as a typed hole).
 lake build FormatSpec
 ```
 
-Lean `v4.31.0`, batteries only (no Mathlib).
+Lean `v4.31.0`, batteries only (no Mathlib). The Decimal example additionally depends on
+cedar-lean (via a local `require Cedar from "../cedar-spec/cedar-lean"` — same toolchain, same
+batteries commit) so its `soundness.lean` can state obligations against the real
+`Cedar.Spec.Ext.Decimal.parse`. Clone `cedar-spec` beside this repo, or drop the Decimal
+`parser` clause to build without it.
 
 ## Provenance
 
 Originated while verifying the Cedar extension-type parsers (Decimal, Duration,
-Datetime, IPAddr); extracted into a standalone repository. Source files retain their
-original Apache-2.0 "Cedar Contributors" headers.
+Datetime, IPAddr); extracted into a standalone library that now takes a light optional
+dependency back on cedar-lean for the Decimal external-parser example. Source files retain
+their original Apache-2.0 "Cedar Contributors" headers.
