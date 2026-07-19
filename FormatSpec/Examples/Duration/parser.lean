@@ -16,8 +16,10 @@ set_option linter.unusedVariables false
 The executable counterpart of the spec. `decode` walks the grammar over an input
 string and returns its captured components; `computeValue` then evaluates the value
 function on those captures, and `isWf`/`isValid` decide well-formedness/acceptance.
-Where the surface `IsWf.*`/`IsValid` are `Prop`s you read, these are functions you
-RUN: `#eval isValid s`, `#eval computeValue s`. The `equivalence` section below
+
+Naming convention: CAPITALIZED `IsWf.*`/`IsValid` are the surface `Prop`s you READ
+and reason about; lowercase `isWf`/`isValid` are the engine's executable deciders you
+RUN (`#eval isValid s`, `#eval computeValue s`). The `equivalence` section below
 proves the two describe the same language and value. -/
 
 def Duration.valueExpr : ValExpr :=
@@ -353,11 +355,13 @@ theorem Duration.computeValue_isSome (s : String) : Duration.isValid s → (Dura
 def Duration.parse (s : String) :=
   FormatSpec.gatedParse Duration.isValid Duration.computeValue s
 
-theorem Duration.parse_sound : SoundStmt Duration.isValid Duration.computeValue Duration.parse id :=
-  FormatSpec.gatedParse_sound _ _
+theorem Duration.parse_sound (s : String) (a : _) :
+    Duration.parse s = some a → Duration.isValid s ∧ Duration.computeValue s = some a :=
+  FormatSpec.gatedParse_sound _ _ s a
 
-theorem Duration.parse_complete : CompleteStmt Duration.isValid Duration.computeValue Duration.parse id :=
-  FormatSpec.gatedParse_complete _ _
+theorem Duration.parse_complete (s : String) (v : _) :
+    Duration.isValid s → Duration.computeValue s = some v → ∃ a, Duration.parse s = some a ∧ a = v :=
+  FormatSpec.gatedParse_complete _ _ s v
 
-theorem Duration.parse_reject : RejectStmt Duration.isValid Duration.parse :=
-  FormatSpec.gatedParse_reject _ _ Duration.computeValue_isSome
+theorem Duration.parse_reject (s : String) : Duration.parse s = none ↔ ¬Duration.isValid s :=
+  FormatSpec.gatedParse_reject _ _ Duration.computeValue_isSome s

@@ -18,8 +18,10 @@ set_option linter.unusedVariables false
 The executable counterpart of the spec. `decode` walks the grammar over an input
 string and returns its captured components; `computeValue` then evaluates the value
 function on those captures, and `isWf`/`isValid` decide well-formedness/acceptance.
-Where the surface `IsWf.*`/`IsValid` are `Prop`s you read, these are functions you
-RUN: `#eval isValid s`, `#eval computeValue s`. The `equivalence` section below
+
+Naming convention: CAPITALIZED `IsWf.*`/`IsValid` are the surface `Prop`s you READ
+and reason about; lowercase `isWf`/`isValid` are the engine's executable deciders you
+RUN (`#eval isValid s`, `#eval computeValue s`). The `equivalence` section below
 proves the two describe the same language and value. -/
 
 def Graph.valueFn := fun env : Env => toGraph (((env : Env) "Cells").getD "")
@@ -143,11 +145,13 @@ theorem Graph.computeValue_isSome (s : String) : Graph.isValid s → (Graph.comp
 def Graph.parse (s : String) :=
   FormatSpec.gatedParse Graph.isValid Graph.computeValue s
 
-theorem Graph.parse_sound : SoundStmt Graph.isValid Graph.computeValue Graph.parse id :=
-  FormatSpec.gatedParse_sound _ _
+theorem Graph.parse_sound (s : String) (a : _) :
+    Graph.parse s = some a → Graph.isValid s ∧ Graph.computeValue s = some a :=
+  FormatSpec.gatedParse_sound _ _ s a
 
-theorem Graph.parse_complete : CompleteStmt Graph.isValid Graph.computeValue Graph.parse id :=
-  FormatSpec.gatedParse_complete _ _
+theorem Graph.parse_complete (s : String) (v : _) :
+    Graph.isValid s → Graph.computeValue s = some v → ∃ a, Graph.parse s = some a ∧ a = v :=
+  FormatSpec.gatedParse_complete _ _ s v
 
-theorem Graph.parse_reject : RejectStmt Graph.isValid Graph.parse :=
-  FormatSpec.gatedParse_reject _ _ Graph.computeValue_isSome
+theorem Graph.parse_reject (s : String) : Graph.parse s = none ↔ ¬Graph.isValid s :=
+  FormatSpec.gatedParse_reject _ _ Graph.computeValue_isSome s

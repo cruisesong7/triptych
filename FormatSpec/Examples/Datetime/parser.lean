@@ -18,8 +18,10 @@ set_option linter.unusedVariables false
 The executable counterpart of the spec. `decode` walks the grammar over an input
 string and returns its captured components; `computeValue` then evaluates the value
 function on those captures, and `isWf`/`isValid` decide well-formedness/acceptance.
-Where the surface `IsWf.*`/`IsValid` are `Prop`s you read, these are functions you
-RUN: `#eval isValid s`, `#eval computeValue s`. The `equivalence` section below
+
+Naming convention: CAPITALIZED `IsWf.*`/`IsValid` are the surface `Prop`s you READ
+and reason about; lowercase `isWf`/`isValid` are the engine's executable deciders you
+RUN (`#eval isValid s`, `#eval computeValue s`). The `equivalence` section below
 proves the two describe the same language and value. -/
 
 def Datetime.valueFn := fun env : Env =>
@@ -411,11 +413,13 @@ theorem Datetime.computeValue_isSome (s : String) : Datetime.isValid s → (Date
 def Datetime.parse (s : String) :=
   FormatSpec.gatedParse Datetime.isValid Datetime.computeValue s
 
-theorem Datetime.parse_sound : SoundStmt Datetime.isValid Datetime.computeValue Datetime.parse id :=
-  FormatSpec.gatedParse_sound _ _
+theorem Datetime.parse_sound (s : String) (a : _) :
+    Datetime.parse s = some a → Datetime.isValid s ∧ Datetime.computeValue s = some a :=
+  FormatSpec.gatedParse_sound _ _ s a
 
-theorem Datetime.parse_complete : CompleteStmt Datetime.isValid Datetime.computeValue Datetime.parse id :=
-  FormatSpec.gatedParse_complete _ _
+theorem Datetime.parse_complete (s : String) (v : _) :
+    Datetime.isValid s → Datetime.computeValue s = some v → ∃ a, Datetime.parse s = some a ∧ a = v :=
+  FormatSpec.gatedParse_complete _ _ s v
 
-theorem Datetime.parse_reject : RejectStmt Datetime.isValid Datetime.parse :=
-  FormatSpec.gatedParse_reject _ _ Datetime.computeValue_isSome
+theorem Datetime.parse_reject (s : String) : Datetime.parse s = none ↔ ¬Datetime.isValid s :=
+  FormatSpec.gatedParse_reject _ _ Datetime.computeValue_isSome s

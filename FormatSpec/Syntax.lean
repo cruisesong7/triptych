@@ -582,9 +582,11 @@ def elabFormatSpec : CommandElab := fun stx => do
       -- reference the external parser, so the soundness file re-imports the caller module.
       if let some prStx := pr then
         if let `(fmtParser| parser $parseT:term projection $projT:term) := prStx then
+          -- Statements written OUT (not `RejectStmt`/`SoundStmt`/…), so the obligation reads as
+          -- the actual proposition to prove for the external parser `parseT` (projection `projT`).
           let rejIdent := mkIdentFrom name (name.getId ++ `extparse_reject)
-          emitContract (← `(theorem $rejIdent :
-              RejectStmt $accSurf $parseT := by sorry))
+          emitContract (← `(theorem $rejIdent (s : String) :
+              $parseT s = none ↔ ¬ $accSurf s := by sorry))
           -- `sound`/`complete` need a value function — emitted whenever a `value` OR `value'`
           -- section is present (both produce `<Name>.computeValue`; the escape tier's value
           -- type is arbitrary, matched by the `projection`'s codomain).
@@ -592,10 +594,10 @@ def elabFormatSpec : CommandElab := fun stx => do
             let cvIdent := mkIdentFrom name (name.getId ++ `computeValue)
             let soundIdent := mkIdentFrom name (name.getId ++ `extparse_sound)
             let compIdent  := mkIdentFrom name (name.getId ++ `extparse_complete)
-            emitContract (← `(theorem $soundIdent :
-                SoundStmt $accSurf $cvIdent $parseT $projT := by sorry))
-            emitContract (← `(theorem $compIdent :
-                CompleteStmt $accSurf $cvIdent $parseT $projT := by sorry))
+            emitContract (← `(theorem $soundIdent (s : String) (a : _) :
+                $parseT s = some a → $accSurf s ∧ $cvIdent s = some ($projT a) := by sorry))
+            emitContract (← `(theorem $compIdent (s : String) (v : _) :
+                $accSurf s → $cvIdent s = some v → ∃ a, $parseT s = some a ∧ $projT a = v := by sorry))
       -- WRITE (optional `to "<dir>"` clause): emit up to THREE generated modules into
       -- `<dir>` (default `.`, must pre-exist), split by audience:
       --   `spec.lean`     — the readable surface (cite): grammar, `IsWf.*`, `value`,
@@ -664,8 +666,10 @@ def elabFormatSpec : CommandElab := fun stx => do
             The executable counterpart of the spec. `decode` walks the grammar over an input\n\
             string and returns its captured components; `computeValue` then evaluates the value\n\
             function on those captures, and `isWf`/`isValid` decide well-formedness/acceptance.\n\
-            Where the surface `IsWf.*`/`IsValid` are `Prop`s you read, these are functions you\n\
-            RUN: `#eval isValid s`, `#eval computeValue s`. The `equivalence` section below\n\
+            \n\
+            Naming convention: CAPITALIZED `IsWf.*`/`IsValid` are the surface `Prop`s you READ\n\
+            and reason about; lowercase `isWf`/`isValid` are the engine's executable deciders you\n\
+            RUN (`#eval isValid s`, `#eval computeValue s`). The `equivalence` section below\n\
             proves the two describe the same language and value. -/"
           let proofBanner := "/- ════════════════════════════ equivalence ════════════════════════════\n\
             The auto-discharged guarantees relating the readable surface to the executable\n\

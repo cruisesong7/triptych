@@ -16,8 +16,10 @@ set_option linter.unusedVariables false
 The executable counterpart of the spec. `decode` walks the grammar over an input
 string and returns its captured components; `computeValue` then evaluates the value
 function on those captures, and `isWf`/`isValid` decide well-formedness/acceptance.
-Where the surface `IsWf.*`/`IsValid` are `Prop`s you read, these are functions you
-RUN: `#eval isValid s`, `#eval computeValue s`. The `equivalence` section below
+
+Naming convention: CAPITALIZED `IsWf.*`/`IsValid` are the surface `Prop`s you READ
+and reason about; lowercase `isWf`/`isValid` are the engine's executable deciders you
+RUN (`#eval isValid s`, `#eval computeValue s`). The `equivalence` section below
 proves the two describe the same language and value. -/
 
 def Decimal.valueExpr : ValExpr :=
@@ -197,11 +199,13 @@ theorem Decimal.computeValue_isSome (s : String) : Decimal.isValid s → (Decima
 def Decimal.parse (s : String) :=
   FormatSpec.gatedParse Decimal.isValid Decimal.computeValue s
 
-theorem Decimal.parse_sound : SoundStmt Decimal.isValid Decimal.computeValue Decimal.parse id :=
-  FormatSpec.gatedParse_sound _ _
+theorem Decimal.parse_sound (s : String) (a : _) :
+    Decimal.parse s = some a → Decimal.isValid s ∧ Decimal.computeValue s = some a :=
+  FormatSpec.gatedParse_sound _ _ s a
 
-theorem Decimal.parse_complete : CompleteStmt Decimal.isValid Decimal.computeValue Decimal.parse id :=
-  FormatSpec.gatedParse_complete _ _
+theorem Decimal.parse_complete (s : String) (v : _) :
+    Decimal.isValid s → Decimal.computeValue s = some v → ∃ a, Decimal.parse s = some a ∧ a = v :=
+  FormatSpec.gatedParse_complete _ _ s v
 
-theorem Decimal.parse_reject : RejectStmt Decimal.isValid Decimal.parse :=
-  FormatSpec.gatedParse_reject _ _ Decimal.computeValue_isSome
+theorem Decimal.parse_reject (s : String) : Decimal.parse s = none ↔ ¬Decimal.isValid s :=
+  FormatSpec.gatedParse_reject _ _ Decimal.computeValue_isSome s

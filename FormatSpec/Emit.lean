@@ -582,12 +582,16 @@ def parserContractsProof (specName : Name) (isDsl : Bool)
       rw [Option.isSome_map]
       exact h.1.1)
   let parseDef ← `(def $parseId (s : String) := FormatSpec.gatedParse $validEng $cvId s)
-  let soundThm ← `(theorem $soundId :
-      SoundStmt $validEng $cvId $parseId id := FormatSpec.gatedParse_sound _ _)
-  let compThm ← `(theorem $compId :
-      CompleteStmt $validEng $cvId $parseId id := FormatSpec.gatedParse_complete _ _)
-  let rejThm ← `(theorem $rejId :
-      RejectStmt $validEng $parseId := FormatSpec.gatedParse_reject _ _ $isSomeId)
+  -- The three guarantees, with their statements written OUT (not hidden behind `SoundStmt`
+  -- etc.) so the reader sees the actual proposition; each closes definitionally from the
+  -- generic `gatedParse_*` lemma (`π = id`, so `some (id a)` reduces to `some a`).
+  let soundThm ← `(theorem $soundId (s : String) (a : _) :
+      $parseId s = some a → $validEng s ∧ $cvId s = some a := FormatSpec.gatedParse_sound _ _ s a)
+  let compThm ← `(theorem $compId (s : String) (v : _) :
+      $validEng s → $cvId s = some v → ∃ a, $parseId s = some a ∧ a = v :=
+    FormatSpec.gatedParse_complete _ _ s v)
+  let rejThm ← `(theorem $rejId (s : String) :
+      $parseId s = none ↔ ¬ $validEng s := FormatSpec.gatedParse_reject _ _ $isSomeId s)
   return #[isSomeThm, parseDef, soundThm, compThm, rejThm]
 
 end FormatSpec

@@ -16,8 +16,10 @@ set_option linter.unusedVariables false
 The executable counterpart of the spec. `decode` walks the grammar over an input
 string and returns its captured components; `computeValue` then evaluates the value
 function on those captures, and `isWf`/`isValid` decide well-formedness/acceptance.
-Where the surface `IsWf.*`/`IsValid` are `Prop`s you read, these are functions you
-RUN: `#eval isValid s`, `#eval computeValue s`. The `equivalence` section below
+
+Naming convention: CAPITALIZED `IsWf.*`/`IsValid` are the surface `Prop`s you READ
+and reason about; lowercase `isWf`/`isValid` are the engine's executable deciders you
+RUN (`#eval isValid s`, `#eval computeValue s`). The `equivalence` section below
 proves the two describe the same language and value. -/
 
 def IPv6.constraints : List ConstraintEntry :=
