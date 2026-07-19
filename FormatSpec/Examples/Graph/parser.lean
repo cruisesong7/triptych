@@ -150,7 +150,7 @@ theorem Graph.parse_sound (s : String) (g : Graph) :
   FormatSpec.gatedParse_sound _ _ s g
 
 theorem Graph.parse_complete (s : String) (g : Graph) :
-    Graph.isValid s → Graph.computeValue s = some g → ∃ b, Graph.parse s = some b ∧ b = g :=
+    Graph.isValid s → Graph.computeValue s = some g → Graph.parse s = some g :=
   FormatSpec.gatedParse_complete _ _ s g
 
 theorem Graph.parse_reject (s : String) : Graph.parse s = none ↔ ¬Graph.isValid s :=

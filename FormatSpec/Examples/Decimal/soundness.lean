@@ -21,7 +21,6 @@ theorem Decimal.extparse_sound (s : String) (d : Cedar.Spec.Ext.Decimal) :
     Cedar.Spec.Ext.Decimal.parse s = some d → Decimal.IsValid s ∧ Decimal.computeValue s = some (Int64.toInt d) := by
   sorry
 
-theorem Decimal.extparse_complete (s : String) (i : Int) :
-    Decimal.IsValid s →
-      Decimal.computeValue s = some i → ∃ d, Cedar.Spec.Ext.Decimal.parse s = some d ∧ Int64.toInt d = i :=
-  by sorry
+theorem Decimal.extparse_complete (s : String) (d : Cedar.Spec.Ext.Decimal) :
+    Decimal.IsValid s → Decimal.computeValue s = some (Int64.toInt d) → Cedar.Spec.Ext.Decimal.parse s = some d := by
+  sorry

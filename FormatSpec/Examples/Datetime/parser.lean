@@ -418,7 +418,7 @@ theorem Datetime.parse_sound (s : String) (i : Int) :
   FormatSpec.gatedParse_sound _ _ s i
 
 theorem Datetime.parse_complete (s : String) (i : Int) :
-    Datetime.isValid s → Datetime.computeValue s = some i → ∃ b, Datetime.parse s = some b ∧ b = i :=
+    Datetime.isValid s → Datetime.computeValue s = some i → Datetime.parse s = some i :=
   FormatSpec.gatedParse_complete _ _ s i
 
 theorem Datetime.parse_reject (s : String) : Datetime.parse s = none ↔ ¬Datetime.isValid s :=

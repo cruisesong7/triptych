@@ -204,7 +204,7 @@ theorem Decimal.parse_sound (s : String) (i : Int) :
   FormatSpec.gatedParse_sound _ _ s i
 
 theorem Decimal.parse_complete (s : String) (i : Int) :
-    Decimal.isValid s → Decimal.computeValue s = some i → ∃ b, Decimal.parse s = some b ∧ b = i :=
+    Decimal.isValid s → Decimal.computeValue s = some i → Decimal.parse s = some i :=
   FormatSpec.gatedParse_complete _ _ s i
 
 theorem Decimal.parse_reject (s : String) : Decimal.parse s = none ↔ ¬Decimal.isValid s :=

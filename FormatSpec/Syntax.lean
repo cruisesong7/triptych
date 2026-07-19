@@ -595,15 +595,14 @@ def elabFormatSpec : CommandElab := fun stx => do
             let soundIdent := mkIdentFrom name (name.getId ++ `extparse_sound)
             let compIdent  := mkIdentFrom name (name.getId ++ `extparse_complete)
             -- Concrete type + one-letter binder from the EXTERNAL parser's `Option` payload
-            -- (e.g. Cedar `Decimal` → `d`); the spec's own value type from `computeValue`.
+            -- (e.g. Cedar `Decimal` → `d`). Both obligations are parametrized over that output
+            -- `extId` (matching Cedar's target-parametrized `parse_sound`/`parse_complete`).
             let (extTy, extNm) ← FormatSpec.optionPayloadBinder parseT
-            let (valTy, valNm) ← FormatSpec.optionPayloadBinder cvIdent
-            let extId := mkIdent extNm; let valId := mkIdent valNm
+            let extId := mkIdent extNm
             emitContract (← `(theorem $soundIdent (s : String) ($extId : $extTy) :
                 $parseT s = some $extId → $accSurf s ∧ $cvIdent s = some ($projT $extId) := by sorry))
-            emitContract (← `(theorem $compIdent (s : String) ($valId : $valTy) :
-                $accSurf s → $cvIdent s = some $valId →
-                  ∃ $extId:ident, $parseT s = some $extId ∧ $projT $extId = $valId := by sorry))
+            emitContract (← `(theorem $compIdent (s : String) ($extId : $extTy) :
+                $accSurf s → $cvIdent s = some ($projT $extId) → $parseT s = some $extId := by sorry))
       -- WRITE (optional `to "<dir>"` clause): emit up to THREE generated modules into
       -- `<dir>` (default `.`, must pre-exist), split by audience:
       --   `spec.lean`     — the readable surface (cite): grammar, `IsWf.*`, `value`,

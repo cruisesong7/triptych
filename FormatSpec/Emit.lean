@@ -620,7 +620,7 @@ def parserContractsProof (specName : Name) (isDsl : Bool)
       $parseId s = some $aId → $validEng s ∧ $cvId s = some $aId :=
     FormatSpec.gatedParse_sound _ _ s $aId)
   let compThm ← `(theorem $compId (s : String) ($aId : $valTy) :
-      $validEng s → $cvId s = some $aId → ∃ b, $parseId s = some b ∧ b = $aId :=
+      $validEng s → $cvId s = some $aId → $parseId s = some $aId :=
     FormatSpec.gatedParse_complete _ _ s $aId)
   let rejThm ← `(theorem $rejId (s : String) :
       $parseId s = none ↔ ¬ $validEng s := FormatSpec.gatedParse_reject _ _ $isSomeId s)

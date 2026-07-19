@@ -360,7 +360,7 @@ theorem Duration.parse_sound (s : String) (i : Int) :
   FormatSpec.gatedParse_sound _ _ s i
 
 theorem Duration.parse_complete (s : String) (i : Int) :
-    Duration.isValid s → Duration.computeValue s = some i → ∃ b, Duration.parse s = some b ∧ b = i :=
+    Duration.isValid s → Duration.computeValue s = some i → Duration.parse s = some i :=
   FormatSpec.gatedParse_complete _ _ s i
 
 theorem Duration.parse_reject (s : String) : Duration.parse s = none ↔ ¬Duration.isValid s :=

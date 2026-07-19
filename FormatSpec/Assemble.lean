@@ -106,12 +106,15 @@ def SoundStmt (accepted : String → Prop) (val : String → Option β)
     (parse : String → Option α) (π : α → β) : Prop :=
   ∀ s a, parse s = some a → accepted s ∧ val s = some (π a)
 
-/-- Completeness: if `s` is accepted by the (surface) spec with value `v`, then `parse`
-    accepts it as some `a` whose projection is `v`. -/
+/-- Completeness (target-parametrized, matching Cedar's `parse_complete`): if `s` is accepted
+    by the (surface) spec and its value equals the projection of a given `a`, then `parse`
+    accepts `s` as exactly that `a`. (Cedar phrases the hypothesis with grammar-wf only,
+    because its value is `Int64` so the range is implied by `val s = π a`; here `val` is
+    arbitrary-precision — range is a separate constraint — so the hypothesis is the full
+    `accepted`.) -/
 def CompleteStmt (accepted : String → Prop) (val : String → Option β)
     (parse : String → Option α) (π : α → β) : Prop :=
-  ∀ s v, accepted s → val s = some v →
-    ∃ a, parse s = some a ∧ π a = v
+  ∀ s a, accepted s → val s = some (π a) → parse s = some a
 
 /-- Failure characterization: `parse` rejects exactly the strings the (surface) spec does
     not accept. -/
@@ -145,8 +148,7 @@ theorem gatedParse_sound (accepted : String → Prop) [DecidablePred accepted]
 theorem gatedParse_complete (accepted : String → Prop) [DecidablePred accepted]
     (val : String → Option β) :
     CompleteStmt accepted val (gatedParse accepted val) id := by
-  intro s v hv hval
-  refine ⟨v, ?_, rfl⟩
+  intro s a hv hval
   unfold gatedParse
   simp only [decide_eq_true_eq]
   rw [if_pos hv]; exact hval

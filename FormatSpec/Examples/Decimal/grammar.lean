@@ -90,8 +90,8 @@ example : DecidablePred Decimal.IsWf.Decimal := inferInstance
 -- The GENERATED verified parser (`parser.lean`): `parse` gated on the decidable engine
 -- `isValid`, with its three contracts AUTO-DISCHARGED (no `sorry`, standard axioms only).
 #check (Decimal.parse : String → Option Int)
-#check @Decimal.parse_sound      -- ∀ s a, parse s = some a → isValid s ∧ computeValue s = some a
-#check @Decimal.parse_complete   -- ∀ s v, isValid s → computeValue s = some v → ∃ a, parse s = some a ∧ a = v
+#check @Decimal.parse_sound      -- ∀ s i, parse s = some i → isValid s ∧ computeValue s = some i
+#check @Decimal.parse_complete   -- ∀ s i, isValid s → computeValue s = some i → parse s = some i
 #check @Decimal.parse_reject     -- ∀ s, parse s = none ↔ ¬ isValid s
 #eval Decimal.parse "1.5"     -- some 15000
 #eval Decimal.parse "1.x"     -- none  (rejected)
