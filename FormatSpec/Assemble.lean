@@ -166,4 +166,62 @@ theorem gatedParse_reject (accepted : String → Prop) [DecidablePred accepted]
     · intro h; exact absurd hv h
   · rw [if_neg hv]; simp [hv]
 
+/-! ## The printer side: `toString` roundtrip / injectivity / normalization
+
+A `toString : α → String` (a serializer for the parsed value) can't be synthesized — it is
+the value semantics run backwards, so it is USER-SUPPLIED, exactly like the external parser.
+But given it and TWO obligations about it — that a serialized value is accepted, and that
+serialize-then-`val` round-trips — the tool auto-derives the three printer theorems Cedar
+proves (`parse_toString_roundtrip`, `toString_injective`, and the `normalize` equivalence),
+via the target-parametrized `complete` (`π = id`; the DSL/escape parser has `val = parse`).
+
+`normalize s := (parse s).map toString` is the canonical-form map. -/
+
+/-- Obligation 1: the serialized form of any value is accepted by the spec. (Cedar's
+    `toString_isWfStr`, lifted to the full acceptance predicate.) -/
+def EncodeAcceptedStmt (accepted : String → Prop) (toStr : α → String) : Prop :=
+  ∀ a, accepted (toStr a)
+
+/-- Obligation 2: serialize-then-evaluate round-trips the value. (Cedar's
+    `computeValue_toString`.) -/
+def EncodeValueStmt (val : String → Option α) (toStr : α → String) : Prop :=
+  ∀ a, val (toStr a) = some a
+
+variable {accepted : String → Prop} [DecidablePred accepted] {val : String → Option α}
+  {toStr : α → String}
+
+/-- `parse (toString a) = some a` — parsing a serialized value returns it. Derived from the
+    target-parametrized `gatedParse_complete` and the two encode obligations. -/
+theorem gatedParse_toString_roundtrip
+    (hAcc : EncodeAcceptedStmt accepted toStr) (hVal : EncodeValueStmt val toStr) (a : α) :
+    gatedParse accepted val (toStr a) = some a :=
+  gatedParse_complete accepted val (toStr a) a (hAcc a) (hVal a)
+
+/-- `toString` is injective — distinct values serialize distinctly. Derived from roundtrip. -/
+theorem toString_injective
+    (hAcc : EncodeAcceptedStmt accepted toStr) (hVal : EncodeValueStmt val toStr)
+    (a a' : α) (h : toStr a = toStr a') : a = a' := by
+  have r1 := gatedParse_toString_roundtrip hAcc hVal a
+  have r2 := gatedParse_toString_roundtrip hAcc hVal a'
+  rw [h] at r1; rw [r1] at r2; exact Option.some.inj r2
+
+/-- Normalization decides equality: two strings share a canonical form iff they parse equal.
+    `normalize s := (gatedParse … s).map toStr`. Needs `toString` injective (from the encode
+    obligations). -/
+theorem normalize_eq_iff_parse_eq
+    (hAcc : EncodeAcceptedStmt accepted toStr) (hVal : EncodeValueStmt val toStr) (s s' : String) :
+    (gatedParse accepted val s).map toStr = (gatedParse accepted val s').map toStr
+      ↔ gatedParse accepted val s = gatedParse accepted val s' := by
+  constructor
+  · intro h
+    cases hps : gatedParse accepted val s with
+    | none => cases hps' : gatedParse accepted val s' with
+      | none => rfl
+      | some d' => rw [hps, hps'] at h; simp at h
+    | some d => cases hps' : gatedParse accepted val s' with
+      | none => rw [hps, hps'] at h; simp at h
+      | some d' => rw [hps, hps'] at h; simp only [Option.map_some, Option.some.injEq] at h
+                   rw [toString_injective hAcc hVal d d' h]
+  · intro h; rw [h]
+
 end FormatSpec
