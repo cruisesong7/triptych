@@ -355,13 +355,13 @@ theorem Duration.computeValue_isSome (s : String) : Duration.isValid s → (Dura
 def Duration.parse (s : String) :=
   FormatSpec.gatedParse Duration.isValid Duration.computeValue s
 
-theorem Duration.parse_sound (s : String) (a : _) :
-    Duration.parse s = some a → Duration.isValid s ∧ Duration.computeValue s = some a :=
-  FormatSpec.gatedParse_sound _ _ s a
+theorem Duration.parse_sound (s : String) (i : Int) :
+    Duration.parse s = some i → Duration.isValid s ∧ Duration.computeValue s = some i :=
+  FormatSpec.gatedParse_sound _ _ s i
 
-theorem Duration.parse_complete (s : String) (v : _) :
-    Duration.isValid s → Duration.computeValue s = some v → ∃ a, Duration.parse s = some a ∧ a = v :=
-  FormatSpec.gatedParse_complete _ _ s v
+theorem Duration.parse_complete (s : String) (i : Int) :
+    Duration.isValid s → Duration.computeValue s = some i → ∃ b, Duration.parse s = some b ∧ b = i :=
+  FormatSpec.gatedParse_complete _ _ s i
 
 theorem Duration.parse_reject (s : String) : Duration.parse s = none ↔ ¬Duration.isValid s :=
   FormatSpec.gatedParse_reject _ _ Duration.computeValue_isSome s

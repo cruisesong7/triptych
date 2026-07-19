@@ -413,13 +413,13 @@ theorem Datetime.computeValue_isSome (s : String) : Datetime.isValid s → (Date
 def Datetime.parse (s : String) :=
   FormatSpec.gatedParse Datetime.isValid Datetime.computeValue s
 
-theorem Datetime.parse_sound (s : String) (a : _) :
-    Datetime.parse s = some a → Datetime.isValid s ∧ Datetime.computeValue s = some a :=
-  FormatSpec.gatedParse_sound _ _ s a
+theorem Datetime.parse_sound (s : String) (i : Int) :
+    Datetime.parse s = some i → Datetime.isValid s ∧ Datetime.computeValue s = some i :=
+  FormatSpec.gatedParse_sound _ _ s i
 
-theorem Datetime.parse_complete (s : String) (v : _) :
-    Datetime.isValid s → Datetime.computeValue s = some v → ∃ a, Datetime.parse s = some a ∧ a = v :=
-  FormatSpec.gatedParse_complete _ _ s v
+theorem Datetime.parse_complete (s : String) (i : Int) :
+    Datetime.isValid s → Datetime.computeValue s = some i → ∃ b, Datetime.parse s = some b ∧ b = i :=
+  FormatSpec.gatedParse_complete _ _ s i
 
 theorem Datetime.parse_reject (s : String) : Datetime.parse s = none ↔ ¬Datetime.isValid s :=
   FormatSpec.gatedParse_reject _ _ Datetime.computeValue_isSome s

@@ -199,13 +199,13 @@ theorem Decimal.computeValue_isSome (s : String) : Decimal.isValid s → (Decima
 def Decimal.parse (s : String) :=
   FormatSpec.gatedParse Decimal.isValid Decimal.computeValue s
 
-theorem Decimal.parse_sound (s : String) (a : _) :
-    Decimal.parse s = some a → Decimal.isValid s ∧ Decimal.computeValue s = some a :=
-  FormatSpec.gatedParse_sound _ _ s a
+theorem Decimal.parse_sound (s : String) (i : Int) :
+    Decimal.parse s = some i → Decimal.isValid s ∧ Decimal.computeValue s = some i :=
+  FormatSpec.gatedParse_sound _ _ s i
 
-theorem Decimal.parse_complete (s : String) (v : _) :
-    Decimal.isValid s → Decimal.computeValue s = some v → ∃ a, Decimal.parse s = some a ∧ a = v :=
-  FormatSpec.gatedParse_complete _ _ s v
+theorem Decimal.parse_complete (s : String) (i : Int) :
+    Decimal.isValid s → Decimal.computeValue s = some i → ∃ b, Decimal.parse s = some b ∧ b = i :=
+  FormatSpec.gatedParse_complete _ _ s i
 
 theorem Decimal.parse_reject (s : String) : Decimal.parse s = none ↔ ¬Decimal.isValid s :=
   FormatSpec.gatedParse_reject _ _ Decimal.computeValue_isSome s

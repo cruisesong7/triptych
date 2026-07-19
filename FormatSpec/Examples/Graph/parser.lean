@@ -145,13 +145,13 @@ theorem Graph.computeValue_isSome (s : String) : Graph.isValid s → (Graph.comp
 def Graph.parse (s : String) :=
   FormatSpec.gatedParse Graph.isValid Graph.computeValue s
 
-theorem Graph.parse_sound (s : String) (a : _) :
-    Graph.parse s = some a → Graph.isValid s ∧ Graph.computeValue s = some a :=
-  FormatSpec.gatedParse_sound _ _ s a
+theorem Graph.parse_sound (s : String) (g : Graph) :
+    Graph.parse s = some g → Graph.isValid s ∧ Graph.computeValue s = some g :=
+  FormatSpec.gatedParse_sound _ _ s g
 
-theorem Graph.parse_complete (s : String) (v : _) :
-    Graph.isValid s → Graph.computeValue s = some v → ∃ a, Graph.parse s = some a ∧ a = v :=
-  FormatSpec.gatedParse_complete _ _ s v
+theorem Graph.parse_complete (s : String) (g : Graph) :
+    Graph.isValid s → Graph.computeValue s = some g → ∃ b, Graph.parse s = some b ∧ b = g :=
+  FormatSpec.gatedParse_complete _ _ s g
 
 theorem Graph.parse_reject (s : String) : Graph.parse s = none ↔ ¬Graph.isValid s :=
   FormatSpec.gatedParse_reject _ _ Graph.computeValue_isSome s

@@ -555,15 +555,42 @@ def computeValueEqProof (specName : Name) (grammarId : TSyntax `ident)
       | some m =>
         simp only [Option.map_some, natOf_getD, intOf_getD, lenOf_getD, signOf_getD, ValExpr.eval])
 
+/-- Elaborate the identifier `fnId` (expected type `String → Option τ`) and return `τ` as
+    surface syntax together with a one-letter binder name derived from `τ`'s head — e.g.
+    `Decimal.computeValue : String → Option Int` ↦ (`Int`, `i`), a `… → Option Decimal` ↦
+    (`Decimal`, `d`). The concrete type replaces the `_` in the generated `∀ (a : _)` binder so
+    the reader sees the real value type. Falls back to (`_`, `a`) if the shape is unexpected. -/
+def optionPayloadBinder (fnId : TSyntax `term) : CommandElabM (TSyntax `term × Name) := do
+  let fallbackTy ← `(_)
+  let fallback : TSyntax `term × Name := (fallbackTy, `a)
+  liftTermElabM do
+    let e ← Term.elabTerm fnId none
+    Term.synthesizeSyntheticMVarsNoPostponing
+    let ty ← Meta.whnf (← Meta.inferType e)
+    -- Peel `String → Option τ` (the value-fn / parser shape); non-dependent arrow.
+    let .forallE _ _ body _ := ty | return fallback
+    let cod ← Meta.whnf body
+    unless cod.isAppOfArity ``Option 1 do return fallback
+    let payload := cod.appArg!
+    let payloadStx ← Lean.PrettyPrinter.delab payload
+    -- Binder name = lowercased first letter of the payload type's head constant.
+    let nm : Name :=
+      match payload.getAppFn.constName? with
+      | some c =>
+        match c.getString!.toList with
+        | ch :: _ => Name.mkSimple (String.singleton ch.toLower)
+        | [] => `a
+      | none => `a
+    return (payloadStx, nm)
+
 /-- Emit the generated correct-by-construction parser and its three DISCHARGED contracts:
     `<Name>.computeValue_isSome` (accepted ⟹ value present, straight from the ENGINE `isValid`
     → engine `isWf` → `decode.isSome`), `<Name>.parse := gatedParse isValid computeValue`, and
-    `parse_sound`/`parse_complete`/`parse_reject` (instances of the generic `gatedParse_*`
-    lemmas, `π = id`). No `sorry` — this is the tool's OWN verified parser (distinct from the
-    external-parser obligations). Gated on the ENGINE `isValid` (structurally decidable, no
-    `IsValid_equiv` needed), so this whole bundle depends only on the engine — keeping the
-    generated `parser` file self-contained. `isDsl` selects the value entry point
-    (`computeValue` vs `computeValueF`) that `computeValue_isSome` unfolds. -/
+    `parse_sound`/`parse_complete`/`parse_reject` (statements written out; each closes from the
+    generic `gatedParse_*` lemma, `π = id`). No `sorry` — this is the tool's OWN verified parser
+    (distinct from the external-parser obligations). Gated on the ENGINE `isValid` (structurally
+    decidable, no `IsValid_equiv` needed), so this whole bundle depends only on the engine.
+    `isDsl` selects the value entry point (`computeValue` vs `computeValueF`). -/
 def parserContractsProof (specName : Name) (isDsl : Bool)
     : CommandElabM (Array (TSyntax `command)) := do
   let isSomeId := mkIdent (specName ++ `computeValue_isSome)
@@ -582,14 +609,19 @@ def parserContractsProof (specName : Name) (isDsl : Bool)
       rw [Option.isSome_map]
       exact h.1.1)
   let parseDef ← `(def $parseId (s : String) := FormatSpec.gatedParse $validEng $cvId s)
+  -- Concrete value type + a one-letter binder from its head (e.g. `Int`→`i`), so the emitted
+  -- statements show the real type instead of `_`.
+  let (valTy, aNm) ← optionPayloadBinder cvId
+  let aId := mkIdent aNm
   -- The three guarantees, with their statements written OUT (not hidden behind `SoundStmt`
   -- etc.) so the reader sees the actual proposition; each closes definitionally from the
   -- generic `gatedParse_*` lemma (`π = id`, so `some (id a)` reduces to `some a`).
-  let soundThm ← `(theorem $soundId (s : String) (a : _) :
-      $parseId s = some a → $validEng s ∧ $cvId s = some a := FormatSpec.gatedParse_sound _ _ s a)
-  let compThm ← `(theorem $compId (s : String) (v : _) :
-      $validEng s → $cvId s = some v → ∃ a, $parseId s = some a ∧ a = v :=
-    FormatSpec.gatedParse_complete _ _ s v)
+  let soundThm ← `(theorem $soundId (s : String) ($aId : $valTy) :
+      $parseId s = some $aId → $validEng s ∧ $cvId s = some $aId :=
+    FormatSpec.gatedParse_sound _ _ s $aId)
+  let compThm ← `(theorem $compId (s : String) ($aId : $valTy) :
+      $validEng s → $cvId s = some $aId → ∃ b, $parseId s = some b ∧ b = $aId :=
+    FormatSpec.gatedParse_complete _ _ s $aId)
   let rejThm ← `(theorem $rejId (s : String) :
       $parseId s = none ↔ ¬ $validEng s := FormatSpec.gatedParse_reject _ _ $isSomeId s)
   return #[isSomeThm, parseDef, soundThm, compThm, rejThm]
