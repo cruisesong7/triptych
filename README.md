@@ -17,9 +17,13 @@ it generates up to three files, split by audience:
   — `IsWf_equiv` (via the `decode ↔ IsWf` roundtrip) and `computeValue_eq`. No `sorry` (what
   you *run + trust*);
 * **`soundness.lean` — the obligation surface** — emitted *only* when a `parser … projection …`
-  clause names an existing external parser: the `sorry`'d `sound`/`complete`/`reject` relating
-  that hand-written parser to the spec. The one seam with no formal oracle (real-world-format
-  conformance is inherently trusted); the *only* proofs left to the human.
+  or `printer <toString>` clause is present: the `sorry`'d obligations that a *user-supplied*
+  external parser (`extparse_sound`/`_complete`/`_reject`) or value serializer
+  (`encode_accepted`/`encode_value`) satisfies the spec — plus the printer theorems
+  (`parse_toString_roundtrip`/`toString_injective`/`normalize_eq_iff_parse_eq`) auto-derived
+  from the encode obligations (Cedar's ext-type printer results). These seams have no formal
+  oracle (real-world-format conformance and the canonical serializer are user choices); they
+  are the *only* proofs left to the human.
 
 Every generated proof outside `soundness.lean` depends only on the standard axioms
 `propext, Classical.choice, Quot.sound` — no `sorry`, `native_decide`, or extra axioms.
@@ -40,7 +44,10 @@ section additionally gets the verified parser `<Name>.parse : String → Option 
 auto-discharged `parse_sound`/`parse_complete`/`parse_reject`) and the reconciliation theorem
 `<Name>.computeValue_eq` (see Decimal, Duration, Datetime, Graph). Adding a
 `parser <p> projection <π>` clause emits `soundness.lean` with the `sorry`'d obligations for an
-external parser — Decimal points it at the real `Cedar.Spec.Ext.Decimal.parse`.
+external parser — Decimal points it at the real `Cedar.Spec.Ext.Decimal.parse`. A
+`printer <toString>` clause names a canonical value serializer and auto-derives the
+parse/print roundtrip, `toString` injectivity, and normalization (from two `sorry`'d encode
+obligations) — Decimal's `decimalToString` demonstrates it.
 
 See `FormatSpec/DESIGN.md` for the full design, and `FormatSpec/Examples/` for worked
 examples (Decimal, Duration, Datetime, IPv4, IPv6, Graph).

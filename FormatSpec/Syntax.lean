@@ -131,15 +131,24 @@ syntax fmtValueEsc := "value'" fmtEscEntry
     `sorry`d theorems relating that parser to the generated spec. -/
 syntax fmtParser := "parser" term " projection " term
 
+/-- The optional `printer` clause: names the user's canonical value serializer
+    `toString : α → String` (where `α` is the generated `computeValue`'s value type). A value
+    serializer cannot be synthesized — the canonical string form is a user choice — so the
+    user supplies it here, and the command emits the two `sorry`d encode obligations
+    (`encode_accepted` / `encode_value`) in `soundness.lean` and AUTO-DISCHARGES the three
+    printer theorems (`parse_toString_roundtrip` / `toString_injective` /
+    `normalize_eq_iff_parse_eq`) in `parser.lean`, mirroring Cedar's ext-type printer results. -/
+syntax fmtPrinter := "printer" term
+
 /-- Optional trailing clause: `to "<dir>"` writes the generated module to `<dir>/spec.lean`
     (default dir `.`; the directory must already exist). -/
 syntax fmtTo := "to " str
 
 /-- The `format_spec` command, sections in order: `grammar` (required), `value`
-    (optional), `constraints` (optional), `parser` (optional), `to` (optional). `value`
-    precedes `constraints` so a constraint can refer to `value`. The `parser` clause emits
-    the sorried contract theorems; the `to "<dir>"` clause writes the generated module to
-    `<dir>/spec.lean` (in addition to elaborating everything). `#show` logs each declaration. -/
+    (optional), `constraints` (optional), `parser` (optional), `printer` (optional),
+    `to` (optional). `value` precedes `constraints` so a constraint can refer to `value`.
+    The `parser`/`printer` clauses emit the sorried obligations; the `to "<dir>"` clause
+    writes the generated modules. `#show` logs each declaration. -/
 syntax (name := formatSpecCmd)
   ("#show ")? "format_spec " ident " where "
     "grammar" (colGt fmtProd)+
@@ -148,6 +157,7 @@ syntax (name := formatSpecCmd)
     (fmtConstraints)?
     (fmtConstraintsEsc)?
     (fmtParser)?
+    (fmtPrinter)?
     (fmtTo)? : command
 
 /-- Elaborate a `fmtLen` into a `LenSpec` term. -/
@@ -301,7 +311,7 @@ partial def deHygiene (stx : Syntax) : Syntax :=
 @[command_elab formatSpecCmd]
 def elabFormatSpec : CommandElab := fun stx => do
   match stx with
-  | `($[#show%$sh]? format_spec $name:ident where grammar $prods:fmtProd* $[$v:fmtValue]? $[$ve:fmtValueEsc]? $[$cs:fmtConstraints]? $[$cse:fmtConstraintsEsc]? $[$pr:fmtParser]? $[$to?:fmtTo]?) => do
+  | `($[#show%$sh]? format_spec $name:ident where grammar $prods:fmtProd* $[$v:fmtValue]? $[$ve:fmtValueEsc]? $[$cs:fmtConstraints]? $[$cse:fmtConstraintsEsc]? $[$pr:fmtParser]? $[$pp:fmtPrinter]? $[$to?:fmtTo]?) => do
       let showing := sh.isSome
       -- Buffers, one per GENERATED FILE (the output is split three ways by audience):
       --   spec.lean     ← bufS: the readable surface (cite) — grammar, `IsWf.*`, `value`,
@@ -603,6 +613,43 @@ def elabFormatSpec : CommandElab := fun stx => do
                 $parseT s = some $extId → $accSurf s ∧ $cvIdent s = some ($projT $extId) := by sorry))
             emitContract (← `(theorem $compIdent (s : String) ($extId : $extTy) :
                 $accSurf s → $cvIdent s = some ($projT $extId) → $parseT s = some $extId := by sorry))
+      -- PRINTER (→ soundness file): with a `printer <toStr>` clause naming the user's canonical
+      -- value serializer `toStr : α → String`, emit the two `sorry`d encode obligations
+      -- (`encode_accepted`/`encode_value` — a value serializer can't be synthesized) and, from
+      -- them, the three AUTO-DERIVED printer theorems Cedar proves
+      -- (`parse_toString_roundtrip`/`toString_injective`/`normalize_eq_iff_parse_eq`). All live
+      -- in the soundness file: the derived ones aren't `sorry`d but DEPEND on the sorried
+      -- obligations, so they belong with the obligations, not in the no-`sorry` parser file.
+      -- Stated over the ENGINE `isValid`/`computeValue` (what `parse` gates on), so the derived
+      -- theorems close defeq from the generic `FormatSpec.*` lemmas. Needs a value section.
+      if let some ppStx := pp then
+        if let `(fmtPrinter| printer $toStrT:term) := ppStx then
+          if veIdent?.isSome || hasValueEsc then
+            let cvIdent  := mkIdentFrom name (name.getId ++ `computeValue)
+            let validEng := mkIdentFrom name (name.getId ++ `isValid)
+            let parseId  := mkIdentFrom name (name.getId ++ `parse)
+            let encAccId := mkIdentFrom name (name.getId ++ `encode_accepted)
+            let encValId := mkIdentFrom name (name.getId ++ `encode_value)
+            let rtId     := mkIdentFrom name (name.getId ++ `parse_toString_roundtrip)
+            let injId    := mkIdentFrom name (name.getId ++ `toString_injective)
+            let normId   := mkIdentFrom name (name.getId ++ `normalize_eq_iff_parse_eq)
+            -- Value type + one-letter binder (e.g. `Int`→`i`) from `computeValue`'s payload.
+            let (valTy, valNm) ← FormatSpec.optionPayloadBinder cvIdent
+            let aId := mkIdent valNm; let bId := mkIdent (valNm.appendAfter "'")
+            -- The two encode obligations (user proves): serialized value is accepted, and
+            -- serialize-then-`computeValue` round-trips.
+            emitContract (← `(theorem $encAccId ($aId : $valTy) : $validEng ($toStrT $aId) := by sorry))
+            emitContract (← `(theorem $encValId ($aId : $valTy) :
+                $cvIdent ($toStrT $aId) = some $aId := by sorry))
+            -- The three derived printer theorems (statements written out; each closes from the
+            -- generic lemma applied to the two obligations above).
+            emitContract (← `(theorem $rtId ($aId : $valTy) : $parseId ($toStrT $aId) = some $aId :=
+              FormatSpec.gatedParse_toString_roundtrip $encAccId $encValId $aId))
+            emitContract (← `(theorem $injId ($aId $bId : $valTy) (h : $toStrT $aId = $toStrT $bId) :
+                $aId = $bId := FormatSpec.toString_injective $encAccId $encValId $aId $bId h))
+            emitContract (← `(theorem $normId (s s' : String) :
+                ($parseId s).map $toStrT = ($parseId s').map $toStrT ↔ $parseId s = $parseId s' :=
+              FormatSpec.normalize_eq_iff_parse_eq $encAccId $encValId s s'))
       -- WRITE (optional `to "<dir>"` clause): emit up to THREE generated modules into
       -- `<dir>` (default `.`, must pre-exist), split by audience:
       --   `spec.lean`     — the readable surface (cite): grammar, `IsWf.*`, `value`,
@@ -765,10 +812,12 @@ from analysis and put correctness on you).
 ── constraints' ──  (optional ESCAPE, for constraints outside the DSL, e.g. calendar rules)
   one per line:  f X Y …   with  def f (x y … : String) : Bool := …   (`f` applied to captures)
 
-── parser ──  (optional)  parser <parse> projection <π>   emits the contract obligations.
-── to ──      (optional)  to \"<dir>\"                        writes <dir>/spec.lean.
+── parser ──  (optional)  parser <parse> projection <π>   emits the external-parser obligations.
+── printer ── (optional)  printer <toString>              names your canonical value serializer;
+                          emits the encode obligations + auto-derives roundtrip/injective/normalize.
+── to ──      (optional)  to \"<dir>\"                        writes <dir>/{spec,parser,soundness}.lean.
 
-Section order:  grammar · value · value' · constraints · constraints' · parser · to.
+Section order:  grammar · value · value' · constraints · constraints' · parser · printer · to.
 When a format needs something not listed here, that is a signal to either (a) use the
 matching escape section (`value'` / `constraints'`) for that one piece, or (b) request the
 vocabulary be extended — not to hand-write the whole spec in Lean."

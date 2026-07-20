@@ -24,3 +24,18 @@ theorem Decimal.extparse_sound (s : String) (d : Cedar.Spec.Ext.Decimal) :
 theorem Decimal.extparse_complete (s : String) (d : Cedar.Spec.Ext.Decimal) :
     Decimal.IsValid s → Decimal.computeValue s = some (Int64.toInt d) → Cedar.Spec.Ext.Decimal.parse s = some d := by
   sorry
+
+theorem Decimal.encode_accepted (i : Int) : Decimal.isValid (decimalToString i) := by sorry
+
+theorem Decimal.encode_value (i : Int) : Decimal.computeValue (decimalToString i) = some i := by sorry
+
+theorem Decimal.parse_toString_roundtrip (i : Int) : Decimal.parse (decimalToString i) = some i :=
+  FormatSpec.gatedParse_toString_roundtrip Decimal.encode_accepted Decimal.encode_value i
+
+theorem Decimal.toString_injective (i i' : Int) (h : decimalToString i = decimalToString i') : i = i' :=
+  FormatSpec.toString_injective Decimal.encode_accepted Decimal.encode_value i i' h
+
+theorem Decimal.normalize_eq_iff_parse_eq (s s' : String) :
+    (Decimal.parse s).map decimalToString = (Decimal.parse s').map decimalToString ↔
+      Decimal.parse s = Decimal.parse s' :=
+  FormatSpec.normalize_eq_iff_parse_eq Decimal.encode_accepted Decimal.encode_value s s'
