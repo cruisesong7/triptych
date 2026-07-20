@@ -168,60 +168,66 @@ theorem gatedParse_reject (accepted : String → Prop) [DecidablePred accepted]
 
 /-! ## The printer side: `toString` roundtrip / injectivity / normalization
 
-A `toString : α → String` (a serializer for the parsed value) can't be synthesized — it is
-the value semantics run backwards, so it is USER-SUPPLIED, exactly like the external parser.
-But given it and TWO obligations about it — that a serialized value is accepted, and that
-serialize-then-`val` round-trips — the tool auto-derives the three printer theorems Cedar
-proves (`parse_toString_roundtrip`, `toString_injective`, and the `normalize` equivalence),
-via the target-parametrized `complete` (`π = id`; the DSL/escape parser has `val = parse`).
+These are theorems about the USER'S EXTERNAL parser+printer pair (matching Cedar's
+`parse_toString_roundtrip` / `toString_injective` / `normalize_eq_iff_parse_eq`, which are
+about Cedar's own `parse`/`toString`), NOT about the tool's generated `parse` (whose roundtrip
+is near-tautological, being correct-by-construction). The serializer `toStr : δ → String`
+serializes the external parser's OWN value type `δ`; `π : δ → β` projects to the spec's value.
 
-`normalize s := (parse s).map toString` is the canonical-form map. -/
+Given the external parser's target-parametrized `complete` (the `extparse_complete` obligation)
+and two encode obligations — a serialized value is accepted, and serialize-then-`val` yields
+its projection — the three printer theorems are derived. `normalize s := (parse s).map toStr`
+is the canonical-form map. -/
+
+variable {δ : Type}
 
 /-- Obligation 1: the serialized form of any value is accepted by the spec. (Cedar's
     `toString_isWfStr`, lifted to the full acceptance predicate.) -/
-def EncodeAcceptedStmt (accepted : String → Prop) (toStr : α → String) : Prop :=
-  ∀ a, accepted (toStr a)
+def EncodeAcceptedStmt (accepted : String → Prop) (toStr : δ → String) : Prop :=
+  ∀ d, accepted (toStr d)
 
-/-- Obligation 2: serialize-then-evaluate round-trips the value. (Cedar's
-    `computeValue_toString`.) -/
-def EncodeValueStmt (val : String → Option α) (toStr : α → String) : Prop :=
-  ∀ a, val (toStr a) = some a
+/-- Obligation 2: serialize-then-evaluate yields the value's projection. (Cedar's
+    `computeValue_toString`; `π = id` when the external type is the spec value type.) -/
+def EncodeValueStmt (val : String → Option β) (toStr : δ → String) (π : δ → β) : Prop :=
+  ∀ d, val (toStr d) = some (π d)
 
-variable {accepted : String → Prop} [DecidablePred accepted] {val : String → Option α}
-  {toStr : α → String}
-
-/-- `parse (toString a) = some a` — parsing a serialized value returns it. Derived from the
-    target-parametrized `gatedParse_complete` and the two encode obligations. -/
-theorem gatedParse_toString_roundtrip
-    (hAcc : EncodeAcceptedStmt accepted toStr) (hVal : EncodeValueStmt val toStr) (a : α) :
-    gatedParse accepted val (toStr a) = some a :=
-  gatedParse_complete accepted val (toStr a) a (hAcc a) (hVal a)
+/-- `parse (toString d) = some d` — the external parser round-trips its own serializer. Derived
+    from the external `complete` (target-parametrized) + the two encode obligations. `complete`
+    is exactly the `extparse_complete` obligation. -/
+theorem parse_toString_roundtrip {accepted : String → Prop} {val : String → Option β}
+    {parse : String → Option δ} {toStr : δ → String} {π : δ → β}
+    (complete : ∀ s d, accepted s → val s = some (π d) → parse s = some d)
+    (hAcc : EncodeAcceptedStmt accepted toStr) (hVal : EncodeValueStmt val toStr π) (d : δ) :
+    parse (toStr d) = some d :=
+  complete (toStr d) d (hAcc d) (hVal d)
 
 /-- `toString` is injective — distinct values serialize distinctly. Derived from roundtrip. -/
-theorem toString_injective
-    (hAcc : EncodeAcceptedStmt accepted toStr) (hVal : EncodeValueStmt val toStr)
-    (a a' : α) (h : toStr a = toStr a') : a = a' := by
-  have r1 := gatedParse_toString_roundtrip hAcc hVal a
-  have r2 := gatedParse_toString_roundtrip hAcc hVal a'
+theorem toString_injective {accepted : String → Prop} {val : String → Option β}
+    {parse : String → Option δ} {toStr : δ → String} {π : δ → β}
+    (complete : ∀ s d, accepted s → val s = some (π d) → parse s = some d)
+    (hAcc : EncodeAcceptedStmt accepted toStr) (hVal : EncodeValueStmt val toStr π)
+    (d d' : δ) (h : toStr d = toStr d') : d = d' := by
+  have r1 := parse_toString_roundtrip complete hAcc hVal d
+  have r2 := parse_toString_roundtrip complete hAcc hVal d'
   rw [h] at r1; rw [r1] at r2; exact Option.some.inj r2
 
 /-- Normalization decides equality: two strings share a canonical form iff they parse equal.
-    `normalize s := (gatedParse … s).map toStr`. Needs `toString` injective (from the encode
-    obligations). -/
-theorem normalize_eq_iff_parse_eq
-    (hAcc : EncodeAcceptedStmt accepted toStr) (hVal : EncodeValueStmt val toStr) (s s' : String) :
-    (gatedParse accepted val s).map toStr = (gatedParse accepted val s').map toStr
-      ↔ gatedParse accepted val s = gatedParse accepted val s' := by
+    `normalize s := (parse s).map toStr`. Needs `toString` injective (from the obligations). -/
+theorem normalize_eq_iff_parse_eq {accepted : String → Prop} {val : String → Option β}
+    {parse : String → Option δ} {toStr : δ → String} {π : δ → β}
+    (complete : ∀ s d, accepted s → val s = some (π d) → parse s = some d)
+    (hAcc : EncodeAcceptedStmt accepted toStr) (hVal : EncodeValueStmt val toStr π) (s s' : String) :
+    (parse s).map toStr = (parse s').map toStr ↔ parse s = parse s' := by
   constructor
   · intro h
-    cases hps : gatedParse accepted val s with
-    | none => cases hps' : gatedParse accepted val s' with
+    cases hps : parse s with
+    | none => cases hps' : parse s' with
       | none => rfl
       | some d' => rw [hps, hps'] at h; simp at h
-    | some d => cases hps' : gatedParse accepted val s' with
+    | some d => cases hps' : parse s' with
       | none => rw [hps, hps'] at h; simp at h
       | some d' => rw [hps, hps'] at h; simp only [Option.map_some, Option.some.injEq] at h
-                   rw [toString_injective hAcc hVal d d' h]
+                   rw [toString_injective complete hAcc hVal d d' h]
   · intro h; rw [h]
 
 end FormatSpec

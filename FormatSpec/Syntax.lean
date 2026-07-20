@@ -131,13 +131,15 @@ syntax fmtValueEsc := "value'" fmtEscEntry
     `sorry`d theorems relating that parser to the generated spec. -/
 syntax fmtParser := "parser" term " projection " term
 
-/-- The optional `printer` clause: names the user's canonical value serializer
-    `toString : α → String` (where `α` is the generated `computeValue`'s value type). A value
-    serializer cannot be synthesized — the canonical string form is a user choice — so the
-    user supplies it here, and the command emits the two `sorry`d encode obligations
-    (`encode_accepted` / `encode_value`) in `soundness.lean` and AUTO-DISCHARGES the three
-    printer theorems (`parse_toString_roundtrip` / `toString_injective` /
-    `normalize_eq_iff_parse_eq`) in `parser.lean`, mirroring Cedar's ext-type printer results. -/
+/-- The optional `printer` clause (REQUIRES a `parser` clause): names the user's canonical
+    serializer `toString : δ → String` for the EXTERNAL parser's own value type `δ`. A
+    serializer cannot be synthesized — the canonical string form is a user choice — so the user
+    supplies it, and the command emits into `soundness.lean` the two `sorry`d encode obligations
+    (`encode_accepted` / `encode_value`) and the three printer theorems
+    (`parse_toString_roundtrip` / `toString_injective` / `normalize_eq_iff_parse_eq`) AUTO-DERIVED
+    from them (via `extparse_complete`). These are about the EXTERNAL parser+printer pair,
+    mirroring Cedar's ext-type printer results — not the tool's generated parser (whose roundtrip
+    is near-tautological). -/
 syntax fmtPrinter := "printer" term
 
 /-- Optional trailing clause: `to "<dir>"` writes the generated module to `<dir>/spec.lean`
@@ -597,59 +599,55 @@ def elabFormatSpec : CommandElab := fun stx => do
           let rejIdent := mkIdentFrom name (name.getId ++ `extparse_reject)
           emitContract (← `(theorem $rejIdent (s : String) :
               $parseT s = none ↔ ¬ $accSurf s := by sorry))
+          -- Concrete type + one-letter binder from the EXTERNAL parser's `Option` payload
+          -- (e.g. Cedar `Decimal` → `d`); reused by both obligations and the printer theorems.
+          let (extTy, extNm) ← FormatSpec.optionPayloadBinder parseT
+          let extId := mkIdent extNm
+          let compIdent  := mkIdentFrom name (name.getId ++ `extparse_complete)
           -- `sound`/`complete` need a value function — emitted whenever a `value` OR `value'`
           -- section is present (both produce `<Name>.computeValue`; the escape tier's value
           -- type is arbitrary, matched by the `projection`'s codomain).
           if veIdent?.isSome || hasValueEsc then
             let cvIdent := mkIdentFrom name (name.getId ++ `computeValue)
             let soundIdent := mkIdentFrom name (name.getId ++ `extparse_sound)
-            let compIdent  := mkIdentFrom name (name.getId ++ `extparse_complete)
-            -- Concrete type + one-letter binder from the EXTERNAL parser's `Option` payload
-            -- (e.g. Cedar `Decimal` → `d`). Both obligations are parametrized over that output
-            -- `extId` (matching Cedar's target-parametrized `parse_sound`/`parse_complete`).
-            let (extTy, extNm) ← FormatSpec.optionPayloadBinder parseT
-            let extId := mkIdent extNm
+            -- Both obligations parametrized over the external output `extId` (matching Cedar's
+            -- target-parametrized `parse_sound`/`parse_complete`).
             emitContract (← `(theorem $soundIdent (s : String) ($extId : $extTy) :
                 $parseT s = some $extId → $accSurf s ∧ $cvIdent s = some ($projT $extId) := by sorry))
             emitContract (← `(theorem $compIdent (s : String) ($extId : $extTy) :
                 $accSurf s → $cvIdent s = some ($projT $extId) → $parseT s = some $extId := by sorry))
-      -- PRINTER (→ soundness file): with a `printer <toStr>` clause naming the user's canonical
-      -- value serializer `toStr : α → String`, emit the two `sorry`d encode obligations
-      -- (`encode_accepted`/`encode_value` — a value serializer can't be synthesized) and, from
-      -- them, the three AUTO-DERIVED printer theorems Cedar proves
-      -- (`parse_toString_roundtrip`/`toString_injective`/`normalize_eq_iff_parse_eq`). All live
-      -- in the soundness file: the derived ones aren't `sorry`d but DEPEND on the sorried
-      -- obligations, so they belong with the obligations, not in the no-`sorry` parser file.
-      -- Stated over the ENGINE `isValid`/`computeValue` (what `parse` gates on), so the derived
-      -- theorems close defeq from the generic `FormatSpec.*` lemmas. Needs a value section.
-      if let some ppStx := pp then
-        if let `(fmtPrinter| printer $toStrT:term) := ppStx then
-          if veIdent?.isSome || hasValueEsc then
-            let cvIdent  := mkIdentFrom name (name.getId ++ `computeValue)
-            let validEng := mkIdentFrom name (name.getId ++ `isValid)
-            let parseId  := mkIdentFrom name (name.getId ++ `parse)
-            let encAccId := mkIdentFrom name (name.getId ++ `encode_accepted)
-            let encValId := mkIdentFrom name (name.getId ++ `encode_value)
-            let rtId     := mkIdentFrom name (name.getId ++ `parse_toString_roundtrip)
-            let injId    := mkIdentFrom name (name.getId ++ `toString_injective)
-            let normId   := mkIdentFrom name (name.getId ++ `normalize_eq_iff_parse_eq)
-            -- Value type + one-letter binder (e.g. `Int`→`i`) from `computeValue`'s payload.
-            let (valTy, valNm) ← FormatSpec.optionPayloadBinder cvIdent
-            let aId := mkIdent valNm; let bId := mkIdent (valNm.appendAfter "'")
-            -- The two encode obligations (user proves): serialized value is accepted, and
-            -- serialize-then-`computeValue` round-trips.
-            emitContract (← `(theorem $encAccId ($aId : $valTy) : $validEng ($toStrT $aId) := by sorry))
-            emitContract (← `(theorem $encValId ($aId : $valTy) :
-                $cvIdent ($toStrT $aId) = some $aId := by sorry))
-            -- The three derived printer theorems (statements written out; each closes from the
-            -- generic lemma applied to the two obligations above).
-            emitContract (← `(theorem $rtId ($aId : $valTy) : $parseId ($toStrT $aId) = some $aId :=
-              FormatSpec.gatedParse_toString_roundtrip $encAccId $encValId $aId))
-            emitContract (← `(theorem $injId ($aId $bId : $valTy) (h : $toStrT $aId = $toStrT $bId) :
-                $aId = $bId := FormatSpec.toString_injective $encAccId $encValId $aId $bId h))
-            emitContract (← `(theorem $normId (s s' : String) :
-                ($parseId s).map $toStrT = ($parseId s').map $toStrT ↔ $parseId s = $parseId s' :=
-              FormatSpec.normalize_eq_iff_parse_eq $encAccId $encValId s s'))
+          -- PRINTER (→ soundness file): a `printer <toStr>` clause names the user's canonical
+          -- serializer for the EXTERNAL parser's OWN value type. Emit the two `sorry`d encode
+          -- obligations (a serializer can't be synthesized) and AUTO-DERIVE the three printer
+          -- theorems Cedar proves — about the EXTERNAL parser+printer pair, via `extparse_complete`
+          -- (needs the `parser` clause, hence nested here). All live in the soundness file: the
+          -- derived ones aren't `sorry`d but DEPEND on the sorried obligations.
+          if let some ppStx := pp then
+            if let `(fmtPrinter| printer $toStrT:term) := ppStx then
+              if veIdent?.isSome || hasValueEsc then
+                let cvIdent  := mkIdentFrom name (name.getId ++ `computeValue)
+                let encAccId := mkIdentFrom name (name.getId ++ `encode_accepted)
+                let encValId := mkIdentFrom name (name.getId ++ `encode_value)
+                let rtId     := mkIdentFrom name (name.getId ++ `parse_toString_roundtrip)
+                let injId    := mkIdentFrom name (name.getId ++ `toString_injective)
+                let normId   := mkIdentFrom name (name.getId ++ `normalize_eq_iff_parse_eq)
+                let dId := extId; let dId' := mkIdent (extNm.appendAfter "'")
+                -- The two encode obligations (user proves), over the external type `extTy`:
+                -- the serialized value is accepted, and serialize-then-`computeValue` yields
+                -- its projection `projT`.
+                emitContract (← `(theorem $encAccId ($dId : $extTy) : $accSurf ($toStrT $dId) := by sorry))
+                emitContract (← `(theorem $encValId ($dId : $extTy) :
+                    $cvIdent ($toStrT $dId) = some ($projT $dId) := by sorry))
+                -- The three derived printer theorems (about the EXTERNAL parser), each closing
+                -- from the generic lemma applied to `extparse_complete` + the two obligations.
+                emitContract (← `(theorem $rtId ($dId : $extTy) : $parseT ($toStrT $dId) = some $dId :=
+                  FormatSpec.parse_toString_roundtrip $compIdent $encAccId $encValId $dId))
+                emitContract (← `(theorem $injId ($dId $dId' : $extTy) (h : $toStrT $dId = $toStrT $dId') :
+                    $dId = $dId' :=
+                  FormatSpec.toString_injective $compIdent $encAccId $encValId $dId $dId' h))
+                emitContract (← `(theorem $normId (s s' : String) :
+                    ($parseT s).map $toStrT = ($parseT s').map $toStrT ↔ $parseT s = $parseT s' :=
+                  FormatSpec.normalize_eq_iff_parse_eq $compIdent $encAccId $encValId s s'))
       -- WRITE (optional `to "<dir>"` clause): emit up to THREE generated modules into
       -- `<dir>` (default `.`, must pre-exist), split by audience:
       --   `spec.lean`     — the readable surface (cite): grammar, `IsWf.*`, `value`,
@@ -813,8 +811,9 @@ from analysis and put correctness on you).
   one per line:  f X Y …   with  def f (x y … : String) : Bool := …   (`f` applied to captures)
 
 ── parser ──  (optional)  parser <parse> projection <π>   emits the external-parser obligations.
-── printer ── (optional)  printer <toString>              names your canonical value serializer;
-                          emits the encode obligations + auto-derives roundtrip/injective/normalize.
+── printer ── (optional; needs parser)  printer <toString>   names your canonical serializer for
+                          the external parser's value type; emits the encode obligations +
+                          auto-derives roundtrip/injective/normalize for the external pair.
 ── to ──      (optional)  to \"<dir>\"                        writes <dir>/{spec,parser,soundness}.lean.
 
 Section order:  grammar · value · value' · constraints · constraints' · parser · printer · to.

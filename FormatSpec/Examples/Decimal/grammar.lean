@@ -49,22 +49,11 @@ open FormatSpec
 -- `Decimal := Int64`), projected to its `Int` denotation by `Int64.toInt`. The emitted
 -- `soundness.lean` states the `sorry`d obligations relating THIS parser to the surface spec.
 
--- The canonical value serializer for the `printer` clause. The generated value type is `Int`
--- (fixed-point ×10⁴), so its DEFAULT `ToString` (`"15000"`) is NOT the decimal format — the
--- canonical form must be supplied. This mirrors Cedar's `ToString Decimal` (4-digit fraction,
--- zero-padded) but on the `Int` value. The `printer` clause emits the two encode obligations
--- (that this round-trips) as `sorry`s, and auto-derives roundtrip/injective/normalize.
-def decimalToString (i : Int) : String :=
-  let neg   := if i < 0 then "-" else ""
-  let n     := i.natAbs
-  let left  := n / 10000
-  let right := n % 10000
-  let frac  :=
-    if right < 10 then s!".000{right}"
-    else if right < 100 then s!".00{right}"
-    else if right < 1000 then s!".0{right}"
-    else s!".{right}"
-  s!"{neg}{left}{frac}"
+-- The canonical value serializer for the `printer` clause. It serializes the EXTERNAL parser's
+-- OWN value type (`Cedar.Spec.Ext.Decimal`), so we can reuse Cedar's own `ToString Decimal`
+-- instance directly — the printer theorems are then about Cedar's real `parse`/`toString` pair
+-- (matching Cedar's `parse_toString_roundtrip` etc.), not about our generated parser.
+def decimalToString (d : Cedar.Spec.Ext.Decimal) : String := toString d
 
 format_spec Decimal where
   grammar
@@ -121,13 +110,14 @@ example : DecidablePred Decimal.IsWf.Decimal := inferInstance
 #check @Decimal.extparse_complete
 #check @Decimal.extparse_reject
 
--- The PRINTER theorems (`soundness.lean`, from the `printer decimalToString` clause). The two
--- encode obligations (`encode_accepted`/`encode_value`) are `sorry`d; the three printer results
--- Cedar proves are AUTO-DERIVED from them (fully proven once the obligations are discharged).
-#check @Decimal.encode_accepted           -- ∀ i, isValid (decimalToString i)          [sorry]
-#check @Decimal.encode_value              -- ∀ i, computeValue (decimalToString i) = some i [sorry]
-#check @Decimal.parse_toString_roundtrip  -- ∀ i, parse (decimalToString i) = some i
-#check @Decimal.toString_injective        -- ∀ i i', decimalToString i = decimalToString i' → i = i'
+-- The PRINTER theorems (`soundness.lean`, from the `printer decimalToString` clause) — about
+-- the EXTERNAL Cedar parser+printer pair, matching Cedar's own `parse_toString_roundtrip` etc.
+-- The two encode obligations (`encode_accepted`/`encode_value`) are `sorry`d; the three printer
+-- results are AUTO-DERIVED from them + `extparse_complete` (fully proven once obligations hold).
+#check @Decimal.encode_accepted           -- ∀ d, IsValid (decimalToString d)               [sorry]
+#check @Decimal.encode_value              -- ∀ d, computeValue (decimalToString d) = some (Int64.toInt d) [sorry]
+#check @Decimal.parse_toString_roundtrip  -- ∀ d, Cedar…parse (decimalToString d) = some d
+#check @Decimal.toString_injective        -- ∀ d d', decimalToString d = decimalToString d' → d = d'
 #check @Decimal.normalize_eq_iff_parse_eq
 
 end FormatSpec.Examples.Decimal
