@@ -51,19 +51,10 @@ open FormatSpec
 
 -- ONE canonical serializer for the `printer` clause, over the SPEC value type (fixed-point ×10⁴
 -- `Int`). Both the generated parser and Cedar's parser project to this `Int` (Cedar via
--- `Int64.toInt`), so a single serializer drives the printer theorems for BOTH, stated in
--- β-view. Renders the ×10⁴ integer as a 4-decimal string (Cedar's format shape).
-def intToDecimalString (i : Int) : String :=
-  let neg   := if i < 0 then "-" else ""
-  let n     := i.natAbs
-  let left  := n / 10000
-  let right := n % 10000
-  let frac  :=
-    if right < 10 then s!".000{right}"
-    else if right < 100 then s!".00{right}"
-    else if right < 1000 then s!".0{right}"
-    else s!".{right}"
-  s!"{neg}{left}{frac}"
+-- `Int64.toInt`), so a single serializer drives the printer theorems for BOTH, stated in β-view.
+-- Rather than hand-roll the formatting, reuse Cedar's own `ToString Decimal`: wrap the ×10⁴
+-- `Int` into a `Decimal` (`= Int64`) and serialize — so the string form is Cedar's by definition.
+def intToDecimalString (i : Int) : String := toString (Int64.ofInt i : Cedar.Spec.Ext.Decimal)
 
 format_spec Decimal where
   grammar
