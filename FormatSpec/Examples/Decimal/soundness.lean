@@ -25,20 +25,43 @@ theorem Decimal.extparse_complete (s : String) (d : Cedar.Spec.Ext.Decimal) :
     Decimal.IsValid s → Decimal.computeValue s = some (Int64.toInt d) → Cedar.Spec.Ext.Decimal.parse s = some d := by
   sorry
 
-theorem Decimal.encode_accepted (d : Cedar.Spec.Ext.Decimal) : Decimal.IsValid (decimalToString d) := by sorry
+theorem Decimal.encode_accepted (i : Int) : Decimal.isValid (intToDecimalString i) := by sorry
 
-theorem Decimal.encode_value (d : Cedar.Spec.Ext.Decimal) :
-    Decimal.computeValue (decimalToString d) = some (Int64.toInt d) := by sorry
+theorem Decimal.encode_value (i : Int) : Decimal.computeValue (intToDecimalString i) = some i := by sorry
 
-theorem Decimal.parse_toString_roundtrip (d : Cedar.Spec.Ext.Decimal) :
-    Cedar.Spec.Ext.Decimal.parse (decimalToString d) = some d :=
-  FormatSpec.parse_toString_roundtrip Decimal.extparse_complete Decimal.encode_accepted Decimal.encode_value d
+theorem Decimal.parse_toString_roundtrip (i : Int) : Decimal.parse (intToDecimalString i) = some i :=
+  by
+  have h :=
+    FormatSpec.parse_toString_roundtrip (π := id) Decimal.parse_sound Decimal.parse_reject Decimal.encode_accepted
+      Decimal.encode_value i
+  simpa using h
 
-theorem Decimal.toString_injective (d d' : Cedar.Spec.Ext.Decimal) (h : decimalToString d = decimalToString d') :
-    d = d' :=
-  FormatSpec.toString_injective Decimal.extparse_complete Decimal.encode_accepted Decimal.encode_value d d' h
+theorem Decimal.toString_injective (i i' : Int) (h : intToDecimalString i = intToDecimalString i') : i = i' :=
+  FormatSpec.toString_injective (π := id) Decimal.parse_sound Decimal.parse_reject Decimal.encode_accepted
+    Decimal.encode_value i i' h
 
 theorem Decimal.normalize_eq_iff_parse_eq (s s' : String) :
-    (Cedar.Spec.Ext.Decimal.parse s).map decimalToString = (Cedar.Spec.Ext.Decimal.parse s').map decimalToString ↔
-      Cedar.Spec.Ext.Decimal.parse s = Cedar.Spec.Ext.Decimal.parse s' :=
-  FormatSpec.normalize_eq_iff_parse_eq Decimal.extparse_complete Decimal.encode_accepted Decimal.encode_value s s'
+    (Decimal.parse s).map intToDecimalString = (Decimal.parse s').map intToDecimalString ↔
+      Decimal.parse s = Decimal.parse s' :=
+  by
+  have h :=
+    FormatSpec.normalize_eq_iff_parse_eq (π := id) Decimal.parse_sound Decimal.parse_reject Decimal.encode_accepted
+      Decimal.encode_value s s'
+  simpa using h
+
+theorem Decimal.extparse_toString_roundtrip (i : Int) :
+    (Cedar.Spec.Ext.Decimal.parse (intToDecimalString i)).map Int64.toInt = some i :=
+  FormatSpec.parse_toString_roundtrip Decimal.extparse_sound Decimal.extparse_reject
+    (fun b => (Decimal.IsValid_equiv (intToDecimalString b)).mpr (Decimal.encode_accepted b)) Decimal.encode_value i
+
+theorem Decimal.extparse_toString_injective (i i' : Int) (h : intToDecimalString i = intToDecimalString i') : i = i' :=
+  FormatSpec.toString_injective Decimal.extparse_sound Decimal.extparse_reject
+    (fun b => (Decimal.IsValid_equiv (intToDecimalString b)).mpr (Decimal.encode_accepted b)) Decimal.encode_value i i'
+    h
+
+theorem Decimal.extparse_normalize_eq_iff_parse_eq (s s' : String) :
+    (Cedar.Spec.Ext.Decimal.parse s).map (fun d => intToDecimalString (Int64.toInt d)) =
+        (Cedar.Spec.Ext.Decimal.parse s').map (fun d => intToDecimalString (Int64.toInt d)) ↔
+      (Cedar.Spec.Ext.Decimal.parse s).map Int64.toInt = (Cedar.Spec.Ext.Decimal.parse s').map Int64.toInt :=
+  FormatSpec.normalize_eq_iff_parse_eq Decimal.extparse_sound Decimal.extparse_reject
+    (fun b => (Decimal.IsValid_equiv (intToDecimalString b)).mpr (Decimal.encode_accepted b)) Decimal.encode_value s s'

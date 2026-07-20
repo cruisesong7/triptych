@@ -45,10 +45,11 @@ auto-discharged `parse_sound`/`parse_complete`/`parse_reject`) and the reconcili
 `<Name>.computeValue_eq` (see Decimal, Duration, Datetime, Graph). Adding a
 `parser <p> projection <π>` clause emits `soundness.lean` with the `sorry`'d obligations for an
 external parser — Decimal points it at the real `Cedar.Spec.Ext.Decimal.parse`. A
-`printer <toString>` clause (requires `parser`) names a canonical serializer for that external
-parser's value type and auto-derives — for the *external* parser+printer pair, matching Cedar's
-own `parse_toString_roundtrip` etc. — the parse/print roundtrip, `toString` injectivity, and
-normalization (from two `sorry`'d encode obligations). Decimal reuses Cedar's `ToString Decimal`.
+`printer <toString>` clause names one canonical serializer over the spec value type and, from
+two `sorry`'d encode obligations, auto-derives the parse/print roundtrip, `toString`
+injectivity, and normalization — for the *generated* parser, and (when a `parser` clause is also
+present) for the *external* parser too, both stated in β-view via each parser's projection
+(matching Cedar's `parse_toString_roundtrip` etc.).
 
 See `FormatSpec/DESIGN.md` for the full design, and `FormatSpec/Examples/` for worked
 examples (Decimal, Duration, Datetime, IPv4, IPv6, Graph).

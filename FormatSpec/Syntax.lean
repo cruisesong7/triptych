@@ -131,15 +131,15 @@ syntax fmtValueEsc := "value'" fmtEscEntry
     `sorry`d theorems relating that parser to the generated spec. -/
 syntax fmtParser := "parser" term " projection " term
 
-/-- The optional `printer` clause (REQUIRES a `parser` clause): names the user's canonical
-    serializer `toString : δ → String` for the EXTERNAL parser's own value type `δ`. A
-    serializer cannot be synthesized — the canonical string form is a user choice — so the user
-    supplies it, and the command emits into `soundness.lean` the two `sorry`d encode obligations
-    (`encode_accepted` / `encode_value`) and the three printer theorems
-    (`parse_toString_roundtrip` / `toString_injective` / `normalize_eq_iff_parse_eq`) AUTO-DERIVED
-    from them (via `extparse_complete`). These are about the EXTERNAL parser+printer pair,
-    mirroring Cedar's ext-type printer results — not the tool's generated parser (whose roundtrip
-    is near-tautological). -/
+/-- The optional `printer` clause: names the user's canonical serializer `toStr : β → String`
+    for the spec value type `β`. A serializer can't be synthesized (the canonical form is a
+    choice), so it is supplied here; from two `sorry`d β-encode obligations
+    (`encode_accepted` / `encode_value`) the command auto-derives the three printer theorems
+    Cedar proves (`parse_toString_roundtrip` / `toString_injective` /
+    `normalize_eq_iff_parse_eq`) for the GENERATED parser, and — when a `parser` clause is also
+    present — the same trio (`extparse_*`) for the EXTERNAL parser, stated in β-VIEW via that
+    parser's projection (both parsers project to `β`, so ONE serializer serves both; the
+    generated parser is the `π = id` case). Needs a `value` section. -/
 syntax fmtPrinter := "printer" term
 
 /-- Optional trailing clause: `to "<dir>"` writes the generated module to `<dir>/spec.lean`
@@ -616,38 +616,76 @@ def elabFormatSpec : CommandElab := fun stx => do
                 $parseT s = some $extId → $accSurf s ∧ $cvIdent s = some ($projT $extId) := by sorry))
             emitContract (← `(theorem $compIdent (s : String) ($extId : $extTy) :
                 $accSurf s → $cvIdent s = some ($projT $extId) → $parseT s = some $extId := by sorry))
-          -- PRINTER (→ soundness file): a `printer <toStr>` clause names the user's canonical
-          -- serializer for the EXTERNAL parser's OWN value type. Emit the two `sorry`d encode
-          -- obligations (a serializer can't be synthesized) and AUTO-DERIVE the three printer
-          -- theorems Cedar proves — about the EXTERNAL parser+printer pair, via `extparse_complete`
-          -- (needs the `parser` clause, hence nested here). All live in the soundness file: the
-          -- derived ones aren't `sorry`d but DEPEND on the sorried obligations.
-          if let some ppStx := pp then
-            if let `(fmtPrinter| printer $toStrT:term) := ppStx then
-              if veIdent?.isSome || hasValueEsc then
-                let cvIdent  := mkIdentFrom name (name.getId ++ `computeValue)
-                let encAccId := mkIdentFrom name (name.getId ++ `encode_accepted)
-                let encValId := mkIdentFrom name (name.getId ++ `encode_value)
-                let rtId     := mkIdentFrom name (name.getId ++ `parse_toString_roundtrip)
-                let injId    := mkIdentFrom name (name.getId ++ `toString_injective)
-                let normId   := mkIdentFrom name (name.getId ++ `normalize_eq_iff_parse_eq)
-                let dId := extId; let dId' := mkIdent (extNm.appendAfter "'")
-                -- The two encode obligations (user proves), over the external type `extTy`:
-                -- the serialized value is accepted, and serialize-then-`computeValue` yields
-                -- its projection `projT`.
-                emitContract (← `(theorem $encAccId ($dId : $extTy) : $accSurf ($toStrT $dId) := by sorry))
-                emitContract (← `(theorem $encValId ($dId : $extTy) :
-                    $cvIdent ($toStrT $dId) = some ($projT $dId) := by sorry))
-                -- The three derived printer theorems (about the EXTERNAL parser), each closing
-                -- from the generic lemma applied to `extparse_complete` + the two obligations.
-                emitContract (← `(theorem $rtId ($dId : $extTy) : $parseT ($toStrT $dId) = some $dId :=
-                  FormatSpec.parse_toString_roundtrip $compIdent $encAccId $encValId $dId))
-                emitContract (← `(theorem $injId ($dId $dId' : $extTy) (h : $toStrT $dId = $toStrT $dId') :
-                    $dId = $dId' :=
-                  FormatSpec.toString_injective $compIdent $encAccId $encValId $dId $dId' h))
-                emitContract (← `(theorem $normId (s s' : String) :
-                    ($parseT s).map $toStrT = ($parseT s').map $toStrT ↔ $parseT s = $parseT s' :=
-                  FormatSpec.normalize_eq_iff_parse_eq $compIdent $encAccId $encValId s s'))
+      -- PRINTER (→ soundness file): `printer <toStr>` names ONE canonical serializer
+      -- `toStr : β → String` over the spec value type β. From two `sorry`d β-encode obligations
+      -- (`encode_accepted` / `encode_value`) the three printer theorems Cedar proves are
+      -- AUTO-DERIVED, in β-VIEW, for the GENERATED parser (`parse_toString_roundtrip` /
+      -- `toString_injective` / `normalize_eq_iff_parse_eq`) — and, when a `parser` clause is
+      -- present, the SAME trio (`extparse_*`) for the EXTERNAL parser. Both parsers project to
+      -- β (generated: `π = id`; external: the `projection`), so ONE serializer + ONE pair of
+      -- obligations serve both, via each parser's `sound`+`reject` (no `complete` needed).
+      -- Needs a value section.
+      if let some ppStx := pp then
+        if let `(fmtPrinter| printer $toStrT:term) := ppStx then
+          if veIdent?.isSome || hasValueEsc then
+            let cvIdent  := mkIdentFrom name (name.getId ++ `computeValue)
+            let encAccId := mkIdentFrom name (name.getId ++ `encode_accepted)
+            let encValId := mkIdentFrom name (name.getId ++ `encode_value)
+            let (valTy, valNm) ← FormatSpec.optionPayloadBinder cvIdent
+            let bId := mkIdent valNm; let bId' := mkIdent (valNm.appendAfter "'")
+            let validEng := mkIdentFrom name (name.getId ++ `isValid)
+            -- The two β-encode obligations (shared by every parser), over the SPEC value type β.
+            emitContract (← `(theorem $encAccId ($bId : $valTy) : $validEng ($toStrT $bId) := by sorry))
+            emitContract (← `(theorem $encValId ($bId : $valTy) :
+                $cvIdent ($toStrT $bId) = some $bId := by sorry))
+            -- GENERATED parser (π = id): roundtrip simplifies to `parse (toStr b) = some b`,
+            -- normalize to `(parse s).map toStr = … ↔ parse s = parse s'` (both via `Option.map_id`).
+            let parseId  := mkIdentFrom name (name.getId ++ `parse)
+            let gSoundId := mkIdentFrom name (name.getId ++ `parse_sound)
+            let gRejId   := mkIdentFrom name (name.getId ++ `parse_reject)
+            let rtId     := mkIdentFrom name (name.getId ++ `parse_toString_roundtrip)
+            let injId    := mkIdentFrom name (name.getId ++ `toString_injective)
+            let normId   := mkIdentFrom name (name.getId ++ `normalize_eq_iff_parse_eq)
+            emitContract (← `(theorem $rtId ($bId : $valTy) : $parseId ($toStrT $bId) = some $bId := by
+              have h := FormatSpec.parse_toString_roundtrip (π := id) $gSoundId $gRejId $encAccId $encValId $bId
+              simpa using h))
+            emitContract (← `(theorem $injId ($bId $bId' : $valTy) (h : $toStrT $bId = $toStrT $bId') :
+                $bId = $bId' :=
+              FormatSpec.toString_injective (π := id) $gSoundId $gRejId $encAccId $encValId $bId $bId' h))
+            emitContract (← `(theorem $normId (s s' : String) :
+                ($parseId s).map $toStrT = ($parseId s').map $toStrT ↔ $parseId s = $parseId s' := by
+              have h := FormatSpec.normalize_eq_iff_parse_eq (π := id) $gSoundId $gRejId $encAccId $encValId s s'
+              simpa using h))
+            -- EXTERNAL parser (β-view via its projection `projT`), when a `parser` clause exists.
+            -- Reuses the SAME `toStr` + encode obligations; theorems stated as `.map projT`.
+            let extClause? : Option (TSyntax `term × TSyntax `term) := do
+              let prStx ← pr
+              match prStx with
+              | `(fmtParser| parser $parseT:term projection $projT:term) => some (parseT, projT)
+              | _ => none
+            match extClause? with
+            | some (parseT, projT) =>
+              let xSoundId := mkIdentFrom name (name.getId ++ `extparse_sound)
+              let xRejId   := mkIdentFrom name (name.getId ++ `extparse_reject)
+              let xRtId    := mkIdentFrom name (name.getId ++ `extparse_toString_roundtrip)
+              let xInjId   := mkIdentFrom name (name.getId ++ `extparse_toString_injective)
+              let xNormId  := mkIdentFrom name (name.getId ++ `extparse_normalize_eq_iff_parse_eq)
+              -- The external `sound`/`reject` obligations are stated over the SURFACE `IsValid`,
+              -- but the shared `encode_accepted` is over the ENGINE `isValid`; bridge it through
+              -- `IsValid_equiv` (`.mpr : isValid → IsValid`) so both sides use the same predicate.
+              let equivId  := mkIdentFrom name (name.getId ++ `IsValid_equiv)
+              let encAccSurf ← `(fun b => ($equivId ($toStrT b)).mpr ($encAccId b))
+              emitContract (← `(theorem $xRtId ($bId : $valTy) :
+                  ($parseT ($toStrT $bId)).map $projT = some $bId :=
+                FormatSpec.parse_toString_roundtrip $xSoundId $xRejId $encAccSurf $encValId $bId))
+              emitContract (← `(theorem $xInjId ($bId $bId' : $valTy) (h : $toStrT $bId = $toStrT $bId') :
+                  $bId = $bId' :=
+                FormatSpec.toString_injective $xSoundId $xRejId $encAccSurf $encValId $bId $bId' h))
+              emitContract (← `(theorem $xNormId (s s' : String) :
+                  ($parseT s).map (fun d => $toStrT ($projT d)) = ($parseT s').map (fun d => $toStrT ($projT d))
+                    ↔ ($parseT s).map $projT = ($parseT s').map $projT :=
+                FormatSpec.normalize_eq_iff_parse_eq $xSoundId $xRejId $encAccSurf $encValId s s'))
+            | none => pure ()
       -- WRITE (optional `to "<dir>"` clause): emit up to THREE generated modules into
       -- `<dir>` (default `.`, must pre-exist), split by audience:
       --   `spec.lean`     — the readable surface (cite): grammar, `IsWf.*`, `value`,
@@ -811,9 +849,10 @@ from analysis and put correctness on you).
   one per line:  f X Y …   with  def f (x y … : String) : Bool := …   (`f` applied to captures)
 
 ── parser ──  (optional)  parser <parse> projection <π>   emits the external-parser obligations.
-── printer ── (optional; needs parser)  printer <toString>   names your canonical serializer for
-                          the external parser's value type; emits the encode obligations +
-                          auto-derives roundtrip/injective/normalize for the external pair.
+── printer ── (optional; needs value)  printer <toString>   names your canonical serializer over
+                          the spec value type β; emits the 2 encode obligations + auto-derives
+                          roundtrip/injective/normalize for the GENERATED parser, and (if a
+                          `parser` clause is present) the same trio for the EXTERNAL parser too.
 ── to ──      (optional)  to \"<dir>\"                        writes <dir>/{spec,parser,soundness}.lean.
 
 Section order:  grammar · value · value' · constraints · constraints' · parser · printer · to.

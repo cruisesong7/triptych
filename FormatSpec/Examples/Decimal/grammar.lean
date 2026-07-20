@@ -49,11 +49,21 @@ open FormatSpec
 -- `Decimal := Int64`), projected to its `Int` denotation by `Int64.toInt`. The emitted
 -- `soundness.lean` states the `sorry`d obligations relating THIS parser to the surface spec.
 
--- The canonical value serializer for the `printer` clause. It serializes the EXTERNAL parser's
--- OWN value type (`Cedar.Spec.Ext.Decimal`), so we can reuse Cedar's own `ToString Decimal`
--- instance directly — the printer theorems are then about Cedar's real `parse`/`toString` pair
--- (matching Cedar's `parse_toString_roundtrip` etc.), not about our generated parser.
-def decimalToString (d : Cedar.Spec.Ext.Decimal) : String := toString d
+-- ONE canonical serializer for the `printer` clause, over the SPEC value type (fixed-point ×10⁴
+-- `Int`). Both the generated parser and Cedar's parser project to this `Int` (Cedar via
+-- `Int64.toInt`), so a single serializer drives the printer theorems for BOTH, stated in
+-- β-view. Renders the ×10⁴ integer as a 4-decimal string (Cedar's format shape).
+def intToDecimalString (i : Int) : String :=
+  let neg   := if i < 0 then "-" else ""
+  let n     := i.natAbs
+  let left  := n / 10000
+  let right := n % 10000
+  let frac  :=
+    if right < 10 then s!".000{right}"
+    else if right < 100 then s!".00{right}"
+    else if right < 1000 then s!".0{right}"
+    else s!".{right}"
+  s!"{neg}{left}{frac}"
 
 format_spec Decimal where
   grammar
@@ -65,59 +75,36 @@ format_spec Decimal where
   constraints
     value ∈ [Int64.MIN, Int64.MAX]
   parser Cedar.Spec.Ext.Decimal.parse projection Int64.toInt
-  printer decimalToString
+  printer intToDecimalString
   -- Write the generated modules `spec.lean` / `parser.lean` / `soundness.lean` into this dir.
   to "FormatSpec/Examples/Decimal"
 
 -- ════════════════════════════════════════════════════════════════════════════
---  OUTPUT — the generated spec, run on sample strings
+--  OUTPUT — the generated declarations, run on sample strings
 -- ════════════════════════════════════════════════════════════════════════════
 
--- The generated declarations — the readable surface + the engine bundle:
-#check (Decimal.grammar     : Grammar)
-#check (Decimal.IsWf.Decimal         : String → Prop)
-#check (Decimal.SatisfiesConstraints : String → Prop)
-#check (Decimal.IsValid           : String → Prop)
-#check (Decimal.isValid           : String → Prop)   -- engine bundle
+#eval decode Decimal.grammar "1.5"          -- some [("Integer","1"),("Fraction","5")]
+#eval Decimal.parse "1.5"                    -- some 15000
+#eval Decimal.parse "1.x"                    -- none  (rejected)
+#eval Decimal.parse "-0.15"                  -- some (-1500)  (the sign corner case)
 
--- `decode` extracts the captures:  "1.5" ↦ Integer="1", Fraction="5"
-#eval decode Decimal.grammar "1.5"       -- some [("Integer","1"), ("Fraction","5")]
-#eval decode Decimal.grammar "-12.34"    -- some [("Integer","-12"), ("Fraction","34")]
-
--- `computeValue` = eval the value formula on the decoded captures (fixed-point ×10⁴):
-#eval computeValue Decimal.grammar Decimal.valueExpr "1.2345"   -- some 12345
-#eval computeValue Decimal.grammar Decimal.valueExpr "-1.5"     -- some (-15000)
-
--- The RECONCILIATION: the readable surface `IsWf.Decimal` is proven equal to the engine
--- interpreter `IsWf grammar`, and via that equivalence is DECIDABLE (standard axioms only).
+-- Reconciliation (standard axioms only):
 #check (Decimal.IsWf_equiv : ∀ s, IsWf Decimal.grammar s ↔ Decimal.IsWf.Decimal s)
-example : DecidablePred Decimal.IsWf.Decimal := inferInstance
-#eval decide (Decimal.IsWf.Decimal "1.5")   -- true
-#eval decide (Decimal.IsWf.Decimal "1.x")   -- false
+example : DecidablePred Decimal.IsValid := inferInstance
 
--- The GENERATED verified parser (`parser.lean`): `parse` gated on the decidable engine
--- `isValid`, with its three contracts AUTO-DISCHARGED (no `sorry`, standard axioms only).
-#check (Decimal.parse : String → Option Int)
-#check @Decimal.parse_sound      -- ∀ s i, parse s = some i → isValid s ∧ computeValue s = some i
-#check @Decimal.parse_complete   -- ∀ s i, isValid s → computeValue s = some i → parse s = some i
-#check @Decimal.parse_reject     -- ∀ s, parse s = none ↔ ¬ isValid s
-#eval Decimal.parse "1.5"     -- some 15000
-#eval Decimal.parse "1.x"     -- none  (rejected)
+-- The GENERATED verified parser + its printer theorems (spec value type Int, `intToDecimalString`):
+#check @Decimal.parse_sound       -- ∀ s i, parse s = some i → isValid s ∧ computeValue s = some i
+#check @Decimal.parse_toString_roundtrip   -- ∀ i, parse (intToDecimalString i) = some i
+#check @Decimal.toString_injective
+#check @Decimal.normalize_eq_iff_parse_eq
 
--- The external-parser obligations (`soundness.lean`), stated over the SURFACE spec against the
--- REAL Cedar parser (`sorry`d — the ONLY proofs left to the human).
+-- The EXTERNAL parser (Cedar's real parse) obligations + printer theorems, β-view via the same
+-- `intToDecimalString` and the projection `Int64.toInt`:
 #check @Decimal.extparse_sound
 #check @Decimal.extparse_complete
 #check @Decimal.extparse_reject
-
--- The PRINTER theorems (`soundness.lean`, from the `printer decimalToString` clause) — about
--- the EXTERNAL Cedar parser+printer pair, matching Cedar's own `parse_toString_roundtrip` etc.
--- The two encode obligations (`encode_accepted`/`encode_value`) are `sorry`d; the three printer
--- results are AUTO-DERIVED from them + `extparse_complete` (fully proven once obligations hold).
-#check @Decimal.encode_accepted           -- ∀ d, IsValid (decimalToString d)               [sorry]
-#check @Decimal.encode_value              -- ∀ d, computeValue (decimalToString d) = some (Int64.toInt d) [sorry]
-#check @Decimal.parse_toString_roundtrip  -- ∀ d, Cedar…parse (decimalToString d) = some d
-#check @Decimal.toString_injective        -- ∀ d d', decimalToString d = decimalToString d' → d = d'
-#check @Decimal.normalize_eq_iff_parse_eq
+#check @Decimal.extparse_toString_roundtrip -- ∀ i, (Cedar…parse (intToDecimalString i)).map Int64.toInt = some i
+#check @Decimal.extparse_toString_injective
+#check @Decimal.extparse_normalize_eq_iff_parse_eq
 
 end FormatSpec.Examples.Decimal

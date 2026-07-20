@@ -28,22 +28,43 @@ theorem Duration.extparse_complete (s : String) (d : Cedar.Spec.Ext.Datetime.Dur
       Duration.computeValue s = some (durationMillis d) → Cedar.Spec.Ext.Datetime.Duration.parse s = some d :=
   by sorry
 
-theorem Duration.encode_accepted (d : Cedar.Spec.Ext.Datetime.Duration) : Duration.IsValid (durationToString d) := by
-  sorry
+theorem Duration.encode_accepted (i : Int) : Duration.isValid (millisToString i) := by sorry
 
-theorem Duration.encode_value (d : Cedar.Spec.Ext.Datetime.Duration) :
-    Duration.computeValue (durationToString d) = some (durationMillis d) := by sorry
+theorem Duration.encode_value (i : Int) : Duration.computeValue (millisToString i) = some i := by sorry
 
-theorem Duration.parse_toString_roundtrip (d : Cedar.Spec.Ext.Datetime.Duration) :
-    Cedar.Spec.Ext.Datetime.Duration.parse (durationToString d) = some d :=
-  FormatSpec.parse_toString_roundtrip Duration.extparse_complete Duration.encode_accepted Duration.encode_value d
+theorem Duration.parse_toString_roundtrip (i : Int) : Duration.parse (millisToString i) = some i :=
+  by
+  have h :=
+    FormatSpec.parse_toString_roundtrip (π := id) Duration.parse_sound Duration.parse_reject Duration.encode_accepted
+      Duration.encode_value i
+  simpa using h
 
-theorem Duration.toString_injective (d d' : Cedar.Spec.Ext.Datetime.Duration)
-    (h : durationToString d = durationToString d') : d = d' :=
-  FormatSpec.toString_injective Duration.extparse_complete Duration.encode_accepted Duration.encode_value d d' h
+theorem Duration.toString_injective (i i' : Int) (h : millisToString i = millisToString i') : i = i' :=
+  FormatSpec.toString_injective (π := id) Duration.parse_sound Duration.parse_reject Duration.encode_accepted
+    Duration.encode_value i i' h
 
 theorem Duration.normalize_eq_iff_parse_eq (s s' : String) :
-    (Cedar.Spec.Ext.Datetime.Duration.parse s).map durationToString =
-        (Cedar.Spec.Ext.Datetime.Duration.parse s').map durationToString ↔
-      Cedar.Spec.Ext.Datetime.Duration.parse s = Cedar.Spec.Ext.Datetime.Duration.parse s' :=
-  FormatSpec.normalize_eq_iff_parse_eq Duration.extparse_complete Duration.encode_accepted Duration.encode_value s s'
+    (Duration.parse s).map millisToString = (Duration.parse s').map millisToString ↔
+      Duration.parse s = Duration.parse s' :=
+  by
+  have h :=
+    FormatSpec.normalize_eq_iff_parse_eq (π := id) Duration.parse_sound Duration.parse_reject Duration.encode_accepted
+      Duration.encode_value s s'
+  simpa using h
+
+theorem Duration.extparse_toString_roundtrip (i : Int) :
+    (Cedar.Spec.Ext.Datetime.Duration.parse (millisToString i)).map durationMillis = some i :=
+  FormatSpec.parse_toString_roundtrip Duration.extparse_sound Duration.extparse_reject
+    (fun b => (Duration.IsValid_equiv (millisToString b)).mpr (Duration.encode_accepted b)) Duration.encode_value i
+
+theorem Duration.extparse_toString_injective (i i' : Int) (h : millisToString i = millisToString i') : i = i' :=
+  FormatSpec.toString_injective Duration.extparse_sound Duration.extparse_reject
+    (fun b => (Duration.IsValid_equiv (millisToString b)).mpr (Duration.encode_accepted b)) Duration.encode_value i i' h
+
+theorem Duration.extparse_normalize_eq_iff_parse_eq (s s' : String) :
+    (Cedar.Spec.Ext.Datetime.Duration.parse s).map (fun d => millisToString (durationMillis d)) =
+        (Cedar.Spec.Ext.Datetime.Duration.parse s').map (fun d => millisToString (durationMillis d)) ↔
+      (Cedar.Spec.Ext.Datetime.Duration.parse s).map durationMillis =
+        (Cedar.Spec.Ext.Datetime.Duration.parse s').map durationMillis :=
+  FormatSpec.normalize_eq_iff_parse_eq Duration.extparse_sound Duration.extparse_reject
+    (fun b => (Duration.IsValid_equiv (millisToString b)).mpr (Duration.encode_accepted b)) Duration.encode_value s s'

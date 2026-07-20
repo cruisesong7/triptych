@@ -166,58 +166,73 @@ theorem gatedParse_reject (accepted : String → Prop) [DecidablePred accepted]
     · intro h; exact absurd hv h
   · rw [if_neg hv]; simp [hv]
 
-/-! ## The printer side: `toString` roundtrip / injectivity / normalization
+/-! ## The printer side: `toString` roundtrip / injectivity / normalization (β-view)
 
-These are theorems about the USER'S EXTERNAL parser+printer pair (matching Cedar's
-`parse_toString_roundtrip` / `toString_injective` / `normalize_eq_iff_parse_eq`, which are
-about Cedar's own `parse`/`toString`), NOT about the tool's generated `parse` (whose roundtrip
-is near-tautological, being correct-by-construction). The serializer `toStr : δ → String`
-serializes the external parser's OWN value type `δ`; `π : δ → β` projects to the spec's value.
+The user supplies ONE canonical serializer `toStr : β → String` for the spec value type `β`
+(a serializer can't be synthesized — the canonical form is a choice). From two β-encode
+obligations — a serialized value is accepted, and serialize-then-`val` recovers it — the three
+printer theorems Cedar proves are derived, for ANY parser `p : String → Option δ` that projects
+to `β` via `π : δ → β`, using only `p`'s own `sound` + `reject`.
 
-Given the external parser's target-parametrized `complete` (the `extparse_complete` obligation)
-and two encode obligations — a serialized value is accepted, and serialize-then-`val` yields
-its projection — the three printer theorems are derived. `normalize s := (parse s).map toStr`
-is the canonical-form map. -/
+The unifying move: BOTH parsers are viewed through their projection to the common type `β` —
+the generated parser is just the `π = id`, `δ = β` case, so one serializer and one pair of
+encode obligations serve both. Theorems are stated in β-view: roundtrip is
+`(p (toStr b)).map π = some b` ("parse-then-project recovers `b`"), which for the generated
+parser (`π = id`) is exactly `p (toStr b) = some b`. No `complete` and no `π`-injectivity are
+needed — `sound`+`reject` suffice, and serializer injectivity is over `β`. -/
+
+/-- Obligation 1: the serialized form of any value is accepted by the spec. -/
+def EncodeAcceptedStmt (accepted : String → Prop) (toStr : β → String) : Prop :=
+  ∀ b, accepted (toStr b)
+
+/-- Obligation 2: serialize-then-evaluate recovers the value (`val (toStr b) = some b`). -/
+def EncodeValueStmt (val : String → Option β) (toStr : β → String) : Prop :=
+  ∀ b, val (toStr b) = some b
 
 variable {δ : Type}
 
-/-- Obligation 1: the serialized form of any value is accepted by the spec. (Cedar's
-    `toString_isWfStr`, lifted to the full acceptance predicate.) -/
-def EncodeAcceptedStmt (accepted : String → Prop) (toStr : δ → String) : Prop :=
-  ∀ d, accepted (toStr d)
-
-/-- Obligation 2: serialize-then-evaluate yields the value's projection. (Cedar's
-    `computeValue_toString`; `π = id` when the external type is the spec value type.) -/
-def EncodeValueStmt (val : String → Option β) (toStr : δ → String) (π : δ → β) : Prop :=
-  ∀ d, val (toStr d) = some (π d)
-
-/-- `parse (toString d) = some d` — the external parser round-trips its own serializer. Derived
-    from the external `complete` (target-parametrized) + the two encode obligations. `complete`
-    is exactly the `extparse_complete` obligation. -/
+/-- β-view roundtrip: parsing a serialized `b` and projecting recovers `b`
+    (`(p (toStr b)).map π = some b`). Derived from the parser's `sound` + `reject` and the two
+    encode obligations — NOT `complete`. For the generated parser (`π = id`) this is
+    `p (toStr b) = some b`. -/
 theorem parse_toString_roundtrip {accepted : String → Prop} {val : String → Option β}
-    {parse : String → Option δ} {toStr : δ → String} {π : δ → β}
-    (complete : ∀ s d, accepted s → val s = some (π d) → parse s = some d)
-    (hAcc : EncodeAcceptedStmt accepted toStr) (hVal : EncodeValueStmt val toStr π) (d : δ) :
-    parse (toStr d) = some d :=
-  complete (toStr d) d (hAcc d) (hVal d)
+    {parse : String → Option δ} {toStr : β → String} {π : δ → β}
+    (sound : ∀ s d, parse s = some d → accepted s ∧ val s = some (π d))
+    (reject : ∀ s, parse s = none ↔ ¬ accepted s)
+    (hAcc : EncodeAcceptedStmt accepted toStr) (hVal : EncodeValueStmt val toStr) (b : β) :
+    (parse (toStr b)).map π = some b := by
+  cases h : parse (toStr b) with
+  | none => exact absurd (hAcc b) ((reject (toStr b)).mp h)
+  | some d =>
+    have h2 := (sound (toStr b) d h).2
+    rw [hVal b] at h2
+    simp only [Option.map_some, Option.some.injEq]
+    exact (Option.some.inj h2).symm
 
-/-- `toString` is injective — distinct values serialize distinctly. Derived from roundtrip. -/
+/-- The serializer is injective over `β` — distinct values serialize distinctly. Derived from
+    roundtrip; needs no `π`-injectivity (the projection cancels via roundtrip). -/
 theorem toString_injective {accepted : String → Prop} {val : String → Option β}
-    {parse : String → Option δ} {toStr : δ → String} {π : δ → β}
-    (complete : ∀ s d, accepted s → val s = some (π d) → parse s = some d)
-    (hAcc : EncodeAcceptedStmt accepted toStr) (hVal : EncodeValueStmt val toStr π)
-    (d d' : δ) (h : toStr d = toStr d') : d = d' := by
-  have r1 := parse_toString_roundtrip complete hAcc hVal d
-  have r2 := parse_toString_roundtrip complete hAcc hVal d'
-  rw [h] at r1; rw [r1] at r2; exact Option.some.inj r2
+    {parse : String → Option δ} {toStr : β → String} {π : δ → β}
+    (sound : ∀ s d, parse s = some d → accepted s ∧ val s = some (π d))
+    (reject : ∀ s, parse s = none ↔ ¬ accepted s)
+    (hAcc : EncodeAcceptedStmt accepted toStr) (hVal : EncodeValueStmt val toStr)
+    (b b' : β) (h : toStr b = toStr b') : b = b' := by
+  have r1 := parse_toString_roundtrip sound reject hAcc hVal b
+  have r2 := parse_toString_roundtrip sound reject hAcc hVal b'
+  rw [h] at r1; exact Option.some.inj (r1.symm.trans r2)
 
-/-- Normalization decides equality: two strings share a canonical form iff they parse equal.
-    `normalize s := (parse s).map toStr`. Needs `toString` injective (from the obligations). -/
+/-- Normalization decides value-equality: two strings share a canonical form iff they parse to
+    the same value (in β-view). `normalize s := (parse s).map (toStr ∘ π)` is the canonical-form
+    map; for the generated parser (`π = id`) this is Cedar's `(parse s).map toStr` and RHS is
+    `parse s = parse s'`. Needs serializer injectivity (from the obligations). -/
 theorem normalize_eq_iff_parse_eq {accepted : String → Prop} {val : String → Option β}
-    {parse : String → Option δ} {toStr : δ → String} {π : δ → β}
-    (complete : ∀ s d, accepted s → val s = some (π d) → parse s = some d)
-    (hAcc : EncodeAcceptedStmt accepted toStr) (hVal : EncodeValueStmt val toStr π) (s s' : String) :
-    (parse s).map toStr = (parse s').map toStr ↔ parse s = parse s' := by
+    {parse : String → Option δ} {toStr : β → String} {π : δ → β}
+    (sound : ∀ s d, parse s = some d → accepted s ∧ val s = some (π d))
+    (reject : ∀ s, parse s = none ↔ ¬ accepted s)
+    (hAcc : EncodeAcceptedStmt accepted toStr) (hVal : EncodeValueStmt val toStr) (s s' : String) :
+    (parse s).map (fun d => toStr (π d)) = (parse s').map (fun d => toStr (π d))
+      ↔ (parse s).map π = (parse s').map π := by
+  have inj := toString_injective sound reject hAcc hVal
   constructor
   · intro h
     cases hps : parse s with
@@ -226,8 +241,16 @@ theorem normalize_eq_iff_parse_eq {accepted : String → Prop} {val : String →
       | some d' => rw [hps, hps'] at h; simp at h
     | some d => cases hps' : parse s' with
       | none => rw [hps, hps'] at h; simp at h
-      | some d' => rw [hps, hps'] at h; simp only [Option.map_some, Option.some.injEq] at h
-                   rw [toString_injective complete hAcc hVal d d' h]
-  · intro h; rw [h]
+      | some d' => rw [hps, hps'] at h; simp only [Option.map_some, Option.some.injEq] at h ⊢
+                   exact inj (π d) (π d') h
+  · intro h
+    cases hps : parse s with
+    | none => cases hps' : parse s' with
+      | none => rfl
+      | some d' => rw [hps, hps'] at h; simp at h
+    | some d => cases hps' : parse s' with
+      | none => rw [hps, hps'] at h; simp at h
+      | some d' => rw [hps, hps'] at h; simp only [Option.map_some, Option.some.injEq] at h ⊢
+                   rw [h]
 
 end FormatSpec
