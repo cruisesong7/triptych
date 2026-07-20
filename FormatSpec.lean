@@ -42,6 +42,7 @@ import FormatSpec.Examples.Duration.soundness
 import FormatSpec.Examples.Datetime.grammar
 import FormatSpec.Examples.Datetime.spec
 import FormatSpec.Examples.Datetime.parser
+import FormatSpec.Examples.Datetime.soundness
 import FormatSpec.Examples.IPv4.grammar
 import FormatSpec.Examples.IPv4.spec
 import FormatSpec.Examples.IPv4.parser

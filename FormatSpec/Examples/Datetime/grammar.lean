@@ -16,6 +16,7 @@
 
 import FormatSpec.Syntax
 import FormatSpec.Decode
+import Cedar.Spec.Ext.Datetime
 
 /-!
 # Datetime example — the hard case: 5-way alternation + calendar constraints
@@ -90,6 +91,12 @@ def epochMillis (yyyy mm dd time_hh time_mm ss sss offset_hh offset_mm offset : 
   let offsetMs := signOf offset * (natOf offset_hh * 3600000 + natOf offset_mm * 60000)
   localMs - offsetMs
 
+/-- The projection for the `parser` clause: Cedar's `Datetime` stores epoch milliseconds in
+    `val : Int64`, matching our `epochMillis` value — read it out as `Int`. (No `printer`
+    clause: Cedar has no canonical `ToString Datetime`, since a datetime has several accepted
+    surface forms — the printer theorems need a single canonical serializer, which is absent.) -/
+def datetimeMillis (d : Cedar.Spec.Ext.Datetime) : Int := d.val.toInt
+
 format_spec Datetime where
   grammar
     Datetime ::= Date
@@ -132,7 +139,8 @@ format_spec Datetime where
     dayBound YYYY MM DD
     -- (value(Datetime) = epoch milliseconds would go in a `value'` escape section, but Cedar's
     -- parser delegates it to `Std.Time` with no standalone arithmetic fn, so it is omitted.)
-  -- Write the single generated module `spec.lean` into this example's directory.
+  parser Cedar.Spec.Ext.Datetime.parse projection datetimeMillis
+  -- Write the generated modules `spec.lean` / `parser.lean` / `soundness.lean` into this dir.
   to "FormatSpec/Examples/Datetime"
 
 -- The 5 top-level forms + the 2-alt Offset exercise alternation end to end.
@@ -150,5 +158,14 @@ private def epochMs (s : String) : Int := Datetime.valueFn (FormatSpec.envOf Dat
 #eval epochMs "2024-01-15T10:30:45.123Z"   -- 1705314645123
 #eval epochMs "2024-01-15T10:30:45+0530"   -- 1705294845000  (UTC = local − 05:30)
 #eval epochMs "1969-12-31T00:00:00Z"       -- -86400000       (pre-epoch)
+
+-- The generated verified parser + the external-parser obligations against Cedar's real
+-- `Datetime.parse` (epoch-millis projection). No `printer` clause — Cedar has no canonical
+-- `ToString Datetime` (several accepted surface forms), so no roundtrip/injective/normalize.
+#check (Datetime.parse : String → Option Int)
+#check @Datetime.parse_sound
+#check @Datetime.extparse_sound     -- vs Cedar.Spec.Ext.Datetime.parse, projection datetimeMillis
+#check @Datetime.extparse_complete
+#check @Datetime.extparse_reject
 
 end FormatSpec.Examples.Datetime
