@@ -27,12 +27,13 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
 
 - **Axioms:** every generated equivalence/decidability result must depend ONLY on
   `propext, Classical.choice, Quot.sound`. NEVER introduce `sorry`, `native_decide`,
-  `ofReduceBool`, or new axioms. The only intentional `sorry`s are the 5 user-obligations in
-  `Examples/Decimal/soundness.lean`: 3 external-parser (`extparse_sound`/`_complete`/`_reject`
-  vs the REAL Cedar `Cedar.Spec.Ext.Decimal.parse`) + 2 encode (`encode_accepted`/`encode_value`
-  for the `printer decimalToString` serializer). The printer theorems derived from them
-  (`parse_toString_roundtrip`/`toString_injective`/`normalize_eq_iff_parse_eq`) are NOT `sorry`d
-  — they carry `sorryAx` only transitively via the 2 encode obligations.
+  `ofReduceBool`, or new axioms. The only intentional `sorry`s are the user-obligations in the
+  `soundness.lean` of examples with a `parser`/`printer` clause (currently Decimal + Duration,
+  5 each = 10): 3 external-parser (`extparse_sound`/`_complete`/`_reject` vs the REAL Cedar
+  parser) + 2 encode (`encode_accepted`/`encode_value` for the `printer` serializer). The printer
+  theorems derived from them (`parse_toString_roundtrip`/`toString_injective`/
+  `normalize_eq_iff_parse_eq`) are NOT `sorry`d — they carry `sorryAx` only transitively via the
+  2 encode obligations. The generated `parse_sound`/`_complete`/`_reject` are fully axiom-clean.
 - Verify axiom-cleanliness with a temp `#print axioms <name>` file, then delete it.
 - `simp` config syntax (v4.31): `simp (config := { maxSteps := N }) only [...]` — config
   BEFORE `only`. `grind` is available; `tauto` is NOT (no Mathlib).

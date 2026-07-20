@@ -17,6 +17,7 @@
 import FormatSpec.Syntax
 import FormatSpec.Decode
 import FormatSpec.Roundtrip
+import Cedar.Spec.Ext.Datetime
 
 /-!
 # Duration example — five optional unit components (peel/all-optional stress test)
@@ -34,6 +35,13 @@ Writes `engine.lean` + `spec.lean` next to this file.
 
 namespace FormatSpec.Examples.Duration
 open FormatSpec
+
+-- External parser + printer: Cedar's own `Duration.parse : String → Option Duration`, projected
+-- to its millisecond `Int` value (`Duration.val : Int64`, via `toMilliseconds.toInt`) — matching
+-- our `computeValue` (also milliseconds). The `printer` serializer reuses Cedar's `ToString
+-- Duration`, so the printer theorems are about Cedar's real parse/toString pair.
+def durationMillis (d : Cedar.Spec.Ext.Datetime.Duration) : Int := d.toMilliseconds.toInt
+def durationToString (d : Cedar.Spec.Ext.Datetime.Duration) : String := toString d
 
 -- SUB-CAPTURE PATTERN: each unit's digit-run is its own nonterminal (`DDays ::= digit+`),
 -- so `value` can read the number via `nat DDays` — `Days ::= DDays "d"` captures both the
@@ -65,7 +73,9 @@ format_spec Duration where
     -- positional `Components ::= [Days][Hours]…` grammar rule already enforces it.)
     nonempty Components
     value ∈ [Int64.MIN, Int64.MAX]
-  -- Write the single generated module `spec.lean` into this example's directory.
+  parser Cedar.Spec.Ext.Datetime.Duration.parse projection durationMillis
+  printer durationToString
+  -- Write the generated modules `spec.lean` / `parser.lean` / `soundness.lean` into this dir.
   to "FormatSpec/Examples/Duration"
 
 -- Inspect the generated per-production predicates + their binder names.
@@ -81,5 +91,14 @@ format_spec Duration where
 -- Reconciliation + decidability of the all-optional `Components` shape (standard axioms).
 #check (Duration.IsWf_equiv : ∀ s, IsWf Duration.grammar s ↔ Duration.IsWf.Duration s)
 example : DecidablePred Duration.IsWf.Duration := inferInstance
+
+-- The generated verified parser + the external-parser/printer obligations (against Cedar's
+-- real `Duration.parse` / `ToString Duration`), with the printer theorems auto-derived.
+#check (Duration.parse : String → Option Int)
+#check @Duration.parse_sound
+#check @Duration.extparse_sound
+#check @Duration.parse_toString_roundtrip  -- ∀ d, Cedar…Duration.parse (durationToString d) = some d
+#check @Duration.toString_injective
+#check @Duration.normalize_eq_iff_parse_eq
 
 end FormatSpec.Examples.Duration

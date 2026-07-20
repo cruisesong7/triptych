@@ -38,6 +38,7 @@ import FormatSpec.Examples.Decimal.soundness
 import FormatSpec.Examples.Duration.grammar
 import FormatSpec.Examples.Duration.spec
 import FormatSpec.Examples.Duration.parser
+import FormatSpec.Examples.Duration.soundness
 import FormatSpec.Examples.Datetime.grammar
 import FormatSpec.Examples.Datetime.spec
 import FormatSpec.Examples.Datetime.parser
