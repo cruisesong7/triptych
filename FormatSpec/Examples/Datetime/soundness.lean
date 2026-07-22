@@ -9,11 +9,13 @@ open FormatSpec.Examples.Datetime
 set_option linter.unusedSimpArgs false
 set_option linter.unusedVariables false
 
-/- ═══════════════════════════ soundness ═══════════════════════════
-Some common proof obligations for validating YOUR OWN external parser against this
-specification: `extparse_sound`, `extparse_complete`, and `extparse_reject`, stated
-over the readable surface `IsValid`/`computeValue`. These are left as `sorry` —
-they are claims about your parser, so you have to prove them yourself. -/
+/- ══════════════════════ soundness · external parser ══════════════════════
+Obligations for validating YOUR OWN external parser against this specification:
+`extparse_sound`, `extparse_complete`, and `extparse_reject`, stated over the readable
+surface `IsValid`/`computeValue`. These are left as `sorry` — they are claims about
+your parser, so you have to prove them yourself. Given them, the external printer
+theorems (`extparse_toString_*`) are DISCHARGED, reusing the generated section's
+`encode_*`. -/
 
 theorem Datetime.extparse_reject (s : String) : Cedar.Spec.Ext.Datetime.parse s = none ↔ ¬Datetime.IsValid s := by sorry
 

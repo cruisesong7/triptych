@@ -9,11 +9,42 @@ open FormatSpec.Examples.Duration
 set_option linter.unusedSimpArgs false
 set_option linter.unusedVariables false
 
-/- ═══════════════════════════ soundness ═══════════════════════════
-Some common proof obligations for validating YOUR OWN external parser against this
-specification: `extparse_sound`, `extparse_complete`, and `extparse_reject`, stated
-over the readable surface `IsValid`/`computeValue`. These are left as `sorry` —
-they are claims about your parser, so you have to prove them yourself. -/
+/- ══════════════════════ soundness · generated parser ══════════════════════
+Obligations about the GENERATED parser `parse`. The `encode_*` obligations (a
+serialized value is accepted, and evaluates back to itself) are left as `sorry` — a
+serializer is a choice, so its correctness is yours to prove; from them the printer
+theorems (`parse_toString_roundtrip`/`toString_injective`/`normalize_eq_iff_parse_eq`)
+are DISCHARGED here. These same `encode_*` obligations are reused by the external
+section below. -/
+
+theorem Duration.encode_accepted (d : Cedar.Spec.Ext.Datetime.Duration) : Duration.isValid (durationToStr d) := by sorry
+
+theorem Duration.encode_value (d : Cedar.Spec.Ext.Datetime.Duration) :
+    Duration.computeValue (durationToStr d) = some (durationMillis d) := by sorry
+
+theorem Duration.lift_section (d : Cedar.Spec.Ext.Datetime.Duration) : millisToDuration (durationMillis d) = d := by
+  sorry
+
+theorem Duration.parse_toString_roundtrip (d : Cedar.Spec.Ext.Datetime.Duration) :
+    Duration.parse (durationToStr d) = some d :=
+  FormatSpec.gatedParseLift_toString_roundtrip Duration.encode_accepted Duration.encode_value Duration.lift_section d
+
+theorem Duration.toString_injective (d d' : Cedar.Spec.Ext.Datetime.Duration) (h : durationToStr d = durationToStr d') :
+    d = d' :=
+  FormatSpec.toString_injective Duration.parse_toString_roundtrip d d' h
+
+theorem Duration.normalize_eq_iff_parse_eq (s s' : String) :
+    (Duration.parse s).map durationToStr = (Duration.parse s').map durationToStr ↔
+      Duration.parse s = Duration.parse s' :=
+  FormatSpec.normalize_eq_iff_parse_eq Duration.parse_toString_roundtrip s s'
+
+/- ══════════════════════ soundness · external parser ══════════════════════
+Obligations for validating YOUR OWN external parser against this specification:
+`extparse_sound`, `extparse_complete`, and `extparse_reject`, stated over the readable
+surface `IsValid`/`computeValue`. These are left as `sorry` — they are claims about
+your parser, so you have to prove them yourself. Given them, the external printer
+theorems (`extparse_toString_*`) are DISCHARGED, reusing the generated section's
+`encode_*`. -/
 
 theorem Duration.extparse_reject (s : String) : Cedar.Spec.Ext.Datetime.Duration.parse s = none ↔ ¬Duration.IsValid s :=
   by sorry
@@ -28,43 +59,17 @@ theorem Duration.extparse_complete (s : String) (d : Cedar.Spec.Ext.Datetime.Dur
       Duration.computeValue s = some (durationMillis d) → Cedar.Spec.Ext.Datetime.Duration.parse s = some d :=
   by sorry
 
-theorem Duration.encode_accepted (i : Int) : Duration.isValid (millisToString i) := by sorry
+theorem Duration.extparse_toString_roundtrip (d : Cedar.Spec.Ext.Datetime.Duration) :
+    Cedar.Spec.Ext.Datetime.Duration.parse (durationToStr d) = some d :=
+  FormatSpec.parse_toString_roundtrip Duration.extparse_complete
+    (fun d => (Duration.IsValid_equiv (durationToStr d)).mpr (Duration.encode_accepted d)) Duration.encode_value d
 
-theorem Duration.encode_value (i : Int) : Duration.computeValue (millisToString i) = some i := by sorry
-
-theorem Duration.parse_toString_roundtrip (i : Int) : Duration.parse (millisToString i) = some i :=
-  by
-  have h :=
-    FormatSpec.parse_toString_roundtrip (π := id) Duration.parse_sound Duration.parse_reject Duration.encode_accepted
-      Duration.encode_value i
-  simpa using h
-
-theorem Duration.toString_injective (i i' : Int) (h : millisToString i = millisToString i') : i = i' :=
-  FormatSpec.toString_injective (π := id) Duration.parse_sound Duration.parse_reject Duration.encode_accepted
-    Duration.encode_value i i' h
-
-theorem Duration.normalize_eq_iff_parse_eq (s s' : String) :
-    (Duration.parse s).map millisToString = (Duration.parse s').map millisToString ↔
-      Duration.parse s = Duration.parse s' :=
-  by
-  have h :=
-    FormatSpec.normalize_eq_iff_parse_eq (π := id) Duration.parse_sound Duration.parse_reject Duration.encode_accepted
-      Duration.encode_value s s'
-  simpa using h
-
-theorem Duration.extparse_toString_roundtrip (i : Int) :
-    (Cedar.Spec.Ext.Datetime.Duration.parse (millisToString i)).map durationMillis = some i :=
-  FormatSpec.parse_toString_roundtrip Duration.extparse_sound Duration.extparse_reject
-    (fun b => (Duration.IsValid_equiv (millisToString b)).mpr (Duration.encode_accepted b)) Duration.encode_value i
-
-theorem Duration.extparse_toString_injective (i i' : Int) (h : millisToString i = millisToString i') : i = i' :=
-  FormatSpec.toString_injective Duration.extparse_sound Duration.extparse_reject
-    (fun b => (Duration.IsValid_equiv (millisToString b)).mpr (Duration.encode_accepted b)) Duration.encode_value i i' h
+theorem Duration.extparse_toString_injective (d d' : Cedar.Spec.Ext.Datetime.Duration)
+    (h : durationToStr d = durationToStr d') : d = d' :=
+  FormatSpec.toString_injective Duration.extparse_toString_roundtrip d d' h
 
 theorem Duration.extparse_normalize_eq_iff_parse_eq (s s' : String) :
-    (Cedar.Spec.Ext.Datetime.Duration.parse s).map (fun d => millisToString (durationMillis d)) =
-        (Cedar.Spec.Ext.Datetime.Duration.parse s').map (fun d => millisToString (durationMillis d)) ↔
-      (Cedar.Spec.Ext.Datetime.Duration.parse s).map durationMillis =
-        (Cedar.Spec.Ext.Datetime.Duration.parse s').map durationMillis :=
-  FormatSpec.normalize_eq_iff_parse_eq Duration.extparse_sound Duration.extparse_reject
-    (fun b => (Duration.IsValid_equiv (millisToString b)).mpr (Duration.encode_accepted b)) Duration.encode_value s s'
+    (Cedar.Spec.Ext.Datetime.Duration.parse s).map durationToStr =
+        (Cedar.Spec.Ext.Datetime.Duration.parse s').map durationToStr ↔
+      Cedar.Spec.Ext.Datetime.Duration.parse s = Cedar.Spec.Ext.Datetime.Duration.parse s' :=
+  FormatSpec.normalize_eq_iff_parse_eq Duration.extparse_toString_roundtrip s s'

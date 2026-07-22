@@ -583,15 +583,65 @@ def optionPayloadBinder (fnId : TSyntax `term) : CommandElabM (TSyntax `term × 
       | none => `a
     return (payloadStx, nm)
 
+/-- Elaborate the lift `σ : β → δ` and return its CODOMAIN `δ` as surface syntax plus a
+    one-letter binder derived from `δ`'s head (e.g. `Int64.ofInt : Int → Decimal` ↦ (`Decimal`,
+    `d`)). Peels one non-dependent arrow and delaborates the result. Falls back to (`_`, `d`). -/
+def liftCodomainBinder (σId : TSyntax `term) : CommandElabM (TSyntax `term × Name) := do
+  let fallbackTy ← `(_)
+  let fallback : TSyntax `term × Name := (fallbackTy, `d)
+  liftTermElabM do
+    let e ← Term.elabTerm σId none
+    Term.synthesizeSyntheticMVarsNoPostponing
+    let ty ← Meta.whnf (← Meta.inferType e)
+    let .forallE _ _ body _ := ty | return fallback
+    let cod ← Meta.whnf body
+    let codStx ← Lean.PrettyPrinter.delab cod
+    let nm : Name :=
+      match cod.getAppFn.constName? with
+      | some c =>
+        match c.getString!.toList with
+        | ch :: _ => Name.mkSimple (String.singleton ch.toLower)
+        | [] => `d
+      | none => `d
+    return (codStx, nm)
+
+/-- Elaborate the serializer `toStr : δ → String` and return its DOMAIN `δ` as surface syntax plus
+    a one-letter binder derived from `δ`'s head (e.g. `decimalToStr : Decimal → String` ↦
+    (`Cedar.Spec.Ext.Decimal`, `d`)). This is the AUTHORITATIVE domain type for the printer
+    theorems (Cedar's `parse_toString_roundtrip` is keyed on `d : Decimal`). Peels one
+    non-dependent arrow and delaborates the ARGUMENT. Falls back to (`_`, `d`). -/
+def serializerDomainBinder (toStrId : TSyntax `term) : CommandElabM (TSyntax `term × Name) := do
+  let fallbackTy ← `(_)
+  let fallback : TSyntax `term × Name := (fallbackTy, `d)
+  liftTermElabM do
+    let e ← Term.elabTerm toStrId none
+    Term.synthesizeSyntheticMVarsNoPostponing
+    let ty ← Meta.whnf (← Meta.inferType e)
+    let .forallE _ dom _ _ := ty | return fallback
+    let dom ← Meta.whnf dom
+    let domStx ← Lean.PrettyPrinter.delab dom
+    let nm : Name :=
+      match dom.getAppFn.constName? with
+      | some c =>
+        match c.getString!.toList with
+        | ch :: _ => Name.mkSimple (String.singleton ch.toLower)
+        | [] => `d
+      | none => `d
+    return (domStx, nm)
+
 /-- Emit the generated correct-by-construction parser and its three DISCHARGED contracts:
     `<Name>.computeValue_isSome` (accepted ⟹ value present, straight from the ENGINE `isValid`
-    → engine `isWf` → `decode.isSome`), `<Name>.parse := gatedParse isValid computeValue`, and
-    `parse_sound`/`parse_complete`/`parse_reject` (statements written out; each closes from the
-    generic `gatedParse_*` lemma, `π = id`). No `sorry` — this is the tool's OWN verified parser
+    → engine `isWf` → `decode.isSome`), `<Name>.parse`, and `parse_sound`/`parse_complete`/
+    `parse_reject` (statements written out). No `sorry` — this is the tool's OWN verified parser
     (distinct from the external-parser obligations). Gated on the ENGINE `isValid` (structurally
     decidable, no `IsValid_equiv` needed), so this whole bundle depends only on the engine.
-    `isDsl` selects the value entry point (`computeValue` vs `computeValueF`). -/
-def parserContractsProof (specName : Name) (isDsl : Bool)
+    `isDsl` selects the value entry point (`computeValue` vs `computeValueF`).
+
+    With a `lift? = some σ` clause the parser is LIFTED to the domain type `δ` (via `σ : β → δ`):
+    `parse := gatedParseLift isValid computeValue σ : String → Option δ`, with σ-VIEW contracts
+    (`(computeValue s).map σ = some d`), closed by the `gatedParseLift_*` lemmas. Without a lift,
+    `parse := gatedParse isValid computeValue : String → Option β` with the `π = id` contracts. -/
+def parserContractsProof (specName : Name) (isDsl : Bool) (lift? : Option (TSyntax `term))
     : CommandElabM (Array (TSyntax `command)) := do
   let isSomeId := mkIdent (specName ++ `computeValue_isSome)
   let parseId  := mkIdent (specName ++ `parse)
@@ -608,22 +658,39 @@ def parserContractsProof (specName : Name) (isDsl : Bool)
       unfold $cvId $cvEntry
       rw [Option.isSome_map]
       exact h.1.1)
-  let parseDef ← `(def $parseId (s : String) := FormatSpec.gatedParse $validEng $cvId s)
-  -- Concrete value type + a one-letter binder from its head (e.g. `Int`→`i`), so the emitted
-  -- statements show the real type instead of `_`.
-  let (valTy, aNm) ← optionPayloadBinder cvId
-  let aId := mkIdent aNm
-  -- The three guarantees, with their statements written OUT (not hidden behind `SoundStmt`
-  -- etc.) so the reader sees the actual proposition; each closes definitionally from the
-  -- generic `gatedParse_*` lemma (`π = id`, so `some (id a)` reduces to `some a`).
-  let soundThm ← `(theorem $soundId (s : String) ($aId : $valTy) :
-      $parseId s = some $aId → $validEng s ∧ $cvId s = some $aId :=
-    FormatSpec.gatedParse_sound _ _ s $aId)
-  let compThm ← `(theorem $compId (s : String) ($aId : $valTy) :
-      $validEng s → $cvId s = some $aId → $parseId s = some $aId :=
-    FormatSpec.gatedParse_complete _ _ s $aId)
-  let rejThm ← `(theorem $rejId (s : String) :
-      $parseId s = none ↔ ¬ $validEng s := FormatSpec.gatedParse_reject _ _ $isSomeId s)
-  return #[isSomeThm, parseDef, soundThm, compThm, rejThm]
+  match lift? with
+  | some σT =>
+    -- LIFTED parser: return the domain type `δ` via `σ`. Contracts are σ-view.
+    let parseDef ← `(def $parseId (s : String) := FormatSpec.gatedParseLift $validEng $cvId $σT s)
+    let (dTy, dNm) ← liftCodomainBinder σT
+    let dId := mkIdent dNm
+    let soundThm ← `(theorem $soundId (s : String) ($dId : $dTy) :
+        $parseId s = some $dId → $validEng s ∧ ($cvId s).map $σT = some $dId :=
+      FormatSpec.gatedParseLift_sound _ _ _ s $dId)
+    let compThm ← `(theorem $compId (s : String) ($dId : $dTy) :
+        $validEng s → ($cvId s).map $σT = some $dId → $parseId s = some $dId :=
+      FormatSpec.gatedParseLift_complete _ _ _ s $dId)
+    let rejThm ← `(theorem $rejId (s : String) :
+        $parseId s = none ↔ ¬ $validEng s := FormatSpec.gatedParseLift_reject _ _ _ $isSomeId s)
+    return #[isSomeThm, parseDef, soundThm, compThm, rejThm]
+  | none =>
+    -- UNLIFTED parser: return the spec value type `β` (`π = id`).
+    let parseDef ← `(def $parseId (s : String) := FormatSpec.gatedParse $validEng $cvId s)
+    -- Concrete value type + a one-letter binder from its head (e.g. `Int`→`i`), so the emitted
+    -- statements show the real type instead of `_`.
+    let (valTy, aNm) ← optionPayloadBinder cvId
+    let aId := mkIdent aNm
+    -- The three guarantees, with their statements written OUT (not hidden behind `SoundStmt`
+    -- etc.) so the reader sees the actual proposition; each closes definitionally from the
+    -- generic `gatedParse_*` lemma (`π = id`, so `some (id a)` reduces to `some a`).
+    let soundThm ← `(theorem $soundId (s : String) ($aId : $valTy) :
+        $parseId s = some $aId → $validEng s ∧ $cvId s = some $aId :=
+      FormatSpec.gatedParse_sound _ _ s $aId)
+    let compThm ← `(theorem $compId (s : String) ($aId : $valTy) :
+        $validEng s → $cvId s = some $aId → $parseId s = some $aId :=
+      FormatSpec.gatedParse_complete _ _ s $aId)
+    let rejThm ← `(theorem $rejId (s : String) :
+        $parseId s = none ↔ ¬ $validEng s := FormatSpec.gatedParse_reject _ _ $isSomeId s)
+    return #[isSomeThm, parseDef, soundThm, compThm, rejThm]
 
 end FormatSpec

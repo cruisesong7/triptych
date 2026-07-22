@@ -166,73 +166,123 @@ theorem gatedParse_reject (accepted : String → Prop) [DecidablePred accepted]
     · intro h; exact absurd hv h
   · rw [if_neg hv]; simp [hv]
 
-/-! ## The printer side: `toString` roundtrip / injectivity / normalization (β-view)
+/-! ## The lifted generated parser: output the value type `δ`, not the spec's `Int`
 
-The user supplies ONE canonical serializer `toStr : β → String` for the spec value type `β`
-(a serializer can't be synthesized — the canonical form is a choice). From two β-encode
-obligations — a serialized value is accepted, and serialize-then-`val` recovers it — the three
-printer theorems Cedar proves are derived, for ANY parser `p : String → Option δ` that projects
-to `β` via `π : δ → β`, using only `p`'s own `sound` + `reject`.
-
-The unifying move: BOTH parsers are viewed through their projection to the common type `β` —
-the generated parser is just the `π = id`, `δ = β` case, so one serializer and one pair of
-encode obligations serve both. Theorems are stated in β-view: roundtrip is
-`(p (toStr b)).map π = some b` ("parse-then-project recovers `b`"), which for the generated
-parser (`π = id`) is exactly `p (toStr b) = some b`. No `complete` and no `π`-injectivity are
-needed — `sound`+`reject` suffice, and serializer injectivity is over `β`. -/
-
-/-- Obligation 1: the serialized form of any value is accepted by the spec. -/
-def EncodeAcceptedStmt (accepted : String → Prop) (toStr : β → String) : Prop :=
-  ∀ b, accepted (toStr b)
-
-/-- Obligation 2: serialize-then-evaluate recovers the value (`val (toStr b) = some b`). -/
-def EncodeValueStmt (val : String → Option β) (toStr : β → String) : Prop :=
-  ∀ b, val (toStr b) = some b
+The spec value type `β` (e.g. the fixed-point `Int`) is convenient for the affine value-DSL and
+the overflow constraint, but a real parser should return the domain type `δ` (e.g. `Decimal`).
+The user supplies a *lift* `σ : β → δ` (e.g. `Int64.ofInt`), a section of the external parser's
+projection `π : δ → β` (`Int64.toInt`); the generated parser post-composes it:
+`gatedParseLift = (gatedParse …).map σ`, yielding an `Option δ` identical in TYPE to the external
+parser. Its three contracts are the σ-VIEW analogues — stated with `(val s).map σ` in place of
+`val s` — which are exactly what `.map σ`-ing `gatedParse`'s contracts gives, with NO `π` and NO
+range side-condition (so `lift` also works standalone, without any external parser). -/
 
 variable {δ : Type}
 
-/-- β-view roundtrip: parsing a serialized `b` and projecting recovers `b`
-    (`(p (toStr b)).map π = some b`). Derived from the parser's `sound` + `reject` and the two
-    encode obligations — NOT `complete`. For the generated parser (`π = id`) this is
-    `p (toStr b) = some b`. -/
-theorem parse_toString_roundtrip {accepted : String → Prop} {val : String → Option β}
-    {parse : String → Option δ} {toStr : β → String} {π : δ → β}
-    (sound : ∀ s d, parse s = some d → accepted s ∧ val s = some (π d))
-    (reject : ∀ s, parse s = none ↔ ¬ accepted s)
-    (hAcc : EncodeAcceptedStmt accepted toStr) (hVal : EncodeValueStmt val toStr) (b : β) :
-    (parse (toStr b)).map π = some b := by
-  cases h : parse (toStr b) with
-  | none => exact absurd (hAcc b) ((reject (toStr b)).mp h)
-  | some d =>
-    have h2 := (sound (toStr b) d h).2
-    rw [hVal b] at h2
-    simp only [Option.map_some, Option.some.injEq]
-    exact (Option.some.inj h2).symm
+/-- The tool's own parser, lifted to the domain type `δ`: yield `σ` of the value exactly when
+    `accepted` holds. Type-identical to a real external parser `String → Option δ`. -/
+def gatedParseLift (accepted : String → Prop) [DecidablePred accepted]
+    (val : String → Option β) (σ : β → δ) (s : String) : Option δ :=
+  (gatedParse accepted val s).map σ
 
-/-- The serializer is injective over `β` — distinct values serialize distinctly. Derived from
-    roundtrip; needs no `π`-injectivity (the projection cancels via roundtrip). -/
-theorem toString_injective {accepted : String → Prop} {val : String → Option β}
-    {parse : String → Option δ} {toStr : β → String} {π : δ → β}
-    (sound : ∀ s d, parse s = some d → accepted s ∧ val s = some (π d))
-    (reject : ∀ s, parse s = none ↔ ¬ accepted s)
-    (hAcc : EncodeAcceptedStmt accepted toStr) (hVal : EncodeValueStmt val toStr)
-    (b b' : β) (h : toStr b = toStr b') : b = b' := by
-  have r1 := parse_toString_roundtrip sound reject hAcc hVal b
-  have r2 := parse_toString_roundtrip sound reject hAcc hVal b'
+/-- Soundness (σ-view): if the lifted parser accepts `s` as `d`, then `s` is accepted and the
+    lifted value equals `some d` (`(val s).map σ = some d`). -/
+theorem gatedParseLift_sound (accepted : String → Prop) [DecidablePred accepted]
+    (val : String → Option β) (σ : β → δ) :
+    ∀ s d, gatedParseLift accepted val σ s = some d → accepted s ∧ (val s).map σ = some d := by
+  intro s d h
+  unfold gatedParseLift at h
+  rw [Option.map_eq_some_iff] at h
+  obtain ⟨b, hb, hbd⟩ := h
+  have hs := gatedParse_sound accepted val s b hb
+  refine ⟨hs.1, ?_⟩
+  rw [hs.2]; simp only [id_eq, Option.map_some]; rw [hbd]
+
+/-- Completeness (σ-view): if `s` is accepted and the lifted value is `some d`, the lifted parser
+    accepts `s` as `d`. -/
+theorem gatedParseLift_complete (accepted : String → Prop) [DecidablePred accepted]
+    (val : String → Option β) (σ : β → δ) :
+    ∀ s d, accepted s → (val s).map σ = some d → gatedParseLift accepted val σ s = some d := by
+  intro s d hacc hval
+  unfold gatedParseLift
+  rw [Option.map_eq_some_iff] at hval
+  obtain ⟨b, hb, hbd⟩ := hval
+  rw [gatedParse_complete accepted val s b hacc hb, Option.map_some, hbd]
+
+/-- Failure characterization: the lifted parser rejects exactly the non-accepted strings
+    (`σ` never introduces failure — `Option.map` preserves `none`). -/
+theorem gatedParseLift_reject (accepted : String → Prop) [DecidablePred accepted]
+    (val : String → Option β) (σ : β → δ) (hsome : ∀ s, accepted s → (val s).isSome) :
+    ∀ s, gatedParseLift accepted val σ s = none ↔ ¬ accepted s := by
+  intro s
+  unfold gatedParseLift
+  rw [Option.map_eq_none_iff]
+  exact gatedParse_reject accepted val hsome s
+
+/-! ## The printer side: `toString` roundtrip / injectivity / normalization (δ-view)
+
+The user supplies ONE canonical serializer `toStr : δ → String` over the DOMAIN type `δ` (e.g.
+Cedar's `ToString Decimal`); a serializer can't be synthesized — the canonical form is a choice.
+BOTH parsers return `Option δ`, so this single serializer drives the printer theorems for both,
+stated in the clean δ-VIEW `parse (toStr d) = some d` (matching Cedar's `parse_toString_roundtrip`
+exactly). Roundtrip is derived from the parser's `complete` (as Cedar does), given two encode
+obligations phrased through the parser's own projection `π` (`accepted (toStr d)` and
+`val (toStr d) = some (π d)`); injectivity and normalization then follow generically from the
+roundtrip alone. -/
+
+/-- Obligation 1: the serialized form of any domain value is accepted by the spec. -/
+def EncodeAcceptedStmt (accepted : String → Prop) (toStr : δ → String) : Prop :=
+  ∀ d, accepted (toStr d)
+
+/-- Obligation 2 (π-view): serialize-then-evaluate recovers the value's projection
+    (`val (toStr d) = some (π d)`). For the generated parser `π` is `σ`'s left inverse composed
+    away — see `EncodeValueLiftStmt`. -/
+def EncodeValueStmt (val : String → Option β) (toStr : δ → String) (π : δ → β) : Prop :=
+  ∀ d, val (toStr d) = some (π d)
+
+/-- δ-view roundtrip for an EXTERNAL parser: parsing a serialized `d` recovers `d`
+    (`parse (toStr d) = some d`). Derived from the parser's `complete` + the two encode
+    obligations — exactly Cedar's `parse_toString_roundtrip = parse_complete …`. -/
+theorem parse_toString_roundtrip {accepted : String → Prop} {val : String → Option β}
+    {parse : String → Option δ} {toStr : δ → String} {π : δ → β}
+    (complete : ∀ s d, accepted s → val s = some (π d) → parse s = some d)
+    (hAcc : EncodeAcceptedStmt accepted toStr) (hVal : EncodeValueStmt val toStr π) (d : δ) :
+    parse (toStr d) = some d :=
+  complete (toStr d) d (hAcc d) (hVal d)
+
+/-- δ-view roundtrip for the GENERATED UNLIFTED parser (`β`-typed, the `σ = id` case):
+    `gatedParse … (toStr b) = some b`. Just `gatedParse_complete` on the encode obligations
+    (here `π = id`, so `EncodeValueStmt` reads `val (toStr b) = some b`). -/
+theorem gatedParse_toString_roundtrip (accepted : String → Prop) [DecidablePred accepted]
+    (val : String → Option β) {toStr : β → String}
+    (hAcc : ∀ b, accepted (toStr b)) (hVal : ∀ b, val (toStr b) = some b) (b : β) :
+    gatedParse accepted val (toStr b) = some b :=
+  gatedParse_complete accepted val (toStr b) b (hAcc b) (hVal b)
+
+/-- δ-view roundtrip for the GENERATED lifted parser: `gatedParseLift … (toStr d) = some d`.
+    Uses `gatedParseLift_complete` + the encode obligations + a `section` fact `σ (π d) = d`
+    (`lift_section` — for `Decimal`, `Int64.ofInt_toInt`, unconditional). -/
+theorem gatedParseLift_toString_roundtrip {accepted : String → Prop} [DecidablePred accepted]
+    {val : String → Option β} {toStr : δ → String} {π : δ → β} {σ : β → δ}
+    (hAcc : EncodeAcceptedStmt accepted toStr) (hVal : EncodeValueStmt val toStr π)
+    (hSec : ∀ d, σ (π d) = d) (d : δ) :
+    gatedParseLift accepted val σ (toStr d) = some d := by
+  apply gatedParseLift_complete accepted val σ (toStr d) d (hAcc d)
+  rw [hVal d, Option.map_some, hSec d]
+
+/-- The serializer is injective — distinct domain values serialize distinctly. Generic over any
+    parser given its δ-view roundtrip. -/
+theorem toString_injective {parse : String → Option δ} {toStr : δ → String}
+    (rt : ∀ d, parse (toStr d) = some d) (d d' : δ) (h : toStr d = toStr d') : d = d' := by
+  have r1 := rt d; have r2 := rt d'
   rw [h] at r1; exact Option.some.inj (r1.symm.trans r2)
 
-/-- Normalization decides value-equality: two strings share a canonical form iff they parse to
-    the same value (in β-view). `normalize s := (parse s).map (toStr ∘ π)` is the canonical-form
-    map; for the generated parser (`π = id`) this is Cedar's `(parse s).map toStr` and RHS is
-    `parse s = parse s'`. Needs serializer injectivity (from the obligations). -/
-theorem normalize_eq_iff_parse_eq {accepted : String → Prop} {val : String → Option β}
-    {parse : String → Option δ} {toStr : β → String} {π : δ → β}
-    (sound : ∀ s d, parse s = some d → accepted s ∧ val s = some (π d))
-    (reject : ∀ s, parse s = none ↔ ¬ accepted s)
-    (hAcc : EncodeAcceptedStmt accepted toStr) (hVal : EncodeValueStmt val toStr) (s s' : String) :
-    (parse s).map (fun d => toStr (π d)) = (parse s').map (fun d => toStr (π d))
-      ↔ (parse s).map π = (parse s').map π := by
-  have inj := toString_injective sound reject hAcc hVal
+/-- Normalization decides value-equality: `(parse s).map toStr` (the canonical-form map, Cedar's
+    `normalize`) agrees iff the strings parse equally. Generic over any parser given its δ-view
+    roundtrip (via serializer injectivity). -/
+theorem normalize_eq_iff_parse_eq {parse : String → Option δ} {toStr : δ → String}
+    (rt : ∀ d, parse (toStr d) = some d) (s s' : String) :
+    (parse s).map toStr = (parse s').map toStr ↔ parse s = parse s' := by
   constructor
   · intro h
     cases hps : parse s with
@@ -241,16 +291,9 @@ theorem normalize_eq_iff_parse_eq {accepted : String → Prop} {val : String →
       | some d' => rw [hps, hps'] at h; simp at h
     | some d => cases hps' : parse s' with
       | none => rw [hps, hps'] at h; simp at h
-      | some d' => rw [hps, hps'] at h; simp only [Option.map_some, Option.some.injEq] at h ⊢
-                   exact inj (π d) (π d') h
-  · intro h
-    cases hps : parse s with
-    | none => cases hps' : parse s' with
-      | none => rfl
-      | some d' => rw [hps, hps'] at h; simp at h
-    | some d => cases hps' : parse s' with
-      | none => rw [hps, hps'] at h; simp at h
-      | some d' => rw [hps, hps'] at h; simp only [Option.map_some, Option.some.injEq] at h ⊢
-                   rw [h]
+      | some d' => rw [hps, hps'] at h
+                   simp only [Option.map_some, Option.some.injEq] at h
+                   rw [toString_injective rt d d' h]
+  · intro h; rw [h]
 
 end FormatSpec

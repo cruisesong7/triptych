@@ -38,11 +38,15 @@ open FormatSpec
 
 -- External parser + printer: Cedar's own `Duration.parse : String → Option Duration`, projected
 -- to its millisecond `Int` value (`Duration.val : Int64`, via `toMilliseconds.toInt`) — matching
--- our `computeValue` (also milliseconds). ONE serializer over the spec value type `Int` (= millis):
--- `millisToString` wraps the millis into a Cedar `Duration` and reuses Cedar's `ToString Duration`.
--- Both parsers project to `Int`, so this single serializer drives the printer theorems for both.
-def durationMillis (d : Cedar.Spec.Ext.Datetime.Duration) : Int := d.toMilliseconds.toInt
-def millisToString (i : Int) : String := toString (Cedar.Spec.Ext.Datetime.Duration.mk (Int64.ofInt i))
+-- our `computeValue` (also milliseconds). The `lift millisToDuration` upgrades the GENERATED
+-- parser's output from the spec value `Int` (millis) to the DOMAIN type `Duration`, a section of
+-- the projection `durationMillis`. So BOTH parsers return `Option Duration`; ONE domain serializer
+-- `durationToStr` (reusing Cedar's `ToString Duration`) drives the printer theorems for both, in
+-- the clean δ-VIEW `parse (durationToStr d) = some d`.
+def durationMillis  (d : Cedar.Spec.Ext.Datetime.Duration) : Int := d.toMilliseconds.toInt
+def millisToDuration (i : Int) : Cedar.Spec.Ext.Datetime.Duration :=
+  Cedar.Spec.Ext.Datetime.Duration.mk (Int64.ofInt i)
+def durationToStr (d : Cedar.Spec.Ext.Datetime.Duration) : String := toString d
 
 -- SUB-CAPTURE PATTERN: each unit's digit-run is its own nonterminal (`DDays ::= digit+`),
 -- so `value` can read the number via `nat DDays` — `Days ::= DDays "d"` captures both the
@@ -50,7 +54,8 @@ def millisToString (i : Int) : String := toString (Cedar.Spec.Ext.Datetime.Durat
 -- refs. This resolves the "`nat Days` on `"1d"` is garbage" problem with no new machinery.
 format_spec Duration where
   grammar
-    Duration   ::= ["-"] Components
+    Duration   ::= Sign Components
+    Sign       ::= sign
     Components ::= [Days] [Hours] [Minutes] [Seconds] [Millis]
     Days       ::= DDays "d"
     Hours      ::= DHours "h"
@@ -63,8 +68,9 @@ format_spec Duration where
     DSeconds   ::= digit+
     DMillis    ::= digit+
   value
-    nat DDays * 86400000 + nat DHours * 3600000 + nat DMinutes * 60000
-      + nat DSeconds * 1000 + nat DMillis
+    Sign * (nat DDays * 86400000 + nat DHours * 3600000 + nat DMinutes * 60000
+      + nat DSeconds * 1000 + nat DMillis)
+    lift millisToDuration
   constraints
     -- At least one component present. Every component is optional, so the grammar alone
     -- accepts "" and "-"; this rejects them. `Components` captures the whole `[Days][Hours]…`
@@ -75,7 +81,7 @@ format_spec Duration where
     nonempty Components
     value ∈ [Int64.MIN, Int64.MAX]
   parser Cedar.Spec.Ext.Datetime.Duration.parse projection durationMillis
-  printer millisToString
+  printer durationToStr
   -- Write the generated modules `spec.lean` / `parser.lean` / `soundness.lean` into this dir.
   to "FormatSpec/Examples/Duration"
 
@@ -88,22 +94,23 @@ format_spec Duration where
 #eval Duration.computeValue "1d2h30m"   -- some 95400000
 #eval Duration.computeValue "500ms"     -- some 500
 #eval Duration.computeValue "2h"        -- some 7200000 (other units absent → 0)
+#eval Duration.computeValue "-4s200ms"  -- some (-4200)  (leading `-` via the `Sign` capture)
 
 -- Reconciliation + decidability of the all-optional `Components` shape (standard axioms).
 #check (Duration.IsWf_equiv : ∀ s, IsWf Duration.grammar s ↔ Duration.IsWf.Duration s)
 example : DecidablePred Duration.IsWf.Duration := inferInstance
 
--- The generated verified parser + printer theorems for BOTH parsers:
-#check (Duration.parse : String → Option Int)
+-- The generated verified parser (LIFTED to the domain type by `lift millisToDuration`) + printer
+-- theorems for BOTH parsers, δ-view via the single domain serializer `durationToStr`:
+#check (Duration.parse : String → Option Cedar.Spec.Ext.Datetime.Duration)
 #check @Duration.parse_sound
--- INTERNAL printer (generated parser, spec value type Int, via `millisToString`):
-#check @Duration.parse_toString_roundtrip  -- ∀ i, Duration.parse (millisToString i) = some i
+-- INTERNAL printer (generated lifted parser):
+#check @Duration.parse_toString_roundtrip  -- ∀ d, Duration.parse (durationToStr d) = some d
 #check @Duration.toString_injective
 #check @Duration.normalize_eq_iff_parse_eq
--- EXTERNAL parser (Cedar's real Duration.parse) + its printer theorems, β-view via the same
--- `millisToString` and the projection `durationMillis`:
+-- EXTERNAL parser (Cedar's real Duration.parse) + its printer theorems, same serializer:
 #check @Duration.extparse_sound
-#check @Duration.extparse_toString_roundtrip  -- ∀ i, (Cedar…parse (millisToString i)).map durationMillis = some i
+#check @Duration.extparse_toString_roundtrip  -- ∀ d, Cedar…Duration.parse (durationToStr d) = some d
 #check @Duration.extparse_toString_injective
 #check @Duration.extparse_normalize_eq_iff_parse_eq
 

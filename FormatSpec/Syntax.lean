@@ -85,6 +85,11 @@ syntax "hexDigit" fmtLen  : fmtItem  -- hex terminal
 syntax "bit" fmtLen       : fmtItem  -- binary terminal (`0`/`1`)
 syntax ident              : fmtItem  -- nonterminal reference
 syntax "[" fmtItem "]"    : fmtItem  -- optional
+-- Dedicated SIGN terminal: an optional leading `"-"`, whose CAPTURE denotes ±1 in `value` (bare
+-- name, no `sign` keyword). Sugar for `["-"]` denotationally (so the engine/proofs are unchanged),
+-- but only legal as a production's SOLE rhs item (`Sign ::= sign`), so the sign always lives in its
+-- own named capture — the fix for the "bare `["-"]` is invisible to `value`" trap.
+syntax "sign"             : fmtItem  -- optional '-' sign token (see CAPTURE RULE)
 -- separated GROUP repetition: `rep H16 sepBy ":" {8}` = eight `H16`s joined by `":"`
 -- (`item (sep item)*`, item-count per the `fmtLen`: `{8}`→exactly, `{1,8}`→range, `+`→≥1).
 syntax "rep" fmtItem "sepBy" str fmtLen : fmtItem
@@ -117,8 +122,21 @@ syntax ident (ppSpace ident)+ : fmtEscEntry
     `constraints` section". -/
 syntax fmtConstraintsEsc := "constraints'" (colGt fmtEscEntry)+
 
-/-- The optional `value` section: the value-DSL formula (`valExpr`); analyzable, `value(X)=…`. -/
-syntax fmtValue := "value" valExpr
+/-- The `lift <σ>` sub-clause of `value`: names a *lift* `σ : β → δ` from the spec value type `β`
+    (e.g. the fixed-point `Int`) UP to the domain type `δ` (e.g. `Decimal`), a section of the
+    external parser's `projection π : δ → β` (i.e. `σ ∘ π = id`, discharged by `lift_section` in
+    `soundness.lean`). When present, the GENERATED parser returns `Option δ` (type-identical to a
+    real external parser) via `(gatedParse …).map σ`, and its contracts become the σ-VIEW
+    analogues (`(computeValue s).map σ = some d`). Works standalone (no `parser`/`printer` needed):
+    it just upgrades the generated parser's output type. Nested inside `value` (like `projection`
+    inside `parser`) because a lift only makes sense for the scalar `value` DSL — the `value'`
+    escape already picks its own output type, so a lift there would be a redundant `id`. -/
+syntax fmtLift := "lift" term
+
+/-- The optional `value` section: the value-DSL formula (`valExpr`); analyzable, `value(X)=…`.
+    May carry a trailing `lift <σ>` sub-clause (see `fmtLift`) — grammatically nested here (like
+    `projection` inside `parser`), because a lift only makes sense for the scalar `value` DSL. -/
+syntax fmtValue := "value" valExpr (fmtLift)?
 
 /-- The optional `value'` ESCAPE section (design note §16.4/§16.7): a value outside the DSL
     vocabulary, an `f X Y …` call with `f : String → … → Int`. Same shape/contract as
@@ -147,8 +165,9 @@ syntax fmtPrinter := "printer" term
 syntax fmtTo := "to " str
 
 /-- The `format_spec` command, sections in order: `grammar` (required), `value`
-    (optional), `constraints` (optional), `parser` (optional), `printer` (optional),
-    `to` (optional). `value` precedes `constraints` so a constraint can refer to `value`.
+    (optional, with an optional trailing `lift`), `constraints` (optional), `parser`
+    (optional, with a required `projection`), `printer` (optional), `to` (optional).
+    `value` precedes `constraints` so a constraint can refer to `value`.
     The `parser`/`printer` clauses emit the sorried obligations; the `to "<dir>"` clause
     writes the generated modules. `#show` logs each declaration. -/
 syntax (name := formatSpecCmd)
@@ -208,10 +227,13 @@ partial def elabSym : TSyntax `fmtItem → CommandElabM (TSyntax `term)
   | `(fmtItem| $i:ident)          => `(Sym.ref $(Syntax.mkStrLit i.getId.toString))
   | s                             => throwErrorAt s "unrecognized grammar item"
 
-/-- Elaborate an item into a `SymItem` term, setting `optional` for `[…]`. -/
+/-- Elaborate an item into a `SymItem` term, setting `optional` for `[…]`. The `sign` terminal
+    lowers to the SAME `SymItem` as `["-"]` (an optional literal `-`) — sign is grammar sugar, so
+    the engine/denotation/proofs never see a new constructor. -/
 def elabItem : TSyntax `fmtItem → CommandElabM (TSyntax `term)
   | `(fmtItem| [ $inner:fmtItem ]) => do
       `(SymItem.mk $(← elabSym inner) true)
+  | `(fmtItem| sign) => `(SymItem.mk (Sym.lit "-") true)
   | other => do
       `(SymItem.mk $(← elabSym other) false)
 
@@ -268,6 +290,7 @@ partial def parseSym : TSyntax `fmtItem → CommandElabM Sym
 
 def parseItem : TSyntax `fmtItem → CommandElabM SymItem
   | `(fmtItem| [ $inner:fmtItem ]) => do pure { sym := ← parseSym inner, optional := true }
+  | `(fmtItem| sign)               => pure { sym := .lit "-", optional := true }
   | other                          => do pure { sym := ← parseSym other, optional := false }
 
 def parseSeq : TSyntax `fmtSeq → CommandElabM Seq
@@ -328,7 +351,12 @@ def elabFormatSpec : CommandElab := fun stx => do
       let bufE ← IO.mkRef (#[] : Array String)   -- engine (→ parser file)
       let bufP ← IO.mkRef (#[] : Array String)   -- reconciliation proofs (→ parser file)
       let bufR ← IO.mkRef (#[] : Array String)   -- generated verified parser (→ parser file)
-      let bufC ← IO.mkRef (#[] : Array String)   -- external-parser obligations (→ soundness file)
+      -- soundness.lean is partitioned into TWO sections, one per parser: `bufCg` holds the
+      -- GENERATED parser's obligations + printer theorems (about `<Name>.parse`), `bufCx` the
+      -- EXTERNAL parser's (about the real Cedar `parse`). Written generated-first, because the
+      -- external printer theorems reuse the generated section's shared encode obligations.
+      let bufCg ← IO.mkRef (#[] : Array String)  -- generated-parser obligations (→ soundness file)
+      let bufCx ← IO.mkRef (#[] : Array String)  -- external-parser obligations (→ soundness file)
       let record (buf : IO.Ref (Array String)) (cmd : TSyntax `command) : CommandElabM Unit := do
         let clean : TSyntax `command := ⟨deHygiene cmd.raw⟩
         let src := (← liftCoreM (Lean.PrettyPrinter.ppCommand clean)).pretty
@@ -339,7 +367,9 @@ def elabFormatSpec : CommandElab := fun stx => do
       let emitEngine (cmd : TSyntax `command) : CommandElabM Unit := do record bufE cmd; elabCommand cmd
       let emitSound  (cmd : TSyntax `command) : CommandElabM Unit := do record bufP cmd; elabCommand cmd
       let emitParser (cmd : TSyntax `command) : CommandElabM Unit := do record bufR cmd; elabCommand cmd
-      let emitContract (cmd : TSyntax `command) : CommandElabM Unit := do record bufC cmd; elabCommand cmd
+      -- Two soundness-contract emitters, one per partition (`Gen` = generated parser, `Ext` = external).
+      let emitContractGen (cmd : TSyntax `command) : CommandElabM Unit := do record bufCg cmd; elabCommand cmd
+      let emitContractExt (cmd : TSyntax `command) : CommandElabM Unit := do record bufCx cmd; elabCommand cmd
       -- Grammar data literal (SPEC): the auditable EBNF transcription; the interpreter,
       -- proofs, and `SatisfiesConstraints`'s decode bridge all reference it. The START symbol
       -- is the FIRST production's name (NOT the `format_spec` display name — they may differ,
@@ -347,6 +377,31 @@ def elabFormatSpec : CommandElab := fun stx => do
       -- production so `grammar.prod? grammar.start` resolves.
       let prodVals ← prods.toList.mapM parseProd
       let startName := (prodVals.head?.map (·.name)).getD name.getId.toString
+      -- SIGN CAPTURES: productions whose sole rhs is the dedicated `sign` terminal (`Sign ::= sign`).
+      -- Detected SYNTACTICALLY (a `sign` item vs a hand-written `["-"]` lower to the same `Sym`, so
+      -- only the surface tells them apart). Their NAMES are exactly the captures a `value` may
+      -- reference BARE (denoting ±1); the value-section validation below rejects a bare ref to a
+      -- non-sign capture, and `nat`/`int`/`len` OF a sign capture. A `sign` used anywhere but as a
+      -- sole rhs is rejected — the sign must own its own capture (the fix for the invisible-sign bug).
+      let seqIsSoleSign : TSyntax `fmtSeq → Bool
+        | `(fmtSeq| sign) => true
+        | _ => false
+      let seqMentionsSign : TSyntax `fmtSeq → Bool
+        | `(fmtSeq| $items:fmtItem*) => items.any (fun it => it matches `(fmtItem| sign))
+        | _ => false
+      let mut signCaptures : List String := []
+      for pStx in prods do
+        if let `(fmtProd| $lhs:ident ::= $alts:fmtSeq|*) := pStx then
+          let mut anySign := false
+          for sq in alts.getElems do
+            if seqIsSoleSign sq then
+              anySign := true
+            else if seqMentionsSign sq then
+              throwErrorAt sq "the `sign` terminal must be a production's SOLE right-hand side \
+                (`{lhs.getId} ::= sign`), so the sign owns its own capture; found it mixed with \
+                other items. Wrap the sign in its own production and reference that."
+          if anySign then
+            signCaptures := signCaptures ++ [lhs.getId.toString]
       let prodTerms ← prods.mapM elabProd
       let sep : Syntax.TSepArray `term "," := .ofElems prodTerms
       let grammarIdent := mkIdentFrom name (name.getId ++ `grammar)
@@ -433,6 +488,21 @@ def elabFormatSpec : CommandElab := fun stx => do
       let mut constrCaps : Option (List String) := none  -- captures the surface `Constraints` binds (none ⟹ no constraints section)
       if let some vStx := v then
         let ve : TSyntax `valExpr := ⟨vStx.raw[1]⟩
+        -- SIGN-REFERENCE VALIDATION: a BARE capture name in `value` denotes its sign (±1), so it
+        -- must name a dedicated sign production (`X ::= sign`). Reject a bare ref to a non-sign
+        -- capture (the old silent-`+1` trap), and reject `nat`/`int`/`len` applied to a sign
+        -- capture (a sign holds only `""`/`"-"`, so a magnitude reader on it is meaningless).
+        let signRefs := FormatSpec.valExprSignCaptures ve
+        let magRefs := (FormatSpec.valExprCaptures ve).filter (· ∉ signRefs)
+        for r in signRefs do
+          unless signCaptures.contains r do
+            throwError "value references `{r}` bare, which reads its SIGN (±1) — but `{r}` is not \
+              a sign capture. Declare `{r} ::= sign`, or use `nat {r}`/`int {r}`/`len {r}` to read \
+              its magnitude/length."
+        for r in magRefs do
+          if signCaptures.contains r then
+            throwError "value reads the magnitude/length of `{r}`, but `{r}` is a sign capture \
+              (`{r} ::= sign`, holding only \"\" or \"-\"). Reference it BARE (`{r}`) for its ±1 sign."
         let vfnIdent := mkIdentFrom name (name.getId ++ `valueFn)
         -- engine: the analyzable AST + its eval
         let valTerm ← liftMacroM (elabValExpr ve)
@@ -578,13 +648,19 @@ def elabFormatSpec : CommandElab := fun stx => do
       if veIdent?.isSome || hasValueEsc then
         emitSound (← FormatSpec.computeValueEqProof name.getId grammarIdent valueCaps veIdent?.isSome)
       -- GENERATED VERIFIED PARSER (→ parser file): whenever a value section exists, emit the
-      -- tool's own `<Name>.parse := gatedParse isValid computeValue` and its three
-      -- AUTO-DISCHARGED contracts (`parse_sound`/`parse_complete`/`parse_reject`). Gated on the
-      -- engine `isValid` (structurally decidable), so the parser is self-contained relative to
-      -- the engine — no `sorry`. This is the correct-by-construction parser; the external
-      -- obligations below are the SEPARATE translation-validation surface.
+      -- tool's own `<Name>.parse` and its three AUTO-DISCHARGED contracts (`parse_sound`/
+      -- `parse_complete`/`parse_reject`). Gated on the engine `isValid` (structurally decidable),
+      -- so the parser is self-contained relative to the engine — no `sorry`. This is the
+      -- correct-by-construction parser; the external obligations below are the SEPARATE
+      -- translation-validation surface. A `lift <σ>` clause LIFTS the output to the domain type
+      -- `δ` (so `parse : String → Option δ`, σ-view contracts); otherwise it returns `β`.
+      let liftTerm? : Option (TSyntax `term) := do
+        let vStx ← v
+        match vStx with
+        | `(fmtValue| value $_:valExpr lift $σT:term) => some σT
+        | _ => none
       if veIdent?.isSome || hasValueEsc then
-        for cmd in ← FormatSpec.parserContractsProof name.getId veIdent?.isSome do
+        for cmd in ← FormatSpec.parserContractsProof name.getId veIdent?.isSome liftTerm? do
           emitParser cmd
       -- EXTERNAL-PARSER obligations (→ soundness file): with a `parser <p> projection <π>`
       -- clause naming an EXISTING external parser, emit `<Name>.sound`/`.complete`/`.reject` as
@@ -597,7 +673,7 @@ def elabFormatSpec : CommandElab := fun stx => do
           -- Statements written OUT (not `RejectStmt`/`SoundStmt`/…), so the obligation reads as
           -- the actual proposition to prove for the external parser `parseT` (projection `projT`).
           let rejIdent := mkIdentFrom name (name.getId ++ `extparse_reject)
-          emitContract (← `(theorem $rejIdent (s : String) :
+          emitContractExt (← `(theorem $rejIdent (s : String) :
               $parseT s = none ↔ ¬ $accSurf s := by sorry))
           -- Concrete type + one-letter binder from the EXTERNAL parser's `Option` payload
           -- (e.g. Cedar `Decimal` → `d`); reused by both obligations and the printer theorems.
@@ -612,79 +688,107 @@ def elabFormatSpec : CommandElab := fun stx => do
             let soundIdent := mkIdentFrom name (name.getId ++ `extparse_sound)
             -- Both obligations parametrized over the external output `extId` (matching Cedar's
             -- target-parametrized `parse_sound`/`parse_complete`).
-            emitContract (← `(theorem $soundIdent (s : String) ($extId : $extTy) :
+            emitContractExt (← `(theorem $soundIdent (s : String) ($extId : $extTy) :
                 $parseT s = some $extId → $accSurf s ∧ $cvIdent s = some ($projT $extId) := by sorry))
-            emitContract (← `(theorem $compIdent (s : String) ($extId : $extTy) :
+            emitContractExt (← `(theorem $compIdent (s : String) ($extId : $extTy) :
                 $accSurf s → $cvIdent s = some ($projT $extId) → $parseT s = some $extId := by sorry))
       -- PRINTER (→ soundness file): `printer <toStr>` names ONE canonical serializer
-      -- `toStr : β → String` over the spec value type β. From two `sorry`d β-encode obligations
-      -- (`encode_accepted` / `encode_value`) the three printer theorems Cedar proves are
-      -- AUTO-DERIVED, in β-VIEW, for the GENERATED parser (`parse_toString_roundtrip` /
-      -- `toString_injective` / `normalize_eq_iff_parse_eq`) — and, when a `parser` clause is
-      -- present, the SAME trio (`extparse_*`) for the EXTERNAL parser. Both parsers project to
-      -- β (generated: `π = id`; external: the `projection`), so ONE serializer + ONE pair of
-      -- obligations serve both, via each parser's `sound`+`reject` (no `complete` needed).
-      -- Needs a value section.
+      -- `toStr : δ → String` over the DOMAIN type δ (the type BOTH parsers return). From `sorry`d
+      -- encode obligations the three printer theorems Cedar proves are AUTO-DERIVED in the clean
+      -- δ-VIEW (`parse (toStr d) = some d`, matching Cedar's `parse_toString_roundtrip`) for the
+      -- GENERATED parser (`parse_toString_roundtrip` / `toString_injective` /
+      -- `normalize_eq_iff_parse_eq`) — and, when a `parser` clause is present, the SAME trio
+      -- (`extparse_*`) for the EXTERNAL parser. Needs a value section.
+      --
+      -- With a `lift σ` (in `value`) + `parser … projection π`, the generated parser is LIFTED to
+      -- δ and closes its roundtrip π-VIEW (Cedar's own recipe): two shared obligations
+      -- `encode_accepted d : isValid (toStr d)` and `encode_value d : computeValue (toStr d) =
+      -- some (π d)` (≙ Cedar's `toString_isWfStr` / `computeValue_toString`) plus a section fact
+      -- `lift_section d : σ (π d) = d` (≙ Cedar's `Int64.ofInt_toInt`). The SAME two obligations
+      -- serve the external parser (via its `complete`), so one pair drives both. Without a lift the
+      -- generated parser returns β (δ = β, π = id); without a parser clause the lifted generated
+      -- roundtrip closes σ-VIEW (`(computeValue (toStr d)).map σ = some d`), no π / no section.
       if let some ppStx := pp then
         if let `(fmtPrinter| printer $toStrT:term) := ppStx then
           if veIdent?.isSome || hasValueEsc then
             let cvIdent  := mkIdentFrom name (name.getId ++ `computeValue)
             let encAccId := mkIdentFrom name (name.getId ++ `encode_accepted)
             let encValId := mkIdentFrom name (name.getId ++ `encode_value)
-            let (valTy, valNm) ← FormatSpec.optionPayloadBinder cvIdent
-            let bId := mkIdent valNm; let bId' := mkIdent (valNm.appendAfter "'")
+            let secId    := mkIdentFrom name (name.getId ++ `lift_section)
             let validEng := mkIdentFrom name (name.getId ++ `isValid)
-            -- The two β-encode obligations (shared by every parser), over the SPEC value type β.
-            emitContract (← `(theorem $encAccId ($bId : $valTy) : $validEng ($toStrT $bId) := by sorry))
-            emitContract (← `(theorem $encValId ($bId : $valTy) :
-                $cvIdent ($toStrT $bId) = some $bId := by sorry))
-            -- GENERATED parser (π = id): roundtrip simplifies to `parse (toStr b) = some b`,
-            -- normalize to `(parse s).map toStr = … ↔ parse s = parse s'` (both via `Option.map_id`).
+            -- The serializer's DOMAIN is the value type BOTH printer sides key on: δ when lifted,
+            -- β otherwise. One helper reads it (+ a one-letter binder) straight off `toStr`.
+            let (dTy, dNm) ← FormatSpec.serializerDomainBinder toStrT
+            let dId := mkIdent dNm; let dId' := mkIdent (dNm.appendAfter "'")
             let parseId  := mkIdentFrom name (name.getId ++ `parse)
-            let gSoundId := mkIdentFrom name (name.getId ++ `parse_sound)
-            let gRejId   := mkIdentFrom name (name.getId ++ `parse_reject)
             let rtId     := mkIdentFrom name (name.getId ++ `parse_toString_roundtrip)
             let injId    := mkIdentFrom name (name.getId ++ `toString_injective)
             let normId   := mkIdentFrom name (name.getId ++ `normalize_eq_iff_parse_eq)
-            emitContract (← `(theorem $rtId ($bId : $valTy) : $parseId ($toStrT $bId) = some $bId := by
-              have h := FormatSpec.parse_toString_roundtrip (π := id) $gSoundId $gRejId $encAccId $encValId $bId
-              simpa using h))
-            emitContract (← `(theorem $injId ($bId $bId' : $valTy) (h : $toStrT $bId = $toStrT $bId') :
-                $bId = $bId' :=
-              FormatSpec.toString_injective (π := id) $gSoundId $gRejId $encAccId $encValId $bId $bId' h))
-            emitContract (← `(theorem $normId (s s' : String) :
-                ($parseId s).map $toStrT = ($parseId s').map $toStrT ↔ $parseId s = $parseId s' := by
-              have h := FormatSpec.normalize_eq_iff_parse_eq (π := id) $gSoundId $gRejId $encAccId $encValId s s'
-              simpa using h))
-            -- EXTERNAL parser (β-view via its projection `projT`), when a `parser` clause exists.
-            -- Reuses the SAME `toStr` + encode obligations; theorems stated as `.map projT`.
+            -- The `parser … projection` clause supplies the projection π (: δ → β) that phrases
+            -- the shared π-view `encode_value` and the section fact `lift_section : σ (π d) = d`.
             let extClause? : Option (TSyntax `term × TSyntax `term) := do
               let prStx ← pr
               match prStx with
               | `(fmtParser| parser $parseT:term projection $projT:term) => some (parseT, projT)
               | _ => none
+            -- GENERATED section: the shared encode obligations live here (the external section
+            -- reuses them), so the whole `encode_*`/`lift_section` + generated-parser trio is one
+            -- self-contained block. `encode_accepted` (over ENGINE `isValid`) is shared by every branch.
+            emitContractGen (← `(theorem $encAccId ($dId : $dTy) : $validEng ($toStrT $dId) := by sorry))
+            -- Emit the shared obligations' value part + the GENERATED roundtrip, per branch.
+            match liftTerm?, extClause? with
+            | some σT, some (_, projT) =>
+              -- LIFTED + PARSER: π-view (Cedar's recipe). `encode_value` through π, `lift_section`
+              -- the section `σ (π d) = d`; generated roundtrip via `gatedParseLift_toString_roundtrip`.
+              emitContractGen (← `(theorem $encValId ($dId : $dTy) :
+                  $cvIdent ($toStrT $dId) = some ($projT $dId) := by sorry))
+              emitContractGen (← `(theorem $secId ($dId : $dTy) : $σT ($projT $dId) = $dId := by sorry))
+              emitContractGen (← `(theorem $rtId ($dId : $dTy) : $parseId ($toStrT $dId) = some $dId :=
+                FormatSpec.gatedParseLift_toString_roundtrip $encAccId $encValId $secId $dId))
+            | some σT, none =>
+              -- LIFTED, NO PARSER: no π available → σ-view `encode_value`; roundtrip closes straight
+              -- from `gatedParseLift_complete` (self-contained, no section fact needed).
+              emitContractGen (← `(theorem $encValId ($dId : $dTy) :
+                  ($cvIdent ($toStrT $dId)).map $σT = some $dId := by sorry))
+              emitContractGen (← `(theorem $rtId ($dId : $dTy) : $parseId ($toStrT $dId) = some $dId :=
+                FormatSpec.gatedParseLift_complete $validEng $cvIdent $σT ($toStrT $dId) $dId
+                  ($encAccId $dId) ($encValId $dId)))
+            | none, _ =>
+              -- UNLIFTED: generated parser returns β (δ = β, π = id). `encode_value` is the plain
+              -- `computeValue (toStr d) = some d`; roundtrip via `gatedParse_toString_roundtrip`.
+              emitContractGen (← `(theorem $encValId ($dId : $dTy) :
+                  $cvIdent ($toStrT $dId) = some $dId := by sorry))
+              emitContractGen (← `(theorem $rtId ($dId : $dTy) : $parseId ($toStrT $dId) = some $dId :=
+                FormatSpec.gatedParse_toString_roundtrip $validEng $cvIdent $encAccId $encValId $dId))
+            -- GENERATED injectivity + normalization: generic over the roundtrip (δ-view), same for
+            -- every branch.
+            emitContractGen (← `(theorem $injId ($dId $dId' : $dTy) (h : $toStrT $dId = $toStrT $dId') :
+                $dId = $dId' :=
+              FormatSpec.toString_injective $rtId $dId $dId' h))
+            emitContractGen (← `(theorem $normId (s s' : String) :
+                ($parseId s).map $toStrT = ($parseId s').map $toStrT ↔ $parseId s = $parseId s' :=
+              FormatSpec.normalize_eq_iff_parse_eq $rtId s s'))
+            -- EXTERNAL parser (δ-view), when a `parser` clause exists: reuses the SAME `toStr` +
+            -- `encode_accepted`/`encode_value` (π-view), closing roundtrip via the external
+            -- `complete` — exactly Cedar's `parse_toString_roundtrip = parse_complete …`.
             match extClause? with
-            | some (parseT, projT) =>
-              let xSoundId := mkIdentFrom name (name.getId ++ `extparse_sound)
-              let xRejId   := mkIdentFrom name (name.getId ++ `extparse_reject)
+            | some (parseT, _) =>
+              let xCompId  := mkIdentFrom name (name.getId ++ `extparse_complete)
               let xRtId    := mkIdentFrom name (name.getId ++ `extparse_toString_roundtrip)
               let xInjId   := mkIdentFrom name (name.getId ++ `extparse_toString_injective)
               let xNormId  := mkIdentFrom name (name.getId ++ `extparse_normalize_eq_iff_parse_eq)
-              -- The external `sound`/`reject` obligations are stated over the SURFACE `IsValid`,
-              -- but the shared `encode_accepted` is over the ENGINE `isValid`; bridge it through
-              -- `IsValid_equiv` (`.mpr : isValid → IsValid`) so both sides use the same predicate.
+              -- `encode_accepted` is over the ENGINE `isValid`, but the external `complete` speaks
+              -- the SURFACE `IsValid`; bridge via `IsValid_equiv` (`.mpr : isValid → IsValid`).
               let equivId  := mkIdentFrom name (name.getId ++ `IsValid_equiv)
-              let encAccSurf ← `(fun b => ($equivId ($toStrT b)).mpr ($encAccId b))
-              emitContract (← `(theorem $xRtId ($bId : $valTy) :
-                  ($parseT ($toStrT $bId)).map $projT = some $bId :=
-                FormatSpec.parse_toString_roundtrip $xSoundId $xRejId $encAccSurf $encValId $bId))
-              emitContract (← `(theorem $xInjId ($bId $bId' : $valTy) (h : $toStrT $bId = $toStrT $bId') :
-                  $bId = $bId' :=
-                FormatSpec.toString_injective $xSoundId $xRejId $encAccSurf $encValId $bId $bId' h))
-              emitContract (← `(theorem $xNormId (s s' : String) :
-                  ($parseT s).map (fun d => $toStrT ($projT d)) = ($parseT s').map (fun d => $toStrT ($projT d))
-                    ↔ ($parseT s).map $projT = ($parseT s').map $projT :=
-                FormatSpec.normalize_eq_iff_parse_eq $xSoundId $xRejId $encAccSurf $encValId s s'))
+              let encAccSurf ← `(fun d => ($equivId ($toStrT d)).mpr ($encAccId d))
+              emitContractExt (← `(theorem $xRtId ($dId : $dTy) : $parseT ($toStrT $dId) = some $dId :=
+                FormatSpec.parse_toString_roundtrip $xCompId $encAccSurf $encValId $dId))
+              emitContractExt (← `(theorem $xInjId ($dId $dId' : $dTy) (h : $toStrT $dId = $toStrT $dId') :
+                  $dId = $dId' :=
+                FormatSpec.toString_injective $xRtId $dId $dId' h))
+              emitContractExt (← `(theorem $xNormId (s s' : String) :
+                  ($parseT s).map $toStrT = ($parseT s').map $toStrT ↔ $parseT s = $parseT s' :=
+                FormatSpec.normalize_eq_iff_parse_eq $xRtId s s'))
             | none => pure ()
       -- WRITE (optional `to "<dir>"` clause): emit up to THREE generated modules into
       -- `<dir>` (default `.`, must pre-exist), split by audience:
@@ -705,7 +809,8 @@ def elabFormatSpec : CommandElab := fun stx => do
           let dir := dirStx.getString
           let specDecls ← bufS.get; let engineDecls ← bufE.get
           let proofDecls ← bufP.get; let parserDecls ← bufR.get
-          let contractDecls ← bufC.get
+          let genContractDecls ← bufCg.get; let extContractDecls ← bufCx.get
+          let contractDecls := genContractDecls ++ extContractDecls
           let callerImport := (← getMainModule).toString
           let callerNamespace := (← getCurrNamespace).toString
           -- Module path prefix of the output dir (`FormatSpec/Examples/Decimal` →
@@ -717,6 +822,12 @@ def elabFormatSpec : CommandElab := fun stx => do
           -- (`toGraph`, `dayBound`, …); the engine bundle likewise. So both `spec` and
           -- `parser` import (and `open`) the caller when an escape is present.
           let needsCallerSurface := hasOpaque || hasValueEsc
+          -- `parser.lean` additionally embeds the `lift σ` term in the generated `parse`; when `σ`
+          -- is a CALLER-defined fn (e.g. `millisToDuration`, not a library one like `Int64.ofInt`)
+          -- it must import+open the caller too. Presence of a lift is the trigger (a library σ
+          -- makes the extra import harmless — the caller module is acyclic w.r.t. the generated
+          -- files, same as `soundness.lean`'s caller import).
+          let needsCallerParser := needsCallerSurface || liftTerm?.isSome
           -- `unusedSimpArgs`/`unusedVariables` off — the uniform proof closer over-provisions
           -- simp lemmas by design, and some defs keep a uniform signature with an unused
           -- parameter (`SatisfiesConstraints (s) := True`); neither is a defect.
@@ -748,8 +859,8 @@ def elabFormatSpec : CommandElab := fun stx => do
             (specHeader ++ "\n" ++ specBanner ++ "\n\n" ++ joinDecls specDecls ++ "\n")
           -- ── parser.lean ── engine + all auto-discharged proofs + the generated verified parser.
           let parserImports := libImports ++ [specMod]
-            ++ (if needsCallerSurface then [callerImport] else [])
-          let parserHeader := mkHeader parserImports needsCallerSurface
+            ++ (if needsCallerParser then [callerImport] else [])
+          let parserHeader := mkHeader parserImports needsCallerParser
           let engineBanner := "/- ══════════════════════════════ engine ══════════════════════════════\n\
             The executable counterpart of the spec. `decode` walks the grammar over an input\n\
             string and returns its captured components; `computeValue` then evaluates the value\n\
@@ -775,17 +886,34 @@ def elabFormatSpec : CommandElab := fun stx => do
               if decls.isEmpty then none else some (banner ++ "\n\n" ++ joinDecls decls)))
           let parserPath := dir ++ "/parser.lean"
           IO.FS.writeFile parserPath (parserHeader ++ "\n" ++ parserBody ++ "\n")
-          -- ── soundness.lean ── external-parser obligations only; written ONLY when present.
+          -- ── soundness.lean ── the `sorry`d obligations, PARTITIONED into two sections: one for
+          -- the GENERATED parser (`<Name>.parse` — the shared encode obligations + its printer
+          -- theorems), one for the EXTERNAL parser (the real Cedar `parse` — `extparse_*`). Written
+          -- generated-first (the external printer theorems reuse the generated section's encode
+          -- obligations). Written ONLY when there is at least one obligation.
           if !contractDecls.isEmpty then
             let soundHeader := mkHeader [parserMod, callerImport] true
-            let contractBanner := "/- ═══════════════════════════ soundness ═══════════════════════════\n\
-              Some common proof obligations for validating YOUR OWN external parser against this\n\
-              specification: `extparse_sound`, `extparse_complete`, and `extparse_reject`, stated\n\
-              over the readable surface `IsValid`/`computeValue`. These are left as `sorry` —\n\
-              they are claims about your parser, so you have to prove them yourself. -/"
+            let genBanner := "/- ══════════════════════ soundness · generated parser ══════════════════════\n\
+              Obligations about the GENERATED parser `parse`. The `encode_*` obligations (a\n\
+              serialized value is accepted, and evaluates back to itself) are left as `sorry` — a\n\
+              serializer is a choice, so its correctness is yours to prove; from them the printer\n\
+              theorems (`parse_toString_roundtrip`/`toString_injective`/`normalize_eq_iff_parse_eq`)\n\
+              are DISCHARGED here. These same `encode_*` obligations are reused by the external\n\
+              section below. -/"
+            let extBanner := "/- ══════════════════════ soundness · external parser ══════════════════════\n\
+              Obligations for validating YOUR OWN external parser against this specification:\n\
+              `extparse_sound`, `extparse_complete`, and `extparse_reject`, stated over the readable\n\
+              surface `IsValid`/`computeValue`. These are left as `sorry` — they are claims about\n\
+              your parser, so you have to prove them yourself. Given them, the external printer\n\
+              theorems (`extparse_toString_*`) are DISCHARGED, reusing the generated section's\n\
+              `encode_*`. -/"
+            let soundSections : List (String × Array String) :=
+              [(genBanner, genContractDecls), (extBanner, extContractDecls)]
+            let soundBody := String.intercalate "\n\n"
+              (soundSections.filterMap (fun (banner, decls) =>
+                if decls.isEmpty then none else some (banner ++ "\n\n" ++ joinDecls decls)))
             let soundPath := dir ++ "/soundness.lean"
-            IO.FS.writeFile soundPath
-              (soundHeader ++ "\n" ++ contractBanner ++ "\n\n" ++ joinDecls contractDecls ++ "\n")
+            IO.FS.writeFile soundPath (soundHeader ++ "\n" ++ soundBody ++ "\n")
           let filesWritten := "spec.lean, parser.lean" ++
             (if contractDecls.isEmpty then "" else ", soundness.lean")
           logInfo m!"FormatSpec: wrote {nm} → {dir}/ [{filesWritten}] \
@@ -817,16 +945,33 @@ from analysis and put correctness on you).
   item forms:
     \"lit\"                            a string literal (separators, unit tags)
     Nonterminal                      a reference to another production (the DAG edge)
-    digit<len> / hexDigit<len>       a terminal token run
+    digit<len> / hexDigit<len> / bit<len>   a terminal token run
     [ item ]                         optional
+    sign                             optional leading '-' (only as a production's SOLE rhs)
+    rep item sepBy \"sep\" <len>       separated repetition (sep non-empty, count ≥ 1)
   <len> suffix:  +  (one-or-more)   {n}  (exactly n)   {lo,hi}  (between)
+
+  CAPTURE RULE: only NAMED productions are captured — a capture `X` in `value`/`constraints`
+  always means \"the span matched by the production named X\". Bare literals/terminals inside a
+  rule are matched but recorded NOWHERE, so the value/constraint DSL cannot see them. If a
+  value or constraint must read a piece, give that piece its OWN named production. In
+  particular the `sign` terminal must be a production's sole rhs, so its capture is named and
+  the value DSL can read its ±1 sign by that name.
+  A name reused under several parents is disambiguated by QUALIFYING with the parent
+  (`Parent.child`); a bare name reads only the first occurrence.
 
 ── value ──  (optional; `Int`-valued, over the captured components)
   literals:  123        Int64.MAX        Int64.MIN
-  readers on a capture X:
+  readers on a capture X (X = a production name; see CAPTURE RULE above):
     nat X    unsigned decimal value        int X    signed (leading '-')
-    len X    character length              sign X   -1 if X starts '-', else +1
+    len X    character length              X        ±1 sign of a `sign` capture (bare name)
+  a BARE capture name reads its sign — valid only when `X ::= sign`; the checker rejects a bare
+  ref to a non-sign capture, and `nat/int/len` OF a sign capture.
   arithmetic:  a + b    a - b    a * b    a ^ b    ( … )    (prec: ^ > * > +/-)
+  lift <σ>   (optional trailing sub-clause)  σ : Int → δ lifts the GENERATED parser's output
+             to the domain type δ (so `parse : String → Option δ`); with a
+             `parser … projection π` clause, σ is π's section (`σ ∘ π = id`, the emitted
+             `lift_section` obligation).
 
 ── value' ──  (optional ESCAPE, for values outside the DSL, e.g. calendar math)
   value' f X Y …   with  def f (x y … : String) : Int := …    (`f` applied to captures)
@@ -848,14 +993,17 @@ from analysis and put correctness on you).
 ── constraints' ──  (optional ESCAPE, for constraints outside the DSL, e.g. calendar rules)
   one per line:  f X Y …   with  def f (x y … : String) : Bool := …   (`f` applied to captures)
 
-── parser ──  (optional)  parser <parse> projection <π>   emits the external-parser obligations.
+── parser ──  (optional)  parser <parse> projection <π>   emits the external-parser obligations
+                          (π : δ → β reads the external parser's value into the spec value type).
 ── printer ── (optional; needs value)  printer <toString>   names your canonical serializer over
-                          the spec value type β; emits the 2 encode obligations + auto-derives
-                          roundtrip/injective/normalize for the GENERATED parser, and (if a
-                          `parser` clause is present) the same trio for the EXTERNAL parser too.
+                          the DOMAIN type δ (what the parsers return); emits the encode
+                          obligations + auto-derives roundtrip/injective/normalize for the
+                          GENERATED parser, and (if a `parser` clause is present) the same trio
+                          for the EXTERNAL parser — both in δ-view `parse (toStr d) = some d`.
 ── to ──      (optional)  to \"<dir>\"                        writes <dir>/{spec,parser,soundness}.lean.
 
-Section order:  grammar · value · value' · constraints · constraints' · parser · printer · to.
+Section order:  grammar · value · value' · constraints · constraints' · parser · printer · to
+(`lift` nests inside `value`, as `projection` nests inside `parser`).
 When a format needs something not listed here, that is a signal to either (a) use the
 matching escape section (`value'` / `constraints'`) for that one piece, or (b) request the
 vocabulary be extended — not to hand-write the whole spec in Lean."

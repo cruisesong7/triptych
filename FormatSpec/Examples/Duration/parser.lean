@@ -6,8 +6,10 @@ import FormatSpec.Constraint
 import FormatSpec.Assemble
 import FormatSpec.Reconcile
 import FormatSpec.Examples.Duration.spec
+import FormatSpec.Examples.Duration.grammar
 
 open FormatSpec
+open FormatSpec.Examples.Duration
 
 set_option linter.unusedSimpArgs false
 set_option linter.unusedVariables false
@@ -23,14 +25,15 @@ RUN (`#eval isValid s`, `#eval computeValue s`). The `equivalence` section below
 proves the two describe the same language and value. -/
 
 def Duration.valueExpr : ValExpr :=
-  ValExpr.add
+  ValExpr.mul (ValExpr.signOf "Sign")
     (ValExpr.add
       (ValExpr.add
-        (ValExpr.add (ValExpr.mul (ValExpr.nat "DDays") (ValExpr.lit 86400000))
-          (ValExpr.mul (ValExpr.nat "DHours") (ValExpr.lit 3600000)))
-        (ValExpr.mul (ValExpr.nat "DMinutes") (ValExpr.lit 60000)))
-      (ValExpr.mul (ValExpr.nat "DSeconds") (ValExpr.lit 1000)))
-    (ValExpr.nat "DMillis")
+        (ValExpr.add
+          (ValExpr.add (ValExpr.mul (ValExpr.nat "DDays") (ValExpr.lit 86400000))
+            (ValExpr.mul (ValExpr.nat "DHours") (ValExpr.lit 3600000)))
+          (ValExpr.mul (ValExpr.nat "DMinutes") (ValExpr.lit 60000)))
+        (ValExpr.mul (ValExpr.nat "DSeconds") (ValExpr.lit 1000)))
+      (ValExpr.nat "DMillis"))
 
 def Duration.valueFn : Env → Int :=
   (Duration.valueExpr).eval
@@ -58,6 +61,20 @@ The auto-discharged guarantees relating the readable surface to the executable
 engine: `IsWf_equiv` (+ its `Internal.matchesRef.*` lemmas) proves recognition
 agrees, `computeValue_eq` proves the values agree, and the derived `DecidablePred`
 instances make the surface predicates executable via the engine. No `sorry`. -/
+
+theorem Duration.Internal.matchesRef.Sign (fuel : Nat) (s : String) :
+    matchesSym Duration.grammar (fuel + 1) (Sym.ref "Sign") s ↔ Duration.IsWf.Sign s :=
+  by
+  rw [matchesSym,
+    show (Duration.grammar).prod? "Sign" = some (Production.mk "Sign" [[SymItem.mk (Sym.lit "-") true]]) from rfl]
+  dsimp only
+  rw [matchesProd_single]
+  unfold Duration.IsWf.Sign
+  simp (config := { maxSteps := 1000000 }) only [FormatSpec.matchesSeq.eq_1, FormatSpec.matchesSeq.eq_2, exists_eq_left,
+    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, FormatSpec.matchesSym]
+  simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+  try grind [String.append_assoc, String.append_empty]
 
 theorem Duration.Internal.matchesRef.DDays (fuel : Nat) (s : String) :
     matchesSym Duration.grammar (fuel + 1) (Sym.ref "DDays") s ↔ Duration.IsWf.DDays s :=
@@ -267,14 +284,14 @@ theorem Duration.Internal.matchesRef.Duration (fuel : Nat) (s : String) :
   rw [matchesSym,
     show
       (Duration.grammar).prod? "Duration" =
-        some (Production.mk "Duration" [[SymItem.mk (Sym.lit "-") true, SymItem.mk (Sym.ref "Components") false]])
+        some (Production.mk "Duration" [[SymItem.mk (Sym.ref "Sign") false, SymItem.mk (Sym.ref "Components") false]])
       from rfl]
   dsimp only
   rw [matchesProd_single]
   unfold Duration.IsWf.Duration
   simp (config := { maxSteps := 1000000 }) only [FormatSpec.matchesSeq.eq_1, FormatSpec.matchesSeq.eq_2, exists_eq_left,
     if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, FormatSpec.matchesSym,
-    Duration.Internal.matchesRef.Components]
+    Duration.Internal.matchesRef.Sign, Duration.Internal.matchesRef.Components]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
@@ -284,23 +301,23 @@ theorem Duration.IsWf_equiv (s : String) : IsWf Duration.grammar s ↔ Duration.
   rw [isWf_eq_isWfProd_start, IsWfProd,
     show
       (Duration.grammar).prod? (Duration.grammar).start =
-        some (Production.mk "Duration" [[SymItem.mk (Sym.lit "-") true, SymItem.mk (Sym.ref "Components") false]])
+        some (Production.mk "Duration" [[SymItem.mk (Sym.ref "Sign") false, SymItem.mk (Sym.ref "Components") false]])
       from rfl]
   have hstart :
     ∀ n,
       matchesProd Duration.grammar n
-          (Production.mk "Duration" [[SymItem.mk (Sym.lit "-") true, SymItem.mk (Sym.ref "Components") false]]) s =
+          (Production.mk "Duration" [[SymItem.mk (Sym.ref "Sign") false, SymItem.mk (Sym.ref "Components") false]]) s =
         matchesSym Duration.grammar (n + 1) (Sym.ref "Duration") s :=
     by
     intro n
     rw [matchesSym,
       show
         (Duration.grammar).prod? "Duration" =
-          some (Production.mk "Duration" [[SymItem.mk (Sym.lit "-") true, SymItem.mk (Sym.ref "Components") false]])
+          some (Production.mk "Duration" [[SymItem.mk (Sym.ref "Sign") false, SymItem.mk (Sym.ref "Components") false]])
         from rfl]
   show
     matchesProd Duration.grammar (Duration.grammar).prods.length
-        (Production.mk "Duration" [[SymItem.mk (Sym.lit "-") true, SymItem.mk (Sym.ref "Components") false]]) s ↔
+        (Production.mk "Duration" [[SymItem.mk (Sym.ref "Sign") false, SymItem.mk (Sym.ref "Components") false]]) s ↔
       _
   rw [hstart]
   exact Duration.Internal.matchesRef.Duration _ s
@@ -329,9 +346,10 @@ theorem Duration.computeValue_eq (s : String) :
     Duration.computeValue s =
       (decode Duration.grammar s).map
         (fun _ =>
-          Duration.value (FormatSpec.component Duration.grammar s "DDays")
-            (FormatSpec.component Duration.grammar s "DHours") (FormatSpec.component Duration.grammar s "DMinutes")
-            (FormatSpec.component Duration.grammar s "DSeconds") (FormatSpec.component Duration.grammar s "DMillis")) :=
+          Duration.value (FormatSpec.component Duration.grammar s "Sign")
+            (FormatSpec.component Duration.grammar s "DDays") (FormatSpec.component Duration.grammar s "DHours")
+            (FormatSpec.component Duration.grammar s "DMinutes") (FormatSpec.component Duration.grammar s "DSeconds")
+            (FormatSpec.component Duration.grammar s "DMillis")) :=
   by
   unfold Duration.computeValue FormatSpec.computeValue FormatSpec.component FormatSpec.envOf Duration.value
     Duration.valueExpr
@@ -353,15 +371,15 @@ theorem Duration.computeValue_isSome (s : String) : Duration.isValid s → (Dura
   exact h.1.1
 
 def Duration.parse (s : String) :=
-  FormatSpec.gatedParse Duration.isValid Duration.computeValue s
+  FormatSpec.gatedParseLift Duration.isValid Duration.computeValue millisToDuration s
 
-theorem Duration.parse_sound (s : String) (i : Int) :
-    Duration.parse s = some i → Duration.isValid s ∧ Duration.computeValue s = some i :=
-  FormatSpec.gatedParse_sound _ _ s i
+theorem Duration.parse_sound (s : String) (d : Cedar.Spec.Ext.Datetime.Duration) :
+    Duration.parse s = some d → Duration.isValid s ∧ (Duration.computeValue s).map millisToDuration = some d :=
+  FormatSpec.gatedParseLift_sound _ _ _ s d
 
-theorem Duration.parse_complete (s : String) (i : Int) :
-    Duration.isValid s → Duration.computeValue s = some i → Duration.parse s = some i :=
-  FormatSpec.gatedParse_complete _ _ s i
+theorem Duration.parse_complete (s : String) (d : Cedar.Spec.Ext.Datetime.Duration) :
+    Duration.isValid s → (Duration.computeValue s).map millisToDuration = some d → Duration.parse s = some d :=
+  FormatSpec.gatedParseLift_complete _ _ _ s d
 
 theorem Duration.parse_reject (s : String) : Duration.parse s = none ↔ ¬Duration.isValid s :=
-  FormatSpec.gatedParse_reject _ _ Duration.computeValue_isSome s
+  FormatSpec.gatedParseLift_reject _ _ _ Duration.computeValue_isSome s

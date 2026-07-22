@@ -6,8 +6,10 @@ import FormatSpec.Constraint
 import FormatSpec.Assemble
 import FormatSpec.Reconcile
 import FormatSpec.Examples.Decimal.spec
+import FormatSpec.Examples.Decimal.grammar
 
 open FormatSpec
+open FormatSpec.Examples.Decimal
 
 set_option linter.unusedSimpArgs false
 set_option linter.unusedVariables false
@@ -23,9 +25,10 @@ RUN (`#eval isValid s`, `#eval computeValue s`). The `equivalence` section below
 proves the two describe the same language and value. -/
 
 def Decimal.valueExpr : ValExpr :=
-  ValExpr.add (ValExpr.mul (ValExpr.int "Integer") (ValExpr.pow (ValExpr.lit 10) (ValExpr.lit 4)))
-    (ValExpr.mul (ValExpr.mul (ValExpr.signOf "Integer") (ValExpr.nat "Fraction"))
-      (ValExpr.pow (ValExpr.lit 10) (ValExpr.sub (ValExpr.lit 4) (ValExpr.len "Fraction"))))
+  ValExpr.mul (ValExpr.signOf "Sign")
+    (ValExpr.add (ValExpr.mul (ValExpr.nat "Integer") (ValExpr.pow (ValExpr.lit 10) (ValExpr.lit 4)))
+      (ValExpr.mul (ValExpr.nat "Fraction")
+        (ValExpr.pow (ValExpr.lit 10) (ValExpr.sub (ValExpr.lit 4) (ValExpr.len "Fraction")))))
 
 def Decimal.valueFn : Env → Int :=
   (Decimal.valueExpr).eval
@@ -53,15 +56,27 @@ engine: `IsWf_equiv` (+ its `Internal.matchesRef.*` lemmas) proves recognition
 agrees, `computeValue_eq` proves the values agree, and the derived `DecidablePred`
 instances make the surface predicates executable via the engine. No `sorry`. -/
 
+theorem Decimal.Internal.matchesRef.Sign (fuel : Nat) (s : String) :
+    matchesSym Decimal.grammar (fuel + 1) (Sym.ref "Sign") s ↔ Decimal.IsWf.Sign s :=
+  by
+  rw [matchesSym,
+    show (Decimal.grammar).prod? "Sign" = some (Production.mk "Sign" [[SymItem.mk (Sym.lit "-") true]]) from rfl]
+  dsimp only
+  rw [matchesProd_single]
+  unfold Decimal.IsWf.Sign
+  simp (config := { maxSteps := 1000000 }) only [FormatSpec.matchesSeq.eq_1, FormatSpec.matchesSeq.eq_2, exists_eq_left,
+    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, FormatSpec.matchesSym]
+  simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+  try grind [String.append_assoc, String.append_empty]
+
 theorem Decimal.Internal.matchesRef.Integer (fuel : Nat) (s : String) :
     matchesSym Decimal.grammar (fuel + 1) (Sym.ref "Integer") s ↔ Decimal.IsWf.Integer s :=
   by
   rw [matchesSym,
     show
       (Decimal.grammar).prod? "Integer" =
-        some
-          (Production.mk "Integer"
-            [[SymItem.mk (Sym.lit "-") true, SymItem.mk (Sym.term TokClass.digit LenSpec.atLeastOne) false]])
+        some (Production.mk "Integer" [[SymItem.mk (Sym.term TokClass.digit LenSpec.atLeastOne) false]])
       from rfl]
   dsimp only
   rw [matchesProd_single]
@@ -99,7 +114,7 @@ theorem Decimal.Internal.matchesRef.Decimal (fuel : Nat) (s : String) :
       (Decimal.grammar).prod? "Decimal" =
         some
           (Production.mk "Decimal"
-            [[SymItem.mk (Sym.ref "Integer") false, SymItem.mk (Sym.lit ".") false,
+            [[SymItem.mk (Sym.ref "Sign") false, SymItem.mk (Sym.ref "Integer") false, SymItem.mk (Sym.lit ".") false,
                 SymItem.mk (Sym.ref "Fraction") false]])
       from rfl]
   dsimp only
@@ -107,7 +122,7 @@ theorem Decimal.Internal.matchesRef.Decimal (fuel : Nat) (s : String) :
   unfold Decimal.IsWf.Decimal
   simp (config := { maxSteps := 1000000 }) only [FormatSpec.matchesSeq.eq_1, FormatSpec.matchesSeq.eq_2, exists_eq_left,
     if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, FormatSpec.matchesSym,
-    Decimal.Internal.matchesRef.Integer, Decimal.Internal.matchesRef.Fraction]
+    Decimal.Internal.matchesRef.Sign, Decimal.Internal.matchesRef.Integer, Decimal.Internal.matchesRef.Fraction]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
@@ -119,14 +134,14 @@ theorem Decimal.IsWf_equiv (s : String) : IsWf Decimal.grammar s ↔ Decimal.IsW
       (Decimal.grammar).prod? (Decimal.grammar).start =
         some
           (Production.mk "Decimal"
-            [[SymItem.mk (Sym.ref "Integer") false, SymItem.mk (Sym.lit ".") false,
+            [[SymItem.mk (Sym.ref "Sign") false, SymItem.mk (Sym.ref "Integer") false, SymItem.mk (Sym.lit ".") false,
                 SymItem.mk (Sym.ref "Fraction") false]])
       from rfl]
   have hstart :
     ∀ n,
       matchesProd Decimal.grammar n
           (Production.mk "Decimal"
-            [[SymItem.mk (Sym.ref "Integer") false, SymItem.mk (Sym.lit ".") false,
+            [[SymItem.mk (Sym.ref "Sign") false, SymItem.mk (Sym.ref "Integer") false, SymItem.mk (Sym.lit ".") false,
                 SymItem.mk (Sym.ref "Fraction") false]])
           s =
         matchesSym Decimal.grammar (n + 1) (Sym.ref "Decimal") s :=
@@ -137,13 +152,13 @@ theorem Decimal.IsWf_equiv (s : String) : IsWf Decimal.grammar s ↔ Decimal.IsW
         (Decimal.grammar).prod? "Decimal" =
           some
             (Production.mk "Decimal"
-              [[SymItem.mk (Sym.ref "Integer") false, SymItem.mk (Sym.lit ".") false,
+              [[SymItem.mk (Sym.ref "Sign") false, SymItem.mk (Sym.ref "Integer") false, SymItem.mk (Sym.lit ".") false,
                   SymItem.mk (Sym.ref "Fraction") false]])
         from rfl]
   show
     matchesProd Decimal.grammar (Decimal.grammar).prods.length
         (Production.mk "Decimal"
-          [[SymItem.mk (Sym.ref "Integer") false, SymItem.mk (Sym.lit ".") false,
+          [[SymItem.mk (Sym.ref "Sign") false, SymItem.mk (Sym.ref "Integer") false, SymItem.mk (Sym.lit ".") false,
               SymItem.mk (Sym.ref "Fraction") false]])
         s ↔
       _
@@ -174,8 +189,8 @@ theorem Decimal.computeValue_eq (s : String) :
     Decimal.computeValue s =
       (decode Decimal.grammar s).map
         (fun _ =>
-          Decimal.value (FormatSpec.component Decimal.grammar s "Integer")
-            (FormatSpec.component Decimal.grammar s "Fraction")) :=
+          Decimal.value (FormatSpec.component Decimal.grammar s "Sign")
+            (FormatSpec.component Decimal.grammar s "Integer") (FormatSpec.component Decimal.grammar s "Fraction")) :=
   by
   unfold Decimal.computeValue FormatSpec.computeValue FormatSpec.component FormatSpec.envOf Decimal.value
     Decimal.valueExpr
@@ -197,15 +212,15 @@ theorem Decimal.computeValue_isSome (s : String) : Decimal.isValid s → (Decima
   exact h.1.1
 
 def Decimal.parse (s : String) :=
-  FormatSpec.gatedParse Decimal.isValid Decimal.computeValue s
+  FormatSpec.gatedParseLift Decimal.isValid Decimal.computeValue Int64.ofInt s
 
-theorem Decimal.parse_sound (s : String) (i : Int) :
-    Decimal.parse s = some i → Decimal.isValid s ∧ Decimal.computeValue s = some i :=
-  FormatSpec.gatedParse_sound _ _ s i
+theorem Decimal.parse_sound (s : String) (i : Int64) :
+    Decimal.parse s = some i → Decimal.isValid s ∧ (Decimal.computeValue s).map Int64.ofInt = some i :=
+  FormatSpec.gatedParseLift_sound _ _ _ s i
 
-theorem Decimal.parse_complete (s : String) (i : Int) :
-    Decimal.isValid s → Decimal.computeValue s = some i → Decimal.parse s = some i :=
-  FormatSpec.gatedParse_complete _ _ s i
+theorem Decimal.parse_complete (s : String) (i : Int64) :
+    Decimal.isValid s → (Decimal.computeValue s).map Int64.ofInt = some i → Decimal.parse s = some i :=
+  FormatSpec.gatedParseLift_complete _ _ _ s i
 
 theorem Decimal.parse_reject (s : String) : Decimal.parse s = none ↔ ¬Decimal.isValid s :=
-  FormatSpec.gatedParse_reject _ _ Decimal.computeValue_isSome s
+  FormatSpec.gatedParseLift_reject _ _ _ Decimal.computeValue_isSome s

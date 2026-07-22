@@ -21,7 +21,8 @@ constraints). This file is proof-free — it is what you cite. -/
 
 def Duration.grammar : Grammar :=
   Grammar.mk "Duration"
-    [Production.mk "Duration" [[SymItem.mk (Sym.lit "-") true, SymItem.mk (Sym.ref "Components") false]],
+    [Production.mk "Duration" [[SymItem.mk (Sym.ref "Sign") false, SymItem.mk (Sym.ref "Components") false]],
+      Production.mk "Sign" [[SymItem.mk (Sym.lit "-") true]],
       Production.mk "Components"
         [[SymItem.mk (Sym.ref "Days") true, SymItem.mk (Sym.ref "Hours") true, SymItem.mk (Sym.ref "Minutes") true,
             SymItem.mk (Sym.ref "Seconds") true, SymItem.mk (Sym.ref "Millis") true]],
@@ -35,6 +36,9 @@ def Duration.grammar : Grammar :=
       Production.mk "DMinutes" [[SymItem.mk (Sym.term TokClass.digit LenSpec.atLeastOne) false]],
       Production.mk "DSeconds" [[SymItem.mk (Sym.term TokClass.digit LenSpec.atLeastOne) false]],
       Production.mk "DMillis" [[SymItem.mk (Sym.term TokClass.digit LenSpec.atLeastOne) false]]]
+
+def Duration.IsWf.Sign (s : String) : Prop :=
+  s = "-" ∨ s = ""
 
 def Duration.IsWf.DDays (s : String) : Prop :=
   IsDigits s
@@ -75,25 +79,26 @@ def Duration.IsWf.Components (s : String) : Prop :=
       (millis = "" ∨ Duration.IsWf.Millis millis)
 
 def Duration.IsWf.Duration (s : String) : Prop :=
-  (∃ rest, s = "-" ++ rest ∧ Duration.IsWf.Components rest) ∨ Duration.IsWf.Components s
+  ∃ «sign» components, (s = «sign» ++ components ∧ Duration.IsWf.Sign «sign») ∧ Duration.IsWf.Components components
 
-def Duration.value (dDays : String) (dHours : String) (dMinutes : String) (dSeconds : String) (dMillis : String) :
-    Int :=
-  natOf dDays * (86400000 : Int) + natOf dHours * (3600000 : Int) + natOf dMinutes * (60000 : Int) +
-      natOf dSeconds * (1000 : Int) +
-    natOf dMillis
+def Duration.value («sign» : String) (dDays : String) (dHours : String) (dMinutes : String) (dSeconds : String)
+    (dMillis : String) : Int :=
+  signOf «sign» *
+    (natOf dDays * (86400000 : Int) + natOf dHours * (3600000 : Int) + natOf dMinutes * (60000 : Int) +
+        natOf dSeconds * (1000 : Int) +
+      natOf dMillis)
 
-def Duration.Constraints (components : String) (dDays : String) (dHours : String) (dMinutes : String)
+def Duration.Constraints (components : String) («sign» : String) (dDays : String) (dHours : String) (dMinutes : String)
     (dSeconds : String) (dMillis : String) : Prop :=
   components ≠ "" ∧
-    (-9223372036854775808 : Int) ≤ Duration.value dDays dHours dMinutes dSeconds dMillis ∧
-      Duration.value dDays dHours dMinutes dSeconds dMillis ≤ (9223372036854775807 : Int)
+    (-9223372036854775808 : Int) ≤ Duration.value «sign» dDays dHours dMinutes dSeconds dMillis ∧
+      Duration.value «sign» dDays dHours dMinutes dSeconds dMillis ≤ (9223372036854775807 : Int)
 
 def Duration.SatisfiesConstraints (s : String) : Prop :=
   Duration.Constraints (FormatSpec.component Duration.grammar s "Components")
-    (FormatSpec.component Duration.grammar s "DDays") (FormatSpec.component Duration.grammar s "DHours")
-    (FormatSpec.component Duration.grammar s "DMinutes") (FormatSpec.component Duration.grammar s "DSeconds")
-    (FormatSpec.component Duration.grammar s "DMillis")
+    (FormatSpec.component Duration.grammar s "Sign") (FormatSpec.component Duration.grammar s "DDays")
+    (FormatSpec.component Duration.grammar s "DHours") (FormatSpec.component Duration.grammar s "DMinutes")
+    (FormatSpec.component Duration.grammar s "DSeconds") (FormatSpec.component Duration.grammar s "DMillis")
 
 abbrev Duration.IsValid (s : String) : Prop :=
   Duration.IsWf.Duration s ∧ Duration.SatisfiesConstraints s

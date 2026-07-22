@@ -49,24 +49,30 @@ open FormatSpec
 -- `Decimal := Int64`), projected to its `Int` denotation by `Int64.toInt`. The emitted
 -- `soundness.lean` states the `sorry`d obligations relating THIS parser to the surface spec.
 
--- ONE canonical serializer for the `printer` clause, over the SPEC value type (fixed-point ×10⁴
--- `Int`). Both the generated parser and Cedar's parser project to this `Int` (Cedar via
--- `Int64.toInt`), so a single serializer drives the printer theorems for BOTH, stated in β-view.
--- Rather than hand-roll the formatting, reuse Cedar's own `ToString Decimal`: wrap the ×10⁴
--- `Int` into a `Decimal` (`= Int64`) and serialize — so the string form is Cedar's by definition.
-def intToDecimalString (i : Int) : String := toString (Int64.ofInt i : Cedar.Spec.Ext.Decimal)
+-- ONE canonical serializer for the `printer` clause, over the DOMAIN type `Decimal` (= `Int64`).
+-- BOTH parsers return `Option Decimal` (the generated one via the `lift Int64.ofInt` below, Cedar's
+-- natively), so a single DOMAIN serializer drives the printer theorems for both, in the clean
+-- δ-VIEW `parse (toStr d) = some d`. Rather than hand-roll the formatting, reuse Cedar's own
+-- `ToString Decimal` — so the string form is Cedar's canonical decimal notation by definition.
+def decimalToStr (d : Cedar.Spec.Ext.Decimal) : String := toString d
 
 format_spec Decimal where
   grammar
-    Decimal  ::= Integer "." Fraction
-    Integer  ::= ["-"] digit+
+    Decimal  ::= Sign Integer "." Fraction
+    Sign     ::= sign
+    Integer  ::= digit+
     Fraction ::= digit{1,4}
   value
-    int Integer * 10 ^ 4 + sign Integer * nat Fraction * 10 ^ (4 - len Fraction)
+    Sign * (nat Integer * 10 ^ 4 + nat Fraction * 10 ^ (4 - len Fraction))
+    -- `lift` (sub-clause of `value`): upgrade the GENERATED parser's output from the spec value
+    -- `Int` (×10⁴ fixed point) to the domain type `Decimal` (= `Int64`) via `Int64.ofInt`, a
+    -- section of the projection below (`Int64.ofInt_toInt`). So `Decimal.parse : String → Option
+    -- Decimal`, type-identical to Cedar's.
+    lift Int64.ofInt
   constraints
     value ∈ [Int64.MIN, Int64.MAX]
   parser Cedar.Spec.Ext.Decimal.parse projection Int64.toInt
-  printer intToDecimalString
+  printer decimalToStr
   -- Write the generated modules `spec.lean` / `parser.lean` / `soundness.lean` into this dir.
   to "FormatSpec/Examples/Decimal"
 
@@ -74,8 +80,9 @@ format_spec Decimal where
 --  OUTPUT — the generated declarations, run on sample strings
 -- ════════════════════════════════════════════════════════════════════════════
 
-#eval decode Decimal.grammar "1.5"          -- some [("Integer","1"),("Fraction","5")]
-#eval Decimal.parse "1.5"                    -- some 15000
+#eval decode Decimal.grammar "1.5"          -- some [("Sign",""),("Integer","1"),("Fraction","5")]
+#eval Decimal.computeValue "1.5"             -- some 15000  (the spec value: ×10⁴ fixed point)
+#eval Decimal.parse "1.5"                    -- some 15000  (as a Decimal, via `lift Int64.ofInt`)
 #eval Decimal.parse "1.x"                    -- none  (rejected)
 #eval Decimal.parse "-0.15"                  -- some (-1500)  (the sign corner case)
 
@@ -83,18 +90,19 @@ format_spec Decimal where
 #check (Decimal.IsWf_equiv : ∀ s, IsWf Decimal.grammar s ↔ Decimal.IsWf.Decimal s)
 example : DecidablePred Decimal.IsValid := inferInstance
 
--- The GENERATED verified parser + its printer theorems (spec value type Int, `intToDecimalString`):
-#check @Decimal.parse_sound       -- ∀ s i, parse s = some i → isValid s ∧ computeValue s = some i
-#check @Decimal.parse_toString_roundtrip   -- ∀ i, parse (intToDecimalString i) = some i
+-- The GENERATED verified parser (LIFTED to `Option Decimal` by `lift Int64.ofInt`) + its printer
+-- theorems, δ-view via the single domain serializer `decimalToStr`:
+#check (Decimal.parse : String → Option Cedar.Spec.Ext.Decimal)
+#check @Decimal.parse_sound       -- ∀ s d, parse s = some d → isValid s ∧ (computeValue s).map Int64.ofInt = some d
+#check @Decimal.parse_toString_roundtrip   -- ∀ d, parse (decimalToStr d) = some d
 #check @Decimal.toString_injective
 #check @Decimal.normalize_eq_iff_parse_eq
 
--- The EXTERNAL parser (Cedar's real parse) obligations + printer theorems, β-view via the same
--- `intToDecimalString` and the projection `Int64.toInt`:
+-- The EXTERNAL parser (Cedar's real parse) obligations + printer theorems, same serializer:
 #check @Decimal.extparse_sound
 #check @Decimal.extparse_complete
 #check @Decimal.extparse_reject
-#check @Decimal.extparse_toString_roundtrip -- ∀ i, (Cedar…parse (intToDecimalString i)).map Int64.toInt = some i
+#check @Decimal.extparse_toString_roundtrip -- ∀ d, Cedar…Decimal.parse (decimalToStr d) = some d
 #check @Decimal.extparse_toString_injective
 #check @Decimal.extparse_normalize_eq_iff_parse_eq
 

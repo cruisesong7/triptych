@@ -150,7 +150,11 @@ syntax:max num             : valExpr
 syntax:max "nat " ident    : valExpr
 syntax:max "int " ident    : valExpr
 syntax:max "len " ident    : valExpr
-syntax:max "sign " ident   : valExpr
+-- A BARE capture name denotes its SIGN (±1): `Sign` ⟺ the old `sign Sign`. Reserved for
+-- productions declared `Sign ::= sign` (a dedicated sign capture); the `"nat "`/`"int "`/`"len "`
+-- atoms above are keywords, so a bare ident never collides with them. See `elabFormatSpec`,
+-- which validates that every bare-ident ref names an actual sign capture.
+syntax:max ident           : valExpr
 -- Named integer constants (desugar to `ValExpr.lit`, staying fully analyzable).
 syntax:max "Int64.MAX"     : valExpr
 syntax:max "Int64.MIN"     : valExpr
@@ -179,7 +183,7 @@ partial def elabValExprWith (valueSub : Option (TSyntax `term)) :
   | `(valExpr| nat $i:ident)  => `(ValExpr.nat $(quote i.getId.toString))
   | `(valExpr| int $i:ident)  => `(ValExpr.int $(quote i.getId.toString))
   | `(valExpr| len $i:ident)  => `(ValExpr.len $(quote i.getId.toString))
-  | `(valExpr| sign $i:ident) => `(ValExpr.signOf $(quote i.getId.toString))
+  | `(valExpr| $i:ident)      => `(ValExpr.signOf $(quote i.getId.toString))
   | `(valExpr| ( $e:valExpr )) => elabValExprWith valueSub e
   | `(valExpr| $a:valExpr + $b:valExpr) => do `(ValExpr.add $(← elabValExprWith valueSub a) $(← elabValExprWith valueSub b))
   | `(valExpr| $a:valExpr - $b:valExpr) => do `(ValExpr.sub $(← elabValExprWith valueSub a) $(← elabValExprWith valueSub b))
@@ -234,7 +238,7 @@ partial def elabValReadableWith (valueSub : Option (TSyntax `term)) :
   | `(valExpr| nat $i:ident)  => let b := mkIdent (Name.mkSimple (surfaceBinder i.getId.toString)); `(natOf $b)
   | `(valExpr| int $i:ident)  => let b := mkIdent (Name.mkSimple (surfaceBinder i.getId.toString)); `(intOf $b)
   | `(valExpr| len $i:ident)  => let b := mkIdent (Name.mkSimple (surfaceBinder i.getId.toString)); `(lenOf $b)
-  | `(valExpr| sign $i:ident) => let b := mkIdent (Name.mkSimple (surfaceBinder i.getId.toString)); `(signOf $b)
+  | `(valExpr| $i:ident)      => let b := mkIdent (Name.mkSimple (surfaceBinder i.getId.toString)); `(signOf $b)
   | `(valExpr| ( $e:valExpr )) => do `(($(← elabValReadableWith valueSub e)))
   | `(valExpr| $a:valExpr + $b:valExpr) => do `($(← elabValReadableWith valueSub a) + $(← elabValReadableWith valueSub b))
   | `(valExpr| $a:valExpr - $b:valExpr) => do `($(← elabValReadableWith valueSub a) - $(← elabValReadableWith valueSub b))
@@ -248,12 +252,28 @@ partial def valExprCaptures : TSyntax `valExpr → List String
   | `(valExpr| nat $i:ident)  => [i.getId.toString]
   | `(valExpr| int $i:ident)  => [i.getId.toString]
   | `(valExpr| len $i:ident)  => [i.getId.toString]
-  | `(valExpr| sign $i:ident) => [i.getId.toString]
+  | `(valExpr| $i:ident)      => [i.getId.toString]
   | `(valExpr| ( $e:valExpr )) => valExprCaptures e
   | `(valExpr| $a:valExpr + $b:valExpr) => (valExprCaptures a ++ valExprCaptures b).eraseDups
   | `(valExpr| $a:valExpr - $b:valExpr) => (valExprCaptures a ++ valExprCaptures b).eraseDups
   | `(valExpr| $a:valExpr * $b:valExpr) => (valExprCaptures a ++ valExprCaptures b).eraseDups
   | `(valExpr| $a:valExpr ^ $b:valExpr) => (valExprCaptures a ++ valExprCaptures b).eraseDups
+  | _ => []
+
+/-- The capture names referenced BARE (i.e. as a sign, `ValExpr.signOf`) in a `valExpr` — the
+    subset of `valExprCaptures` that must name dedicated SIGN productions (`X ::= sign`). Kept
+    separate so `elabFormatSpec` can validate each bare ref actually is a sign capture (else the
+    old silent-`+1` trap returns). -/
+partial def valExprSignCaptures : TSyntax `valExpr → List String
+  | `(valExpr| nat $_:ident)  => []
+  | `(valExpr| int $_:ident)  => []
+  | `(valExpr| len $_:ident)  => []
+  | `(valExpr| $i:ident)      => [i.getId.toString]
+  | `(valExpr| ( $e:valExpr )) => valExprSignCaptures e
+  | `(valExpr| $a:valExpr + $b:valExpr) => (valExprSignCaptures a ++ valExprSignCaptures b).eraseDups
+  | `(valExpr| $a:valExpr - $b:valExpr) => (valExprSignCaptures a ++ valExprSignCaptures b).eraseDups
+  | `(valExpr| $a:valExpr * $b:valExpr) => (valExprSignCaptures a ++ valExprSignCaptures b).eraseDups
+  | `(valExpr| $a:valExpr ^ $b:valExpr) => (valExprSignCaptures a ++ valExprSignCaptures b).eraseDups
   | _ => []
 
 end FormatSpec

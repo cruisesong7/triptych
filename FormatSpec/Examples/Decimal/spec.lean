@@ -22,30 +22,37 @@ constraints). This file is proof-free — it is what you cite. -/
 def Decimal.grammar : Grammar :=
   Grammar.mk "Decimal"
     [Production.mk "Decimal"
-        [[SymItem.mk (Sym.ref "Integer") false, SymItem.mk (Sym.lit ".") false, SymItem.mk (Sym.ref "Fraction") false]],
-      Production.mk "Integer"
-        [[SymItem.mk (Sym.lit "-") true, SymItem.mk (Sym.term TokClass.digit LenSpec.atLeastOne) false]],
+        [[SymItem.mk (Sym.ref "Sign") false, SymItem.mk (Sym.ref "Integer") false, SymItem.mk (Sym.lit ".") false,
+            SymItem.mk (Sym.ref "Fraction") false]],
+      Production.mk "Sign" [[SymItem.mk (Sym.lit "-") true]],
+      Production.mk "Integer" [[SymItem.mk (Sym.term TokClass.digit LenSpec.atLeastOne) false]],
       Production.mk "Fraction" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.between 1 4)) false]]]
 
+def Decimal.IsWf.Sign (s : String) : Prop :=
+  s = "-" ∨ s = ""
+
 def Decimal.IsWf.Integer (s : String) : Prop :=
-  (∃ rest, s = "-" ++ rest ∧ IsDigits rest) ∨ IsDigits s
+  IsDigits s
 
 def Decimal.IsWf.Fraction (s : String) : Prop :=
   IsDigitsBetween 1 4 s
 
 def Decimal.IsWf.Decimal (s : String) : Prop :=
-  ∃ integer fraction, (s = integer ++ "." ++ fraction ∧ Decimal.IsWf.Integer integer) ∧ Decimal.IsWf.Fraction fraction
+  ∃ «sign» integer fraction,
+    ((s = «sign» ++ integer ++ "." ++ fraction ∧ Decimal.IsWf.Sign «sign») ∧ Decimal.IsWf.Integer integer) ∧
+      Decimal.IsWf.Fraction fraction
 
-def Decimal.value (integer : String) (fraction : String) : Int :=
-  intOf integer * (10 : Int) ^ ((4 : Int)).toNat +
-    signOf integer * natOf fraction * (10 : Int) ^ (((4 : Int) - lenOf fraction)).toNat
+def Decimal.value («sign» : String) (integer : String) (fraction : String) : Int :=
+  signOf «sign» *
+    (natOf integer * (10 : Int) ^ ((4 : Int)).toNat +
+      natOf fraction * (10 : Int) ^ (((4 : Int) - lenOf fraction)).toNat)
 
-def Decimal.Constraints (integer : String) (fraction : String) : Prop :=
-  (-9223372036854775808 : Int) ≤ Decimal.value integer fraction ∧
-    Decimal.value integer fraction ≤ (9223372036854775807 : Int)
+def Decimal.Constraints («sign» : String) (integer : String) (fraction : String) : Prop :=
+  (-9223372036854775808 : Int) ≤ Decimal.value «sign» integer fraction ∧
+    Decimal.value «sign» integer fraction ≤ (9223372036854775807 : Int)
 
 def Decimal.SatisfiesConstraints (s : String) : Prop :=
-  Decimal.Constraints (FormatSpec.component Decimal.grammar s "Integer")
+  Decimal.Constraints (FormatSpec.component Decimal.grammar s "Sign") (FormatSpec.component Decimal.grammar s "Integer")
     (FormatSpec.component Decimal.grammar s "Fraction")
 
 abbrev Decimal.IsValid (s : String) : Prop :=
