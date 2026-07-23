@@ -6,7 +6,7 @@
 
 - **Hack Portal idea:** [link]
 - **Demo video:** [link]
-- **Other artifacts:** code: https://github.com/cruisesong7/formatspec (Lean 4; builds with `lake build Triptych`)
+- **Other artifacts:** code: https://github.com/cruisesong7/triptych (Lean 4; builds with `lake build Triptych`)
 
 **Award categories (select up to 2):**
 
