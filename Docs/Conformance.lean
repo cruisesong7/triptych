@@ -18,7 +18,7 @@ file := "conformance"
 The proofs in this book relate generated artifacts to each other and — through the
 obligations of chapter 3 — to external parsers. But proofs are only as good as the
 statements they prove, and every statement is ultimately anchored in a human transcription:
-someone read Cedar's documentation and wrote the `format_spec` block. What if the
+someone read Cedar's documentation and wrote the `triptych` block. What if the
 *transcription* is wrong? A grammar that faithfully generates a spec, a parser, and a
 reconciliation proof for the *wrong format* passes every check the previous chapters
 described.

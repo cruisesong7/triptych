@@ -62,12 +62,12 @@ holds fails the build.
 
 # One block in, three files out
 
-A `format_spec` block is a grammar plus optional value and constraint clauses. Here is the
+A `triptych` block is a grammar plus optional value and constraint clauses. Here is the
 decimal format — a signed integer part, a dot, and one to four fraction digits, denoting a
 fixed-point value with four decimal places:
 
 ```
-format_spec Decimal where
+triptych Decimal where
   grammar
     Decimal  ::= Sign Integer "." Fraction
     Sign     ::= sign

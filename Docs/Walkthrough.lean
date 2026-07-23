@@ -17,7 +17,7 @@ shortTitle := "Decimal walkthrough"
 file := "walkthrough"
 %%%
 
-This chapter follows one format — Cedar's `decimal` extension type — from its `format_spec`
+This chapter follows one format — Cedar's `decimal` extension type — from its `triptych`
 block to every artifact the compiler generates from it. Everything shown in a Lean code block
 below is *live*: it is elaborated against the actual Triptych library when this book is
 built, so the outputs and theorem statements you see are the real ones.
@@ -45,7 +45,7 @@ Three concerns, one per DSL clause:
 The block from `Triptych/Examples/Decimal/grammar.lean`:
 
 ```
-format_spec Decimal where
+triptych Decimal where
   grammar
     Decimal  ::= Sign Integer "." Fraction
     Sign     ::= sign

@@ -25,7 +25,7 @@ shortTitle := "Triptych"
 Triptych is a Lean 4 *grammar-to-specification compiler* for flat, non-recursive
 string-format parsers.
 
-A `format_spec` block — a grammar plus optional value and constraint clauses — generates
+A `triptych` block — a grammar plus optional value and constraint clauses — generates
 three artifacts that are proven to agree with each other:
 
 - a *readable surface spec* (proof-free prose-level predicates),
