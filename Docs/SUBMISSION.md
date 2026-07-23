@@ -29,7 +29,7 @@ Impact: anyone maintaining a string-format parser (policy languages, config form
 
 ## Solution
 
-One `format_spec` block in, three generated files out:
+One `triptych` block in, three generated files out:
 
 - **`spec.lean` — cite.** Each grammar production becomes a readable predicate you can eyeball against the grammar. Proof-free.
 - **`parser.lean` — run + trust.** An executable engine, a generated verified parser `parse` with auto-discharged soundness/completeness/rejection theorems, and machine-checked proofs that spec and engine agree on both *recognition* and *value*. Zero `sorry`, standard axioms only.
@@ -41,7 +41,7 @@ Working today: six formats (Decimal, Duration, Datetime, IPv4, IPv6, Graph); the
 
 A four-stage compiler pipeline, implemented as a Lean metaprogram:
 
-1. **DSL → data.** Lean's parser (extended via `syntax` rules) reads the `format_spec` block; an elaborator lowers it to a first-order `Grammar` datatype — a closed, inspectable AST. Because the grammar is *data*, not code, the tool can analyze it.
+1. **DSL → data.** Lean's parser (extended via `syntax` rules) reads the `triptych` block; an elaborator lowers it to a first-order `Grammar` datatype — a closed, inspectable AST. Because the grammar is *data*, not code, the tool can analyze it.
 2. **Two interpretations of one AST.** From the same `Grammar` value we derive a *denotation* (a logical predicate: what strings mean) and an executable *decoder* (a recognizer that extracts named captures).
 3. **One generic proof.** The hard theorem — the decoder recognizes exactly the denoted language — is proved once, for the whole grammar class, in the library (~660 lines of mutual induction). Every format reuses it.
 4. **Total generation.** Per format, the metaprogram *emits* the readable spec and its equivalence proofs as Lean source, checked by the kernel. The grammar class (flat-regular: no recursion, no data-dependent length) is restricted precisely so this emission is a fixed recipe — never proof search, never stuck.

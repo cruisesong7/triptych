@@ -23,7 +23,7 @@ import Triptych.Architecture.Value
 /-!
 # Assembling the bundled spec
 
-The `format_spec` command emits the *ingredients* — the grammar, the constraint list,
+The `triptych` command emits the *ingredients* — the grammar, the constraint list,
 and the value expression. This module bundles them into the named predicates of the
 design-note contract (§16.1):
 

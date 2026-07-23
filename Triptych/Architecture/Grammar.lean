@@ -17,7 +17,7 @@
 /-!
 # Core grammar type: flat, non-recursive (DAG) attribute grammars — *syntax only*
 
-This is the first-order data the `format_spec` DSL elaborates into, and the
+This is the first-order data the `triptych` DSL elaborates into, and the
 classifier / spec-generator consume. It records **only the syntactic skeleton** — a
 DAG of named productions in an EBNF subset, matching the `::=` grammars written in
 `doc/CedarDoc/*.lean`.

@@ -22,7 +22,7 @@ import Cedar.Spec.Ext.Decimal
 /-!
 # Decimal example: the grammar input
 
-Transcribes `doc/CedarDoc/Decimal.lean` into one `format_spec` block, exercises the
+Transcribes `doc/CedarDoc/Decimal.lean` into one `triptych` block, exercises the
 generated spec end-to-end, and writes the generated modules next to this file:
 `spec.lean` (the citable, proof-free surface), `parser.lean` (the engine + auto-discharged
 proofs + the generated verified parser), and `soundness.lean` (the `sorry`d obligations,
@@ -36,7 +36,7 @@ open Triptych
 
 /- Not sure what the value / constraint DSL can express? Print the full vocabulary
 (and the `opaque` escape hatches) before reaching for raw Lean: -/
-#format_spec_help
+#triptych_help
 
 /- The `parser` clause below names the REAL external parser — Cedar's own
 `Decimal.parse : String → Option Decimal` (where `Decimal := Int64`) — with projection
@@ -53,7 +53,7 @@ open Triptych
     string form is Cedar's canonical decimal notation by definition. -/
 def decimalToStr (d : Cedar.Spec.Ext.Decimal) : String := toString d
 
-format_spec Decimal where
+triptych Decimal where
   grammar
     Decimal  ::= Sign Integer "." Fraction
     Sign     ::= sign

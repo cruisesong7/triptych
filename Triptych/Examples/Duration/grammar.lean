@@ -54,7 +54,7 @@ def durationToStr (d : Cedar.Spec.Ext.Datetime.Duration) : String := toString d
 so `value` can read the number via `nat DDays` — `Days ::= DDays "d"` captures both the
 full `"1d"` (as `Days`) AND the digits `"1"` (as `DDays`), since `decode` records nested
 refs. This resolves the "`nat Days` on `"1d"` is garbage" problem with no new machinery. -/
-format_spec Duration where
+triptych Duration where
   grammar
     Duration   ::= Sign Components
     Sign       ::= sign

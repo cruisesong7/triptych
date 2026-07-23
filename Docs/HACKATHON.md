@@ -24,7 +24,7 @@ formal spec for you. We keep it to the simple class these formats actually live 
 recursion, fixed shape — which is exactly what makes the whole thing automatable.
 
 ```
-format_spec Decimal where
+triptych Decimal where
   grammar
     Decimal  ::= Integer "." Fraction
     Integer  ::= ["-"] digit+

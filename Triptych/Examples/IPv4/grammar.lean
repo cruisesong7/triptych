@@ -40,7 +40,7 @@ this file (no `parser`/`printer` clause, so no `soundness.lean`).
 namespace Triptych.Examples.IPv4
 open Triptych
 
-format_spec IPv4 where
+triptych IPv4 where
   grammar
     V4Addr ::= Oct1 "." Oct2 "." Oct3 "." Oct4
     Oct1   ::= digit{1,3}

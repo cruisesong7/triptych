@@ -98,7 +98,7 @@ def epochMillis (yyyy mm dd time_hh time_mm ss sss offset_hh offset_mm offset : 
     surface forms — the printer theorems need a single canonical serializer, which is absent.) -/
 def datetimeMillis (d : Cedar.Spec.Ext.Datetime) : Int := d.val.toInt
 
-format_spec Datetime where
+triptych Datetime where
   grammar
     Datetime ::= Date
                | Date "T" Time "Z"

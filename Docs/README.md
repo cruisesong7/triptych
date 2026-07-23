@@ -3,7 +3,7 @@
 A Lean 4 library for **specifying and verifying flat, non-recursive string-format
 parsers** — the "verified textual scalar/record parsing" niche.
 
-Given a `format_spec` DSL block (a grammar, plus optional value / constraint sections),
+Given a `triptych` DSL block (a grammar, plus optional value / constraint sections),
 it generates up to three files, split by audience:
 
 * **`spec.lean` — a readable surface specification** — inlined per-production well-formedness
@@ -45,7 +45,7 @@ Every generated proof outside `soundness.lean` depends only on the standard axio
 ## Example
 
 ```lean
-format_spec IPv6 where
+triptych IPv6 where
   grammar
     V6Addr ::= rep H16 sepBy ":" {8}     -- eight H16 groups joined by ":"
     H16    ::= hexDigit{1,4}

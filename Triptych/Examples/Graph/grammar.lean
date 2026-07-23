@@ -88,7 +88,7 @@ def toGraph (cells : String) : Graph :=
 def isTriangular (cells : String) : Bool :=
   (List.range (cells.length + 2)).any (fun n => n * (n - 1) / 2 == cells.length)
 
-format_spec Graph where
+triptych Graph where
   grammar
     Adj   ::= Cells
     Cells ::= bit+

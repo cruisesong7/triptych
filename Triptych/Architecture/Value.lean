@@ -19,7 +19,7 @@ import Lean
 /-!
 # The value-DSL: a deep-embedded value expression language
 
-The `value` section of `format_spec` is written in a small, readable, math-style
+The `value` section of `triptych` is written in a small, readable, math-style
 formula language transcribing the doc's `value(X) = …` notation. Crucially this is a
 **deep embedding**: the DSL elaborates into an inspectable `ValExpr` AST, NOT directly
 into an opaque Lean term.

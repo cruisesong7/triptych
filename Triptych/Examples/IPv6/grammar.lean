@@ -53,7 +53,7 @@ Both hold here (`":"`, `{8}`); the DSL rejects violations at parse time. Writes 
 namespace Triptych.Examples.IPv6
 open Triptych
 
-format_spec IPv6 where
+triptych IPv6 where
   grammar
     V6Addr ::= rep H16 sepBy ":" {8}
     H16    ::= hexDigit{1,4}

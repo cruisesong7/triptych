@@ -2,7 +2,7 @@
 Conformance tests: the GENERATED parsers vs Cedar's REAL parsers, over Cedar's OWN test corpus.
 
 This is a one-time confidence check (NOT auto-generated, NOT part of the proof story): it runs the
-verified parsers `format_spec` emits against the exact strings Cedar's own unit tests use
+verified parsers `triptych` emits against the exact strings Cedar's own unit tests use
 (`cedar-lean/UnitTest/{Decimal,Datetime}.lean`), so we gain empirical assurance that our
 `IsValid`/`computeValue` capture every requirement Cedar's parser enforces — the range checks, the
 overflow bounds, the reject cases — not just the ones we happened to think of.
