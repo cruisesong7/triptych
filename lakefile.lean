@@ -8,6 +8,10 @@ require "leanprover-community" / "batteries" @ git "v4.31.0"
 -- `Cedar.Spec.Ext.Decimal.parse`) as the external parser in the contract obligations.
 require Cedar from "../cedar-spec/cedar-lean"
 
+-- Documentation site (Verso manual/book genre), pinned to the same toolchain (v4.31.0). Only
+-- built when you explicitly target the `docs` exe / `Docs` lib, so it doesn't slow the core build.
+require verso from git "https://github.com/leanprover/verso.git" @ "v4.31.0"
+
 package triptych
 
 @[default_target]
@@ -20,5 +24,9 @@ lean_lib Triptych where
 lean_lib ConformanceTests where
   globs := #[.one `Triptych.Examples.ConformanceTests]
 
--- The Verso documentation book (chapters, verso dependency, `docs` targets) lives on the
--- `docs` branch, which tracks `main` and adds the site on top.
+-- The Verso documentation book. This `docs` branch tracks `main` and adds the site on top.
+lean_lib Docs where
+  globs := #[.andSubmodules `Docs]
+
+lean_exe docs where
+  root := `DocsMain
