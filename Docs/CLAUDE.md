@@ -18,9 +18,9 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
 
 - `lake build Triptych` — full build (~53 jobs). Lean **v4.31.0**, **batteries only, NO
   Mathlib** (deliberate, for now).
-- Remote: `github.com/cruisesong7/formatspec` (public), branch `main`.
+- Remote: `github.com/cruisesong7/triptych` (public), branch `main`.
 - Shell note: if the session's cwd resets between commands, prefix with
-  `cd ~/Documents/formatspec`.
+  `cd ~/Documents/triptych`.
 
 ## Hard invariants (do not violate)
 
