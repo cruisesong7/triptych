@@ -25,9 +25,9 @@ import Triptych.Theorems.Roundtrip
 import Triptych.Theorems.Reconcile
 import Triptych.Architecture.Syntax
 import Triptych.Examples
--- Worked examples: each `grammar.lean` inputs a `format_spec` and writes the generated
+-- Worked examples: each `grammar.lean` inputs a `triptych` and writes the generated
 -- modules beside it — `spec.lean` (readable surface), `parser.lean` (engine + auto-discharged
--- proofs + the generated verified parser), and, when the `format_spec` has a `parser` clause,
+-- proofs + the generated verified parser), and, when the `triptych` has a `parser` clause,
 -- `soundness.lean` (the `sorry`d external-parser obligations). Importing the `grammar` files
 -- (re)generates; importing the generated modules builds them standalone (so they can't
 -- silently drift from the generator).
@@ -68,11 +68,11 @@ See `Docs/DESIGN.md` for the full design.
 
 Module layout:
 * `Triptych.Architecture.*` — grammar, classifier, denotation, decoder, value/constraint
-                                DSLs, assembly, emission, and `format_spec` syntax
+                                DSLs, assembly, emission, and `triptych` syntax
 * `Triptych.Theorems.*`     — reusable decoder, roundtrip, reconciliation, and external
                                 parser bridge theorems
 * `Triptych.Examples`   — hand-written `Grammar` values (Decimal, IPv4) for validation
-* `Triptych.Examples.<Name>.grammar` — worked example: a `format_spec` input that writes
+* `Triptych.Examples.<Name>.grammar` — worked example: a `triptych` input that writes
                             the single generated module `spec.lean` (spec / engine /
                             soundness / contracts banner sections) beside it
 -/

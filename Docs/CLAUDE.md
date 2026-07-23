@@ -5,7 +5,7 @@ This file captures the project state a fresh coding session needs to continue th
 ## What this repo is
 
 A Lean 4 library: a **grammar-to-specification compiler** for flat, non-recursive
-string-format parsers. A `format_spec` DSL block (grammar + optional value/constraints)
+string-format parsers. A `triptych` DSL block (grammar + optional value/constraints)
 generates a readable surface spec, an analyzable/executable engine, and an auto-emitted,
 machine-checked reconciliation proof between them. See `README.md` (overview) and
 `DESIGN.md` (full design).
@@ -76,14 +76,14 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
   contract statements `SoundStmt`/`CompleteStmt`/`RejectStmt` (over value type `β`, `π : α→β`).
 - `Emit.lean` — renders surface predicates (`symPred`/`termPred`), grammar literals,
   `matchesRefProof`/`isWfEquivProof`/`isValidEquivProof` (the uniform proof closer).
-- `Syntax.lean` — the `format_spec` command (DSL surface → core, elaborate, write the three
+- `Syntax.lean` — the `triptych` command (DSL surface → core, elaborate, write the three
   generated files). Emits `gatedParse`/`parserContractsProof` (the verified parser) and
   splits output into `spec`/`parser`/`soundness` (see below).
 - `Examples/{Decimal,Duration,Datetime,IPv4,IPv6,Graph}/` — each `grammar.lean` runs
-  `format_spec` and writes up to THREE modules beside it: `spec.lean` (readable surface,
+  `triptych` and writes up to THREE modules beside it: `spec.lean` (readable surface,
   proof-free), `parser.lean` (engine bundle + auto-discharged proofs `IsWf_equiv`/
   `computeValue_eq`/decidability + the generated correct-by-construction parser `parse` and its
-  discharged `parse_sound`/`parse_complete`/`parse_reject`), and — ONLY when the `format_spec`
+  discharged `parse_sound`/`parse_complete`/`parse_reject`), and — ONLY when the `triptych`
   has a `parser <p> projection <π>` clause OR a `printer` clause — `soundness.lean` (the `sorry`d
   obligations, PARTITIONED into two banner-delimited sections: "· generated parser" — the shared
   `encode_*`/`lift_section` obligations (plus, with `lift` + `projection`, `lift_faithful` and its

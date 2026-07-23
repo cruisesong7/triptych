@@ -432,7 +432,7 @@ for these formats regardless. Confirm the "verify existing parser" requirement i
 firm before investing. This is the same replace-vs-validate fork as the eventual
 Cedar policy-parser assurance work (verified generator vs translation validation).
 
-## 16. The `format_spec` DSL — decided design
+## 16. The `triptych` DSL — decided design
 
 (Decided over the design thread; supersedes earlier sketches in §6–§7. The doc
 grammars / current formalization are NOT ground truth — they are a moving target we
@@ -485,12 +485,12 @@ Uniform rule: `IsWf` = syntax only, always.
 
 ### 16.3 Section headers: `grammar` / `constraints` / `value`
 
-Local section tokens inside the `format_spec` command's own grammar (implemented as
+Local section tokens inside the `triptych` command's own grammar (implemented as
 literal atoms in the `syntax ... : command` rule) — NOT global keywords.
 **`grammar`** is used instead of `syntax` because `syntax` is a reserved Lean keyword.
 
 ```lean
-format_spec IPv4 where
+triptych IPv4 where
   grammar
     V4Addr ::= NumV4 "." NumV4 "." NumV4 "." NumV4
     NumV4  ::= digit{1,3}

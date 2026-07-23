@@ -19,7 +19,7 @@ import Triptych.Architecture.Value
 /-!
 # The constraint-DSL: deep-embedded predicates, auto-classified
 
-The `constraints` section of `format_spec` lists predicates. Like the value-DSL this is
+The `constraints` section of `triptych` lists predicates. Like the value-DSL this is
 a **deep embedding**: each constraint elaborates to an inspectable `Constraint` AST, so
 the tool can (design note §16.1/§16.3):
 
@@ -33,7 +33,7 @@ This is the "dynamic input validation" layer (CoStar++'s semantic predicates), m
 first-class and possibly non-context-free (bounds on computed values, cross-field).
 
 Scope of this increment: the `Constraint` AST + its denotation + the classifier
-(`isValueDependent`). Wiring into the `format_spec` command's `constraints` section
+(`isValueDependent`). Wiring into the `triptych` command's `constraints` section
 (replacing the raw-term capture) is the following step.
 -/
 
@@ -222,7 +222,7 @@ syntax valExpr " == " valExpr            : constraintExpr   -- value equality (`
 -- of scope — use the `opaque` escape for those.)
 syntax valExpr " ∈ " "[" valExpr ", " valExpr "]" : constraintExpr
 -- NOTE: the ESCAPE HATCH for constraints outside the DSL vocabulary is NOT a `constraintExpr`
--- form — it is the separate `constraints'` section of `format_spec`
+-- form — it is the separate `constraints'` section of `triptych`
 -- (see `Triptych.Architecture.Syntax`),
 -- whose entries are raw-Lean `f X Y …` applications built via `opaqueEnvClosure` below.
 
