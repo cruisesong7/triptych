@@ -11,6 +11,6 @@ open Verso.Genre.Manual
 
 def main := manualMain (%doc Docs)
   (config := {
-    sourceLink := some "https://github.com/cruisesong7/formatspec",
-    issueLink := some "https://github.com/cruisesong7/formatspec/issues"
+    sourceLink := some "https://github.com/cruisesong7/triptych",
+    issueLink := some "https://github.com/cruisesong7/triptych/issues"
   })
