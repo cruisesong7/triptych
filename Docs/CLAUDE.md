@@ -160,7 +160,7 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
   variant of this trap (a bare `["-"]` captured nowhere, silently dropping the sign — once a real
   Duration bug caught by conformance) is now PREVENTED by design: the `sign` terminal must be a
   production's sole rhs (`Sgn ::= sign`), so the sign always owns a capture, and `value` reads it
-  by bare name. Both Decimal and Duration use this (`Decimal ::= Sgn Integer "." Fraction`,
+  by bare name. Both Decimal and Duration use this (`Decimal ::= Sgn Natural "." Fraction`,
   `Duration ::= Sgn Components`); `value` = `Sgn * (…magnitude…)`.
 - `CaptureMap.toEnv` uses `find?` → returns the FIRST match, so repeated elements of a `rep`
   collapse. The rep's item COUNT is captured under `<Item>#count`; the individual repeated

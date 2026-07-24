@@ -26,7 +26,7 @@ proves the two describe the same language and value. -/
 
 def Decimal.valueExpr : ValExpr :=
   ValExpr.mul (ValExpr.signOf "Sign")
-    (ValExpr.add (ValExpr.mul (ValExpr.nat "Integer") (ValExpr.pow (ValExpr.lit 10) (ValExpr.lit 4)))
+    (ValExpr.add (ValExpr.mul (ValExpr.nat "Natural") (ValExpr.pow (ValExpr.lit 10) (ValExpr.lit 4)))
       (ValExpr.mul (ValExpr.nat "Fraction")
         (ValExpr.pow (ValExpr.lit 10) (ValExpr.sub (ValExpr.lit 4) (ValExpr.len "Fraction")))))
 
@@ -70,17 +70,17 @@ theorem Decimal.Internal.matchesRef.Sign (fuel : Nat) (s : String) :
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
-theorem Decimal.Internal.matchesRef.Integer (fuel : Nat) (s : String) :
-    matchesSym Decimal.grammar (fuel + 1) (Sym.ref "Integer") s ↔ Decimal.IsWf.Integer s :=
+theorem Decimal.Internal.matchesRef.Natural (fuel : Nat) (s : String) :
+    matchesSym Decimal.grammar (fuel + 1) (Sym.ref "Natural") s ↔ Decimal.IsWf.Natural s :=
   by
   rw [matchesSym,
     show
-      (Decimal.grammar).prod? "Integer" =
-        some (Production.mk "Integer" [[SymItem.mk (Sym.term TokClass.digit LenSpec.atLeastOne) false]])
+      (Decimal.grammar).prod? "Natural" =
+        some (Production.mk "Natural" [[SymItem.mk (Sym.term TokClass.digit LenSpec.atLeastOne) false]])
       from rfl]
   dsimp only
   rw [matchesProd_single]
-  unfold Decimal.IsWf.Integer
+  unfold Decimal.IsWf.Natural
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
     if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
@@ -114,7 +114,7 @@ theorem Decimal.Internal.matchesRef.Decimal (fuel : Nat) (s : String) :
       (Decimal.grammar).prod? "Decimal" =
         some
           (Production.mk "Decimal"
-            [[SymItem.mk (Sym.ref "Sign") false, SymItem.mk (Sym.ref "Integer") false, SymItem.mk (Sym.lit ".") false,
+            [[SymItem.mk (Sym.ref "Sign") false, SymItem.mk (Sym.ref "Natural") false, SymItem.mk (Sym.lit ".") false,
                 SymItem.mk (Sym.ref "Fraction") false]])
       from rfl]
   dsimp only
@@ -122,7 +122,7 @@ theorem Decimal.Internal.matchesRef.Decimal (fuel : Nat) (s : String) :
   unfold Decimal.IsWf.Decimal
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
     if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
-    Decimal.Internal.matchesRef.Sign, Decimal.Internal.matchesRef.Integer, Decimal.Internal.matchesRef.Fraction]
+    Decimal.Internal.matchesRef.Sign, Decimal.Internal.matchesRef.Natural, Decimal.Internal.matchesRef.Fraction]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
@@ -134,14 +134,14 @@ theorem Decimal.IsWf_equiv (s : String) : IsWf Decimal.grammar s ↔ Decimal.IsW
       (Decimal.grammar).prod? (Decimal.grammar).start =
         some
           (Production.mk "Decimal"
-            [[SymItem.mk (Sym.ref "Sign") false, SymItem.mk (Sym.ref "Integer") false, SymItem.mk (Sym.lit ".") false,
+            [[SymItem.mk (Sym.ref "Sign") false, SymItem.mk (Sym.ref "Natural") false, SymItem.mk (Sym.lit ".") false,
                 SymItem.mk (Sym.ref "Fraction") false]])
       from rfl]
   have hstart :
     ∀ n,
       matchesProd Decimal.grammar n
           (Production.mk "Decimal"
-            [[SymItem.mk (Sym.ref "Sign") false, SymItem.mk (Sym.ref "Integer") false, SymItem.mk (Sym.lit ".") false,
+            [[SymItem.mk (Sym.ref "Sign") false, SymItem.mk (Sym.ref "Natural") false, SymItem.mk (Sym.lit ".") false,
                 SymItem.mk (Sym.ref "Fraction") false]])
           s =
         matchesSym Decimal.grammar (n + 1) (Sym.ref "Decimal") s :=
@@ -152,13 +152,13 @@ theorem Decimal.IsWf_equiv (s : String) : IsWf Decimal.grammar s ↔ Decimal.IsW
         (Decimal.grammar).prod? "Decimal" =
           some
             (Production.mk "Decimal"
-              [[SymItem.mk (Sym.ref "Sign") false, SymItem.mk (Sym.ref "Integer") false, SymItem.mk (Sym.lit ".") false,
+              [[SymItem.mk (Sym.ref "Sign") false, SymItem.mk (Sym.ref "Natural") false, SymItem.mk (Sym.lit ".") false,
                   SymItem.mk (Sym.ref "Fraction") false]])
         from rfl]
   show
     matchesProd Decimal.grammar (Decimal.grammar).prods.length
         (Production.mk "Decimal"
-          [[SymItem.mk (Sym.ref "Sign") false, SymItem.mk (Sym.ref "Integer") false, SymItem.mk (Sym.lit ".") false,
+          [[SymItem.mk (Sym.ref "Sign") false, SymItem.mk (Sym.ref "Natural") false, SymItem.mk (Sym.lit ".") false,
               SymItem.mk (Sym.ref "Fraction") false]])
         s ↔
       _
@@ -189,7 +189,7 @@ theorem Decimal.computeValue_eq (s : String) :
     Decimal.computeValue s =
       (decode Decimal.grammar s).map
         (fun _ =>
-          Decimal.value (Triptych.component Decimal.grammar s "Sign") (Triptych.component Decimal.grammar s "Integer")
+          Decimal.value (Triptych.component Decimal.grammar s "Sign") (Triptych.component Decimal.grammar s "Natural")
             (Triptych.component Decimal.grammar s "Fraction")) :=
   by
   unfold Decimal.computeValue Triptych.computeValue Triptych.component Triptych.envOf Decimal.value Decimal.valueExpr

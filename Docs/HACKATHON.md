@@ -26,11 +26,12 @@ recursion, fixed shape — which is exactly what makes the whole thing automatab
 ```
 triptych Decimal where
   grammar
-    Decimal  ::= Integer "." Fraction
-    Integer  ::= ["-"] digit+
+    Decimal  ::= Sign Natural "." Fraction
+    Sign     ::= sign
+    Natural  ::= digit+
     Fraction ::= digit{1,4}
   value
-    int Integer * 10^4 + sign Integer * nat Fraction * 10^(4 - len Fraction)
+    Sign * (nat Natural * 10^4 + nat Fraction * 10^(4 - len Fraction))
   constraints
     value ∈ [Int64.MIN, Int64.MAX]
 ```

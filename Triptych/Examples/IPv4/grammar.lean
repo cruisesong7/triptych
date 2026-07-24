@@ -19,22 +19,11 @@ import Triptych.Architecture.Decode
 import Triptych.Theorems.Roundtrip
 
 /-!
-# IPv4 example — `noLeadingZero` + numeric bounds on reused octets
+# IPv4 example — `noLeadingZero` + numeric bounds on distinct octets
 
-Transcribes the IPv4 fragment of `doc/CedarDoc/IPAddr.lean`:
-```
-V4Addr ::= NumV4 '.' NumV4 '.' NumV4 '.' NumV4
-NumV4  ::= Digit{1,3}     -- value ≤ 255, no leading zeros unless "0"
-```
-Exercises the `noLeadingZero` canonical-nat constraint (the pervasive IPAddr rule, unused by
-the other examples) and per-octet numeric bounds. NOTE: the four octets are given DISTINCT
-nonterminals `Oct1..Oct4` (each `Digit{1,3}`) rather than one reused `NumV4`. That is not
-cosmetic: the capture model keys by (qualified) production name, so four reuses of a single
-`NumV4` would collapse to ONE capture — the constraints would then bind only the first octet
-(a real under-specification). Distinct names give each octet its own capture, so each is
-constrained independently. The optional CIDR `/prefix` is omitted for brevity (affine; would
-add a `noLeadingZero`/`≤ 32` bound the same way). Writes `spec.lean` + `parser.lean` beside
-this file (no `parser`/`printer` clause, so no `soundness.lean`).
+Transcribes the IPv4 fragment of `doc/CedarDoc/IPAddr.lean`. Exercises the `noLeadingZero`
+canonical-nat constraint and per-octet numeric bounds. See the docs for why the octets get
+distinct names `Oct1..Oct4` (the capture model would collapse a reused nonterminal).
 -/
 
 namespace Triptych.Examples.IPv4
@@ -55,15 +44,9 @@ triptych IPv4 where
     noLeadingZero Oct4     nat Oct4 ∈ [0, 255]
   to "Triptych/Examples/IPv4"
 
-#check (IPv4.IsWf.V4Addr : String → Prop)
-#check (IPv4.IsValid     : String → Prop)
 #eval decide (IPv4.IsValid "192.168.1.100")    -- true
-#eval decide (IPv4.IsValid "255.255.255.255")  -- true
 #eval decide (IPv4.IsValid "256.0.0.1")        -- false (256 > 255)
 #eval decide (IPv4.IsValid "01.0.0.1")         -- false (leading zero)
 #eval decide (IPv4.IsValid "1.2.3")            -- false (only 3 octets — grammar)
-
-#check (IPv4.IsWf_equiv : ∀ s, IsWf IPv4.grammar s ↔ IPv4.IsWf.V4Addr s)
-example : DecidablePred IPv4.IsValid := inferInstance
 
 end Triptych.Examples.IPv4

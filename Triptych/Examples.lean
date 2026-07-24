@@ -35,18 +35,21 @@ private def req (s : Sym) : SymItem := { sym := s }
 /-- Helper: an optional symbol item (`[X]`). -/
 private def opt (s : Sym) : SymItem := { sym := s, optional := true }
 
-/-- Cedar `Decimal`, transcribing the doc grammar:
+/-- Cedar `Decimal`, transcribing the doc grammar (sign split into its own production,
+matching the DSL example — see the capture-model note in `Docs/CLAUDE.md`):
 ```
-Decimal  ::= Integer '.' Fraction
-Integer  ::= ['-'] Digit⁺
+Decimal  ::= Sign Natural '.' Fraction
+Sign     ::= ['-']
+Natural  ::= Digit⁺
 Fraction ::= Digit{1,4}
 ```
 (`Digit` is inlined as a `term` rather than a named production.) -/
 def decimal : Grammar where
   start := "Decimal"
   prods := [
-    { name := "Decimal", alts := [[req (.ref "Integer"), req (.lit "."), req (.ref "Fraction")]] },
-    { name := "Integer", alts := [[opt (.lit "-"), req (.term .digit .atLeastOne)]] },
+    { name := "Decimal", alts := [[req (.ref "Sign"), req (.ref "Natural"), req (.lit "."), req (.ref "Fraction")]] },
+    { name := "Sign", alts := [[opt (.lit "-")]] },
+    { name := "Natural", alts := [[req (.term .digit .atLeastOne)]] },
     { name := "Fraction", alts := [[req (.term .digit (.between 1 4))]] }
   ]
 

@@ -35,8 +35,9 @@ The command has three sections (see design note §16.3), in order:
 ```
 triptych Decimal where
   grammar
-    Decimal  ::= Integer "." Fraction
-    Integer  ::= ["-"] digit+
+    Decimal  ::= Sign Natural "." Fraction
+    Sign     ::= sign
+    Natural  ::= digit+
     Fraction ::= digit{1,4}
   constraints
     -- value/string constraints (raw Lean predicates for now; see below)
@@ -122,17 +123,33 @@ syntax ident (ppSpace ident)+ : fmtEscEntry
     `constraints` section". -/
 syntax fmtConstraintsEsc := "constraints'" (colGt fmtEscEntry)+
 
-/-- The `lift <σ>` sub-clause of `value`: names a *lift* `σ : β → δ` from the spec value type `β`
-    (e.g. the fixed-point `Int`) UP to the domain type `δ` (e.g. `Decimal`), a section of the
-    external parser's `projection π : δ → β` (i.e. `σ ∘ π = id`, discharged by `lift_section` in
-    `soundness.lean`; the dual `π ∘ σ = id` on ACCEPTED values is the `lift_faithful` obligation,
-    emitted when both clauses are present — see the lift guard in `elabTriptych`).
-    When present, the GENERATED parser returns `Option δ` (type-identical to a
-    real external parser) via `(gatedParse …).map σ`, and its contracts become the σ-VIEW
-    analogues (`(computeValue s).map σ = some d`). Works standalone (no `parser`/`printer` needed):
-    it just upgrades the generated parser's output type. Nested inside `value` (like `projection`
-    inside `parser`) because a lift only makes sense for the scalar `value` DSL — the `value'`
-    escape already picks its own output type, so a lift there would be a redundant `id`. -/
+/-- The `lift <σ>` sub-clause of `value` — *upgrade the generated parser's output type*.
+
+**Why it exists.** The value DSL computes in a *spec* value type `β` chosen for analyzability,
+not for use: `Decimal` is really a `×10⁴` fixed-point `Int`, `Duration` is a millisecond `Int`.
+That is the right type for the affine formula and the overflow constraint, but a real parser
+should hand back the *domain* type `δ` — an actual `Decimal`/`Duration`. `lift σ` bridges the
+gap: `σ : β → δ` maps the spec value up to the domain type, and the generated parser then
+returns `Option δ` (`(gatedParse …).map σ`), type-identical to a hand-written external parser.
+Its contracts become the σ-VIEW analogues, stated with `(computeValue s).map σ` in place of
+`computeValue s`.
+
+**How to use it.** Write it as a trailing sub-clause of `value`:
+`value <formula> lift <σ>`, where `σ` is any `<spec type> → <domain type>` function (e.g.
+`lift Int64.ofInt`). It works **standalone** — no `parser`/`printer` needed — since it only
+changes the output type. Two cautions:
+* If `σ` is lossy (e.g. `Int64.ofInt` wraps mod 2⁶⁴), pair it with a range constraint that
+  keeps accepted values inside `σ`'s faithful window (`value ∈ [Int64.MIN, Int64.MAX]`);
+  otherwise the σ-view silently wraps out-of-range values. A lint warns when `lift` appears
+  with no such constraint.
+* With a `parser … projection π` clause, `σ` must be a **section** of that projection:
+  `σ ∘ π = id` (the `lift_section` obligation) and `π ∘ σ = id` on accepted values (the
+  `lift_faithful` obligation) — both emitted into `soundness.lean`. This is what pins *which*
+  `σ` is correct, and why `σ` can't be inferred from the domain type `δ` alone.
+
+Nested inside `value` (as `projection` nests inside `parser`) because a lift only makes sense
+for the scalar `value` DSL — the `value'` escape already picks its own output type, so a lift
+there would be a redundant `id`. -/
 syntax fmtLift := "lift" term
 
 /-- The optional `value` section: the value-DSL formula (`valExpr`); analyzable, `value(X)=…`.
@@ -145,10 +162,27 @@ syntax fmtValue := "value" valExpr (fmtLift)?
     `constraints'` (no `Env`); the prime marks "the raw-Lean escape of the `value` section". -/
 syntax fmtValueEsc := "value'" fmtEscEntry
 
-/-- The optional `parser` clause: names the external hand-written parser and the
-    projection reading its value's `Int` denotation back out. When present, the command
-    emits the contract theorem *obligations* (`<Name>.sound`/`.complete`/`.reject`) as
-    `sorry`d theorems relating that parser to the generated spec. -/
+/-- The optional `parser` clause — *validate an existing external parser against this spec*.
+
+Shape: `parser <parse> projection <π>`. Names a hand-written parser `parse : String → Option δ`
+you already have and want to trust, together with a **projection** `π : δ → β` (see below).
+When present, the command emits the three external-parser contract *obligations* as `sorry`d
+theorems in `soundness.lean`, relating `parse` to the generated spec:
+* `extparse_sound` — everything `parse` accepts is `IsValid`, and its value projects to the
+  spec value (`parse s = some d → IsValid s ∧ computeValue s = some (π d)`);
+* `extparse_complete` — the converse: every valid string with a matching value is accepted;
+* `extparse_reject` — `parse` rejects exactly the non-valid strings.
+
+Discharging them (against the parser's own metatheory) is the translation-validation payoff:
+no rewrite, just a proof that the parser you ship agrees with the readable spec.
+
+**The `projection π`.** The external parser returns a rich domain value `d : δ` (a `Decimal`,
+a `Duration`), but the spec computes a scalar `β` (the `Int` denotation). `π : δ → β` reads the
+scalar back out of `d` (e.g. `Int64.toInt`, `Duration.toMilliseconds.toInt`) so the two sides
+are comparable — every contract above is phrased through it. Like `lift`, `π` is not inferable
+from types alone (many `δ → β` exist); it's the specific denotation your spec's value is
+computing, so you name it. It also lives in a section/faithfulness relationship with a `value`
+`lift σ` when both are present (`σ ∘ π = id`); see `fmtLift`. -/
 syntax fmtParser := "parser" term " projection " term
 
 /-- The optional `printer` clause: names the user's canonical serializer `toStr : β → String`
@@ -518,7 +552,7 @@ def elabTriptych : CommandElab := fun stx => do
         emitEngine (← `(def $veIdent : ValExpr := $valTerm))
         emitEngine (← `(def $vfnIdent : Env → Int := ($veIdent).eval))
         -- spec: a READABLE `<Name>.value` taking the captured component STRINGS directly
-        -- (no `Env`), via `natOf`/`intOf`/… — reads like `value(Integer, Fraction) = …`.
+        -- (no `Env`), via `natOf`/`intOf`/… — reads like `value(Natural, Fraction) = …`.
         let readable ← liftMacroM (elabValReadableWith none ve)
         let capNames := Triptych.valExprCaptures ve
         let binders : Array (TSyntax `ident) :=
