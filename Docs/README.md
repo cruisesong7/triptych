@@ -1,5 +1,19 @@
 # Triptych
 
+```
+   +--------+  +--------+  +--------+
+   |        |  |  /##\  |  |        |
+   | # # #  |  | ###### |  | # # #  |
+   |  # # # |  | ###### |  |  # # # |
+   | # # #  |  | ###### |  | # # #  |
+   |        |  |  \##/  |  |        |
+   +--------+  +--------+  +--------+
+     parser       spec      soundness
+
+         T R I P T Y C H
+       one grammar, three panels
+```
+
 A Lean 4 library for **specifying and verifying flat, non-recursive string-format
 parsers** — the "verified textual scalar/record parsing" niche.
 
