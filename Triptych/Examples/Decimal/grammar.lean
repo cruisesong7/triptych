@@ -17,6 +17,7 @@
 import Triptych.Architecture.Syntax
 import Triptych.Architecture.Decode
 import Triptych.Theorems.Roundtrip
+import Triptych.Theorems.Coherence
 import Cedar.Spec.Ext.Decimal
 
 /-!
@@ -60,5 +61,11 @@ triptych Decimal where
 #eval Decimal.parse "1.5"                    -- some 15000  (as a Decimal, via `lift Int64.ofInt`)
 #eval Decimal.parse "1.x"                    -- none  (rejected)
 #eval Decimal.parse "-0.15"                  -- some (-1500)  (the sign corner case)
+
+-- Value coherence: this grammar is unambiguous, so an accepted string has exactly ONE full
+-- parse (`decide (DecodeUnique …)` = `true`), which — via `computeValueF_of_unique` — makes
+-- `parse`'s value a property of the grammar+string, not of `decode`'s enumeration order.
+#eval (Triptych.fullParses Decimal.grammar "-12.34").length   -- 1  (unambiguous)
+#eval decide (Triptych.DecodeUnique Decimal.grammar "-12.34") -- true
 
 end Triptych.Examples.Decimal

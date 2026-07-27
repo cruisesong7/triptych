@@ -22,6 +22,7 @@ import Triptych.Architecture.Constraint
 import Triptych.Architecture.Decode
 import Triptych.Architecture.Assemble
 import Triptych.Theorems.Roundtrip
+import Triptych.Theorems.Coherence
 import Triptych.Theorems.Reconcile
 import Triptych.Architecture.Syntax
 import Triptych.Examples

@@ -38,11 +38,14 @@ conformance suite against the real Cedar parsers). Its recognition roundtrip vs 
 
 Caveat (decoder-selected values): `decode` returns the FIRST full-consumption assignment
 (`head?`), and the scalar `Env` view (`toEnv`) keeps the FIRST span per name. Recognition
-(`IsWf`) forgets captures, so there is no theorem forcing every full parse of an ambiguous
-grammar to agree on the capture map — the computed value is decoder-selected, not
-grammar-determined. Triptych's grammar class is a strict subclass of regular and the
-shipped examples are unambiguous, but a general value-coherence theorem (every valid
-decomposition yields the same captures) is not yet emitted.
+(`IsWf`) forgets captures, so an *ambiguous* grammar's several full parses need not agree on
+the capture map — in general the computed value is decoder-selected, not grammar-determined.
+`Triptych.Theorems.Coherence` makes this precise and supplies the theorem that erases it when
+it can be erased: `computeValueF_coherent` shows that under `ValueCoherent` (all full parses
+agree on the value) the value equals `valFn` of ANY full parse, and `DecodeUnique` (≤ 1 full
+parse, `decide`-able) is a sufficient condition. Triptych's grammar class is a strict subclass
+of regular and the shipped examples are unambiguous (`DecodeUnique` holds at every accepted
+string), so their values are grammar-determined.
 -/
 
 namespace Triptych

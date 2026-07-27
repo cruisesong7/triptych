@@ -71,6 +71,11 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
   value type). `CaptureMap`/`Env`.
 - `Roundtrip.lean` — `decodeSome_iff_IsWf` (decode ↔ IsWf), `rep_iter`/`matchStar_iter`,
   `decIsWf` (conditional `DecidablePred (IsWf g)`, needs `g.repOk = true`).
+- `Coherence.lean` — value is grammar-determined, not decoder-selected: `fullParses`
+  (all full parses, `decode = head?` of them), `ValueCoherent`/`CaptureCoherent`, and
+  `computeValueF_coherent` (under coherence, value = `valFn` of ANY full parse).
+  `DecodeUnique` (≤ 1 full parse) is a `decide`-able sufficient condition; the shipped
+  (unambiguous) grammars satisfy it at every accepted string.
 - `Reconcile.lean` — reusable lemmas for emitted grammar/full-WF equivalences (leaf
   `_matchesTerm`, `matchesSym_rep_iff`, reader-agreement `natOf_getD` etc.).
 - `Assemble.lean` — bundles `isWf`/`satisfiesConstraints`/`isValid`; `component`;
