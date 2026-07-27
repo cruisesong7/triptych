@@ -30,9 +30,19 @@ tries every way to split the string across a sequence's items, records each matc
 nonterminal's substring, and keeps assignments that consume the whole string. It is the
 *reference* decoder (simple, obviously-correct-by-inspection), NOT a production parser.
 
-Status: `partial` and executable (drives `#eval`/demos and, later, differential testing
-against the hand-written parser). Its roundtrip lemma vs `IsWf` — `decode (asString env)
-= some env` on well-formed inputs — is the next proof milestone; not yet proved.
+Status: a total `def` — fuel-bounded (fuel = #productions, a DAG-depth backstop), so it
+needs no `partial`. It is executable (drives `#eval`/demos and the differential
+conformance suite against the real Cedar parsers). Its recognition roundtrip vs `IsWf` —
+`decodeSome_iff_IsWf` (`(decode g s).isSome = IsWf g s`, under `g.repOk`) — is PROVED in
+`Triptych.Theorems.Roundtrip` and is what every emitted `IsWf_equiv` is built on.
+
+Caveat (decoder-selected values): `decode` returns the FIRST full-consumption assignment
+(`head?`), and the scalar `Env` view (`toEnv`) keeps the FIRST span per name. Recognition
+(`IsWf`) forgets captures, so there is no theorem forcing every full parse of an ambiguous
+grammar to agree on the capture map — the computed value is decoder-selected, not
+grammar-determined. Triptych's grammar class is a strict subclass of regular and the
+shipped examples are unambiguous, but a general value-coherence theorem (every valid
+decomposition yields the same captures) is not yet emitted.
 -/
 
 namespace Triptych

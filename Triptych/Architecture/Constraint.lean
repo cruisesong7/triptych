@@ -36,6 +36,18 @@ first-class and possibly non-context-free (bounds on computed values, cross-fiel
 The phase is intentionally a property of an entry, not of the `Constraint` AST: the same
 arithmetic comparison node may constrain a capture-derived number (well-formedness) or the
 final computed value (value validity).
+
+**The phase boundary is an author-chosen presentation rule, not a semantic invariant.**
+"Mentions the final `value`" is a *syntactic* test on the surface expression, so two
+extensionally-equivalent checks can land in different phases: `nat X ∈ [1, 12]` folds into
+`IsWf`, while a mathematically-equal bound written through `value` folds into
+`SatisfiesConstraints`. This is deliberate, not an inconsistency — the phase records the
+author's INTENT ("is this part of what 'well-formed' means, or a constraint on the
+interpreted value?"), which cannot be recovered after `value` is substituted by its
+`ValExpr` (that is exactly why the phase is stored on the entry rather than re-derived).
+The two phases carve the same accepted language either way — `IsValid = IsWf ∧
+SatisfiesConstraints` — so the split only affects how the spec READS, never which strings
+it accepts.
 -/
 
 namespace Triptych

@@ -1,24 +1,35 @@
 # Design Note: Grammar-to-Specification Compiler for Cedar Extension Parsers
 
-Status: exploratory design (2026-07). Not yet implemented. Captures a coherent
-design developed while verifying the Cedar extension-type parsers
-(`Decimal`, `Duration`, `Datetime`, `IPAddr`).
+Status: implemented (design 2026-07; the `triptych` command, engine, emitted
+equivalence/decidability proofs, and the six examples all build under Lean v4.31.0).
+This note captures the design developed while verifying the Cedar extension-type
+parsers (`Decimal`, `Duration`, `Datetime`, `IPAddr`). Some passages below that
+described unbuilt increments have been updated in place; where a subsection still
+reads as forward-looking, treat it as design rationale, not current-status.
 
 ## 1. What the tool is (and is not)
 
 **It is** a *grammar-to-specification compiler*: given an (informal) grammar for a
 flat, non-recursive string format, it deterministically generates the Lean
-**specification** for that format plus the **contract theorem surface**.
+**specification** for that format plus the **contract theorem surface**. It also
+emits its OWN correct-by-construction reference parser (`gatedParse` = `computeValue`
+gated on the decidable acceptance predicate) and discharges that parser's
+sound/complete/reject contracts for free — so every generated spec ships a verified
+reference parser, not merely an obligation surface.
 
-**It is not** a verified parser generator. We do not generate the parser
-implementation, and we do not run proof search to prove the parser correct. The
-parser (e.g. the `Std.Time`-based `Datetime.parse`, or the `splitToList`-based
-`Decimal.parse`) stays hand-written and external.
+**It is not** a verified *production* parser generator. The reference parser is the
+decode-backed engine — simple and obviously-correct, not optimized (no streaming,
+error recovery, or complexity theorem). The tool's distinctive job is to validate a
+*separate, external, hand-written* parser (e.g. the `Std.Time`-based `Datetime.parse`,
+or the `splitToList`-based `Decimal.parse`) against the generated spec, via the
+`SoundStmt`/`CompleteStmt`/`RejectStmt` obligations — and the conformance suite
+differential-tests the generated engine against the real Cedar parsers.
 
-This places the tool *upstream* of Narcissus/EverParse: those generate an
-implementation + machine-checked proofs from a format; we generate the
-verification **target** (the spec) and its **obligation surface** (the contract
-theorems, some proved, some left as faithful `sorry`s).
+This places the tool *upstream* of Narcissus/EverParse: those generate an optimized
+implementation + machine-checked proofs from a format; we generate the verification
+**target** (the spec), a **reference parser** proved against it, and the **obligation
+surface** relating an external parser to that spec (the contract theorems, some
+proved, some left as faithful `sorry`s).
 
 ## 2. The class of grammars
 
