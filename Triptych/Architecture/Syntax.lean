@@ -110,11 +110,20 @@ syntax withPosition(ident " ::= " sepBy1(fmtSeq, " | ")) : fmtProd
     (string → `IsWf`, value → `SatisfiesConstraints`) downstream. -/
 syntax fmtConstraints := "constraints" (colGt constraintExpr)+
 
-/-- One ESCAPE entry: an ordinary Lean function applied to capture names, `f X Y …` (head
-    ident + one-or-more capture idents). Its own syntax category so it destructures cleanly
-    (vs. raw `Syntax` archaeology). Shared by the `constraints'` / `value'` sections. -/
+/-- One ESCAPE-entry ARGUMENT: a bare capture name `X` (its matched string), or `[X]` —
+    the LIST of every substring capture `X` matched, in order. `[X]` is meaningful for a
+    `rep`-repeated nonterminal (the eight `H16` groups of an IPv6 address); it lets a `value'`
+    escape consume the individual repeated elements the scalar reader collapses. -/
+declare_syntax_cat fmtEscArg
+syntax ident            : fmtEscArg
+syntax "[" ident "]"    : fmtEscArg
+
+/-- One ESCAPE entry: an ordinary Lean function applied to capture arguments, `f X [Y] …`
+    (head ident + one-or-more `fmtEscArg`s). Its own syntax category so it destructures
+    cleanly (vs. raw `Syntax` archaeology). Shared by the `constraints'` / `value'` sections
+    (list args `[X]` are `value'`-only; `constraints'` rejects them — see `parseEscEntry`). -/
 declare_syntax_cat fmtEscEntry
-syntax ident (ppSpace ident)+ : fmtEscEntry
+syntax ident (ppSpace fmtEscArg)+ : fmtEscEntry
 
 /-- The optional `constraints'` ESCAPE section (design note §16.7): constraints outside the
     DSL vocabulary, each an `f X Y …` call with `f : String → … → Bool`, one line each
@@ -344,10 +353,32 @@ def parseProd : TSyntax `fmtProd → CommandElabM Production
       pure { name := lhs.getId.toString, alts := ← alts.getElems.toList.mapM parseSeq }
   | s => throwErrorAt s "unrecognized production"
 
-/-- Destructure an ESCAPE entry `f X Y …` into its head function ident and capture idents. -/
-def parseEscEntry : TSyntax `fmtEscEntry → CommandElabM (TSyntax `ident × Array (TSyntax `ident))
-  | `(fmtEscEntry| $f:ident $is:ident*) => pure (f, is)
+/-- Destructure an ESCAPE entry `f X [Y] …` into its head function ident and its capture args,
+    each paired with a LIST flag (`true` for a bracketed `[X]`, i.e. all repeated spans; `false`
+    for a scalar `X`). Shared by `value'` (list args allowed) and `constraints'`. -/
+def parseEscEntryArgs :
+    TSyntax `fmtEscEntry → CommandElabM (TSyntax `ident × Array (TSyntax `ident × Bool))
+  | `(fmtEscEntry| $f:ident $args:fmtEscArg*) => do
+      let parsed ← args.mapM fun a => match a with
+        | `(fmtEscArg| $i:ident)   => pure (i, false)
+        | `(fmtEscArg| [ $i:ident ]) => pure (i, true)
+        | s => throwErrorAt s "unrecognized escape argument"
+      pure (f, parsed)
   | s => throwErrorAt s "unrecognized escape entry"
+
+/-- Destructure an ESCAPE entry into head + SCALAR capture idents, rejecting any list arg `[X]`.
+    Used by `constraints'`, where list args are not (yet) supported — a constraint reads scalar
+    component strings. Errors on `[X]` so the limitation is explicit, not silently mis-elaborated. -/
+def parseEscEntry (ctx : String := "escape") :
+    TSyntax `fmtEscEntry → CommandElabM (TSyntax `ident × Array (TSyntax `ident))
+  | e => do
+      let (f, args) ← parseEscEntryArgs e
+      let is ← args.mapM fun (i, isList) => do
+        if isList then
+          throwErrorAt i s!"list argument `[{i.getId}]` is not supported in a `{ctx}` entry \
+            (only `value'` can consume a repeated capture as a list); use a scalar `{i.getId}`"
+        pure i
+      pure (f, is)
 
 /-- Strip macro scopes from every identifier in a syntax tree, so pretty-printing yields
     clean source without hygiene daggers (`✝`). Used when writing generated declarations
@@ -526,6 +557,10 @@ def elabTriptych : CommandElab := fun stx => do
       let mut valueSub : Option (TSyntax `term) := none
       let mut veIdent? : Option (TSyntax `ident) := none
       let mut valueCaps : List String := []
+      -- For a `value'` escape: each value capture paired with its LIST flag (`[X]` ⟹ `true`).
+      -- Drives the escape's `computeValue_eq` (a list arg reads via `componentList`, a scalar
+      -- via `component`). Empty for the DSL tier (all scalar).
+      let mut valueCapArgs : List (String × Bool) := []
       let mut hasValueEsc : Bool := false
       let mut constrCaps : Option (List String) := none  -- captures the surface `Constraints` binds (none ⟹ no constraints section)
       if let some vStx := v then
@@ -566,22 +601,32 @@ def elabTriptych : CommandElab := fun stx => do
         -- `value'` escape section: `value' f X Y …` — author fn applied to captures.
         match veStx with
         | `(fmtValueEsc| value' $e:fmtEscEntry) =>
-          let (f, is) ← parseEscEntry e
+          let (f, args) ← parseEscEntryArgs e
           hasValueEsc := true
           let vfnIdent := mkIdentFrom name (name.getId ++ `valueFn)
           -- ARBITRARY value type: no `: Env → Int` ascription — the author's `f` return type
-          -- flows through (Env → α for whatever α `f` produces: Int, SimpleGraph, matrix, …),
-          -- so a `value'` escape can parse to a STRUCTURED value, not just a scalar.
-          emitEngine (← `(def $vfnIdent := $(← liftMacroM (Triptych.opaqueEnvClosure f is))))
-          -- spec: a READABLE `<Name>.value` — the author's call over the surface string binders
-          -- (return type inferred from `f`, likewise not pinned to `Int`).
-          let capNames := is.toList.map (·.getId.toString)
-          let binders : Array (TSyntax `ident) :=
-            (capNames.map (fun c => mkIdent (Name.mkSimple (Triptych.surfaceBinder c)))).toArray
-          let bArgs : Array (TSyntax `term) := binders.map (fun i => ⟨i.raw⟩)
+          -- flows through (whatever α `f` produces: Int, SimpleGraph, matrix, IPNet, …), so a
+          -- `value'` escape can parse to a STRUCTURED value. Reads the full `CaptureMap` (not the
+          -- collapsed `Env`), so a `[X]` list arg gets EVERY repeated span of `X` (via
+          -- `toEnvList`) — the eight `H16` groups of an IPv6 address — while a scalar arg gets
+          -- the first span string, exactly as the `Env` reader did.
+          emitEngine (← `(def $vfnIdent := $(← liftMacroM (Triptych.opaqueMapClosure f args))))
+          -- spec: a READABLE `<Name>.value` — the author's call over the surface binders (return
+          -- type inferred from `f`; each binder's type inferred too — `String` for a scalar arg,
+          -- `List String` for a `[X]` list arg).
+          let capArgs := args.toList.map (fun (i, isList) => (i.getId.toString, isList))
+          -- Typed binders: `String` for a scalar arg, `List String` for a `[X]` list arg.
+          let tBinders : Array (TSyntax ``Lean.Parser.Term.bracketedBinder) ←
+            args.mapM (fun (i, isList) => do
+              let b := mkIdent (Name.mkSimple (Triptych.surfaceBinder i.getId.toString))
+              if isList then `(bracketedBinder| ($b : List String))
+              else `(bracketedBinder| ($b : String)))
+          let bArgs : Array (TSyntax `term) := args.map (fun (i, _) =>
+            ⟨(mkIdent (Name.mkSimple (Triptych.surfaceBinder i.getId.toString))).raw⟩)
           let valIdent := mkIdentFrom name (name.getId ++ `value)
-          emitSpec (← `(def $valIdent $[($binders : String)]* := $f $bArgs*))
-          valueCaps := capNames
+          emitSpec (← `(def $valIdent $tBinders* := $f $bArgs*))
+          valueCaps := capArgs.map (·.1)
+          valueCapArgs := capArgs
         | _ => throwUnsupportedSyntax
       -- Constraints (optional): constraint-DSL predicates, one per line, with `value`
       -- substituted by the value expression. The `fmtConstraints` node is
@@ -594,7 +639,7 @@ def elabTriptych : CommandElab := fun stx => do
       let escEntries : Array (TSyntax `ident × Array (TSyntax `ident)) ← match cse with
         | some cseStx =>
           let lines : Array (TSyntax `fmtEscEntry) := cseStx.raw[1].getArgs.map (⟨·⟩)
-          lines.mapM parseEscEntry
+          lines.mapM (parseEscEntry "constraints'")
         | none => pure #[]
       let hasOpaque := !escEntries.isEmpty
       -- DSL constraint exprs (may be empty even when `constraints'` is present).
@@ -652,13 +697,15 @@ def elabTriptych : CommandElab := fun stx => do
         emitEngine (← `(def $cvIdent (s : String) : Option Int :=
                       Triptych.computeValue $grammarIdent $veIdent s))
       else if hasValueEsc then
-        -- ESCAPE tier: `computeValue` via `computeValueF` and the author's `valueFn` — the
-        -- value type is arbitrary (inferred from `valueFn`), so this parses to whatever
-        -- structured value `value'` produces (`Option SimpleGraph`, `Option (Matrix …)`, …).
+        -- ESCAPE tier: `computeValue` via `computeValueMap` and the author's `valueFn` (a
+        -- `CaptureMap → α`). The value type is arbitrary (inferred from `valueFn`), so this
+        -- parses to whatever structured value `value'` produces (`Option SimpleGraph`, `Option
+        -- IPNet`, …). `computeValueMap` (not `computeValueF`) hands `valueFn` the full
+        -- `CaptureMap`, so a `[X]` list arg can read every repeated span via `toEnvList`.
         let cvIdent := mkIdentFrom name (name.getId ++ `computeValue)
         let vfnIdent := mkIdentFrom name (name.getId ++ `valueFn)
         emitEngine (← `(def $cvIdent (s : String) :=
-                      Triptych.computeValueF $grammarIdent $vfnIdent s))
+                      Triptych.computeValueMap $grammarIdent $vfnIdent s))
       -- SPEC bundle (capitalized): the citable validity predicate, engine-free except for
       -- the `grammar` + library `decode` (the irreducible String→components bridge). Matches
       -- Cedar's wording — "a string is VALID iff it satisfies the grammar and constraints":
@@ -688,7 +735,10 @@ def elabTriptych : CommandElab := fun stx => do
       -- standalone theorem (the value analogue of `IsWf_equiv`). Emitted whenever a value
       -- section is present — DSL tier (`veIdent?`) or `value'` escape (`hasValueEsc`).
       if veIdent?.isSome || hasValueEsc then
-        emitSound (← Triptych.computeValueEqProof name.getId grammarIdent valueCaps veIdent?.isSome)
+        -- Caps with list flags: DSL tier is all-scalar; the escape tier carries `[X]` flags.
+        let cvArgs : List (String × Bool) :=
+          if veIdent?.isSome then valueCaps.map (·, false) else valueCapArgs
+        emitSound (← Triptych.computeValueEqProof name.getId grammarIdent cvArgs veIdent?.isSome)
       -- GENERATED VERIFIED PARSER (→ parser file): whenever a value section exists, emit the
       -- tool's own `<Name>.parse` and its three AUTO-DISCHARGED contracts (`parse_sound`/
       -- `parse_complete`/`parse_reject`). Gated on the engine `isValid` (structurally decidable),
@@ -1093,8 +1143,13 @@ from analysis and put correctness on you).
              unprovable, surfacing the silent-wrap trap). A lint warns when `lift` appears
              with no value constraint at all.
 
-── value' ──  (optional ESCAPE, for values outside the DSL, e.g. calendar math)
-  value' f X Y …   with  def f (x y … : String) : Int := …    (`f` applied to captures)
+── value' ──  (optional ESCAPE, for values outside the DSL: structured output, calendar math)
+  value' f X Y …   with  def f (x y … : String) : α := …    (`f` applied to capture STRINGS;
+                   α is ANY type — a structured `IPNet`/graph/record, not just `Int`)
+  a LIST argument  [X]  passes EVERY span the `rep`-repeated capture `X` matched, as
+                   `List String` (the eight `H16` groups of an IPv6 address), where a scalar `X`
+                   would give only the first — the way to read individually-addressable repeated
+                   elements. `def f (… xs : List String) …`. (list args are `value'`-only.)
 
 ── constraints ──  (optional; one per line; may refer to `value`)
   string (fold into IsWf):

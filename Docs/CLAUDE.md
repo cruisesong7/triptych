@@ -163,15 +163,28 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
   by bare name. Both Decimal and Duration use this (`Decimal ::= Sgn Natural "." Fraction`,
   `Duration ::= Sgn Components`); `value` = `Sgn * (…magnitude…)`.
 - `CaptureMap.toEnv` uses `find?` → returns the FIRST match, so repeated elements of a `rep`
-  collapse. The rep's item COUNT is captured under `<Item>#count`; the individual repeated
-  element values are NOT individually addressable yet. (See next steps.)
+  collapse in the SCALAR (`Env`) view. The rep's item COUNT is captured under `<Item>#count`.
+  The individual repeated elements ARE now addressable via `CaptureMap.toEnvList` (all spans of
+  a name, in order) / the surface `componentList`: a `value'` escape marks a list argument `[X]`
+  and receives `List String` (all of `X`'s repeated spans). IPv6 uses this — `value' toV6Addr
+  [H16]` builds a structured `IPv6Addr` from the eight groups. Plumbing: `computeValueMap`
+  (`CaptureMap → α`, vs `computeValueF`'s `Env → α`) drives the escape; `opaqueMapClosure` builds
+  the closure; `computeValueEqProof` reads a list cap via `componentList`, a scalar via
+  `component`. This is escape-tier only — the SCALAR value/constraint DSLs still evaluate against
+  the single-valued `Env`, so in-DSL `sum X`/`count X`/`forall X` reductions (which would need a
+  list-carrying `Env`, touching every reader-agreement proof) remain a deferred, heavier step.
+  List args are `value'`-only; `constraints'` rejects `[X]` explicitly.
 
 ## Open next steps (discussed, not yet done)
 
-1. **rep-element capture exposure** — let structured values read individual repeated elements
-   (and expose `#count` to the `constraints'` escape by name, e.g. a `count(X)` primitive or
-   `#`-key access). Unlocks: arbitrary-order graphs via `rep` + a triangular-count constraint;
-   per-element value constraints. Most-requested increment.
+1. **rep-element capture exposure** — DONE for the value-escape tier (2026-07): `value' f [X]`
+   passes all repeated spans of `X` as `List String`, via `CaptureMap.toEnvList`/`componentList`/
+   `computeValueMap` (IPv6 now builds a structured `IPv6Addr` from its eight `H16` groups; proofs
+   axiom-clean). STILL OPEN: (a) in-DSL reductions `sum X`/`count X`/`forall X: …` for the SCALAR
+   value/constraint tiers — needs the single-valued `Env` re-abstracted to carry lists, which
+   touches every reader-agreement proof (heavier); (b) exposing `#count` to `constraints'` by
+   name. Unlocks (with (a)): arbitrary-order graphs via `rep` + a triangular-count constraint;
+   per-element value constraints.
 2. **Add Mathlib** — swap the hand-rolled `Graph` struct in `Examples/Graph` for real
    `SimpleGraph (Fin n)` / adjacency `Matrix`. Mathlib master currently needs toolchain
    ~v4.33.0-rc1 → a deliberate toolchain bump (do it as its own step; expect some proof drift).

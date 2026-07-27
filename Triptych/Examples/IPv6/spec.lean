@@ -5,8 +5,10 @@ import Triptych.Architecture.Value
 import Triptych.Architecture.Constraint
 import Triptych.Architecture.Assemble
 import Triptych.Theorems.Reconcile
+import Triptych.Examples.IPv6.grammar
 
 open Triptych
+open Triptych.Examples.IPv6
 
 set_option linter.unusedSimpArgs false
 set_option linter.unusedVariables false
@@ -30,6 +32,9 @@ def IPv6.IsWf.H16 (s : String) : Prop :=
 def IPv6.IsWf.V6Addr (s : String) : Prop :=
   ∃ parts : List String,
     8 ≤ parts.length ∧ parts.length ≤ 8 ∧ (∀ p ∈ parts, IPv6.IsWf.H16 p) ∧ s = String.intercalate ":" parts
+
+def IPv6.value (h16 : List String) :=
+  toV6Addr h16
 
 abbrev IPv6.SatisfiesConstraints (s : String) : Prop :=
   True

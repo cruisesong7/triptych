@@ -6,8 +6,10 @@ import Triptych.Architecture.Constraint
 import Triptych.Architecture.Assemble
 import Triptych.Theorems.Reconcile
 import Triptych.Examples.IPv6.spec
+import Triptych.Examples.IPv6.grammar
 
 open Triptych
+open Triptych.Examples.IPv6
 
 set_option linter.unusedSimpArgs false
 set_option linter.unusedVariables false
@@ -22,6 +24,8 @@ and reason about; lowercase `isWf`/`isValid` are the engine's executable decider
 RUN (`#eval isValid s`, `#eval computeValue s`). The `equivalence` section below
 proves the two describe the same language and value. -/
 
+def IPv6.valueFn := fun m : Triptych.CaptureMap => toV6Addr (Triptych.CaptureMap.toEnvList m "H16")
+
 def IPv6.constraints : List ConstraintEntry :=
   []
 
@@ -33,6 +37,9 @@ abbrev IPv6.satisfiesConstraints (s : String) : Prop :=
 
 abbrev IPv6.isValid (s : String) : Prop :=
   IPv6.isWf s ∧ IPv6.satisfiesConstraints s
+
+def IPv6.computeValue (s : String) :=
+  Triptych.computeValueMap IPv6.grammar IPv6.valueFn s
 
 /- ════════════════════════════ equivalence ════════════════════════════
 The auto-discharged guarantees relating the readable surface to the executable
@@ -118,3 +125,39 @@ theorem IPv6.IsValid_equiv (s : String) : IPv6.IsValid s ↔ IPv6.isValid s :=
     Constraint.isValueDependent, Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD,
     signOf_getD, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
   try grind
+
+theorem IPv6.computeValue_eq (s : String) :
+    IPv6.computeValue s =
+      (decode IPv6.grammar s).map (fun _ => IPv6.value (Triptych.componentList IPv6.grammar s "H16")) :=
+  by
+  unfold IPv6.computeValue Triptych.computeValueMap Triptych.componentList IPv6.value IPv6.valueFn
+  cases h : decode IPv6.grammar s with
+  | none => simp
+  | some m => simp only [Option.map_some, natOf_getD, intOf_getD, lenOf_getD, signOf_getD, ValExpr.eval]
+
+/- ═══════════════════════════════ parser ══════════════════════════════
+The generated correct-by-construction parser `parse` (= `computeValue` gated on the
+decidable `isValid`) together with its guarantees — `parse_sound`, `parse_complete`,
+`parse_reject` — all AUTO-DISCHARGED here. A verified parser, no `sorry`. -/
+
+theorem IPv6.computeValue_isSome (s : String) : IPv6.isValid s → (IPv6.computeValue s).isSome :=
+  by
+  intro h
+  unfold IPv6.isValid IPv6.isWf Triptych.isWf at h
+  unfold IPv6.computeValue Triptych.computeValueMap
+  rw [Option.isSome_map]
+  exact h.1.1
+
+def IPv6.parse (s : String) :=
+  Triptych.gatedParse IPv6.isValid IPv6.computeValue s
+
+theorem IPv6.parse_sound (s : String) (i : IPv6Addr) :
+    IPv6.parse s = some i → IPv6.isValid s ∧ IPv6.computeValue s = some i :=
+  Triptych.gatedParse_sound _ _ s i
+
+theorem IPv6.parse_complete (s : String) (i : IPv6Addr) :
+    IPv6.isValid s → IPv6.computeValue s = some i → IPv6.parse s = some i :=
+  Triptych.gatedParse_complete _ _ s i
+
+theorem IPv6.parse_reject (s : String) : IPv6.parse s = none ↔ ¬IPv6.isValid s :=
+  Triptych.gatedParse_reject _ _ IPv6.computeValue_isSome s

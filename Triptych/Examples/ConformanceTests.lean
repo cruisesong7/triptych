@@ -22,11 +22,14 @@ axioms: this is plain evaluation, entirely outside the verified core.
 import Triptych.Examples.Decimal.parser
 import Triptych.Examples.Duration.parser
 import Triptych.Examples.Datetime.parser
+import Triptych.Examples.IPv4.parser
 import Triptych.Examples.Decimal.grammar
 import Triptych.Examples.Duration.grammar
 import Triptych.Examples.Datetime.grammar
+import Triptych.Examples.IPv4.grammar
 import Cedar.Spec.Ext.Decimal
 import Cedar.Spec.Ext.Datetime
+import Cedar.Spec.Ext.IPAddr
 
 open Triptych
 -- Bring the generated example decls into scope so we write `Decimal.parse` (the EXECUTABLE parser
@@ -36,6 +39,7 @@ open Triptych
 open Triptych.Examples.Decimal
 open Triptych.Examples.Duration
 open Triptych.Examples.Datetime
+open Triptych.Examples.IPv4
 
 namespace Triptych.ConformanceTests
 
@@ -125,13 +129,35 @@ def datetimeChecks : List (Option String) :=
     check s (Datetime.parse s)
       ((Cedar.Spec.Ext.Datetime.parse s).map datetimeMillis))
 
-/-- Run all three suites; print totals; return the total failure count. -/
+/-! ## IPv4 — `lift`-free structured value, so our parse yields `Option IPNet`. Oracle is Cedar's
+    REAL `ip` restricted to its IPv4 answers (`(ip s).filter (·.isV4)` — what the `parser` clause
+    validates). Direct equality checks acceptance AND the reconstructed `IPNet` (addr + prefix) in
+    one shot: a V6 or invalid string makes both sides `none`. Strings from `cedar-lean/UnitTest/
+    IPAddr.lean` (V4 valid + invalid + prefix cases), plus V6 strings that our V4 spec must reject. -/
+
+def ipv4Strings : List String :=
+  [ -- valid V4 (bare + CIDR), from Cedar's own valid/inRange/equality suites
+    "127.0.0.1", "127.3.4.1/2", "192.168.0.1/32", "0.0.0.0/1", "8.8.8.8/24",
+    "238.238.238.238", "238.238.238.41/12", "10.0.0.0", "10.0.0.0/24", "10.0.0.0/32",
+    "10.0.0.1/24", "10.0.0.0/29", "0.0.0.1/31", "0.0.0.0/31",
+    -- invalid V4 (from Cedar's invalid-strings suite): dots, ranges, prefix bounds, leading zeros
+    "127.0.0.1.", ".127.0.0.1", "127.0..0.1", "256.0.0.1", "127.0.a.1", "127.3.4.1/33",
+    "127.0.0.1/01", "1.2.3", "01.0.0.1", "1.2.3.4.5", "1.2.3.4/",
+    -- V6 strings: Cedar's `ip` parses these, but our V4-only spec (and `ipv4Only`) reject them
+    "F:AE::F:5:F:F:0", "::1", "::", "::ffff", "a::f/120" ]
+
+def ipv4Checks : List (Option String) :=
+  ipv4Strings.map (fun s =>
+    check s (IPv4.parse s) ((Cedar.Spec.Ext.IPAddr.ip s).filter (·.isV4)))
+
+/-- Run all four suites; print totals; return the total failure count. -/
 def runAll : IO Nat := do
   IO.println "════════ Triptych ↔ Cedar parser conformance ════════"
   let d ← runChecks "Decimal"  decimalChecks
   let u ← runChecks "Duration" durationChecks
   let t ← runChecks "Datetime" datetimeChecks
-  let total := d + u + t
+  let p ← runChecks "IPv4"     ipv4Checks
+  let total := d + u + t + p
   IO.println s!"════════ total failures: {total} ════════"
   pure total
 

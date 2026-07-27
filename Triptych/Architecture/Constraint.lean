@@ -283,6 +283,25 @@ def opaqueEnvClosure (f : TSyntax `ident) (is : Array (TSyntax `ident)) :
     `(((env : Env) $(Syntax.mkStrLit i.getId.toString)).getD ""))
   `(fun env : Env => $f $args*)
 
+/-- Build a `CaptureMap → α` closure from the author's `f` applied to capture args, where each
+    arg is either SCALAR (its matched string, `(m.toEnv "X").getD ""` — same as `opaqueEnvClosure`
+    reads) or a LIST (`CaptureMap.toEnvList m "X"`, every substring `X` matched, in order). The
+    `isList` flag per arg comes from the surface `[X]` marker. The `value'` escape uses this
+    (via `computeValueMap`) so it can consume a `rep`-repeated capture as `List String` — the
+    individual repeated elements the scalar `Env` reader collapses. -/
+def opaqueMapClosure (f : TSyntax `ident) (is : Array (TSyntax `ident × Bool)) :
+    MacroM (TSyntax `term) := do
+  -- `mkIdent` (not a literal in the quotation) so these carry NO macro scope — the generated
+  -- `def valueFn` elaborates cleanly both in-place and in the written file (which `open Triptych`).
+  let toEnvListId := mkIdent `Triptych.CaptureMap.toEnvList
+  let toEnvId     := mkIdent `Triptych.CaptureMap.toEnv
+  let capMapId    := mkIdent `Triptych.CaptureMap
+  let args : Array (TSyntax `term) ← is.mapM (fun (i, isList) =>
+    let key := Syntax.mkStrLit i.getId.toString
+    if isList then `($toEnvListId m $key)
+    else `(($toEnvId m $key).getD ""))
+  `(fun m : $capMapId => $f $args*)
+
 /-- Translate a `constraintExpr` into a `ConstraintEntry` term (all DSL forms wrap in
     `.dsl`; the raw-Lean escape lives in the separate `constraints'` section, not here).
     `valueSub` threads `value` references. -/

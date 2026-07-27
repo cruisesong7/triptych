@@ -5,8 +5,10 @@ import Triptych.Architecture.Value
 import Triptych.Architecture.Constraint
 import Triptych.Architecture.Assemble
 import Triptych.Theorems.Reconcile
+import Triptych.Examples.IPv4.grammar
 
 open Triptych
+open Triptych.Examples.IPv4
 
 set_option linter.unusedSimpArgs false
 set_option linter.unusedVariables false
@@ -20,15 +22,19 @@ conditions, and `IsValid` the overall acceptance predicate (well-formed ∧
 constraints). This file is proof-free — it is what you cite. -/
 
 def IPv4.grammar : Grammar :=
-  Grammar.mk "V4Addr"
-    [Production.mk "V4Addr"
+  Grammar.mk "V4Net"
+    [Production.mk "V4Net"
+        [[SymItem.mk (Sym.ref "V4Addr") false],
+          [SymItem.mk (Sym.ref "V4Addr") false, SymItem.mk (Sym.lit "/") false, SymItem.mk (Sym.ref "Prefix") false]],
+      Production.mk "V4Addr"
         [[SymItem.mk (Sym.ref "Oct1") false, SymItem.mk (Sym.lit ".") false, SymItem.mk (Sym.ref "Oct2") false,
             SymItem.mk (Sym.lit ".") false, SymItem.mk (Sym.ref "Oct3") false, SymItem.mk (Sym.lit ".") false,
             SymItem.mk (Sym.ref "Oct4") false]],
       Production.mk "Oct1" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.between 1 3)) false]],
       Production.mk "Oct2" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.between 1 3)) false]],
       Production.mk "Oct3" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.between 1 3)) false]],
-      Production.mk "Oct4" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.between 1 3)) false]]]
+      Production.mk "Oct4" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.between 1 3)) false]],
+      Production.mk "Prefix" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.between 1 2)) false]]]
 
 def IPv4.IsWf.Oct1 (s : String) : Prop :=
   IsDigitsBetween 1 3 s
@@ -48,18 +54,31 @@ def IPv4.IsWf.V4Addr (s : String) : Prop :=
         IPv4.IsWf.Oct3 oct3) ∧
       IPv4.IsWf.Oct4 oct4
 
-def IPv4.Constraints (oct1 : String) (oct2 : String) (oct3 : String) (oct4 : String) : Prop :=
-  ((((((((oct1).startsWith "0" → oct1 = "0") ∧ (0 : Int) ≤ natOf oct1 ∧ natOf oct1 ≤ (255 : Int)) ∧
-              ((oct2).startsWith "0" → oct2 = "0")) ∧
-            (0 : Int) ≤ natOf oct2 ∧ natOf oct2 ≤ (255 : Int)) ∧
-          ((oct3).startsWith "0" → oct3 = "0")) ∧
-        (0 : Int) ≤ natOf oct3 ∧ natOf oct3 ≤ (255 : Int)) ∧
-      ((oct4).startsWith "0" → oct4 = "0")) ∧
-    (0 : Int) ≤ natOf oct4 ∧ natOf oct4 ≤ (255 : Int)
+def IPv4.IsWf.Prefix (s : String) : Prop :=
+  IsDigitsBetween 1 2 s
+
+def IPv4.IsWf.V4Net (s : String) : Prop :=
+  IPv4.IsWf.V4Addr s ∨
+    ∃ v4Addr «prefix», (s = v4Addr ++ "/" ++ «prefix» ∧ IPv4.IsWf.V4Addr v4Addr) ∧ IPv4.IsWf.Prefix «prefix»
+
+def IPv4.value (oct1 : String) (oct2 : String) (oct3 : String) (oct4 : String) («prefix» : String) :=
+  toIPNet oct1 oct2 oct3 oct4 «prefix»
+
+def IPv4.Constraints (oct1 : String) (oct2 : String) (oct3 : String) (oct4 : String) («prefix» : String) : Prop :=
+  ((((((((((oct1).startsWith "0" → oct1 = "0") ∧ (0 : Int) ≤ natOf oct1 ∧ natOf oct1 ≤ (255 : Int)) ∧
+                  ((oct2).startsWith "0" → oct2 = "0")) ∧
+                (0 : Int) ≤ natOf oct2 ∧ natOf oct2 ≤ (255 : Int)) ∧
+              ((oct3).startsWith "0" → oct3 = "0")) ∧
+            (0 : Int) ≤ natOf oct3 ∧ natOf oct3 ≤ (255 : Int)) ∧
+          ((oct4).startsWith "0" → oct4 = "0")) ∧
+        (0 : Int) ≤ natOf oct4 ∧ natOf oct4 ≤ (255 : Int)) ∧
+      ((«prefix»).startsWith "0" → «prefix» = "0")) ∧
+    (0 : Int) ≤ natOf «prefix» ∧ natOf «prefix» ≤ (32 : Int)
 
 def IPv4.SatisfiesConstraints (s : String) : Prop :=
   IPv4.Constraints (Triptych.component IPv4.grammar s "Oct1") (Triptych.component IPv4.grammar s "Oct2")
     (Triptych.component IPv4.grammar s "Oct3") (Triptych.component IPv4.grammar s "Oct4")
+    (Triptych.component IPv4.grammar s "Prefix")
 
 abbrev IPv4.IsValid (s : String) : Prop :=
-  IPv4.IsWf.V4Addr s ∧ IPv4.SatisfiesConstraints s
+  IPv4.IsWf.V4Net s ∧ IPv4.SatisfiesConstraints s

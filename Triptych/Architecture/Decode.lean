@@ -43,6 +43,15 @@ abbrev CaptureMap := List (String × String)
 /-- View a `CaptureMap` as the `Env` the value/constraint DSLs evaluate against. -/
 def CaptureMap.toEnv (m : CaptureMap) : Env := fun k => (m.find? (·.1 == k)).map (·.2)
 
+/-- Every substring recorded under key `k`, in match order — the list counterpart of `toEnv`
+    (which keeps only the FIRST via `find?`). A `rep`-repeated nonterminal records one entry per
+    iteration, so this recovers ALL of them (e.g. the eight `H16` groups of an IPv6 address);
+    a uniquely-used capture yields a singleton, an absent one the empty list. This is the reader
+    that lets a `value'` escape consume a repeated capture as a `List String` — the individual
+    repeated elements the scalar `toEnv` collapses. -/
+def CaptureMap.toEnvList (m : CaptureMap) (k : String) : List String :=
+  (m.filter (·.1 == k)).map (·.2)
+
 /-- Does the length-`k` prefix of `cs` satisfy the terminal `tok`/`ls`? Routes through the
     single `matchesTerm` predicate (shared with the recognizer/spec), so the token semantics
     is defined once; the `k ≤ cs.length` guard keeps the prefix a genuine prefix. -/
@@ -157,5 +166,13 @@ def computeValue (g : Grammar) (ve : ValExpr) (s : String) : Option Int :=
     `computeValue g ve = computeValueF g (ve.eval ·)` (the DSL tier is the `α := Int` case). -/
 def computeValueF {α : Type} (g : Grammar) (valFn : Env → α) (s : String) : Option α :=
   (decode g s).map (fun m => valFn m.toEnv)
+
+/-- Like `computeValueF`, but the value reader sees the FULL `CaptureMap`, not the collapsed
+    `Env`. Used by a `value'` escape that consumes a repeated capture as a `List String` (via
+    `CaptureMap.toEnvList`): the `Env` view keeps only the first span per name, so a reader that
+    needs every repeated element (IPv6's eight `H16` groups) must read the map directly. The
+    scalar escape stays on `computeValueF` (`Env`-based); this is the list-capable sibling. -/
+def computeValueMap {α : Type} (g : Grammar) (valFn : CaptureMap → α) (s : String) : Option α :=
+  (decode g s).map valFn
 
 end Triptych

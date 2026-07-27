@@ -24,11 +24,12 @@ and reason about; lowercase `isWf`/`isValid` are the engine's executable decider
 RUN (`#eval isValid s`, `#eval computeValue s`). The `equivalence` section below
 proves the two describe the same language and value. -/
 
-def Datetime.valueFn := fun env : Env =>
-  epochMillis (((env : Env) "YYYY").getD "") (((env : Env) "MM").getD "") (((env : Env) "DD").getD "")
-    (((env : Env) "Time.hh").getD "") (((env : Env) "Time.mm").getD "") (((env : Env) "ss").getD "")
-    (((env : Env) "SSS").getD "") (((env : Env) "Offset.hh").getD "") (((env : Env) "Offset.mm").getD "")
-    (((env : Env) "Offset").getD "")
+def Datetime.valueFn := fun m : Triptych.CaptureMap =>
+  epochMillis ((Triptych.CaptureMap.toEnv m "YYYY").getD "") ((Triptych.CaptureMap.toEnv m "MM").getD "")
+    ((Triptych.CaptureMap.toEnv m "DD").getD "") ((Triptych.CaptureMap.toEnv m "Time.hh").getD "")
+    ((Triptych.CaptureMap.toEnv m "Time.mm").getD "") ((Triptych.CaptureMap.toEnv m "ss").getD "")
+    ((Triptych.CaptureMap.toEnv m "SSS").getD "") ((Triptych.CaptureMap.toEnv m "Offset.hh").getD "")
+    ((Triptych.CaptureMap.toEnv m "Offset.mm").getD "") ((Triptych.CaptureMap.toEnv m "Offset").getD "")
 
 def Datetime.constraints : List ConstraintEntry :=
   [ConstraintEntry.dsl
@@ -62,7 +63,7 @@ abbrev Datetime.isValid (s : String) : Prop :=
   Datetime.isWf s ∧ Datetime.satisfiesConstraints s
 
 def Datetime.computeValue (s : String) :=
-  Triptych.computeValueF Datetime.grammar Datetime.valueFn s
+  Triptych.computeValueMap Datetime.grammar Datetime.valueFn s
 
 /- ════════════════════════════ equivalence ════════════════════════════
 The auto-discharged guarantees relating the readable surface to the executable
@@ -390,7 +391,8 @@ theorem Datetime.computeValue_eq (s : String) :
             (Triptych.component Datetime.grammar s "SSS") (Triptych.component Datetime.grammar s "Offset.hh")
             (Triptych.component Datetime.grammar s "Offset.mm") (Triptych.component Datetime.grammar s "Offset")) :=
   by
-  unfold Datetime.computeValue Triptych.computeValueF Triptych.component Triptych.envOf Datetime.value Datetime.valueFn
+  unfold Datetime.computeValue Triptych.computeValueMap Triptych.component Triptych.envOf Datetime.value
+    Datetime.valueFn
   cases h : decode Datetime.grammar s with
   | none => simp
   | some m => simp only [Option.map_some, natOf_getD, intOf_getD, lenOf_getD, signOf_getD, ValExpr.eval]
@@ -404,7 +406,7 @@ theorem Datetime.computeValue_isSome (s : String) : Datetime.isValid s → (Date
   by
   intro h
   unfold Datetime.isValid Datetime.isWf Triptych.isWf at h
-  unfold Datetime.computeValue Triptych.computeValueF
+  unfold Datetime.computeValue Triptych.computeValueMap
   rw [Option.isSome_map]
   exact h.1.1
 

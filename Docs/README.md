@@ -63,11 +63,16 @@ triptych IPv6 where
   grammar
     V6Addr ::= rep H16 sepBy ":" {8}     -- eight H16 groups joined by ":"
     H16    ::= hexDigit{1,4}
+  value'
+    toV6Addr [H16]                       -- the eight groups as a `List String` → `IPv6Addr`
   to "Triptych/Examples/IPv6"
 ```
 
-produces `IPv6.IsWf.V6Addr`, `IPv6.IsValid`, a `DecidablePred` validator, and
-`IPv6.IsWf_equiv : ∀ s, IsWf IPv6.grammar s ↔ IPv6.IsWf.V6Addr s`. A spec with a value
+produces `IPv6.IsWf.V6Addr`, `IPv6.IsValid`, a `DecidablePred` validator,
+`IPv6.IsWf_equiv : ∀ s, IsWf IPv6.grammar s ↔ IPv6.IsWf.V6Addr s`, and — from the `value'`
+escape reading the `[H16]` list capture — the verified parser `IPv6.parse : String → Option
+IPv6Addr` building a structured 128-bit address from all eight repeated groups (a `[X]` list
+argument passes every span a `rep`-repeated capture matched, not just the first). A spec with a value
 section additionally gets the verified parser `<Name>.parse : String → Option α` (with its
 auto-discharged `parse_sound`/`parse_complete`/`parse_reject`) and the reconciliation theorem
 `<Name>.computeValue_eq` (see Decimal, Duration, Datetime, Graph). Adding a

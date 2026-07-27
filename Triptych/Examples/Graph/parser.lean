@@ -24,7 +24,7 @@ and reason about; lowercase `isWf`/`isValid` are the engine's executable decider
 RUN (`#eval isValid s`, `#eval computeValue s`). The `equivalence` section below
 proves the two describe the same language and value. -/
 
-def Graph.valueFn := fun env : Env => toGraph (((env : Env) "Cells").getD "")
+def Graph.valueFn := fun m : Triptych.CaptureMap => toGraph ((Triptych.CaptureMap.toEnv m "Cells").getD "")
 
 def Graph.constraints : List ConstraintEntry :=
   [ConstraintEntry.opaque fun env : Env => isTriangular (((env : Env) "Cells").getD "")]
@@ -39,7 +39,7 @@ abbrev Graph.isValid (s : String) : Prop :=
   Graph.isWf s ∧ Graph.satisfiesConstraints s
 
 def Graph.computeValue (s : String) :=
-  Triptych.computeValueF Graph.grammar Graph.valueFn s
+  Triptych.computeValueMap Graph.grammar Graph.valueFn s
 
 /- ════════════════════════════ equivalence ════════════════════════════
 The auto-discharged guarantees relating the readable surface to the executable
@@ -124,7 +124,7 @@ theorem Graph.computeValue_eq (s : String) :
     Graph.computeValue s =
       (decode Graph.grammar s).map (fun _ => Graph.value (Triptych.component Graph.grammar s "Cells")) :=
   by
-  unfold Graph.computeValue Triptych.computeValueF Triptych.component Triptych.envOf Graph.value Graph.valueFn
+  unfold Graph.computeValue Triptych.computeValueMap Triptych.component Triptych.envOf Graph.value Graph.valueFn
   cases h : decode Graph.grammar s with
   | none => simp
   | some m => simp only [Option.map_some, natOf_getD, intOf_getD, lenOf_getD, signOf_getD, ValExpr.eval]
@@ -138,7 +138,7 @@ theorem Graph.computeValue_isSome (s : String) : Graph.isValid s → (Graph.comp
   by
   intro h
   unfold Graph.isValid Graph.isWf Triptych.isWf at h
-  unfold Graph.computeValue Triptych.computeValueF
+  unfold Graph.computeValue Triptych.computeValueMap
   rw [Option.isSome_map]
   exact h.1.1
 

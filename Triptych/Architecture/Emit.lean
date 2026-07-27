@@ -539,19 +539,32 @@ def isValidEquivProof (specName : Name)
     `value'` escape unfolds `valueFn` (surface and engine share the author's fn, so the two
     sides are defeq after `Option.map_some`). -/
 def computeValueEqProof (specName : Name) (grammarId : TSyntax `ident)
-    (caps : List String) (isDsl : Bool) : CommandElabM (TSyntax `command) := do
+    (caps : List (String × Bool)) (isDsl : Bool) : CommandElabM (TSyntax `command) := do
   let equivId := mkIdent (specName ++ `computeValue_eq)
   let cvId    := mkIdent (specName ++ `computeValue)
   let valId   := mkIdent (specName ++ `value)
-  -- `value <component g s "c₀"> <component g s "c₁"> …` — the readable value on decoded strings.
-  let compArgs : Array (TSyntax `term) ← caps.toArray.mapM (fun c =>
-    `(Triptych.component $grammarId s $(Syntax.mkStrLit c)))
+  -- `value <reader g s "c₀"> …` — the readable value on decoded components. A SCALAR cap reads
+  -- via `component` (its string), a LIST cap (`[X]`, escape tier only) via `componentList` (all
+  -- its repeated spans) — matching how `valueFn` reads the `CaptureMap` (`toEnv`/`toEnvList`).
+  let compArgs : Array (TSyntax `term) ← caps.toArray.mapM (fun (c, isList) =>
+    if isList then `(Triptych.componentList $grammarId s $(Syntax.mkStrLit c))
+    else `(Triptych.component $grammarId s $(Syntax.mkStrLit c)))
   -- Tier-specific unfolds: the engine value entry point + the value definition it reduces to.
-  let cvEntry  := mkIdent (if isDsl then `Triptych.computeValue else `Triptych.computeValueF)
+  -- DSL → `computeValue`/`valueExpr`; escape → `computeValueMap`/`valueFn`. Both readers
+  -- (`component` = `(toEnv m ·).getD ""`, `componentList` = `toEnvList m ·`) unfold to the same
+  -- `CaptureMap` projections the escape closure uses, so the two sides are defeq after the `simp`.
+  let cvEntry  := mkIdent (if isDsl then `Triptych.computeValue else `Triptych.computeValueMap)
   let valDef   := mkIdent (specName ++ (if isDsl then `valueExpr else `valueFn))
+  -- Only unfold a reader that actually appears in the goal (`unfold` errors on an absent target):
+  -- `component` iff some scalar cap, `componentList` iff some list cap.
+  let hasScalar := caps.any (!·.2)
+  let compUnf : Array (TSyntax `ident) :=
+    (if caps.any (·.2) then #[mkIdent `Triptych.componentList] else #[])
+      -- `component` unfolds through `envOf`, so unfold both (only when a scalar cap is present).
+      ++ (if hasScalar then #[mkIdent `Triptych.component, mkIdent `Triptych.envOf] else #[])
   `(theorem $equivId (s : String) :
         $cvId s = (decode $grammarId s).map (fun _ => $valId $compArgs*) := by
-      unfold $cvId $cvEntry Triptych.component Triptych.envOf $valId $valDef
+      unfold $cvId $cvEntry $[$compUnf:ident]* $valId $valDef
       cases h : decode $grammarId s with
       | none => simp
       | some m =>
@@ -653,7 +666,7 @@ def parserContractsProof (specName : Name) (isDsl : Bool) (lift? : Option (TSynt
   let validEng  := mkIdent (specName ++ `isValid)
   let isWfEng   := mkIdent (specName ++ `isWf)
   let cvId      := mkIdent (specName ++ `computeValue)
-  let cvEntry   := mkIdent (if isDsl then `Triptych.computeValue else `Triptych.computeValueF)
+  let cvEntry   := mkIdent (if isDsl then `Triptych.computeValue else `Triptych.computeValueMap)
   let isSomeThm ← `(theorem $isSomeId (s : String) : $validEng s → ($cvId s).isSome := by
       intro h
       unfold $validEng $isWfEng Triptych.isWf at h

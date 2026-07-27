@@ -6,8 +6,10 @@ import Triptych.Architecture.Constraint
 import Triptych.Architecture.Assemble
 import Triptych.Theorems.Reconcile
 import Triptych.Examples.IPv4.spec
+import Triptych.Examples.IPv4.grammar
 
 open Triptych
+open Triptych.Examples.IPv4
 
 set_option linter.unusedSimpArgs false
 set_option linter.unusedVariables false
@@ -21,6 +23,11 @@ Naming convention: CAPITALIZED `IsWf.*`/`IsValid` are the surface `Prop`s you RE
 and reason about; lowercase `isWf`/`isValid` are the engine's executable deciders you
 RUN (`#eval isValid s`, `#eval computeValue s`). The `equivalence` section below
 proves the two describe the same language and value. -/
+
+def IPv4.valueFn := fun m : Triptych.CaptureMap =>
+  toIPNet ((Triptych.CaptureMap.toEnv m "Oct1").getD "") ((Triptych.CaptureMap.toEnv m "Oct2").getD "")
+    ((Triptych.CaptureMap.toEnv m "Oct3").getD "") ((Triptych.CaptureMap.toEnv m "Oct4").getD "")
+    ((Triptych.CaptureMap.toEnv m "Prefix").getD "")
 
 def IPv4.constraints : List ConstraintEntry :=
   [ConstraintEntry.dsl (Constraint.noLeadingZero "Oct1"),
@@ -38,7 +45,11 @@ def IPv4.constraints : List ConstraintEntry :=
     ConstraintEntry.dsl (Constraint.noLeadingZero "Oct4"),
     ConstraintEntry.dsl
       (Constraint.and (Constraint.le (ValExpr.lit 0) (ValExpr.nat "Oct4"))
-        (Constraint.le (ValExpr.nat "Oct4") (ValExpr.lit 255)))]
+        (Constraint.le (ValExpr.nat "Oct4") (ValExpr.lit 255))),
+    ConstraintEntry.dsl (Constraint.noLeadingZero "Prefix"),
+    ConstraintEntry.dsl
+      (Constraint.and (Constraint.le (ValExpr.lit 0) (ValExpr.nat "Prefix"))
+        (Constraint.le (ValExpr.nat "Prefix") (ValExpr.lit 32)))]
 
 abbrev IPv4.isWf (s : String) : Prop :=
   Triptych.isWf IPv4.grammar IPv4.constraints s
@@ -48,6 +59,9 @@ abbrev IPv4.satisfiesConstraints (s : String) : Prop :=
 
 abbrev IPv4.isValid (s : String) : Prop :=
   IPv4.isWf s ∧ IPv4.satisfiesConstraints s
+
+def IPv4.computeValue (s : String) :=
+  Triptych.computeValueMap IPv4.grammar IPv4.valueFn s
 
 /- ════════════════════════════ equivalence ════════════════════════════
 The auto-discharged guarantees relating the readable surface to the executable
@@ -150,49 +164,91 @@ theorem IPv4.Internal.matchesRef.V4Addr (fuel : Nat) (s : String) :
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
-theorem IPv4.IsWf_equiv (s : String) : IsWf IPv4.grammar s ↔ IPv4.IsWf.V4Addr s :=
+theorem IPv4.Internal.matchesRef.Prefix (fuel : Nat) (s : String) :
+    matchesSym IPv4.grammar (fuel + 1) (Sym.ref "Prefix") s ↔ IPv4.IsWf.Prefix s :=
+  by
+  rw [matchesSym,
+    show
+      (IPv4.grammar).prod? "Prefix" =
+        some (Production.mk "Prefix" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.between 1 2)) false]])
+      from rfl]
+  dsimp only
+  rw [matchesProd_single]
+  unfold IPv4.IsWf.Prefix
+  simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
+    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
+    IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
+  simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+  try grind [String.append_assoc, String.append_empty]
+
+theorem IPv4.Internal.matchesRef.V4Net (fuel : Nat) (s : String) :
+    matchesSym IPv4.grammar (fuel + 3) (Sym.ref "V4Net") s ↔ IPv4.IsWf.V4Net s :=
+  by
+  rw [matchesSym,
+    show
+      (IPv4.grammar).prod? "V4Net" =
+        some
+          (Production.mk "V4Net"
+            [[SymItem.mk (Sym.ref "V4Addr") false],
+              [SymItem.mk (Sym.ref "V4Addr") false, SymItem.mk (Sym.lit "/") false,
+                SymItem.mk (Sym.ref "Prefix") false]])
+      from rfl]
+  dsimp only
+  unfold matchesProd IPv4.IsWf.V4Net
+  simp (config := { maxSteps := 1000000 }) only [List.mem_cons, List.mem_singleton, List.not_mem_nil,
+    Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_or_imp, exists_eq_left, exists_eq_left, if_true,
+    if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IPv4.Internal.matchesRef.V4Addr,
+    IPv4.Internal.matchesRef.Prefix]
+  repeat'
+    first
+    | apply or_congr
+    | ( simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left,
+          ← and_assoc, exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+        try grind [String.append_assoc, String.append_empty])
+
+theorem IPv4.IsWf_equiv (s : String) : IsWf IPv4.grammar s ↔ IPv4.IsWf.V4Net s :=
   by
   rw [isWf_eq_isWfProd_start, IsWfProd,
     show
       (IPv4.grammar).prod? (IPv4.grammar).start =
         some
-          (Production.mk "V4Addr"
-            [[SymItem.mk (Sym.ref "Oct1") false, SymItem.mk (Sym.lit ".") false, SymItem.mk (Sym.ref "Oct2") false,
-                SymItem.mk (Sym.lit ".") false, SymItem.mk (Sym.ref "Oct3") false, SymItem.mk (Sym.lit ".") false,
-                SymItem.mk (Sym.ref "Oct4") false]])
+          (Production.mk "V4Net"
+            [[SymItem.mk (Sym.ref "V4Addr") false],
+              [SymItem.mk (Sym.ref "V4Addr") false, SymItem.mk (Sym.lit "/") false,
+                SymItem.mk (Sym.ref "Prefix") false]])
       from rfl]
   have hstart :
     ∀ n,
       matchesProd IPv4.grammar n
-          (Production.mk "V4Addr"
-            [[SymItem.mk (Sym.ref "Oct1") false, SymItem.mk (Sym.lit ".") false, SymItem.mk (Sym.ref "Oct2") false,
-                SymItem.mk (Sym.lit ".") false, SymItem.mk (Sym.ref "Oct3") false, SymItem.mk (Sym.lit ".") false,
-                SymItem.mk (Sym.ref "Oct4") false]])
+          (Production.mk "V4Net"
+            [[SymItem.mk (Sym.ref "V4Addr") false],
+              [SymItem.mk (Sym.ref "V4Addr") false, SymItem.mk (Sym.lit "/") false,
+                SymItem.mk (Sym.ref "Prefix") false]])
           s =
-        matchesSym IPv4.grammar (n + 1) (Sym.ref "V4Addr") s :=
+        matchesSym IPv4.grammar (n + 1) (Sym.ref "V4Net") s :=
     by
     intro n
     rw [matchesSym,
       show
-        (IPv4.grammar).prod? "V4Addr" =
+        (IPv4.grammar).prod? "V4Net" =
           some
-            (Production.mk "V4Addr"
-              [[SymItem.mk (Sym.ref "Oct1") false, SymItem.mk (Sym.lit ".") false, SymItem.mk (Sym.ref "Oct2") false,
-                  SymItem.mk (Sym.lit ".") false, SymItem.mk (Sym.ref "Oct3") false, SymItem.mk (Sym.lit ".") false,
-                  SymItem.mk (Sym.ref "Oct4") false]])
+            (Production.mk "V4Net"
+              [[SymItem.mk (Sym.ref "V4Addr") false],
+                [SymItem.mk (Sym.ref "V4Addr") false, SymItem.mk (Sym.lit "/") false,
+                  SymItem.mk (Sym.ref "Prefix") false]])
         from rfl]
   show
     matchesProd IPv4.grammar (IPv4.grammar).prods.length
-        (Production.mk "V4Addr"
-          [[SymItem.mk (Sym.ref "Oct1") false, SymItem.mk (Sym.lit ".") false, SymItem.mk (Sym.ref "Oct2") false,
-              SymItem.mk (Sym.lit ".") false, SymItem.mk (Sym.ref "Oct3") false, SymItem.mk (Sym.lit ".") false,
-              SymItem.mk (Sym.ref "Oct4") false]])
+        (Production.mk "V4Net"
+          [[SymItem.mk (Sym.ref "V4Addr") false],
+            [SymItem.mk (Sym.ref "V4Addr") false, SymItem.mk (Sym.lit "/") false, SymItem.mk (Sym.ref "Prefix") false]])
         s ↔
       _
   rw [hstart]
-  exact IPv4.Internal.matchesRef.V4Addr _ s
+  exact IPv4.Internal.matchesRef.V4Net _ s
 
-instance IPv4.instDecidableIsWf : DecidablePred IPv4.IsWf.V4Addr := fun s =>
+instance IPv4.instDecidableIsWf : DecidablePred IPv4.IsWf.V4Net := fun s =>
   @decidable_of_iff _ _ (IPv4.IsWf_equiv s) (Triptych.decIsWf IPv4.grammar (by decide) s)
 
 instance IPv4.instDecidableSatisfiesConstraints : DecidablePred IPv4.SatisfiesConstraints := fun s => by
@@ -211,3 +267,43 @@ theorem IPv4.IsValid_equiv (s : String) : IPv4.IsValid s ↔ IPv4.isValid s :=
     Constraint.isValueDependent, Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD,
     signOf_getD, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
   try grind
+
+theorem IPv4.computeValue_eq (s : String) :
+    IPv4.computeValue s =
+      (decode IPv4.grammar s).map
+        (fun _ =>
+          IPv4.value (Triptych.component IPv4.grammar s "Oct1") (Triptych.component IPv4.grammar s "Oct2")
+            (Triptych.component IPv4.grammar s "Oct3") (Triptych.component IPv4.grammar s "Oct4")
+            (Triptych.component IPv4.grammar s "Prefix")) :=
+  by
+  unfold IPv4.computeValue Triptych.computeValueMap Triptych.component Triptych.envOf IPv4.value IPv4.valueFn
+  cases h : decode IPv4.grammar s with
+  | none => simp
+  | some m => simp only [Option.map_some, natOf_getD, intOf_getD, lenOf_getD, signOf_getD, ValExpr.eval]
+
+/- ═══════════════════════════════ parser ══════════════════════════════
+The generated correct-by-construction parser `parse` (= `computeValue` gated on the
+decidable `isValid`) together with its guarantees — `parse_sound`, `parse_complete`,
+`parse_reject` — all AUTO-DISCHARGED here. A verified parser, no `sorry`. -/
+
+theorem IPv4.computeValue_isSome (s : String) : IPv4.isValid s → (IPv4.computeValue s).isSome :=
+  by
+  intro h
+  unfold IPv4.isValid IPv4.isWf Triptych.isWf at h
+  unfold IPv4.computeValue Triptych.computeValueMap
+  rw [Option.isSome_map]
+  exact h.1.1
+
+def IPv4.parse (s : String) :=
+  Triptych.gatedParse IPv4.isValid IPv4.computeValue s
+
+theorem IPv4.parse_sound (s : String) (i : IPNet) :
+    IPv4.parse s = some i → IPv4.isValid s ∧ IPv4.computeValue s = some i :=
+  Triptych.gatedParse_sound _ _ s i
+
+theorem IPv4.parse_complete (s : String) (i : IPNet) :
+    IPv4.isValid s → IPv4.computeValue s = some i → IPv4.parse s = some i :=
+  Triptych.gatedParse_complete _ _ s i
+
+theorem IPv4.parse_reject (s : String) : IPv4.parse s = none ↔ ¬IPv4.isValid s :=
+  Triptych.gatedParse_reject _ _ IPv4.computeValue_isSome s

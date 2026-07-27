@@ -58,6 +58,16 @@ def envOf (g : Grammar) (s : String) : Env :=
     of `(envOf g s "Integer").getD ""`. Definitionally the latter, so no proof gap. -/
 def component (g : Grammar) (s : String) (c : String) : String := (envOf g s c).getD ""
 
+/-- Every matched substring of capture `c` in `s`, in match order — `[]` if `s` is not
+    well-formed. The list counterpart of `component`: a `rep`-repeated nonterminal yields one
+    entry per iteration (the eight `H16` groups of an IPv6 address), a unique capture a
+    singleton. This is the READABLE list reader a `value'` escape uses when it consumes a
+    repeated capture as `List String`, so the spec never mentions the internal `CaptureMap`. -/
+def componentList (g : Grammar) (s : String) (c : String) : List String :=
+  match decode g s with
+  | some m => CaptureMap.toEnvList m c
+  | none   => []
+
 /-- Well-formedness: the grammar recognizes `s` AND every string-only constraint
     (`wfPart`) holds on its capture environment. -/
 def isWf (g : Grammar) (cs : List ConstraintEntry) (s : String) : Prop :=
