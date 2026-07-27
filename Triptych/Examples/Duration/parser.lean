@@ -39,8 +39,8 @@ def Duration.valueFn : Env → Int :=
   (Duration.valueExpr).eval
 
 def Duration.constraints : List ConstraintEntry :=
-  [ConstraintEntry.dsl (Constraint.card CardOp.atLeast 1 ["Components"]),
-    ConstraintEntry.dsl
+  [ConstraintEntry.dsl ConstraintPhase.wellFormed (Constraint.card CardOp.atLeast 1 ["Components"]),
+    ConstraintEntry.dsl ConstraintPhase.value
       (Constraint.and (Constraint.le (ValExpr.lit (-9223372036854775808)) Duration.valueExpr)
         (Constraint.le Duration.valueExpr (ValExpr.lit 9223372036854775807)))]
 
@@ -58,9 +58,10 @@ def Duration.computeValue (s : String) : Option Int :=
 
 /- ════════════════════════════ equivalence ════════════════════════════
 The auto-discharged guarantees relating the readable surface to the executable
-engine: `IsWf_equiv` (+ its `Internal.matchesRef.*` lemmas) proves recognition
-agrees, `computeValue_eq` proves the values agree, and the derived `DecidablePred`
-instances make the surface predicates executable via the engine. No `sorry`. -/
+engine: `IsWfGrammar_equiv` proves grammar-layout agreement and `IsWf_equiv`
+proves full well-formedness agreement. `computeValue_eq` proves the values agree,
+and the derived `DecidablePred` instances make the surface predicates executable
+via the engine. No `sorry`. -/
 
 theorem Duration.Internal.matchesRef.Sign (fuel : Nat) (s : String) :
     matchesSym Duration.grammar (fuel + 1) (Sym.ref "Sign") s ↔ Duration.IsWf.Sign s :=
@@ -296,7 +297,7 @@ theorem Duration.Internal.matchesRef.Duration (fuel : Nat) (s : String) :
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
-theorem Duration.IsWf_equiv (s : String) : IsWf Duration.grammar s ↔ Duration.IsWf.Duration s :=
+theorem Duration.IsWfGrammar_equiv (s : String) : Triptych.IsWf Duration.grammar s ↔ Duration.IsWf.Duration s :=
   by
   rw [isWf_eq_isWfProd_start, IsWfProd,
     show
@@ -322,25 +323,41 @@ theorem Duration.IsWf_equiv (s : String) : IsWf Duration.grammar s ↔ Duration.
   rw [hstart]
   exact Duration.Internal.matchesRef.Duration _ s
 
-instance Duration.instDecidableIsWf : DecidablePred Duration.IsWf.Duration := fun s =>
-  @decidable_of_iff _ _ (Duration.IsWf_equiv s) (Triptych.decIsWf Duration.grammar (by decide) s)
+theorem Duration.IsWf_equiv (s : String) : Duration.IsWf s ↔ Duration.isWf s :=
+  by
+  unfold Duration.IsWf Duration.isWf Triptych.isWf
+  rw [← Duration.IsWfGrammar_equiv, ← decodeSome_iff_IsWf Duration.grammar (by decide)]
+  unfold Duration.SatisfiesWfConstraints Duration.WfConstraints Duration.constraints
+  simp only [Triptych.component, List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const,
+    ConstraintEntry.wfPart, Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD,
+    signOf_getD, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
+  try grind
 
-instance Duration.instDecidableSatisfiesConstraints : DecidablePred Duration.SatisfiesConstraints := fun s => by
-  simp only [Duration.SatisfiesConstraints, Duration.Constraints, Duration.value]; exact inferInstance
-
-instance Duration.instDecidableIsValid : DecidablePred Duration.IsValid := fun s => inferInstanceAs (Decidable (_ ∧ _))
+theorem Duration.SatisfiesConstraints_equiv (s : String) :
+    Duration.SatisfiesConstraints s ↔ Duration.satisfiesConstraints s :=
+  by
+  unfold Duration.satisfiesConstraints Triptych.satisfiesConstraints
+  unfold Duration.SatisfiesConstraints Duration.Constraints Duration.constraints Duration.value Duration.valueExpr
+  simp only [Triptych.component, List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const,
+    ConstraintEntry.valPart, Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD,
+    signOf_getD, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
+  try grind
 
 theorem Duration.IsValid_equiv (s : String) : Duration.IsValid s ↔ Duration.isValid s :=
   by
-  unfold Duration.IsValid Duration.isValid Duration.isWf Duration.satisfiesConstraints
-  unfold Triptych.isWf Triptych.satisfiesConstraints
-  rw [← Duration.IsWf_equiv, ← decodeSome_iff_IsWf Duration.grammar (by decide)]
-  unfold Duration.SatisfiesConstraints Duration.Constraints Duration.constraints Duration.value Duration.valueExpr
-  simp only [Triptych.component, List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const,
-    if_true, if_false, ConstraintEntry.wfPart, ConstraintEntry.valPart, Constraint.wfPart, Constraint.valPart,
-    Constraint.isValueDependent, Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD,
-    signOf_getD, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
-  try grind
+  unfold Duration.IsValid Duration.isValid
+  rw [(Duration.IsWf_equiv s), (Duration.SatisfiesConstraints_equiv s)]
+
+instance Duration.instDecidableGrammar : DecidablePred Duration.IsWf.Duration := fun s =>
+  @decidable_of_iff _ _ (Duration.IsWfGrammar_equiv s) (Triptych.decIsWf Duration.grammar (by decide) s)
+
+instance Duration.instDecidableIsWf : DecidablePred Duration.IsWf := fun s =>
+  @decidable_of_iff _ _ (Duration.IsWf_equiv s).symm inferInstance
+
+instance Duration.instDecidableSatisfiesConstraints : DecidablePred Duration.SatisfiesConstraints := fun s =>
+  @decidable_of_iff _ _ (Duration.SatisfiesConstraints_equiv s).symm inferInstance
+
+instance Duration.instDecidableIsValid : DecidablePred Duration.IsValid := fun s => inferInstanceAs (Decidable (_ ∧ _))
 
 theorem Duration.computeValue_eq (s : String) :
     Duration.computeValue s =

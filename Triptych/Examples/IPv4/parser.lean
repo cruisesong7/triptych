@@ -30,24 +30,24 @@ def IPv4.valueFn := fun m : Triptych.CaptureMap =>
     ((Triptych.CaptureMap.toEnv m "Prefix").getD "")
 
 def IPv4.constraints : List ConstraintEntry :=
-  [ConstraintEntry.dsl (Constraint.noLeadingZero "Oct1"),
-    ConstraintEntry.dsl
+  [ConstraintEntry.dsl ConstraintPhase.wellFormed (Constraint.noLeadingZero "Oct1"),
+    ConstraintEntry.dsl ConstraintPhase.wellFormed
       (Constraint.and (Constraint.le (ValExpr.lit 0) (ValExpr.nat "Oct1"))
         (Constraint.le (ValExpr.nat "Oct1") (ValExpr.lit 255))),
-    ConstraintEntry.dsl (Constraint.noLeadingZero "Oct2"),
-    ConstraintEntry.dsl
+    ConstraintEntry.dsl ConstraintPhase.wellFormed (Constraint.noLeadingZero "Oct2"),
+    ConstraintEntry.dsl ConstraintPhase.wellFormed
       (Constraint.and (Constraint.le (ValExpr.lit 0) (ValExpr.nat "Oct2"))
         (Constraint.le (ValExpr.nat "Oct2") (ValExpr.lit 255))),
-    ConstraintEntry.dsl (Constraint.noLeadingZero "Oct3"),
-    ConstraintEntry.dsl
+    ConstraintEntry.dsl ConstraintPhase.wellFormed (Constraint.noLeadingZero "Oct3"),
+    ConstraintEntry.dsl ConstraintPhase.wellFormed
       (Constraint.and (Constraint.le (ValExpr.lit 0) (ValExpr.nat "Oct3"))
         (Constraint.le (ValExpr.nat "Oct3") (ValExpr.lit 255))),
-    ConstraintEntry.dsl (Constraint.noLeadingZero "Oct4"),
-    ConstraintEntry.dsl
+    ConstraintEntry.dsl ConstraintPhase.wellFormed (Constraint.noLeadingZero "Oct4"),
+    ConstraintEntry.dsl ConstraintPhase.wellFormed
       (Constraint.and (Constraint.le (ValExpr.lit 0) (ValExpr.nat "Oct4"))
         (Constraint.le (ValExpr.nat "Oct4") (ValExpr.lit 255))),
-    ConstraintEntry.dsl (Constraint.noLeadingZero "Prefix"),
-    ConstraintEntry.dsl
+    ConstraintEntry.dsl ConstraintPhase.wellFormed (Constraint.noLeadingZero "Prefix"),
+    ConstraintEntry.dsl ConstraintPhase.wellFormed
       (Constraint.and (Constraint.le (ValExpr.lit 0) (ValExpr.nat "Prefix"))
         (Constraint.le (ValExpr.nat "Prefix") (ValExpr.lit 32)))]
 
@@ -65,9 +65,10 @@ def IPv4.computeValue (s : String) :=
 
 /- ════════════════════════════ equivalence ════════════════════════════
 The auto-discharged guarantees relating the readable surface to the executable
-engine: `IsWf_equiv` (+ its `Internal.matchesRef.*` lemmas) proves recognition
-agrees, `computeValue_eq` proves the values agree, and the derived `DecidablePred`
-instances make the surface predicates executable via the engine. No `sorry`. -/
+engine: `IsWfGrammar_equiv` proves grammar-layout agreement and `IsWf_equiv`
+proves full well-formedness agreement. `computeValue_eq` proves the values agree,
+and the derived `DecidablePred` instances make the surface predicates executable
+via the engine. No `sorry`. -/
 
 theorem IPv4.Internal.matchesRef.Oct1 (fuel : Nat) (s : String) :
     matchesSym IPv4.grammar (fuel + 1) (Sym.ref "Oct1") s ↔ IPv4.IsWf.Oct1 s :=
@@ -207,7 +208,7 @@ theorem IPv4.Internal.matchesRef.V4Net (fuel : Nat) (s : String) :
           ← and_assoc, exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
         try grind [String.append_assoc, String.append_empty])
 
-theorem IPv4.IsWf_equiv (s : String) : IsWf IPv4.grammar s ↔ IPv4.IsWf.V4Net s :=
+theorem IPv4.IsWfGrammar_equiv (s : String) : Triptych.IsWf IPv4.grammar s ↔ IPv4.IsWf.V4Net s :=
   by
   rw [isWf_eq_isWfProd_start, IsWfProd,
     show
@@ -248,25 +249,40 @@ theorem IPv4.IsWf_equiv (s : String) : IsWf IPv4.grammar s ↔ IPv4.IsWf.V4Net s
   rw [hstart]
   exact IPv4.Internal.matchesRef.V4Net _ s
 
-instance IPv4.instDecidableIsWf : DecidablePred IPv4.IsWf.V4Net := fun s =>
-  @decidable_of_iff _ _ (IPv4.IsWf_equiv s) (Triptych.decIsWf IPv4.grammar (by decide) s)
+theorem IPv4.IsWf_equiv (s : String) : IPv4.IsWf s ↔ IPv4.isWf s :=
+  by
+  unfold IPv4.IsWf IPv4.isWf Triptych.isWf
+  rw [← IPv4.IsWfGrammar_equiv, ← decodeSome_iff_IsWf IPv4.grammar (by decide)]
+  unfold IPv4.SatisfiesWfConstraints IPv4.WfConstraints IPv4.constraints
+  simp only [Triptych.component, List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const,
+    ConstraintEntry.wfPart, Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD,
+    signOf_getD, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
+  try grind
 
-instance IPv4.instDecidableSatisfiesConstraints : DecidablePred IPv4.SatisfiesConstraints := fun s => by
-  simp only [IPv4.SatisfiesConstraints, IPv4.Constraints]; exact inferInstance
-
-instance IPv4.instDecidableIsValid : DecidablePred IPv4.IsValid := fun s => inferInstanceAs (Decidable (_ ∧ _))
+theorem IPv4.SatisfiesConstraints_equiv (s : String) : IPv4.SatisfiesConstraints s ↔ IPv4.satisfiesConstraints s :=
+  by
+  unfold IPv4.satisfiesConstraints Triptych.satisfiesConstraints
+  unfold IPv4.SatisfiesConstraints IPv4.constraints
+  simp only [Triptych.component, List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const,
+    ConstraintEntry.valPart, Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD,
+    signOf_getD, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
+  try grind
 
 theorem IPv4.IsValid_equiv (s : String) : IPv4.IsValid s ↔ IPv4.isValid s :=
   by
-  unfold IPv4.IsValid IPv4.isValid IPv4.isWf IPv4.satisfiesConstraints
-  unfold Triptych.isWf Triptych.satisfiesConstraints
-  rw [← IPv4.IsWf_equiv, ← decodeSome_iff_IsWf IPv4.grammar (by decide)]
-  unfold IPv4.SatisfiesConstraints IPv4.Constraints IPv4.constraints
-  simp only [Triptych.component, List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const,
-    if_true, if_false, ConstraintEntry.wfPart, ConstraintEntry.valPart, Constraint.wfPart, Constraint.valPart,
-    Constraint.isValueDependent, Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD,
-    signOf_getD, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
-  try grind
+  unfold IPv4.IsValid IPv4.isValid
+  rw [(IPv4.IsWf_equiv s), (IPv4.SatisfiesConstraints_equiv s)]
+
+instance IPv4.instDecidableGrammar : DecidablePred IPv4.IsWf.V4Net := fun s =>
+  @decidable_of_iff _ _ (IPv4.IsWfGrammar_equiv s) (Triptych.decIsWf IPv4.grammar (by decide) s)
+
+instance IPv4.instDecidableIsWf : DecidablePred IPv4.IsWf := fun s =>
+  @decidable_of_iff _ _ (IPv4.IsWf_equiv s).symm inferInstance
+
+instance IPv4.instDecidableSatisfiesConstraints : DecidablePred IPv4.SatisfiesConstraints := fun s =>
+  @decidable_of_iff _ _ (IPv4.SatisfiesConstraints_equiv s).symm inferInstance
+
+instance IPv4.instDecidableIsValid : DecidablePred IPv4.IsValid := fun s => inferInstanceAs (Decidable (_ ∧ _))
 
 theorem IPv4.computeValue_eq (s : String) :
     IPv4.computeValue s =

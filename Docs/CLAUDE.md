@@ -63,19 +63,20 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
   readable leaf predicates `IsDigits`/`IsBits`/…; `matchesTerm`.
 - `Value.lean` — `ValExpr` AST + `eval : Env → Int` (scalar value DSL); readers
   (`natOf`/`intOf`/`lenOf`/`signOf`), `surfaceBinder`.
-- `Constraint.lean` — `Constraint`/`ConstraintEntry` AST, `wfPart`/`valPart` classification,
-  `card`/`presentCount`, `opaque` escape (`opaqueEnvClosure`).
+- `Constraint.lean` — `Constraint`/`ConstraintEntry` AST, explicit
+  `.wellFormed`/`.value` phase classification, `card`/`presentCount`, and the `opaque`
+  escape (`opaqueEnvClosure`).
 - `Decode.lean` — executable capture extractor `decode`/`matchSym`/`matchStar`/`matchRep`;
   `computeValue : … → Option Int` and `computeValueF : … → (Env → α) → Option α` (arbitrary
   value type). `CaptureMap`/`Env`.
 - `Roundtrip.lean` — `decodeSome_iff_IsWf` (decode ↔ IsWf), `rep_iter`/`matchStar_iter`,
   `decIsWf` (conditional `DecidablePred (IsWf g)`, needs `g.repOk = true`).
-- `Reconcile.lean` — reusable lemmas for the emitted `IsWf_equiv` (leaf `_matchesTerm`,
-  `matchesSym_rep_iff`, reader-agreement `natOf_getD` etc.).
+- `Reconcile.lean` — reusable lemmas for emitted grammar/full-WF equivalences (leaf
+  `_matchesTerm`, `matchesSym_rep_iff`, reader-agreement `natOf_getD` etc.).
 - `Assemble.lean` — bundles `isWf`/`satisfiesConstraints`/`isValid`; `component`;
   contract statements `SoundStmt`/`CompleteStmt`/`RejectStmt` (over value type `β`, `π : α→β`).
 - `Emit.lean` — renders surface predicates (`symPred`/`termPred`), grammar literals,
-  `matchesRefProof`/`isWfEquivProof`/`isValidEquivProof` (the uniform proof closer).
+  `matchesRefProof`/`isWfGrammarEquivProof`/`isWfEquivProof`/`isValidEquivProof`.
 - `Syntax.lean` — the `triptych` command (DSL surface → core, elaborate, write the three
   generated files). Emits `gatedParse`/`parserContractsProof` (the verified parser) and
   splits output into `spec`/`parser`/`soundness` (see below).
@@ -123,8 +124,9 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
   production's sole rhs — see sign captures below), and separated group repetition
   `rep <item> sepBy "<sep>" <len>`. Strict subclass of regular; NO recursion (not context-free),
   NO data-dependent length.
-- Constraints: `wfPart` (string-only) + `valPart` (value-dependent) DSL forms, cardinality
-  `card`, and arbitrary-decidable escapes `constraints' f X Y` (so the ACCEPTED language can be
+- Constraints: capture-only forms, including arithmetic bounds, enter `wfPart`; only
+  expressions explicitly mentioning final `value` enter `valPart`. Includes cardinality
+  `card` and arbitrary-decidable capture escapes `constraints' f X Y` (so `IsWf` can be
   non-regular, e.g. "length is triangular").
 - Values: `value <arith>` (scalar Int DSL) OR `value' f X Y` escape returning ANY type
   (structured output — graphs, records). Escape value type flows through `computeValueF`.

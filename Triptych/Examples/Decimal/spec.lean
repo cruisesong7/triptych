@@ -15,9 +15,9 @@ set_option linter.unusedVariables false
 The more readable specification. Each production of the input grammar becomes an
 inlined well-formedness predicate `IsWf.*` written as a plain existential over the
 named captures, so you can read it side-by-side with the grammar and check that it
-says the same thing. `value` is the value function, `Constraints` the extra
-conditions, and `IsValid` the overall acceptance predicate (well-formed ∧
-constraints). This file is proof-free — it is what you cite. -/
+says the same thing. `WfConstraints` contains capture-derived format conditions;
+`Constraints` contains only conditions that explicitly mention the final `value`.
+`IsValid` combines both phases. This file is proof-free — it is what you cite. -/
 
 def Decimal.grammar : Grammar :=
   Grammar.mk "Decimal"
@@ -51,9 +51,15 @@ def Decimal.Constraints («sign» : String) (natural : String) (fraction : Strin
   (-9223372036854775808 : Int) ≤ Decimal.value «sign» natural fraction ∧
     Decimal.value «sign» natural fraction ≤ (9223372036854775807 : Int)
 
+abbrev Decimal.SatisfiesWfConstraints (s : String) : Prop :=
+  True
+
+abbrev Decimal.IsWf (s : String) : Prop :=
+  Decimal.IsWf.Decimal s ∧ Decimal.SatisfiesWfConstraints s
+
 def Decimal.SatisfiesConstraints (s : String) : Prop :=
   Decimal.Constraints (Triptych.component Decimal.grammar s "Sign") (Triptych.component Decimal.grammar s "Natural")
     (Triptych.component Decimal.grammar s "Fraction")
 
 abbrev Decimal.IsValid (s : String) : Prop :=
-  Decimal.IsWf.Decimal s ∧ Decimal.SatisfiesConstraints s
+  Decimal.IsWf s ∧ Decimal.SatisfiesConstraints s

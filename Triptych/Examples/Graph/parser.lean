@@ -27,7 +27,7 @@ proves the two describe the same language and value. -/
 def Graph.valueFn := fun m : Triptych.CaptureMap => toGraph ((Triptych.CaptureMap.toEnv m "Cells").getD "")
 
 def Graph.constraints : List ConstraintEntry :=
-  [ConstraintEntry.opaque fun env : Env => isTriangular (((env : Env) "Cells").getD "")]
+  [ConstraintEntry.opaque ConstraintPhase.wellFormed fun env : Env => isTriangular (((env : Env) "Cells").getD "")]
 
 abbrev Graph.isWf (s : String) : Prop :=
   Triptych.isWf Graph.grammar Graph.constraints s
@@ -43,9 +43,10 @@ def Graph.computeValue (s : String) :=
 
 /- ════════════════════════════ equivalence ════════════════════════════
 The auto-discharged guarantees relating the readable surface to the executable
-engine: `IsWf_equiv` (+ its `Internal.matchesRef.*` lemmas) proves recognition
-agrees, `computeValue_eq` proves the values agree, and the derived `DecidablePred`
-instances make the surface predicates executable via the engine. No `sorry`. -/
+engine: `IsWfGrammar_equiv` proves grammar-layout agreement and `IsWf_equiv`
+proves full well-formedness agreement. `computeValue_eq` proves the values agree,
+and the derived `DecidablePred` instances make the surface predicates executable
+via the engine. No `sorry`. -/
 
 theorem Graph.Internal.matchesRef.Cells (fuel : Nat) (s : String) :
     matchesSym Graph.grammar (fuel + 1) (Sym.ref "Cells") s ↔ Graph.IsWf.Cells s :=
@@ -80,7 +81,7 @@ theorem Graph.Internal.matchesRef.Adj (fuel : Nat) (s : String) :
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
-theorem Graph.IsWf_equiv (s : String) : IsWf Graph.grammar s ↔ Graph.IsWf.Adj s :=
+theorem Graph.IsWfGrammar_equiv (s : String) : Triptych.IsWf Graph.grammar s ↔ Graph.IsWf.Adj s :=
   by
   rw [isWf_eq_isWfProd_start, IsWfProd,
     show (Graph.grammar).prod? (Graph.grammar).start = some (Production.mk "Adj" [[SymItem.mk (Sym.ref "Cells") false]])
@@ -100,25 +101,40 @@ theorem Graph.IsWf_equiv (s : String) : IsWf Graph.grammar s ↔ Graph.IsWf.Adj 
   rw [hstart]
   exact Graph.Internal.matchesRef.Adj _ s
 
-instance Graph.instDecidableIsWf : DecidablePred Graph.IsWf.Adj := fun s =>
-  @decidable_of_iff _ _ (Graph.IsWf_equiv s) (Triptych.decIsWf Graph.grammar (by decide) s)
+theorem Graph.IsWf_equiv (s : String) : Graph.IsWf s ↔ Graph.isWf s :=
+  by
+  unfold Graph.IsWf Graph.isWf Triptych.isWf
+  rw [← Graph.IsWfGrammar_equiv, ← decodeSome_iff_IsWf Graph.grammar (by decide)]
+  unfold Graph.SatisfiesWfConstraints Graph.WfConstraints Graph.constraints
+  simp only [Triptych.component, List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const,
+    ConstraintEntry.wfPart, Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD,
+    signOf_getD, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
+  try grind
 
-instance Graph.instDecidableSatisfiesConstraints : DecidablePred Graph.SatisfiesConstraints := fun s => by
-  simp only [Graph.SatisfiesConstraints, Graph.Constraints]; exact inferInstance
-
-instance Graph.instDecidableIsValid : DecidablePred Graph.IsValid := fun s => inferInstanceAs (Decidable (_ ∧ _))
+theorem Graph.SatisfiesConstraints_equiv (s : String) : Graph.SatisfiesConstraints s ↔ Graph.satisfiesConstraints s :=
+  by
+  unfold Graph.satisfiesConstraints Triptych.satisfiesConstraints
+  unfold Graph.SatisfiesConstraints Graph.constraints
+  simp only [Triptych.component, List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const,
+    ConstraintEntry.valPart, Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD,
+    signOf_getD, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
+  try grind
 
 theorem Graph.IsValid_equiv (s : String) : Graph.IsValid s ↔ Graph.isValid s :=
   by
-  unfold Graph.IsValid Graph.isValid Graph.isWf Graph.satisfiesConstraints
-  unfold Triptych.isWf Triptych.satisfiesConstraints
-  rw [← Graph.IsWf_equiv, ← decodeSome_iff_IsWf Graph.grammar (by decide)]
-  unfold Graph.SatisfiesConstraints Graph.Constraints Graph.constraints
-  simp only [Triptych.component, List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const,
-    if_true, if_false, ConstraintEntry.wfPart, ConstraintEntry.valPart, Constraint.wfPart, Constraint.valPart,
-    Constraint.isValueDependent, Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD,
-    signOf_getD, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
-  try grind
+  unfold Graph.IsValid Graph.isValid
+  rw [(Graph.IsWf_equiv s), (Graph.SatisfiesConstraints_equiv s)]
+
+instance Graph.instDecidableGrammar : DecidablePred Graph.IsWf.Adj := fun s =>
+  @decidable_of_iff _ _ (Graph.IsWfGrammar_equiv s) (Triptych.decIsWf Graph.grammar (by decide) s)
+
+instance Graph.instDecidableIsWf : DecidablePred Graph.IsWf := fun s =>
+  @decidable_of_iff _ _ (Graph.IsWf_equiv s).symm inferInstance
+
+instance Graph.instDecidableSatisfiesConstraints : DecidablePred Graph.SatisfiesConstraints := fun s =>
+  @decidable_of_iff _ _ (Graph.SatisfiesConstraints_equiv s).symm inferInstance
+
+instance Graph.instDecidableIsValid : DecidablePred Graph.IsValid := fun s => inferInstanceAs (Decidable (_ ∧ _))
 
 theorem Graph.computeValue_eq (s : String) :
     Graph.computeValue s =

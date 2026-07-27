@@ -43,9 +43,10 @@ def IPv6.computeValue (s : String) :=
 
 /- ════════════════════════════ equivalence ════════════════════════════
 The auto-discharged guarantees relating the readable surface to the executable
-engine: `IsWf_equiv` (+ its `Internal.matchesRef.*` lemmas) proves recognition
-agrees, `computeValue_eq` proves the values agree, and the derived `DecidablePred`
-instances make the surface predicates executable via the engine. No `sorry`. -/
+engine: `IsWfGrammar_equiv` proves grammar-layout agreement and `IsWf_equiv`
+proves full well-formedness agreement. `computeValue_eq` proves the values agree,
+and the derived `DecidablePred` instances make the surface predicates executable
+via the engine. No `sorry`. -/
 
 theorem IPv6.Internal.matchesRef.H16 (fuel : Nat) (s : String) :
     matchesSym IPv6.grammar (fuel + 1) (Sym.ref "H16") s ↔ IPv6.IsWf.H16 s :=
@@ -83,7 +84,7 @@ theorem IPv6.Internal.matchesRef.V6Addr (fuel : Nat) (s : String) :
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
-theorem IPv6.IsWf_equiv (s : String) : IsWf IPv6.grammar s ↔ IPv6.IsWf.V6Addr s :=
+theorem IPv6.IsWfGrammar_equiv (s : String) : Triptych.IsWf IPv6.grammar s ↔ IPv6.IsWf.V6Addr s :=
   by
   rw [isWf_eq_isWfProd_start, IsWfProd,
     show
@@ -109,22 +110,40 @@ theorem IPv6.IsWf_equiv (s : String) : IsWf IPv6.grammar s ↔ IPv6.IsWf.V6Addr 
   rw [hstart]
   exact IPv6.Internal.matchesRef.V6Addr _ s
 
-instance IPv6.instDecidableIsWf : DecidablePred IPv6.IsWf.V6Addr := fun s =>
-  @decidable_of_iff _ _ (IPv6.IsWf_equiv s) (Triptych.decIsWf IPv6.grammar (by decide) s)
+theorem IPv6.IsWf_equiv (s : String) : IPv6.IsWf s ↔ IPv6.isWf s :=
+  by
+  unfold IPv6.IsWf IPv6.isWf Triptych.isWf
+  rw [← IPv6.IsWfGrammar_equiv, ← decodeSome_iff_IsWf IPv6.grammar (by decide)]
+  unfold IPv6.SatisfiesWfConstraints IPv6.constraints
+  simp only [Triptych.component, List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const,
+    ConstraintEntry.wfPart, Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD,
+    signOf_getD, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
+  try grind
 
-instance IPv6.instDecidableIsValid : DecidablePred IPv6.IsValid := fun s => inferInstanceAs (Decidable (_ ∧ _))
+theorem IPv6.SatisfiesConstraints_equiv (s : String) : IPv6.SatisfiesConstraints s ↔ IPv6.satisfiesConstraints s :=
+  by
+  unfold IPv6.satisfiesConstraints Triptych.satisfiesConstraints
+  unfold IPv6.SatisfiesConstraints IPv6.constraints
+  simp only [Triptych.component, List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const,
+    ConstraintEntry.valPart, Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD,
+    signOf_getD, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
+  try grind
 
 theorem IPv6.IsValid_equiv (s : String) : IPv6.IsValid s ↔ IPv6.isValid s :=
   by
-  unfold IPv6.IsValid IPv6.isValid IPv6.isWf IPv6.satisfiesConstraints
-  unfold Triptych.isWf Triptych.satisfiesConstraints
-  rw [← IPv6.IsWf_equiv, ← decodeSome_iff_IsWf IPv6.grammar (by decide)]
-  unfold IPv6.SatisfiesConstraints IPv6.constraints
-  simp only [Triptych.component, List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const,
-    if_true, if_false, ConstraintEntry.wfPart, ConstraintEntry.valPart, Constraint.wfPart, Constraint.valPart,
-    Constraint.isValueDependent, Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD,
-    signOf_getD, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
-  try grind
+  unfold IPv6.IsValid IPv6.isValid
+  rw [(IPv6.IsWf_equiv s), (IPv6.SatisfiesConstraints_equiv s)]
+
+instance IPv6.instDecidableGrammar : DecidablePred IPv6.IsWf.V6Addr := fun s =>
+  @decidable_of_iff _ _ (IPv6.IsWfGrammar_equiv s) (Triptych.decIsWf IPv6.grammar (by decide) s)
+
+instance IPv6.instDecidableIsWf : DecidablePred IPv6.IsWf := fun s =>
+  @decidable_of_iff _ _ (IPv6.IsWf_equiv s).symm inferInstance
+
+instance IPv6.instDecidableSatisfiesConstraints : DecidablePred IPv6.SatisfiesConstraints := fun s =>
+  @decidable_of_iff _ _ (IPv6.SatisfiesConstraints_equiv s).symm inferInstance
+
+instance IPv6.instDecidableIsValid : DecidablePred IPv6.IsValid := fun s => inferInstanceAs (Decidable (_ ∧ _))
 
 theorem IPv6.computeValue_eq (s : String) :
     IPv6.computeValue s =

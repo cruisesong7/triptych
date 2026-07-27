@@ -17,9 +17,9 @@ set_option linter.unusedVariables false
 The more readable specification. Each production of the input grammar becomes an
 inlined well-formedness predicate `IsWf.*` written as a plain existential over the
 named captures, so you can read it side-by-side with the grammar and check that it
-says the same thing. `value` is the value function, `Constraints` the extra
-conditions, and `IsValid` the overall acceptance predicate (well-formed ∧
-constraints). This file is proof-free — it is what you cite. -/
+says the same thing. `WfConstraints` contains capture-derived format conditions;
+`Constraints` contains only conditions that explicitly mention the final `value`.
+`IsValid` combines both phases. This file is proof-free — it is what you cite. -/
 
 def IPv6.grammar : Grammar :=
   Grammar.mk "V6Addr"
@@ -36,8 +36,14 @@ def IPv6.IsWf.V6Addr (s : String) : Prop :=
 def IPv6.value (h16 : List String) :=
   toV6Addr h16
 
+abbrev IPv6.SatisfiesWfConstraints (s : String) : Prop :=
+  True
+
+abbrev IPv6.IsWf (s : String) : Prop :=
+  IPv6.IsWf.V6Addr s ∧ IPv6.SatisfiesWfConstraints s
+
 abbrev IPv6.SatisfiesConstraints (s : String) : Prop :=
   True
 
 abbrev IPv6.IsValid (s : String) : Prop :=
-  IPv6.IsWf.V6Addr s ∧ IPv6.SatisfiesConstraints s
+  IPv6.IsWf s ∧ IPv6.SatisfiesConstraints s

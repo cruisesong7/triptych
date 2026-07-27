@@ -32,25 +32,25 @@ def Datetime.valueFn := fun m : Triptych.CaptureMap =>
     ((Triptych.CaptureMap.toEnv m "Offset.mm").getD "") ((Triptych.CaptureMap.toEnv m "Offset").getD "")
 
 def Datetime.constraints : List ConstraintEntry :=
-  [ConstraintEntry.dsl
+  [ConstraintEntry.dsl ConstraintPhase.wellFormed
       (Constraint.and (Constraint.le (ValExpr.lit 1) (ValExpr.nat "MM"))
         (Constraint.le (ValExpr.nat "MM") (ValExpr.lit 12))),
-    ConstraintEntry.dsl
+    ConstraintEntry.dsl ConstraintPhase.wellFormed
       (Constraint.and (Constraint.le (ValExpr.lit 0) (ValExpr.nat "Time.hh"))
         (Constraint.le (ValExpr.nat "Time.hh") (ValExpr.lit 23))),
-    ConstraintEntry.dsl
+    ConstraintEntry.dsl ConstraintPhase.wellFormed
       (Constraint.and (Constraint.le (ValExpr.lit 0) (ValExpr.nat "Time.mm"))
         (Constraint.le (ValExpr.nat "Time.mm") (ValExpr.lit 59))),
-    ConstraintEntry.dsl
+    ConstraintEntry.dsl ConstraintPhase.wellFormed
       (Constraint.and (Constraint.le (ValExpr.lit 0) (ValExpr.nat "ss"))
         (Constraint.le (ValExpr.nat "ss") (ValExpr.lit 59))),
-    ConstraintEntry.dsl
+    ConstraintEntry.dsl ConstraintPhase.wellFormed
       (Constraint.and (Constraint.le (ValExpr.lit 0) (ValExpr.nat "Offset.hh"))
         (Constraint.le (ValExpr.nat "Offset.hh") (ValExpr.lit 23))),
-    ConstraintEntry.dsl
+    ConstraintEntry.dsl ConstraintPhase.wellFormed
       (Constraint.and (Constraint.le (ValExpr.lit 0) (ValExpr.nat "Offset.mm"))
         (Constraint.le (ValExpr.nat "Offset.mm") (ValExpr.lit 59))),
-    ConstraintEntry.opaque fun env : Env =>
+    ConstraintEntry.opaque ConstraintPhase.wellFormed fun env : Env =>
       dayBound (((env : Env) "YYYY").getD "") (((env : Env) "MM").getD "") (((env : Env) "DD").getD "")]
 
 abbrev Datetime.isWf (s : String) : Prop :=
@@ -67,9 +67,10 @@ def Datetime.computeValue (s : String) :=
 
 /- ════════════════════════════ equivalence ════════════════════════════
 The auto-discharged guarantees relating the readable surface to the executable
-engine: `IsWf_equiv` (+ its `Internal.matchesRef.*` lemmas) proves recognition
-agrees, `computeValue_eq` proves the values agree, and the derived `DecidablePred`
-instances make the surface predicates executable via the engine. No `sorry`. -/
+engine: `IsWfGrammar_equiv` proves grammar-layout agreement and `IsWf_equiv`
+proves full well-formedness agreement. `computeValue_eq` proves the values agree,
+and the derived `DecidablePred` instances make the surface predicates executable
+via the engine. No `sorry`. -/
 
 theorem Datetime.Internal.matchesRef.YYYY (fuel : Nat) (s : String) :
     matchesSym Datetime.grammar (fuel + 1) (Sym.ref "YYYY") s ↔ Datetime.IsWf.YYYY s :=
@@ -294,7 +295,7 @@ theorem Datetime.Internal.matchesRef.Datetime (fuel : Nat) (s : String) :
           ← and_assoc, exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
         try grind [String.append_assoc, String.append_empty])
 
-theorem Datetime.IsWf_equiv (s : String) : IsWf Datetime.grammar s ↔ Datetime.IsWf.Datetime s :=
+theorem Datetime.IsWfGrammar_equiv (s : String) : Triptych.IsWf Datetime.grammar s ↔ Datetime.IsWf.Datetime s :=
   by
   rw [isWf_eq_isWfProd_start, IsWfProd,
     show
@@ -361,25 +362,41 @@ theorem Datetime.IsWf_equiv (s : String) : IsWf Datetime.grammar s ↔ Datetime.
   rw [hstart]
   exact Datetime.Internal.matchesRef.Datetime _ s
 
-instance Datetime.instDecidableIsWf : DecidablePred Datetime.IsWf.Datetime := fun s =>
-  @decidable_of_iff _ _ (Datetime.IsWf_equiv s) (Triptych.decIsWf Datetime.grammar (by decide) s)
+theorem Datetime.IsWf_equiv (s : String) : Datetime.IsWf s ↔ Datetime.isWf s :=
+  by
+  unfold Datetime.IsWf Datetime.isWf Triptych.isWf
+  rw [← Datetime.IsWfGrammar_equiv, ← decodeSome_iff_IsWf Datetime.grammar (by decide)]
+  unfold Datetime.SatisfiesWfConstraints Datetime.WfConstraints Datetime.constraints
+  simp only [Triptych.component, List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const,
+    ConstraintEntry.wfPart, Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD,
+    signOf_getD, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
+  try grind
 
-instance Datetime.instDecidableSatisfiesConstraints : DecidablePred Datetime.SatisfiesConstraints := fun s => by
-  simp only [Datetime.SatisfiesConstraints, Datetime.Constraints]; exact inferInstance
-
-instance Datetime.instDecidableIsValid : DecidablePred Datetime.IsValid := fun s => inferInstanceAs (Decidable (_ ∧ _))
+theorem Datetime.SatisfiesConstraints_equiv (s : String) :
+    Datetime.SatisfiesConstraints s ↔ Datetime.satisfiesConstraints s :=
+  by
+  unfold Datetime.satisfiesConstraints Triptych.satisfiesConstraints
+  unfold Datetime.SatisfiesConstraints Datetime.constraints
+  simp only [Triptych.component, List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const,
+    ConstraintEntry.valPart, Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD,
+    signOf_getD, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
+  try grind
 
 theorem Datetime.IsValid_equiv (s : String) : Datetime.IsValid s ↔ Datetime.isValid s :=
   by
-  unfold Datetime.IsValid Datetime.isValid Datetime.isWf Datetime.satisfiesConstraints
-  unfold Triptych.isWf Triptych.satisfiesConstraints
-  rw [← Datetime.IsWf_equiv, ← decodeSome_iff_IsWf Datetime.grammar (by decide)]
-  unfold Datetime.SatisfiesConstraints Datetime.Constraints Datetime.constraints
-  simp only [Triptych.component, List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const,
-    if_true, if_false, ConstraintEntry.wfPart, ConstraintEntry.valPart, Constraint.wfPart, Constraint.valPart,
-    Constraint.isValueDependent, Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD,
-    signOf_getD, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
-  try grind
+  unfold Datetime.IsValid Datetime.isValid
+  rw [(Datetime.IsWf_equiv s), (Datetime.SatisfiesConstraints_equiv s)]
+
+instance Datetime.instDecidableGrammar : DecidablePred Datetime.IsWf.Datetime := fun s =>
+  @decidable_of_iff _ _ (Datetime.IsWfGrammar_equiv s) (Triptych.decIsWf Datetime.grammar (by decide) s)
+
+instance Datetime.instDecidableIsWf : DecidablePred Datetime.IsWf := fun s =>
+  @decidable_of_iff _ _ (Datetime.IsWf_equiv s).symm inferInstance
+
+instance Datetime.instDecidableSatisfiesConstraints : DecidablePred Datetime.SatisfiesConstraints := fun s =>
+  @decidable_of_iff _ _ (Datetime.SatisfiesConstraints_equiv s).symm inferInstance
+
+instance Datetime.instDecidableIsValid : DecidablePred Datetime.IsValid := fun s => inferInstanceAs (Decidable (_ ∧ _))
 
 theorem Datetime.computeValue_eq (s : String) :
     Datetime.computeValue s =

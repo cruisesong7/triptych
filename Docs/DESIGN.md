@@ -441,13 +441,13 @@ may change to match this scheme.)
 ### 16.1 Three generated predicates + value function
 
 The old `R = Layout ∧ Valid` is refined into a **three-predicate decomposition**,
-split by the single question *"does the check depend on the value function?"*:
+split by the single question *"does the surface check explicitly reference the final
+`value`?"*:
 
 ```
-IsWf                 s : Prop   -- syntax: grammar structure + string-only rules
-                                --   (e.g. widths, digit/hex-ness, noLeadingZero).
-                                --   VALUE-FREE ⟹ DecidablePred IsWf unconditionally.
-SatisfiesConstraints s : Prop   -- semantic constraints on `computeValue s`
+IsWf                 s : Prop   -- grammar structure + capture-derived format rules
+                                --   (including nat MM ∈ [1,12], noLeadingZero).
+SatisfiesConstraints s : Prop   -- constraints explicitly on `computeValue s`
                                 --   (bound OR checksum OR cross-field relation —
                                 --    deliberately NOT named "IsInBounds", to avoid
                                 --    over-promising that every constraint is a bound).
@@ -466,19 +466,16 @@ value↔string *relation* (the Narcissus/PulseParse "format"); `IsAccepted s ↔
 Denotes v s`. Keep `Denotes` a *conceptual* object — materialize it as a real def
 only if a contract theorem needs the relation form.
 
-Resolves a real inconsistency in the current specs: **Decimal** already keeps value
-constraints OUT of `IsWfStr` (overflow is a separate disjunct of `parse_eq_none_iff`)
-— matches this scheme. **IPAddr** currently folds `constraintsWf` (`≤ 255`) INTO
-`IsWfV4` — does NOT match; under this scheme those move into `SatisfiesConstraints`.
-Uniform rule: `IsWf` = syntax only, always.
+This preserves the useful distinction already present in the formats: **Decimal** keeps
+its final computed-value overflow bound outside `IsWf`, while **IPAddr** includes
+capture-derived octet bounds (`nat Oct ≤ 255`) in `IsWf`. Uniform rule: the phase is
+determined by an explicit reference to final `value`, not by whether arithmetic appears.
 
 ### 16.2 Two-tier decidability (the creative edge)
 
-- `IsWf` is decidable **unconditionally** (value-free, flat, bounded) — so
-  `decide (IsWf s) : Bool` is a provably-correct executable validator, and an
-  auto-generated differential test `∀ s, decide (IsWf s) = (parse s).isSome` runs
-  against the external parser BEFORE any hand proof. Holds even for datetime/IPAddr,
-  whose value functions are non-affine/structured.
+- `IsWf` is decidable **unconditionally** for the generated DSL and opaque Boolean
+  capture checks, so `decide (IsWf s) : Bool` is a provably-correct executable
+  well-formedness validator.
 - `IsAccepted` is decidable **iff** `SatisfiesConstraints` is — which, for bounds, it
   always is. So: recognition always decidable; acceptance decidable-modulo-value-
   constraints. Clean separation.
@@ -495,8 +492,8 @@ triptych IPv4 where
     V4Addr ::= NumV4 "." NumV4 "." NumV4 "." NumV4
     NumV4  ::= digit{1,3}
   constraints
-    noLeadingZero NumV4        -- string-only  → folds into IsWf
-    nat NumV4 ≤ 255            -- value        → folds into SatisfiesConstraints
+    noLeadingZero NumV4        -- capture-only → folds into IsWf
+    nat NumV4 ≤ 255            -- capture bound → folds into IsWf
   value
     IPNet.V4 (CIDR.mk (bytes (nat NumV4) ...) ...)
 ```
@@ -507,10 +504,11 @@ triptych IPv4 where
 - **`constraints`** → a *grouped block* (NOT inline `where`). Chosen over inline
   because IPAddr has **cross-production / whole-string** constraints (`'::' at most
   once`; `sides total < 8`; default-prefix) that have no single production to attach
-  to. Each line is **auto-classified** by value-dependence: references only the
-  capture string → conjoined into `IsWf`; references `nat`/`computeValue` → conjoined
-  into `SatisfiesConstraints`. `noLeadingZero` is a built-in primitive
-  (`startsWith "0" → s = "0"`), pervasive in IPAddr (`IsCanonicalNat`).
+  to. Each line is **auto-classified before substitution**: a line that explicitly
+  mentions final `value` is conjoined into `SatisfiesConstraints`; every capture-only
+  line, including `nat X` comparisons, is conjoined into `IsWf`. `noLeadingZero` is a
+  built-in primitive (`startsWith "0" → s = "0"`), pervasive in IPAddr
+  (`IsCanonicalNat`).
 - **`value`** → the value function, written in a **flat first-order value-DSL**
   (readable, matches the doc's `value(X) = …`), NOT a raw opaque Lean term. This is
   the key divergence from CoStar++: they consume the value fn as a black box
@@ -550,9 +548,9 @@ INDEPENDENT axes. Do not conflate (an earlier draft did):
 
 ### 16.5 IPAddr as the boundary case (6-bucket categorization)
 
-IPAddr's many NL descriptions sort as: (1) bounds `≤ 255/0xffff/128` →
-`constraints`/`SatisfiesConstraints`; (2) `noLeadingZero` → `constraints`/`IsWf`
-(string-only); (3) default full-width prefix → `value` conditional; (4) "V4 tried
+IPAddr's many NL descriptions sort as: (1) capture bounds `≤ 255/0xffff/128` →
+`constraints`/`IsWf`; (2) `noLeadingZero` → `constraints`/`IsWf`
+(capture-only); (3) default full-width prefix → `value` conditional; (4) "V4 tried
 first" → ordered alternation in `grammar`; (5) base-256/65536 assembly → `value`
 (affine, structured `IPNet` output); (6) **`::` gap** (unbounded `*`, variable arity,
 data-dependent zero-fill; the doc's own `V6Components` goes *inductive* `full | gap`

@@ -27,8 +27,8 @@ The `triptych` command emits the *ingredients* — the grammar, the constraint l
 and the value expression. This module bundles them into the named predicates of the
 design-note contract (§16.1):
 
-* `isWf`                — grammar well-formedness ∧ the string-only (`wfPart`) constraints
-* `satisfiesConstraints` — the value-dependent (`valPart`) constraints
+* `isWf`                 — grammar well-formedness ∧ the `.wellFormed` constraints
+* `satisfiesConstraints` — the final-value (`.value`) constraints
 
 The generated spec bundles these two as `isValid := isWf ∧ satisfiesConstraints` (⟺ the
 parser accepts the string); see `Emit.lean`.
@@ -39,8 +39,9 @@ constraint list is checked against the empty environment, matching "constraints 
 constrain well-formed strings").
 
 Note: these use `decode` (executable, `partial`) for the environment, so they are
-definitions for *running*/bundling, not yet the proof-facing forms. The proof-facing
-`IsWf` lives in `Denote`; relating the two is part of the contract-theorem milestone.
+definitions for *running*/bundling. The grammar-only `Triptych.IsWf` lives in `Denote`;
+generated equivalence theorems relate it to both the readable layout predicate and the
+full format-level `<Name>.IsWf`.
 -/
 
 namespace Triptych
@@ -68,12 +69,12 @@ def componentList (g : Grammar) (s : String) (c : String) : List String :=
   | some m => CaptureMap.toEnvList m c
   | none   => []
 
-/-- Well-formedness: the grammar recognizes `s` AND every string-only constraint
-    (`wfPart`) holds on its capture environment. -/
+/-- Well-formedness: the grammar recognizes `s` AND every constraint that does not explicitly
+    reference the final computed value holds on its capture environment. -/
 def isWf (g : Grammar) (cs : List ConstraintEntry) (s : String) : Prop :=
   (decode g s).isSome = true ∧ ∀ c ∈ cs, c.wfPart (envOf g s)
 
-/-- The value-dependent constraints hold on `s`'s capture environment. -/
+/-- The constraints explicitly assigned to the final-value phase hold. -/
 def satisfiesConstraints (g : Grammar) (cs : List ConstraintEntry) (s : String) : Prop :=
   ∀ c ∈ cs, c.valPart (envOf g s)
 

@@ -456,19 +456,20 @@ def matchesRefProof (specName : Name) (grammarId : TSyntax `ident) (p : Producti
           Option.some.injEq, forall_eq']
         try grind [String.append_assoc, String.append_empty])
 
-/-- Emit the top-level bridge `<Name>.IsWf_equiv : IsWf g s ↔ <Name>.IsWf.<start> s`.
+/-- Emit the grammar-layout bridge
+    `<Name>.IsWfGrammar_equiv : IsWf g s ↔ <Name>.IsWf.<start> s`.
     Reduces `IsWf` to the start production's `matchesProd` at concrete fuel `g.prods.length`,
     re-folds it as a `matchesSym` reference (`matchesSym g (N+1) (ref start) = matchesProd g N
     …` definitionally), then applies the start production's `matchesRef` lemma (`∀ fuel`, so
     the concrete fuel unifies). -/
-def isWfEquivProof (specName : Name) (grammarId : TSyntax `ident) (start : Production)
+def isWfGrammarEquivProof (specName : Name) (grammarId : TSyntax `ident) (start : Production)
     : CommandElabM (TSyntax `command) := do
-  let equivId := mkIdent (specName ++ `IsWf_equiv)
+  let equivId := mkIdent (specName ++ `IsWfGrammar_equiv)
   let startRef := mkIdent (matchesRefName specName start.name)
   let surfId := mkIdent (specName ++ `IsWf ++ start.name.toName)
   let startLit := Syntax.mkStrLit start.name
   let prodT ← prodLit start
-  `(theorem $equivId (s : String) : IsWf $grammarId s ↔ $surfId s := by
+  `(theorem $equivId (s : String) : Triptych.IsWf $grammarId s ↔ $surfId s := by
       rw [isWf_eq_isWfProd_start, IsWfProd,
         show ($grammarId).prod? ($grammarId).start = some $prodT from rfl]
       -- `IsWf` uses fuel = `prods.length`; re-express the start production match as the
@@ -481,52 +482,64 @@ def isWfEquivProof (specName : Name) (grammarId : TSyntax `ident) (start : Produ
       rw [hstart]
       exact $startRef _ s)
 
-/-- Emit the FULL acceptance bridge `<Name>.IsValid_equiv : <Name>.IsValid s ↔ <Name>.isValid s`
-    — the surface (readable) acceptance predicate equals the engine (decode-backed) one.
-    Composes three facts: `IsWf_equiv` (readable `IsWf.<start>` ⟺ interpreter `IsWf grammar`),
-    `decodeSome_iff_IsWf` (interpreter `IsWf` ⟺ `decode.isSome`, the roundtrip), and reader
-    agreement (`natOf (getD "") = Env.natVal`, …) that reconciles the surface `Constraints` (on
-    decoded component strings) with the engine's `wfPart`/`valPart` `eval`. The whole thing
-    closes by `simp` after unfolding both sides. `hasConstraints`/`hasValue`/`opaque` control
-    which spec-specific defs to unfold (a def absent ⟹ not unfolded). -/
-def isValidEquivProof (specName : Name)
-    (hasConstraints hasValue : Bool) : CommandElabM (TSyntax `command) := do
-  let equivId    := mkIdent (specName ++ `IsValid_equiv)
-  let validSurf  := mkIdent (specName ++ `IsValid)
-  let validEng   := mkIdent (specName ++ `isValid)
-  let isWfEng    := mkIdent (specName ++ `isWf)
-  let scEng      := mkIdent (specName ++ `satisfiesConstraints)
-  let scSurf     := mkIdent (specName ++ `SatisfiesConstraints)
-  let cList      := mkIdent (specName ++ `constraints)
-  let cRel       := mkIdent (specName ++ `Constraints)
-  let valFn      := mkIdent (specName ++ `value)
-  let valExpr    := mkIdent (specName ++ `valueExpr)
-  let equivWf    := mkIdent (specName ++ `IsWf_equiv)
-  let grammarId  := mkIdent (specName ++ `grammar)
-  -- Defs to unfold, in dependency order: `SatisfiesConstraints → Constraints` (surface) and
-  -- the engine `constraints` list; then `value` (surface) and `valueExpr` (engine AST, which
-  -- only appears *after* the `constraints` list is unfolded). Each included only when present
-  -- AND reachable: `value`/`valueExpr` appear in the goal only through the constraints, so a
-  -- value section WITHOUT constraints must not list them (`unfold` fails on an absent target).
-  let surfUnfolds : Array (TSyntax `ident) :=
-    #[scSurf] ++ (if hasConstraints then #[cRel] else #[]) ++ #[cList]
-      ++ (if hasConstraints && hasValue then #[valFn, valExpr] else #[])
-  -- The final `simp` lemma set (fixed): unfold the constraint-entry machinery + reader
-  -- agreement, collapse the wf/val classification `if`s and the `∀ _ ∈ []` tails.
-  `(theorem $equivId (s : String) : $validSurf s ↔ $validEng s := by
-      unfold $validSurf $validEng $isWfEng $scEng
-      unfold Triptych.isWf Triptych.satisfiesConstraints
-      rw [← $equivWf, ← decodeSome_iff_IsWf $grammarId (by decide)]
-      unfold $[$surfUnfolds:ident]*
+/-- Emit `<Name>.IsWf_equiv : <Name>.IsWf s ↔ <Name>.isWf s`. This is the public
+    well-formedness bridge: grammar layout plus every capture-only constraint on both sides. -/
+def isWfEquivProof (specName : Name) (hasWfConstraints : Bool) :
+    CommandElabM (TSyntax `command) := do
+  let equivId   := mkIdent (specName ++ `IsWf_equiv)
+  let wfSurf    := mkIdent (specName ++ `IsWf)
+  let wfEng     := mkIdent (specName ++ `isWf)
+  let wfScSurf  := mkIdent (specName ++ `SatisfiesWfConstraints)
+  let wfRel     := mkIdent (specName ++ `WfConstraints)
+  let cList     := mkIdent (specName ++ `constraints)
+  let grammarEq := mkIdent (specName ++ `IsWfGrammar_equiv)
+  let grammarId := mkIdent (specName ++ `grammar)
+  let unfolds : Array (TSyntax `ident) :=
+    #[wfScSurf] ++ (if hasWfConstraints then #[wfRel] else #[]) ++ #[cList]
+  `(theorem $equivId (s : String) : $wfSurf s ↔ $wfEng s := by
+      unfold $wfSurf $wfEng Triptych.isWf
+      rw [← $grammarEq, ← decodeSome_iff_IsWf $grammarId (by decide)]
+      unfold $[$unfolds:ident]*
       simp only [Triptych.component, List.forall_mem_cons, List.forall_mem_singleton,
-        List.not_mem_nil, forall_const, if_true, if_false, ConstraintEntry.wfPart,
-        ConstraintEntry.valPart, Constraint.wfPart, Constraint.valPart, Constraint.isValueDependent,
-        Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD, signOf_getD,
-        and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
+        List.not_mem_nil, forall_const, ConstraintEntry.wfPart, Constraint.eval, ValExpr.eval,
+        presentCount, natOf_getD, intOf_getD, lenOf_getD, signOf_getD, and_true, true_and,
+        false_implies, implies_true, Bool.false_eq_true]
       try grind)
-  -- After the `simp`, both sides are the same set of atoms — but the engine groups all
-  -- `wfPart`s then all `valPart`s, while the surface groups per-constraint. `grind` closes
-  -- that ∧-reassociation/permutation (a no-op `try` when `simp` already finished the goal).
+
+/-- Emit the final-value constraint bridge. Only entries whose original surface syntax
+    referenced the `value` keyword contribute to either side. -/
+def satisfiesConstraintsEquivProof (specName : Name)
+    (hasValueConstraints hasValue : Bool) : CommandElabM (TSyntax `command) := do
+  let equivId  := mkIdent (specName ++ `SatisfiesConstraints_equiv)
+  let scSurf   := mkIdent (specName ++ `SatisfiesConstraints)
+  let scEng    := mkIdent (specName ++ `satisfiesConstraints)
+  let cList    := mkIdent (specName ++ `constraints)
+  let cRel     := mkIdent (specName ++ `Constraints)
+  let valFn    := mkIdent (specName ++ `value)
+  let valExpr  := mkIdent (specName ++ `valueExpr)
+  let unfolds : Array (TSyntax `ident) :=
+    #[scSurf] ++ (if hasValueConstraints then #[cRel] else #[]) ++ #[cList]
+      ++ (if hasValueConstraints && hasValue then #[valFn, valExpr] else #[])
+  `(theorem $equivId (s : String) : $scSurf s ↔ $scEng s := by
+      unfold $scEng Triptych.satisfiesConstraints
+      unfold $[$unfolds:ident]*
+      simp only [Triptych.component, List.forall_mem_cons, List.forall_mem_singleton,
+        List.not_mem_nil, forall_const, ConstraintEntry.valPart, Constraint.eval, ValExpr.eval,
+        presentCount, natOf_getD, intOf_getD, lenOf_getD, signOf_getD, and_true, true_and,
+        false_implies, implies_true, Bool.false_eq_true]
+      try grind)
+
+/-- Emit the full acceptance bridge by composing the independently proved well-formedness
+    and final-value-constraint equivalences. -/
+def isValidEquivProof (specName : Name) : CommandElabM (TSyntax `command) := do
+  let equivId := mkIdent (specName ++ `IsValid_equiv)
+  let validSurf := mkIdent (specName ++ `IsValid)
+  let validEng := mkIdent (specName ++ `isValid)
+  let wfEq := mkIdent (specName ++ `IsWf_equiv)
+  let scEq := mkIdent (specName ++ `SatisfiesConstraints_equiv)
+  `(theorem $equivId (s : String) : $validSurf s ↔ $validEng s := by
+      unfold $validSurf $validEng
+      rw [($wfEq s), ($scEq s)])
 
 /-- Emit the value bridge `<Name>.computeValue_eq : computeValue s = (decode g s).map (fun _ =>
     value <components>)` — the engine's extracted value equals the READABLE `value` function

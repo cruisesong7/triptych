@@ -17,9 +17,9 @@ set_option linter.unusedVariables false
 The more readable specification. Each production of the input grammar becomes an
 inlined well-formedness predicate `IsWf.*` written as a plain existential over the
 named captures, so you can read it side-by-side with the grammar and check that it
-says the same thing. `value` is the value function, `Constraints` the extra
-conditions, and `IsValid` the overall acceptance predicate (well-formed ∧
-constraints). This file is proof-free — it is what you cite. -/
+says the same thing. `WfConstraints` contains capture-derived format conditions;
+`Constraints` contains only conditions that explicitly mention the final `value`.
+`IsValid` combines both phases. This file is proof-free — it is what you cite. -/
 
 def IPv4.grammar : Grammar :=
   Grammar.mk "V4Net"
@@ -64,7 +64,7 @@ def IPv4.IsWf.V4Net (s : String) : Prop :=
 def IPv4.value (oct1 : String) (oct2 : String) (oct3 : String) (oct4 : String) («prefix» : String) :=
   toIPNet oct1 oct2 oct3 oct4 «prefix»
 
-def IPv4.Constraints (oct1 : String) (oct2 : String) (oct3 : String) (oct4 : String) («prefix» : String) : Prop :=
+def IPv4.WfConstraints (oct1 : String) (oct2 : String) (oct3 : String) (oct4 : String) («prefix» : String) : Prop :=
   ((((((((((oct1).startsWith "0" → oct1 = "0") ∧ (0 : Int) ≤ natOf oct1 ∧ natOf oct1 ≤ (255 : Int)) ∧
                   ((oct2).startsWith "0" → oct2 = "0")) ∧
                 (0 : Int) ≤ natOf oct2 ∧ natOf oct2 ≤ (255 : Int)) ∧
@@ -75,10 +75,16 @@ def IPv4.Constraints (oct1 : String) (oct2 : String) (oct3 : String) (oct4 : Str
       ((«prefix»).startsWith "0" → «prefix» = "0")) ∧
     (0 : Int) ≤ natOf «prefix» ∧ natOf «prefix» ≤ (32 : Int)
 
-def IPv4.SatisfiesConstraints (s : String) : Prop :=
-  IPv4.Constraints (Triptych.component IPv4.grammar s "Oct1") (Triptych.component IPv4.grammar s "Oct2")
+def IPv4.SatisfiesWfConstraints (s : String) : Prop :=
+  IPv4.WfConstraints (Triptych.component IPv4.grammar s "Oct1") (Triptych.component IPv4.grammar s "Oct2")
     (Triptych.component IPv4.grammar s "Oct3") (Triptych.component IPv4.grammar s "Oct4")
     (Triptych.component IPv4.grammar s "Prefix")
 
+abbrev IPv4.IsWf (s : String) : Prop :=
+  IPv4.IsWf.V4Net s ∧ IPv4.SatisfiesWfConstraints s
+
+abbrev IPv4.SatisfiesConstraints (s : String) : Prop :=
+  True
+
 abbrev IPv4.IsValid (s : String) : Prop :=
-  IPv4.IsWf.V4Net s ∧ IPv4.SatisfiesConstraints s
+  IPv4.IsWf s ∧ IPv4.SatisfiesConstraints s

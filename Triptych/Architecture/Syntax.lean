@@ -30,7 +30,8 @@ grammars written in `doc/CedarDoc/*.lean`. Lean's own `syntax`/`declare_syntax_c
 framework does all the *parsing* of the notation; this module declares the notation
 and elaborates the resulting `Syntax` tree into the generated declarations.
 
-The command has three sections (see design note §16.3), in order:
+The command starts with a grammar and may add a value function, constraints, parser/printer
+bindings, and generated-file output:
 
 ```
 triptych Decimal where
@@ -39,33 +40,29 @@ triptych Decimal where
     Sign     ::= sign
     Natural  ::= digit+
     Fraction ::= digit{1,4}
-  constraints
-    -- value/string constraints (raw Lean predicates for now; see below)
   value
-    -- the value function (a raw Lean term for now; see below)
+    Sign * (nat Natural * 10 ^ 4 + nat Fraction * 10 ^ (4 - len Fraction))
+  constraints
+    value ∈ [Int64.MIN, Int64.MAX]
 ```
 
 * **`grammar`** (required) — the EBNF productions. Elaborated fully into the core
   `Triptych.Grammar` value bound to `<Name>.grammar`. `grammar` is used rather than
   `syntax` because `syntax` is a reserved Lean keyword.
-* **`constraints`** (optional) — currently captured as raw Lean predicate terms
-  (`String → Prop`) and bound to `<Name>.constraints`. Per §16.3 these will later be
-  written in a small predicate DSL and auto-classified into `IsWf` (string-only) vs
-  `SatisfiesConstraints` (value-dependent).
-* **`value`** (optional) — currently captured as a raw Lean term and bound to
-  `<Name>.valueFn` (the §16.4 "opaque" tier). Per §16.4 this will later be written in
-  a flat first-order value-DSL that is analyzed for affinity to auto-generate proofs.
+* **`value`** / **`value'`** (optional) — an analyzable arithmetic expression or an opaque
+  capture-to-value function.
+* **`constraints`** (optional) — predicates in a small DSL. A predicate belongs to `IsWf`
+  unless its original surface syntax explicitly mentions the final `value`; only those
+  final-value predicates belong to `SatisfiesConstraints`.
+* **`constraints'`** (optional) — opaque Boolean predicates over capture strings. Since this
+  escape cannot reference the final `value`, its entries belong to `IsWf`.
 
 Grammar notation:
 * a production is `Name ::= item item …`
 * an item is a string literal, a nonterminal reference (`ident`), a terminal
-  (`digit`/`hexDigit` with a length suffix), or an optional `[item]`
+  (`digit`/`hexDigit`/`bit` with a length suffix), an optional `[item]`, or separated
+  repetition
 * length suffix: `+` (one-or-more), `{n}` (exactly), `{lo,hi}` (between)
-
-Not yet: production-level alternation (`A ::= x | y`), the predicate/value DSLs, and
-generation of `IsWf` / `SatisfiesConstraints` / `IsValid` / `computeValue`. Those
-are the next increments; this module currently generates the grammar value (+ captures
-the raw value/constraint terms) so the three-section shape is in place.
 -/
 
 namespace Triptych
@@ -106,8 +103,9 @@ declare_syntax_cat fmtProd
 syntax withPosition(ident " ::= " sepBy1(fmtSeq, " | ")) : fmtProd
 
 /-- The optional `constraints` section: predicates in the constraint-DSL (`constraintExpr`),
-    one per line (`colGt`, like the `grammar` productions — no commas). Auto-classified
-    (string → `IsWf`, value → `SatisfiesConstraints`) downstream. -/
+    one per line (`colGt`, like the `grammar` productions — no commas). A predicate is assigned
+    to `SatisfiesConstraints` only when it explicitly mentions the final `value`; every
+    capture-only predicate is assigned to `IsWf`. -/
 syntax fmtConstraints := "constraints" (colGt constraintExpr)+
 
 /-- One ESCAPE-entry ARGUMENT: a bare capture name `X` (its matched string), or `[X]` —
@@ -492,62 +490,41 @@ def elabTriptych : CommandElab := fun stx => do
         let sVar ← `(s)
         let body ← Triptych.prodPred name.getId prod sVar
         emitSpec (← `(def $pIdent (s : String) : Prop := $body))
-      -- SOUNDNESS + DECIDABILITY (SOUNDNESS section, emitted last). The readable `IsWf.<start>`
-      -- is `∃ …` over `String`, so it has NO structural `Decidable` instance; the ONLY way it
-      -- becomes executable is by transporting the interpreter's `DecidablePred (IsWf grammar)`
-      -- across the equivalence `<Name>.IsWf_equiv`. So the equivalence + the derived instance
-      -- are properties *of the spec* (soundness vs the analyzable engine, and an executable
-      -- validator via the interpreter — the whole point of keeping the interpreter). The
-      -- `Internal.matchesRef.*` support lemmas that `IsWf_equiv` is built from are tucked under
-      -- `.Internal`. This closure runs after the engine bundle (it references `IsWf grammar`).
-      -- `hasConstraints`/`hasValue`: which surface defs exist (set below), so the emitted
-      -- decidability instances unfold exactly the defs present.
-      let emitReconcile (hasConstraints hasValue : Bool) : CommandElabM Unit := do
+      -- Reconcile grammar layout, full well-formedness, and final-value validity independently.
+      -- `IsWf.<start>` is grammar-only; top-level `IsWf` additionally contains every constraint
+      -- that does not mention the final `value`, and is proved equivalent to engine `isWf`.
+      let emitReconcile (hasWfConstraints hasValueConstraints hasValue : Bool) :
+          CommandElabM Unit := do
         let fuelBound := gval.prods.length
         for prod in Triptych.topoOrder gval do
           let depth := Triptych.subtreeDepth gval prod.name fuelBound
           emitSound (← Triptych.matchesRefProof name.getId grammarIdent prod depth)
         if let some startProd := gval.prods.find? (·.name == gval.start) then
-          emitSound (← Triptych.isWfEquivProof name.getId grammarIdent startProd)
-          let equivId  := mkIdentFrom name (name.getId ++ `IsWf_equiv)
+          emitSound (← Triptych.isWfGrammarEquivProof name.getId grammarIdent startProd)
+          emitSound (← Triptych.isWfEquivProof name.getId hasWfConstraints)
+          emitSound (←
+            Triptych.satisfiesConstraintsEquivProof name.getId hasValueConstraints hasValue)
+          emitSound (← Triptych.isValidEquivProof name.getId)
+          let grammarEquivId := mkIdentFrom name (name.getId ++ `IsWfGrammar_equiv)
+          let wfEquivId := mkIdentFrom name (name.getId ++ `IsWf_equiv)
+          let scEquivId := mkIdentFrom name (name.getId ++ `SatisfiesConstraints_equiv)
           let startIsWfId := mkIdentFrom name (name.getId ++ `IsWf ++ startProd.name.toName)
-          -- Explicit instance names (`<Name>.instDecidable*`): anonymous instances get an
-          -- auto-name derived from the (structurally identical) type `DecidablePred (String
-          -- → Prop)`, which collides across generated modules when several are imported.
-          let instWfId  := mkIdentFrom name (name.getId ++ `instDecidableIsWf)
+          let wfSurfId := mkIdentFrom name (name.getId ++ `IsWf)
+          let scSurfId := mkIdentFrom name (name.getId ++ `SatisfiesConstraints)
+          let accSurfId := mkIdentFrom name (name.getId ++ `IsValid)
+          let instGrammarId := mkIdentFrom name (name.getId ++ `instDecidableGrammar)
+          let instWfId := mkIdentFrom name (name.getId ++ `instDecidableIsWf)
           let instScId  := mkIdentFrom name (name.getId ++ `instDecidableSatisfiesConstraints)
           let instAccId := mkIdentFrom name (name.getId ++ `instDecidableIsValid)
-          -- Source `Decidable (IsWf grammar s)` comes from `decIsWf` (the decode roundtrip),
-          -- which now takes the `g.repOk = true` side condition — discharged by `decide` at
-          -- this concrete grammar (the DSL guarantees it: non-empty rep separators, `lo ≥ 1`).
-          emitSound (← `(instance $instWfId:ident : DecidablePred $startIsWfId := fun s =>
-                        @decidable_of_iff _ _ ($equivId s) (Triptych.decIsWf $grammarIdent (by decide) s)))
-          -- Decidability of the full validity predicate: `SatisfiesConstraints` is a
-          -- `def` over decode-extracted strings + decidable atoms (`≤`/`≠`/…), so it needs
-          -- its instance unfolded; then `IsValid = IsWf.<start> ∧ SatisfiesConstraints`
-          -- is decidable by the `And` instance (both conjuncts now decidable). This makes
-          -- `decide (<Name>.IsValid s)` — the executable validator — resolve.
-          let scSurfId  := mkIdentFrom name (name.getId ++ `SatisfiesConstraints)
-          let accSurfId := mkIdentFrom name (name.getId ++ `IsValid)
-          let cRIdent   := mkIdentFrom name (name.getId ++ `Constraints)
-          let valIdent  := mkIdentFrom name (name.getId ++ `value)
-          -- With no constraints section `SatisfiesConstraints` is an `abbrev … := True`
-          -- (transparently decidable), so no SC instance is needed; `IsValid`'s instance
-          -- then rests on `IsWf`'s instance + `True`'s. With constraints, unfold through
-          -- `SatisfiesConstraints → Constraints → value` to expose the decidable atoms.
-          if hasConstraints then
-            let unfoldList : Array (TSyntax `ident) :=
-              #[scSurfId, cRIdent] ++ (if hasValue then #[valIdent] else #[])
-            emitSound (← `(instance $instScId:ident : DecidablePred $scSurfId :=
-                          fun s => by simp only [$[$unfoldList:ident],*]; exact inferInstance))
-          -- `IsValid` is an `abbrev` (`IsWf.<start> s ∧ SatisfiesConstraints s`); both
-          -- conjuncts are decidable (above), so the `And` instance resolves in term mode.
+          emitSound (← `(instance $instGrammarId:ident : DecidablePred $startIsWfId := fun s =>
+                        @decidable_of_iff _ _ ($grammarEquivId s)
+                          (Triptych.decIsWf $grammarIdent (by decide) s)))
+          emitSound (← `(instance $instWfId:ident : DecidablePred $wfSurfId := fun s =>
+                        @decidable_of_iff _ _ ($wfEquivId s).symm inferInstance))
+          emitSound (← `(instance $instScId:ident : DecidablePred $scSurfId := fun s =>
+                        @decidable_of_iff _ _ ($scEquivId s).symm inferInstance))
           emitSound (← `(instance $instAccId:ident : DecidablePred $accSurfId :=
                         fun s => inferInstanceAs (Decidable (_ ∧ _))))
-          -- FULL acceptance equivalence: surface `IsValid` ⟺ engine `isValid`. Composes
-          -- `IsWf_equiv` + the `decodeSome_iff_IsWf` roundtrip (WF halves) with reader
-          -- agreement (constraint halves). The capstone soundness guarantee.
-          emitSound (← Triptych.isValidEquivProof name.getId hasConstraints hasValue)
       -- Value (optional), processed BEFORE constraints so a constraint may refer to `value`.
       -- DSL tier (`value <formula>`, `v`): elaborate the value-DSL to a `ValExpr` (bound as
       -- `valueExpr`) whose `eval` is the value fn; `valueSub` is the `ValExpr` substituted for
@@ -562,7 +539,10 @@ def elabTriptych : CommandElab := fun stx => do
       -- via `component`). Empty for the DSL tier (all scalar).
       let mut valueCapArgs : List (String × Bool) := []
       let mut hasValueEsc : Bool := false
-      let mut constrCaps : Option (List String) := none  -- captures the surface `Constraints` binds (none ⟹ no constraints section)
+      -- Capture binders for the two readable constraint phases. `none` means that phase has no
+      -- entries, so its string-level predicate is emitted as `True`.
+      let mut wfConstrCaps : Option (List String) := none
+      let mut valueConstrCaps : Option (List String) := none
       if let some vStx := v then
         let ve : TSyntax `valExpr := ⟨vStx.raw[1]⟩
         -- SIGN-REFERENCE VALIDATION: a BARE capture name in `value` denotes its sign (±1), so it
@@ -646,15 +626,21 @@ def elabTriptych : CommandElab := fun stx => do
       let dslExprs : Array (TSyntax `constraintExpr) := match cs with
         | some csStx => csStx.raw[1].getArgs.map (⟨·⟩)
         | none       => #[]
+      -- The authoritative phase split is whether the ORIGINAL surface expression mentions the
+      -- final `value` keyword. Capture arithmetic such as `nat MM ∈ [1, 12]` remains format
+      -- well-formedness. This must happen before elaboration substitutes `valueExpr` for `value`.
+      let wfExprs := dslExprs.filter (fun e => !(Triptych.constraintUsesValue e))
+      let valueExprs := dslExprs.filter Triptych.constraintUsesValue
       if cs.isSome || cse.isSome then
-        -- ENGINE `constraints` list: DSL entries (`.dsl`) ++ escape entries (`.opaque`).
+        -- ENGINE list: every entry carries its preserved phase. A `constraints'` escape receives
+        -- only capture strings, so it is intrinsically a well-formedness constraint.
         let dslTerms ← dslExprs.mapM (fun e => liftMacroM (elabEntryWith valueSub e))
         let escTerms ← escEntries.mapM (fun (f, is) => do
-          `(ConstraintEntry.opaque $(← liftMacroM (Triptych.opaqueEnvClosure f is))))
+          `(ConstraintEntry.opaque ConstraintPhase.wellFormed
+              $(← liftMacroM (Triptych.opaqueEnvClosure f is))))
         let csep : Syntax.TSepArray `term "," := .ofElems (dslTerms ++ escTerms)
         emitEngine (← `(def $cIdent : List ConstraintEntry := [$csep,*]))
-        -- SPEC `Constraints` Prop: DSL forms rendered readably ++ each escape as `f x y = true`
-        -- over the surface binders. A `value` reference renders as `<Name>.value <comps>`.
+        -- A final `value` reference renders readably as `<Name>.value <components>`.
         let valSubR : Option (TSyntax `term) ← match veIdent? with
           | some _ =>
             let vId := mkIdentFrom name (name.getId ++ `value)
@@ -662,29 +648,39 @@ def elabTriptych : CommandElab := fun stx => do
               (valueCaps.map (fun c => ⟨(mkIdent (Name.mkSimple (Triptych.surfaceBinder c))).raw⟩)).toArray
             pure (some (← `($vId $vArgs*)))
           | none   => pure none
-        let dslRTerms ← dslExprs.mapM (fun e => liftMacroM (elabConstraintReadable valSubR e))
+        let wfRTerms ← wfExprs.mapM (fun e => liftMacroM (elabConstraintReadable valSubR e))
+        let valueRTerms ← valueExprs.mapM (fun e => liftMacroM (elabConstraintReadable valSubR e))
         let escRTerms ← escEntries.mapM (fun (f, is) => do
           let bArgs : Array (TSyntax `term) := is.map (fun i =>
             ⟨(mkIdent (Name.mkSimple (Triptych.surfaceBinder i.getId.toString))).raw⟩)
           `($f $bArgs* = true))
-        let allR := dslRTerms ++ escRTerms
-        let body ← match allR.toList with
-          | []      => `(True)
-          | x :: xs => xs.foldlM (fun acc p => `($acc ∧ $p)) x
-        -- capture params: DSL captures ∪ escape captures ∪ value captures (if `value` used)
-        let usesValue := dslExprs.any (fun e => (Triptych.constraintUsesValue e))
         let escCaps := escEntries.toList.flatMap (fun (_, is) => is.toList.map (·.getId.toString))
-        let cCaps := (dslExprs.toList.flatMap Triptych.constraintCaptures ++ escCaps
-                        ++ (if usesValue then valueCaps else [])).eraseDups
-        let cBinders : Array (TSyntax `ident) :=
-          (cCaps.map (fun c => mkIdent (Name.mkSimple (Triptych.surfaceBinder c)))).toArray
-        let cRIdent := mkIdentFrom name (name.getId ++ `Constraints)
-        emitSpec (← `(def $cRIdent $[($cBinders : String)]* : Prop := $body))
-        constrCaps := some cCaps
+        let wfCaps := (wfExprs.toList.flatMap Triptych.constraintCaptures ++ escCaps).eraseDups
+        let valCaps :=
+          (valueExprs.toList.flatMap Triptych.constraintCaptures ++ valueCaps).eraseDups
+        unless wfRTerms.isEmpty && escRTerms.isEmpty do
+          let wfBody ← match (wfRTerms ++ escRTerms).toList with
+            | []      => `(True)
+            | x :: xs => xs.foldlM (fun acc p => `($acc ∧ $p)) x
+          let wfBinders : Array (TSyntax `ident) :=
+            (wfCaps.map (fun c => mkIdent (Name.mkSimple (Triptych.surfaceBinder c)))).toArray
+          let wfRIdent := mkIdentFrom name (name.getId ++ `WfConstraints)
+          emitSpec (← `(def $wfRIdent $[($wfBinders : String)]* : Prop := $wfBody))
+          wfConstrCaps := some wfCaps
+        unless valueRTerms.isEmpty do
+          let valueBody ← match valueRTerms.toList with
+            | []      => `(True)
+            | x :: xs => xs.foldlM (fun acc p => `($acc ∧ $p)) x
+          let valueBinders : Array (TSyntax `ident) :=
+            (valCaps.map (fun c => mkIdent (Name.mkSimple (Triptych.surfaceBinder c)))).toArray
+          let cRIdent := mkIdentFrom name (name.getId ++ `Constraints)
+          emitSpec (← `(def $cRIdent $[($valueBinders : String)]* : Prop := $valueBody))
+          valueConstrCaps := some valCaps
       else
         emitEngine (← `(def $cIdent : List ConstraintEntry := []))
       -- ENGINE bundle (lowercase): the decode-backed interpreter predicates. The readable
-      -- surface `IsWf.<start>` is PROVEN equal to `Triptych.isWf` by `<Name>.IsWf_equiv`.
+      -- top-level `IsWf` is PROVEN equal to `Triptych.isWf` by `<Name>.IsWf_equiv`;
+      -- `<Name>.IsWfGrammar_equiv` separately handles grammar-only `IsWf.<start>`.
       let wfIdent  := mkIdentFrom name (name.getId ++ `isWf)
       let scIdent  := mkIdentFrom name (name.getId ++ `satisfiesConstraints)
       let accIdent := mkIdentFrom name (name.getId ++ `isValid)
@@ -706,20 +702,25 @@ def elabTriptych : CommandElab := fun stx => do
         let vfnIdent := mkIdentFrom name (name.getId ++ `valueFn)
         emitEngine (← `(def $cvIdent (s : String) :=
                       Triptych.computeValueMap $grammarIdent $vfnIdent s))
-      -- SPEC bundle (capitalized): the citable validity predicate, engine-free except for
-      -- the `grammar` + library `decode` (the irreducible String→components bridge). Matches
-      -- Cedar's wording — "a string is VALID iff it satisfies the grammar and constraints":
-      --   `SatisfiesConstraints (s)`: decode `s`, then apply the readable `Constraints` to
-      --     the extracted components (`True` if no constraints section).
-      --   `IsValid (s) := IsWf.<start> s ∧ SatisfiesConstraints s`.
+      -- SPEC bundle (capitalized): `IsWf.<start>` remains the per-production grammar layout.
+      -- Top-level `IsWf` adds every capture-only format constraint; only constraints that
+      -- explicitly mention the final `value` remain in `SatisfiesConstraints`.
       let startName : Name := (gval.prods.head?.map (·.name.toName)).getD name.getId
-      let startIsWf := mkIdentFrom name (name.getId ++ `IsWf ++ startName)
+      let grammarWf := mkIdentFrom name (name.getId ++ `IsWf ++ startName)
+      let wfScSurf := mkIdentFrom name (name.getId ++ `SatisfiesWfConstraints)
+      let wfSurf := mkIdentFrom name (name.getId ++ `IsWf)
       let scSurf := mkIdentFrom name (name.getId ++ `SatisfiesConstraints)
       let accSurf := mkIdentFrom name (name.getId ++ `IsValid)
-      -- `SatisfiesConstraints s`: decode `s` and apply the readable `Constraints` to the
-      -- extracted component strings (`True` if there is no constraints section). All forms,
-      -- including `opaque*` escapes (now string-param), live uniformly inside `Constraints`.
-      match constrCaps with
+      match wfConstrCaps with
+      | none =>
+        emitSpec (← `(abbrev $wfScSurf (s : String) : Prop := True))
+      | some caps =>
+        let wfRIdent := mkIdentFrom name (name.getId ++ `WfConstraints)
+        let args : Array (TSyntax `term) ← caps.toArray.mapM (fun c =>
+          `(Triptych.component $grammarIdent s $(Syntax.mkStrLit c)))
+        emitSpec (← `(def $wfScSurf (s : String) : Prop := $wfRIdent $args*))
+      emitSpec (← `(abbrev $wfSurf (s : String) : Prop := $grammarWf s ∧ $wfScSurf s))
+      match valueConstrCaps with
       | none =>
         emitSpec (← `(abbrev $scSurf (s : String) : Prop := True))
       | some caps =>
@@ -727,10 +728,9 @@ def elabTriptych : CommandElab := fun stx => do
         let args : Array (TSyntax `term) ← caps.toArray.mapM (fun c =>
           `(Triptych.component $grammarIdent s $(Syntax.mkStrLit c)))
         emitSpec (← `(def $scSurf (s : String) : Prop := $cRIdent $args*))
-      emitSpec (← `(abbrev $accSurf (s : String) : Prop := $startIsWf s ∧ $scSurf s))
-      -- Soundness/decidability (SOUNDNESS section): the surface⟺engine `IsWf_equiv` + the
-      -- derived `Decidable` instances. Runs after the engine bundle + surface `IsValid`.
-      emitReconcile constrCaps.isSome veIdent?.isSome
+      emitSpec (← `(abbrev $accSurf (s : String) : Prop := $wfSurf s ∧ $scSurf s))
+      -- Reconcile both public phases independently, then derive full acceptance equivalence.
+      emitReconcile wfConstrCaps.isSome valueConstrCaps.isSome veIdent?.isSome
       -- VALUE equivalence (SOUNDNESS section): surface `value` ⟺ engine `computeValue`, as a
       -- standalone theorem (the value analogue of `IsWf_equiv`). Emitted whenever a value
       -- section is present — DSL tier (`veIdent?`) or `value'` escape (`hasValueEsc`).
@@ -763,7 +763,7 @@ def elabTriptych : CommandElab := fun stx => do
       -- mentions `value` and no `constraints'` escape is present ⟹ warn. A total-injective σ
       -- (a plain embedding) legitimately needs no constraint — then ignore the warning.
       if let some σT := liftTerm? then
-        unless dslExprs.any Triptych.constraintUsesValue || hasOpaque do
+        unless dslExprs.any Triptych.constraintUsesValue do
           logWarningAt σT m!"`lift` without a value constraint: if `{σT}` is not injective on \
             all of Int (e.g. it wraps, like `Int64.ofInt`), out-of-range inputs will be ACCEPTED \
             and silently wrapped by the lifted parser. Add a range constraint matching the \
@@ -1001,9 +1001,9 @@ def elabTriptych : CommandElab := fun stx => do
             The more readable specification. Each production of the input grammar becomes an\n\
             inlined well-formedness predicate `IsWf.*` written as a plain existential over the\n\
             named captures, so you can read it side-by-side with the grammar and check that it\n\
-            says the same thing. `value` is the value function, `Constraints` the extra\n\
-            conditions, and `IsValid` the overall acceptance predicate (well-formed ∧\n\
-            constraints). This file is proof-free — it is what you cite. -/"
+            says the same thing. `WfConstraints` contains capture-derived format conditions;\n\
+            `Constraints` contains only conditions that explicitly mention the final `value`.\n\
+            `IsValid` combines both phases. This file is proof-free — it is what you cite. -/"
           let specPath := dir ++ "/spec.lean"
           guardedWrite specPath
             (specHeader ++ "\n" ++ specBanner ++ "\n\n" ++ joinDecls specDecls ++ "\n")
@@ -1022,9 +1022,10 @@ def elabTriptych : CommandElab := fun stx => do
             proves the two describe the same language and value. -/"
           let proofBanner := "/- ════════════════════════════ equivalence ════════════════════════════\n\
             The auto-discharged guarantees relating the readable surface to the executable\n\
-            engine: `IsWf_equiv` (+ its `Internal.matchesRef.*` lemmas) proves recognition\n\
-            agrees, `computeValue_eq` proves the values agree, and the derived `DecidablePred`\n\
-            instances make the surface predicates executable via the engine. No `sorry`. -/"
+            engine: `IsWfGrammar_equiv` proves grammar-layout agreement and `IsWf_equiv`\n\
+            proves full well-formedness agreement. `computeValue_eq` proves the values agree,\n\
+            and the derived `DecidablePred` instances make the surface predicates executable\n\
+            via the engine. No `sorry`. -/"
           let parserBanner := "/- ═══════════════════════════════ parser ══════════════════════════════\n\
             The generated correct-by-construction parser `parse` (= `computeValue` gated on the\n\
             decidable `isValid`) together with its guarantees — `parse_sound`, `parse_complete`,\n\
@@ -1152,7 +1153,7 @@ from analysis and put correctness on you).
                    elements. `def f (… xs : List String) …`. (list args are `value'`-only.)
 
 ── constraints ──  (optional; one per line; may refer to `value`)
-  string (fold into IsWf):
+  capture/string predicates (fold into IsWf):
     noLeadingZero X        X has no leading zero unless it is exactly \"0\"
     X = \"lit\"              X's matched string equals a literal
   cardinality over presence (how many of the listed captures are nonempty; SAT-style):
@@ -1160,13 +1161,16 @@ from analysis and put correctness on you).
     atLeast k {X, Y, …}    ≥ k of the capture set present
     atMost  k {X, Y, …}    ≤ k present
     exactly k {X, Y, …}    exactly k present
-  value (fold into SatisfiesConstraints):
+  comparisons (phase follows explicit use of the final `value`):
     a ≤ b     a < b     a == b        comparisons of value expressions
     e ∈ [lo, hi]                      closed interval (⟺ lo ≤ e ∧ e ≤ hi)
-  the word `value` inside a constraint = the elaborated value function.
+  capture-only comparisons such as `nat MM ∈ [1, 12]` fold into IsWf.
+  only a constraint containing the word `value` folds into SatisfiesConstraints.
+  there, `value` denotes the elaborated final value function.
 
 ── constraints' ──  (optional ESCAPE, for constraints outside the DSL, e.g. calendar rules)
   one per line:  f X Y …   with  def f (x y … : String) : Bool := …   (`f` applied to captures)
+  these capture-only escapes fold into IsWf.
 
 ── parser ──  (optional)  parser <parse> projection <π>   emits the external-parser obligations
                           (π : δ → β reads the external parser's value into the spec value type).

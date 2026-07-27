@@ -17,24 +17,25 @@
 import Triptych.Architecture.Value
 
 /-!
-# The constraint-DSL: deep-embedded predicates, auto-classified
+# The constraint DSL: deep-embedded predicates with an explicit phase
 
 The `constraints` section of `triptych` lists predicates. Like the value-DSL this is
 a **deep embedding**: each constraint elaborates to an inspectable `Constraint` AST, so
 the tool can (design note §16.1/§16.3):
 
-* **auto-classify** each constraint by value-dependence:
-  - references only capture strings (e.g. `noLeadingZero X`) → folds into `IsWf`;
-  - references a value expression (e.g. `nat X ≤ 255`, the `Int64` bound) → folds into
-    `SatisfiesConstraints`.
-* keep the two layers separate so `IsWf` stays value-free (decidable unconditionally).
+* classify each constraint before elaboration by whether its surface syntax explicitly
+  references the format's final `value`:
+  - capture-only constraints (including `nat X ≤ 255`) fold into `IsWf`;
+  - constraints that mention `value` fold into `SatisfiesConstraints`.
+* preserve that phase in `ConstraintEntry`, because substituting the format's `ValExpr` for
+  `value` would otherwise erase the distinction.
 
 This is the "dynamic input validation" layer (CoStar++'s semantic predicates), made
 first-class and possibly non-context-free (bounds on computed values, cross-field).
 
-Scope of this increment: the `Constraint` AST + its denotation + the classifier
-(`isValueDependent`). Wiring into the `triptych` command's `constraints` section
-(replacing the raw-term capture) is the following step.
+The phase is intentionally a property of an entry, not of the `Constraint` AST: the same
+arithmetic comparison node may constrain a capture-derived number (well-formedness) or the
+final computed value (value validity).
 -/
 
 namespace Triptych
@@ -48,9 +49,8 @@ inductive CardOp where
   | exactlyK  -- `= k` present  (`exactly` clashes with `LenSpec.exactly` naming; use `exactlyK`)
   deriving Repr, Inhabited, DecidableEq
 
-/-- A constraint predicate over the capture environment. Two syntactic flavors:
-    *string* predicates (over one capture's matched substring) and *value* predicates
-    (comparisons of `ValExpr` value expressions). -/
+/-- A constraint predicate over the capture environment. Classification into format
+    well-formedness versus final-value validity is stored by `ConstraintEntry`. -/
 inductive Constraint where
   /-- `noLeadingZero X` — capture `X` has no leading zero unless it is exactly `"0"`
       (`startsWith "0" → s = "0"`). The pervasive IPAddr canonical-nat rule. STRING. -/
@@ -63,26 +63,15 @@ inductive Constraint where
       `atMost k {Xs}`, `exactly k {Xs}`; `nonempty X` = `atLeast 1 {X}`. The generalization of
       the "at least one component present" rule over an all-optional run (Duration/IPAddr). -/
   | card (op : CardOp) (k : Nat) (fields : List String)
-  /-- `a ≤ b` — value comparison of two value expressions (e.g. `nat X ≤ 255`). VALUE. -/
+  /-- `a ≤ b` — comparison of two value expressions (e.g. `nat X ≤ 255`). -/
   | le (a b : ValExpr)
-  /-- `a < b`. VALUE. -/
+  /-- `a < b`. -/
   | lt (a b : ValExpr)
-  /-- `a = b` — value equality. VALUE. -/
+  /-- `a = b` — arithmetic value equality. -/
   | eq (a b : ValExpr)
   /-- Conjunction. -/
   | and (a b : Constraint)
   deriving Repr, Inhabited, DecidableEq
-
-/-- Whether a constraint depends on a computed *value* (vs. only capture strings).
-    Value-dependent ⟹ folds into `SatisfiesConstraints`; otherwise into `IsWf`. -/
-def Constraint.isValueDependent : Constraint → Bool
-  | .noLeadingZero _ => false
-  | .strEq _ _       => false
-  | .card _ _ _      => false
-  | .le _ _          => true
-  | .lt _ _          => true
-  | .eq _ _          => true
-  | .and a b         => a.isValueDependent || b.isValueDependent
 
 /-- Denotation of a constraint against a capture environment. Absent captures: a
     string predicate on an absent capture is vacuously true (the symbol wasn't present,
@@ -122,81 +111,50 @@ instance instDecidableEval (env : Env) : (c : Constraint) → Decidable (c.eval 
       have := instDecidableEval env b
       by unfold Constraint.eval; infer_instance
 
-/-- The `IsWf`-side conjunction: only the string (non-value-dependent) constraints. -/
-def Constraint.wfPart (env : Env) : Constraint → Prop
-  | .and a b => a.wfPart env ∧ b.wfPart env
-  | c        => if c.isValueDependent then True else c.eval env
+/-- The phase at which a constraint contributes to acceptance. -/
+inductive ConstraintPhase where
+  /-- Intrinsic format well-formedness; the constraint does not mention the final `value`. -/
+  | wellFormed
+  /-- A constraint on the format's final computed `value`. -/
+  | value
+  deriving Repr, Inhabited, DecidableEq
 
-/-- The `SatisfiesConstraints`-side conjunction: only the value-dependent constraints. -/
-def Constraint.valPart (env : Env) : Constraint → Prop
-  | .and a b => a.valPart env ∧ b.valPart env
-  | c        => if c.isValueDependent then c.eval env else True
-
-instance instDecidableWfPart (env : Env) : (c : Constraint) → Decidable (c.wfPart env)
-  | .and a b =>
-      have := instDecidableWfPart env a
-      have := instDecidableWfPart env b
-      by unfold Constraint.wfPart; infer_instance
-  | .noLeadingZero f => by unfold Constraint.wfPart; split <;> infer_instance
-  | .strEq f l       => by unfold Constraint.wfPart; split <;> infer_instance
-  | .card op k fs    => by
-      unfold Constraint.wfPart; split
-      · infer_instance
-      · unfold Constraint.eval; split <;> infer_instance
-  | .le a b          => by unfold Constraint.wfPart; split <;> infer_instance
-  | .lt a b          => by unfold Constraint.wfPart; split <;> infer_instance
-  | .eq a b          => by unfold Constraint.wfPart; split <;> infer_instance
-
-instance instDecidableValPart (env : Env) : (c : Constraint) → Decidable (c.valPart env)
-  | .and a b =>
-      have := instDecidableValPart env a
-      have := instDecidableValPart env b
-      by unfold Constraint.valPart; infer_instance
-  | .noLeadingZero f => by unfold Constraint.valPart; split <;> infer_instance
-  | .strEq f l       => by unfold Constraint.valPart; split <;> infer_instance
-  | .card op k fs    => by unfold Constraint.valPart; split <;> infer_instance
-  | .le a b          => by unfold Constraint.valPart; split <;> infer_instance
-  | .lt a b          => by unfold Constraint.valPart; split <;> infer_instance
-  | .eq a b          => by unfold Constraint.valPart; split <;> infer_instance
-
-/-- A constraint *entry* in the `constraints` section: either a structured, analyzable
-    `Constraint` (the DSL), or the ESCAPE HATCH — an arbitrary decidable predicate on the
-    environment with a declared classification (design note §16.7). The escape keeps the
-    analyzable `Constraint` AST pure (deriving `Repr`/`DecidableEq`) while never blocking
-    a constraint outside the DSL vocabulary. -/
+/-- A constraint entry with its phase preserved. Opaque `constraints'` entries receive only
+    capture strings, so the elaborator assigns them to `.wellFormed`. -/
 inductive ConstraintEntry where
-  /-- A DSL constraint (analyzable). -/
-  | dsl (c : Constraint)
-  /-- Opaque escape (`opaqueConstraints`): an arbitrary boolean check on the environment,
-      carrying its own decision procedure (so no `DecidablePred` plumbing), for constraints
-      outside the DSL vocabulary. Always folds into the value side (`valPart`); the earlier
-      `IsWf`-vs-value distinction was dropped because for the combined acceptance predicate
-      `wfPart ∧ valPart` an opaque entry contributes exactly `check` either way, so the
-      classification never affected the result. -/
-  | opaque (check : Env → Bool)
+  /-- A structured DSL constraint. -/
+  | dsl (phase : ConstraintPhase) (c : Constraint)
+  /-- An arbitrary decidable predicate supplied through `constraints'`. -/
+  | opaque (phase : ConstraintPhase) (check : Env → Bool)
 
-/-- Value-dependence of an entry (opaque escapes fold into the value side). -/
+/-- Whether an entry explicitly constrains the final computed value. -/
 def ConstraintEntry.isValueDependent : ConstraintEntry → Bool
-  | .dsl c        => c.isValueDependent
-  | .opaque _     => true
+  | .dsl .wellFormed _    => false
+  | .dsl .value _         => true
+  | .opaque .wellFormed _ => false
+  | .opaque .value _      => true
 
 /-- `IsWf`-side contribution of an entry. -/
 def ConstraintEntry.wfPart (env : Env) : ConstraintEntry → Prop
-  | .dsl c       => c.wfPart env
-  | .opaque _    => True
+  | .dsl .wellFormed c    => c.eval env
+  | .dsl .value _         => True
+  | .opaque .wellFormed p => p env = true
+  | .opaque .value _      => True
 
 /-- `SatisfiesConstraints`-side contribution of an entry. -/
 def ConstraintEntry.valPart (env : Env) : ConstraintEntry → Prop
-  | .dsl c       => c.valPart env
-  | .opaque check => check env = true
+  | .dsl .wellFormed _    => True
+  | .dsl .value c         => c.eval env
+  | .opaque .wellFormed _ => True
+  | .opaque .value p      => p env = true
 
 instance (env : Env) : (e : ConstraintEntry) → Decidable (e.wfPart env)
-  | .dsl c        => by unfold ConstraintEntry.wfPart; infer_instance
-  | .opaque _     => by unfold ConstraintEntry.wfPart; infer_instance
+  | .dsl phase c   => by cases phase <;> unfold ConstraintEntry.wfPart <;> infer_instance
+  | .opaque phase p => by cases phase <;> unfold ConstraintEntry.wfPart <;> infer_instance
 
 instance (env : Env) : (e : ConstraintEntry) → Decidable (e.valPart env)
-  | .dsl c        => by unfold ConstraintEntry.valPart; infer_instance
-  | .opaque _     => by unfold ConstraintEntry.valPart; infer_instance
+  | .dsl phase c   => by cases phase <;> unfold ConstraintEntry.valPart <;> infer_instance
+  | .opaque phase p => by cases phase <;> unfold ConstraintEntry.valPart <;> infer_instance
 
 /-! ## Surface syntax → `Constraint`
 
@@ -302,12 +260,34 @@ def opaqueMapClosure (f : TSyntax `ident) (is : Array (TSyntax `ident × Bool)) 
     else `(($toEnvId m $key).getD ""))
   `(fun m : $capMapId => $f $args*)
 
-/-- Translate a `constraintExpr` into a `ConstraintEntry` term (all DSL forms wrap in
-    `.dsl`; the raw-Lean escape lives in the separate `constraints'` section, not here).
-    `valueSub` threads `value` references. -/
+/-- Does a `valExpr` reference the final `value` keyword? -/
+partial def valExprUsesValue : TSyntax `valExpr → Bool
+  | `(valExpr| value) => true
+  | `(valExpr| ( $e:valExpr )) => valExprUsesValue e
+  | `(valExpr| $a:valExpr + $b:valExpr) => valExprUsesValue a || valExprUsesValue b
+  | `(valExpr| $a:valExpr - $b:valExpr) => valExprUsesValue a || valExprUsesValue b
+  | `(valExpr| $a:valExpr * $b:valExpr) => valExprUsesValue a || valExprUsesValue b
+  | `(valExpr| $a:valExpr ^ $b:valExpr) => valExprUsesValue a || valExprUsesValue b
+  | _ => false
+
+/-- Does a constraint reference the format's final `value`? This is the authoritative
+    phase classifier and must run before `value` is substituted by its `ValExpr`. -/
+def constraintUsesValue : TSyntax `constraintExpr → Bool
+  | `(constraintExpr| $a:valExpr ≤ $b:valExpr) => valExprUsesValue a || valExprUsesValue b
+  | `(constraintExpr| $a:valExpr < $b:valExpr) => valExprUsesValue a || valExprUsesValue b
+  | `(constraintExpr| $a:valExpr == $b:valExpr) => valExprUsesValue a || valExprUsesValue b
+  | `(constraintExpr| $e:valExpr ∈ [ $lo:valExpr , $hi:valExpr ]) =>
+      valExprUsesValue e || valExprUsesValue lo || valExprUsesValue hi
+  | _ => false
+
+/-- Translate a constraint into an entry, preserving whether its original surface syntax
+    referenced the final `value` before `valueSub` replaces that reference. -/
 def elabEntryWith (valueSub : Option (TSyntax `term)) :
     TSyntax `constraintExpr → MacroM (TSyntax `term)
-  | c => do `(ConstraintEntry.dsl $(← elabConstraintWith valueSub c))
+  | c => do
+      let phase ← if constraintUsesValue c then `(ConstraintPhase.value)
+        else `(ConstraintPhase.wellFormed)
+      `(ConstraintEntry.dsl $phase $(← elabConstraintWith valueSub c))
 
 /-- `elabEntry` with no `value` substitution. -/
 def elabEntry (c : TSyntax `constraintExpr) : MacroM (TSyntax `term) :=
@@ -316,8 +296,8 @@ def elabEntry (c : TSyntax `constraintExpr) : MacroM (TSyntax `term) :=
 /-- Translate a `constraintExpr` into a READABLE `Prop` term over environment `env`,
     using the readable value readers (`env.intVal "X" ≤ 255`, etc.) — the surface/pretty
     counterpart of the `Constraint` AST, just as `<Name>.value` is for `ValExpr`. Emitted
-    as the generated `<Name>.SatisfiesConstraints`. `valueSub` substitutes a readable term
-    for a `value` reference. -/
+    in either `<Name>.WfConstraints` or `<Name>.Constraints` according to the preserved
+    phase. `valueSub` substitutes a readable term for a `value` reference. -/
 def elabConstraintReadable (valueSub : Option (TSyntax `term)) :
     TSyntax `constraintExpr → MacroM (TSyntax `term)
   | `(constraintExpr| noLeadingZero $i:ident) =>
@@ -347,25 +327,6 @@ def elabConstraintReadable (valueSub : Option (TSyntax `term)) :
       let hit ← elabValReadableWith valueSub hi
       `($lot ≤ $et ∧ $et ≤ $hit)
   | _ => Macro.throwUnsupported
-
-/-- Does a `valExpr` reference the `value` keyword? -/
-partial def valExprUsesValue : TSyntax `valExpr → Bool
-  | `(valExpr| value) => true
-  | `(valExpr| ( $e:valExpr )) => valExprUsesValue e
-  | `(valExpr| $a:valExpr + $b:valExpr) => valExprUsesValue a || valExprUsesValue b
-  | `(valExpr| $a:valExpr - $b:valExpr) => valExprUsesValue a || valExprUsesValue b
-  | `(valExpr| $a:valExpr * $b:valExpr) => valExprUsesValue a || valExprUsesValue b
-  | `(valExpr| $a:valExpr ^ $b:valExpr) => valExprUsesValue a || valExprUsesValue b
-  | _ => false
-
-/-- Does a `constraintExpr` reference `value`? -/
-def constraintUsesValue : TSyntax `constraintExpr → Bool
-  | `(constraintExpr| $a:valExpr ≤ $b:valExpr) => valExprUsesValue a || valExprUsesValue b
-  | `(constraintExpr| $a:valExpr < $b:valExpr) => valExprUsesValue a || valExprUsesValue b
-  | `(constraintExpr| $a:valExpr == $b:valExpr) => valExprUsesValue a || valExprUsesValue b
-  | `(constraintExpr| $e:valExpr ∈ [ $lo:valExpr , $hi:valExpr ]) =>
-      valExprUsesValue e || valExprUsesValue lo || valExprUsesValue hi
-  | _ => false
 
 /-- Capture names referenced by a `constraintExpr` (for surface parameter binders). -/
 def constraintCaptures : TSyntax `constraintExpr → List String

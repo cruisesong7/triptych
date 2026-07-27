@@ -17,9 +17,9 @@ set_option linter.unusedVariables false
 The more readable specification. Each production of the input grammar becomes an
 inlined well-formedness predicate `IsWf.*` written as a plain existential over the
 named captures, so you can read it side-by-side with the grammar and check that it
-says the same thing. `value` is the value function, `Constraints` the extra
-conditions, and `IsValid` the overall acceptance predicate (well-formed ∧
-constraints). This file is proof-free — it is what you cite. -/
+says the same thing. `WfConstraints` contains capture-derived format conditions;
+`Constraints` contains only conditions that explicitly mention the final `value`.
+`IsValid` combines both phases. This file is proof-free — it is what you cite. -/
 
 def Graph.grammar : Grammar :=
   Grammar.mk "Adj"
@@ -35,11 +35,17 @@ def Graph.IsWf.Adj (s : String) : Prop :=
 def Graph.value (cells : String) :=
   toGraph cells
 
-def Graph.Constraints (cells : String) : Prop :=
+def Graph.WfConstraints (cells : String) : Prop :=
   isTriangular cells = true
 
-def Graph.SatisfiesConstraints (s : String) : Prop :=
-  Graph.Constraints (Triptych.component Graph.grammar s "Cells")
+def Graph.SatisfiesWfConstraints (s : String) : Prop :=
+  Graph.WfConstraints (Triptych.component Graph.grammar s "Cells")
+
+abbrev Graph.IsWf (s : String) : Prop :=
+  Graph.IsWf.Adj s ∧ Graph.SatisfiesWfConstraints s
+
+abbrev Graph.SatisfiesConstraints (s : String) : Prop :=
+  True
 
 abbrev Graph.IsValid (s : String) : Prop :=
-  Graph.IsWf.Adj s ∧ Graph.SatisfiesConstraints s
+  Graph.IsWf s ∧ Graph.SatisfiesConstraints s

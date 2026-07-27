@@ -380,7 +380,7 @@ theorem decode_parts_of_surface_wf {s : String} (h : Decimal.IsWf.Decimal s) :
       (sgn = "-" ∨ sgn = "") ∧
       s = sgn ++ natural ++ "." ++ fraction ∧
       Triptych.IsDigits natural ∧ Triptych.IsDigitsBetween 1 4 fraction := by
-  have hwf : IsWf Decimal.grammar s := (Decimal.IsWf_equiv s).mpr h
+  have hwf : Triptych.IsWf Decimal.grammar s := (Decimal.IsWfGrammar_equiv s).mpr h
   have hsome : (decode Decimal.grammar s).isSome = true :=
     (decodeSome_iff_IsWf Decimal.grammar (by decide) s).mpr hwf
   obtain ⟨m, hm⟩ := Option.isSome_iff_exists.mp hsome
@@ -413,9 +413,9 @@ theorem bridge_isValid (s : String) :
         Cedar.Thm.Decimal.computeValue s ≤ (9223372036854775807 : Int) := by
   constructor
   · rintro ⟨hwf, hconstraints⟩
-    have hcedar := surface_wf_to_cedar hwf
+    have hcedar := surface_wf_to_cedar hwf.1
     obtain ⟨sgn, natural, fraction, hdecode, _, _, _, _⟩ :=
-      decode_parts_of_surface_wf hwf
+      decode_parts_of_surface_wf hwf.1
     have hformat := format_compute_of_decode s sgn natural fraction hdecode
     have hvalue : Decimal.value sgn natural fraction = Cedar.Thm.Decimal.computeValue s := by
       rw [bridge_value s hcedar] at hformat
@@ -431,7 +431,7 @@ theorem bridge_isValid (s : String) :
     have hv : Decimal.value sgn natural fraction = Cedar.Thm.Decimal.computeValue s := by
       rw [bridge_value s hcedar] at hformat
       exact Option.some.inj hformat.symm
-    refine ⟨hwf, (constraints_of_decode s sgn natural fraction hdecode).mpr ?_⟩
+    refine ⟨⟨hwf, trivial⟩, (constraints_of_decode s sgn natural fraction hdecode).mpr ?_⟩
     simpa [hv] using hrange
 
 end Decimal.CedarBridge

@@ -15,9 +15,9 @@ set_option linter.unusedVariables false
 The more readable specification. Each production of the input grammar becomes an
 inlined well-formedness predicate `IsWf.*` written as a plain existential over the
 named captures, so you can read it side-by-side with the grammar and check that it
-says the same thing. `value` is the value function, `Constraints` the extra
-conditions, and `IsValid` the overall acceptance predicate (well-formed ∧
-constraints). This file is proof-free — it is what you cite. -/
+says the same thing. `WfConstraints` contains capture-derived format conditions;
+`Constraints` contains only conditions that explicitly mention the final `value`.
+`IsValid` combines both phases. This file is proof-free — it is what you cite. -/
 
 def Duration.grammar : Grammar :=
   Grammar.mk "Duration"
@@ -88,17 +88,24 @@ def Duration.value («sign» : String) (dDays : String) (dHours : String) (dMinu
         natOf dSeconds * (1000 : Int) +
       natOf dMillis)
 
-def Duration.Constraints (components : String) («sign» : String) (dDays : String) (dHours : String) (dMinutes : String)
-    (dSeconds : String) (dMillis : String) : Prop :=
-  components ≠ "" ∧
-    (-9223372036854775808 : Int) ≤ Duration.value «sign» dDays dHours dMinutes dSeconds dMillis ∧
-      Duration.value «sign» dDays dHours dMinutes dSeconds dMillis ≤ (9223372036854775807 : Int)
+def Duration.WfConstraints (components : String) : Prop :=
+  components ≠ ""
+
+def Duration.Constraints («sign» : String) (dDays : String) (dHours : String) (dMinutes : String) (dSeconds : String)
+    (dMillis : String) : Prop :=
+  (-9223372036854775808 : Int) ≤ Duration.value «sign» dDays dHours dMinutes dSeconds dMillis ∧
+    Duration.value «sign» dDays dHours dMinutes dSeconds dMillis ≤ (9223372036854775807 : Int)
+
+def Duration.SatisfiesWfConstraints (s : String) : Prop :=
+  Duration.WfConstraints (Triptych.component Duration.grammar s "Components")
+
+abbrev Duration.IsWf (s : String) : Prop :=
+  Duration.IsWf.Duration s ∧ Duration.SatisfiesWfConstraints s
 
 def Duration.SatisfiesConstraints (s : String) : Prop :=
-  Duration.Constraints (Triptych.component Duration.grammar s "Components")
-    (Triptych.component Duration.grammar s "Sign") (Triptych.component Duration.grammar s "DDays")
+  Duration.Constraints (Triptych.component Duration.grammar s "Sign") (Triptych.component Duration.grammar s "DDays")
     (Triptych.component Duration.grammar s "DHours") (Triptych.component Duration.grammar s "DMinutes")
     (Triptych.component Duration.grammar s "DSeconds") (Triptych.component Duration.grammar s "DMillis")
 
 abbrev Duration.IsValid (s : String) : Prop :=
-  Duration.IsWf.Duration s ∧ Duration.SatisfiesConstraints s
+  Duration.IsWf s ∧ Duration.SatisfiesConstraints s

@@ -34,7 +34,7 @@ def Decimal.valueFn : Env → Int :=
   (Decimal.valueExpr).eval
 
 def Decimal.constraints : List ConstraintEntry :=
-  [ConstraintEntry.dsl
+  [ConstraintEntry.dsl ConstraintPhase.value
       (Constraint.and (Constraint.le (ValExpr.lit (-9223372036854775808)) Decimal.valueExpr)
         (Constraint.le Decimal.valueExpr (ValExpr.lit 9223372036854775807)))]
 
@@ -52,9 +52,10 @@ def Decimal.computeValue (s : String) : Option Int :=
 
 /- ════════════════════════════ equivalence ════════════════════════════
 The auto-discharged guarantees relating the readable surface to the executable
-engine: `IsWf_equiv` (+ its `Internal.matchesRef.*` lemmas) proves recognition
-agrees, `computeValue_eq` proves the values agree, and the derived `DecidablePred`
-instances make the surface predicates executable via the engine. No `sorry`. -/
+engine: `IsWfGrammar_equiv` proves grammar-layout agreement and `IsWf_equiv`
+proves full well-formedness agreement. `computeValue_eq` proves the values agree,
+and the derived `DecidablePred` instances make the surface predicates executable
+via the engine. No `sorry`. -/
 
 theorem Decimal.Internal.matchesRef.Sign (fuel : Nat) (s : String) :
     matchesSym Decimal.grammar (fuel + 1) (Sym.ref "Sign") s ↔ Decimal.IsWf.Sign s :=
@@ -127,7 +128,7 @@ theorem Decimal.Internal.matchesRef.Decimal (fuel : Nat) (s : String) :
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
-theorem Decimal.IsWf_equiv (s : String) : IsWf Decimal.grammar s ↔ Decimal.IsWf.Decimal s :=
+theorem Decimal.IsWfGrammar_equiv (s : String) : Triptych.IsWf Decimal.grammar s ↔ Decimal.IsWf.Decimal s :=
   by
   rw [isWf_eq_isWfProd_start, IsWfProd,
     show
@@ -165,25 +166,41 @@ theorem Decimal.IsWf_equiv (s : String) : IsWf Decimal.grammar s ↔ Decimal.IsW
   rw [hstart]
   exact Decimal.Internal.matchesRef.Decimal _ s
 
-instance Decimal.instDecidableIsWf : DecidablePred Decimal.IsWf.Decimal := fun s =>
-  @decidable_of_iff _ _ (Decimal.IsWf_equiv s) (Triptych.decIsWf Decimal.grammar (by decide) s)
+theorem Decimal.IsWf_equiv (s : String) : Decimal.IsWf s ↔ Decimal.isWf s :=
+  by
+  unfold Decimal.IsWf Decimal.isWf Triptych.isWf
+  rw [← Decimal.IsWfGrammar_equiv, ← decodeSome_iff_IsWf Decimal.grammar (by decide)]
+  unfold Decimal.SatisfiesWfConstraints Decimal.constraints
+  simp only [Triptych.component, List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const,
+    ConstraintEntry.wfPart, Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD,
+    signOf_getD, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
+  try grind
 
-instance Decimal.instDecidableSatisfiesConstraints : DecidablePred Decimal.SatisfiesConstraints := fun s => by
-  simp only [Decimal.SatisfiesConstraints, Decimal.Constraints, Decimal.value]; exact inferInstance
-
-instance Decimal.instDecidableIsValid : DecidablePred Decimal.IsValid := fun s => inferInstanceAs (Decidable (_ ∧ _))
+theorem Decimal.SatisfiesConstraints_equiv (s : String) :
+    Decimal.SatisfiesConstraints s ↔ Decimal.satisfiesConstraints s :=
+  by
+  unfold Decimal.satisfiesConstraints Triptych.satisfiesConstraints
+  unfold Decimal.SatisfiesConstraints Decimal.Constraints Decimal.constraints Decimal.value Decimal.valueExpr
+  simp only [Triptych.component, List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const,
+    ConstraintEntry.valPart, Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD,
+    signOf_getD, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
+  try grind
 
 theorem Decimal.IsValid_equiv (s : String) : Decimal.IsValid s ↔ Decimal.isValid s :=
   by
-  unfold Decimal.IsValid Decimal.isValid Decimal.isWf Decimal.satisfiesConstraints
-  unfold Triptych.isWf Triptych.satisfiesConstraints
-  rw [← Decimal.IsWf_equiv, ← decodeSome_iff_IsWf Decimal.grammar (by decide)]
-  unfold Decimal.SatisfiesConstraints Decimal.Constraints Decimal.constraints Decimal.value Decimal.valueExpr
-  simp only [Triptych.component, List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const,
-    if_true, if_false, ConstraintEntry.wfPart, ConstraintEntry.valPart, Constraint.wfPart, Constraint.valPart,
-    Constraint.isValueDependent, Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD,
-    signOf_getD, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
-  try grind
+  unfold Decimal.IsValid Decimal.isValid
+  rw [(Decimal.IsWf_equiv s), (Decimal.SatisfiesConstraints_equiv s)]
+
+instance Decimal.instDecidableGrammar : DecidablePred Decimal.IsWf.Decimal := fun s =>
+  @decidable_of_iff _ _ (Decimal.IsWfGrammar_equiv s) (Triptych.decIsWf Decimal.grammar (by decide) s)
+
+instance Decimal.instDecidableIsWf : DecidablePred Decimal.IsWf := fun s =>
+  @decidable_of_iff _ _ (Decimal.IsWf_equiv s).symm inferInstance
+
+instance Decimal.instDecidableSatisfiesConstraints : DecidablePred Decimal.SatisfiesConstraints := fun s =>
+  @decidable_of_iff _ _ (Decimal.SatisfiesConstraints_equiv s).symm inferInstance
+
+instance Decimal.instDecidableIsValid : DecidablePred Decimal.IsValid := fun s => inferInstanceAs (Decidable (_ ∧ _))
 
 theorem Decimal.computeValue_eq (s : String) :
     Decimal.computeValue s =

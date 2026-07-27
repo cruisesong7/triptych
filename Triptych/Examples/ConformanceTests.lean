@@ -43,6 +43,16 @@ open Triptych.Examples.IPv4
 
 namespace Triptych.ConformanceTests
 
+/-! ## Constraint-phase regression checks -/
+
+-- Capture-derived bounds are part of well-formedness.
+#guard decide (Datetime.IsWf "2024-13-15") = false
+#guard decide (IPv4.IsWf "256.0.0.1") = false
+
+-- A final-value overflow is grammatically well-formed but not fully valid.
+#guard decide (Decimal.IsWf "922337203685477.5808") = true
+#guard decide (Decimal.IsValid "922337203685477.5808") = false
+
 /-- A single string-keyed check: does `actual` match `expected`? Returns `none` on pass, or a
     failure message on mismatch. Both sides are `Repr`-printable. -/
 def check {α} [DecidableEq α] [Repr α] (name : String) (actual expected : α) : Option String :=

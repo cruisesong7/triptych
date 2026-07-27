@@ -463,7 +463,7 @@ theorem decode_parts_of_surface_wf {s : String} (h : Duration.IsWf.Duration s) :
       (sgn = "-" ∨ sgn = "") ∧
       s = sgn ++ components.asString ∧
       ComponentsWf components := by
-  have hwf : IsWf Duration.grammar s := (Duration.IsWf_equiv s).mpr h
+  have hwf : Triptych.IsWf Duration.grammar s := (Duration.IsWfGrammar_equiv s).mpr h
   have hsome : (decode Duration.grammar s).isSome = true :=
     (decodeSome_iff_IsWf Duration.grammar (by decide) s).mpr hwf
   obtain ⟨m, hm⟩ := Option.isSome_iff_exists.mp hsome
@@ -609,8 +609,7 @@ theorem constraints_of_decode (s sgn : String)
           ([("Sign", sgn), ("Components", components.asString)] ++
             componentsCaptures components)) :
     Duration.SatisfiesConstraints s ↔
-      components.asString ≠ "" ∧
-        (-9223372036854775808 : Int) ≤ formatValue sgn components ∧
+      (-9223372036854775808 : Int) ≤ formatValue sgn components ∧
         formatValue sgn components ≤ (9223372036854775807 : Int) := by
   unfold Duration.SatisfiesConstraints Duration.Constraints
   unfold Triptych.component Triptych.envOf
@@ -623,6 +622,19 @@ theorem constraints_of_decode (s sgn : String)
       CaptureMap.toEnv, Duration.value, Triptych.signOf, Triptych.natOf,
       Triptych.readNat, Cedar.Thm.Duration.Components.asString,
       Cedar.Thm.Duration.durationChunk]
+
+theorem wf_constraints_of_decode (s sgn : String)
+    (components : Cedar.Thm.Duration.Components)
+    (h :
+      decode Duration.grammar s =
+        some
+          ([("Sign", sgn), ("Components", components.asString)] ++
+            componentsCaptures components)) :
+    Duration.SatisfiesWfConstraints s ↔ components.asString ≠ "" := by
+  unfold Duration.SatisfiesWfConstraints Duration.WfConstraints
+  unfold Triptych.component Triptych.envOf
+  rw [h]
+  simp [CaptureMap.toEnv]
 
 theorem bridge_value (s : String) (hcedar : Cedar.Thm.Duration.IsWfDuration s) :
     Duration.computeValue s = Cedar.Thm.Duration.computeValue s := by
@@ -643,9 +655,11 @@ theorem bridge_isValid (s : String) :
   constructor
   · rintro ⟨hsurface, hconstraints⟩
     obtain ⟨sgn, components, hdecode, hsgn, hs, hwf⟩ :=
-      decode_parts_of_surface_wf hsurface
-    obtain ⟨hne, hlo, hhi⟩ :=
+      decode_parts_of_surface_wf hsurface.1
+    obtain ⟨hlo, hhi⟩ :=
       (constraints_of_decode s sgn components hdecode).mp hconstraints
+    have hne :=
+      (wf_constraints_of_decode s sgn components hdecode).mp hsurface.2
     have hnonempty : components.nonempty :=
       (components_nonempty_iff components).mp hne
     have hcedar := parts_to_cedar components hs hsgn hwf hnonempty
@@ -661,8 +675,11 @@ theorem bridge_isValid (s : String) :
     have heq : formatValue sgn components = v := by
       rw [hparts] at hvalue
       exact Option.some.inj hvalue
-    refine ⟨hsurface, (constraints_of_decode s sgn components hdecode).mpr ?_⟩
-    exact ⟨(components_nonempty_iff components).mpr hnonempty, by
-      simpa [heq] using And.intro hlo hhi⟩
+    have hwfConstraints : Duration.SatisfiesWfConstraints s :=
+      (wf_constraints_of_decode s sgn components hdecode).mpr
+        ((components_nonempty_iff components).mpr hnonempty)
+    refine ⟨⟨hsurface, hwfConstraints⟩,
+      (constraints_of_decode s sgn components hdecode).mpr ?_⟩
+    simpa [heq] using And.intro hlo hhi
 
 end Duration.CedarBridge

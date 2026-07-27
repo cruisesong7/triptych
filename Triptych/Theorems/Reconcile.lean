@@ -30,9 +30,11 @@ The generator emits two well-formedness artifacts for each grammar (design note 
   (`Emit`) that read like the hand-written specs (`∃ integer fraction, s = integer ++ …`).
 
 Keeping both is only sound if they denote the *same* predicate. This module supplies the
-reusable lemmas the generator's emitted equivalence proof (`<Name>.IsWf_equiv`) is built
-from, so the two can never silently drift: readability for the human auditor, decidability
-+ execution for the machine, PROVEN identical.
+reusable lemmas the generator's emitted grammar-layout proof
+(`<Name>.IsWfGrammar_equiv`) is built from, so the two can never silently drift:
+readability for the human auditor, decidability + execution for the machine, PROVEN
+identical. The separate `<Name>.IsWf_equiv` then adds capture-derived format constraints
+on both sides.
 
 The lemmas here are grammar-generic (about `matchesProd`/`matchesSeq`). The emitted proof
 per production is a fixed skeleton — reduce `IsWfProd`/`matchesProd` to the sequence form,

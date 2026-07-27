@@ -17,9 +17,9 @@ set_option linter.unusedVariables false
 The more readable specification. Each production of the input grammar becomes an
 inlined well-formedness predicate `IsWf.*` written as a plain existential over the
 named captures, so you can read it side-by-side with the grammar and check that it
-says the same thing. `value` is the value function, `Constraints` the extra
-conditions, and `IsValid` the overall acceptance predicate (well-formed ∧
-constraints). This file is proof-free — it is what you cite. -/
+says the same thing. `WfConstraints` contains capture-derived format conditions;
+`Constraints` contains only conditions that explicitly mention the final `value`.
+`IsValid` combines both phases. This file is proof-free — it is what you cite. -/
 
 def Datetime.grammar : Grammar :=
   Grammar.mk "Datetime"
@@ -100,7 +100,7 @@ def Datetime.value (yyyy : String) (mm : String) (dd : String) (time_hh : String
     (sss : String) (offset_hh : String) (offset_mm : String) (offset : String) :=
   epochMillis yyyy mm dd time_hh time_mm ss sss offset_hh offset_mm offset
 
-def Datetime.Constraints (mm : String) (time_hh : String) (time_mm : String) (ss : String) (offset_hh : String)
+def Datetime.WfConstraints (mm : String) (time_hh : String) (time_mm : String) (ss : String) (offset_hh : String)
     (offset_mm : String) (yyyy : String) (dd : String) : Prop :=
   (((((((1 : Int) ≤ natOf mm ∧ natOf mm ≤ (12 : Int)) ∧ (0 : Int) ≤ natOf time_hh ∧ natOf time_hh ≤ (23 : Int)) ∧
             (0 : Int) ≤ natOf time_mm ∧ natOf time_mm ≤ (59 : Int)) ∧
@@ -109,11 +109,17 @@ def Datetime.Constraints (mm : String) (time_hh : String) (time_mm : String) (ss
       (0 : Int) ≤ natOf offset_mm ∧ natOf offset_mm ≤ (59 : Int)) ∧
     dayBound yyyy mm dd = true
 
-def Datetime.SatisfiesConstraints (s : String) : Prop :=
-  Datetime.Constraints (Triptych.component Datetime.grammar s "MM") (Triptych.component Datetime.grammar s "Time.hh")
+def Datetime.SatisfiesWfConstraints (s : String) : Prop :=
+  Datetime.WfConstraints (Triptych.component Datetime.grammar s "MM") (Triptych.component Datetime.grammar s "Time.hh")
     (Triptych.component Datetime.grammar s "Time.mm") (Triptych.component Datetime.grammar s "ss")
     (Triptych.component Datetime.grammar s "Offset.hh") (Triptych.component Datetime.grammar s "Offset.mm")
     (Triptych.component Datetime.grammar s "YYYY") (Triptych.component Datetime.grammar s "DD")
 
+abbrev Datetime.IsWf (s : String) : Prop :=
+  Datetime.IsWf.Datetime s ∧ Datetime.SatisfiesWfConstraints s
+
+abbrev Datetime.SatisfiesConstraints (s : String) : Prop :=
+  True
+
 abbrev Datetime.IsValid (s : String) : Prop :=
-  Datetime.IsWf.Datetime s ∧ Datetime.SatisfiesConstraints s
+  Datetime.IsWf s ∧ Datetime.SatisfiesConstraints s
