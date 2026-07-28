@@ -7,6 +7,11 @@ parsers (`Decimal`, `Duration`, `Datetime`, `IPAddr`). Some passages below that
 described unbuilt increments have been updated in place; where a subsection still
 reads as forward-looking, treat it as design rationale, not current-status.
 
+The repository has three explicit package boundaries: the root `Triptych` core,
+`other-examples/` for Cedar-free worked examples, and `cedar-examples/` for the five
+Cedar-backed examples, bridges, external-parser proofs, and conformance suite. The core and
+other-examples package therefore has no cedar-lean dependency.
+
 ## 1. What the tool is (and is not)
 
 **It is** a *grammar-to-specification compiler*: given an (informal) grammar for a
@@ -22,8 +27,8 @@ decode-backed engine — simple and obviously-correct, not optimized (no streami
 error recovery, or complexity theorem). The tool's distinctive job is to validate a
 *separate, external, hand-written* parser (e.g. the `Std.Time`-based `Datetime.parse`,
 or the `splitToList`-based `Decimal.parse`) against the generated spec, via the
-`SoundStmt`/`CompleteStmt`/`RejectStmt` obligations — and the conformance suite
-differential-tests the generated engine against the real Cedar parsers.
+`SoundStmt`/`CompleteStmt`/`RejectStmt` obligations. The optional Cedar companion package's
+conformance suite differential-tests the generated engine against the real Cedar parsers.
 
 This places the tool *upstream* of Narcissus/EverParse: those generate an optimized
 implementation + machine-checked proofs from a format; we generate the verification
@@ -54,9 +59,26 @@ A format is a **relation** `R ⊆ Value × String` (as in Narcissus, but here it
 flat `Prop`, not an inductive type). Both spec functions are *projections* of `R`:
 
 - `IsWf str  :≡  ∃ v, R v str`      -- recognition = forget the value
-- `computeValue str  :≡  the v. R v str`  -- evaluation = read R as a partial function
-                                          -- (well-defined iff R is functional in v
-                                          --  = non-malleability = unambiguous layout)
+- `computeValue str  :≡  the selected v. R v str`
+
+The second reading is grammar-determined only when `R` is functional in `v`. Syntactic
+unambiguity is a sufficient condition, but not necessary: several parses may be
+value-coherent because the value function ignores their differences. Conversely, recognition
+correctness alone says nothing about capture/value coherence.
+
+The implementation makes this explicit in `Triptych.Theorems.Coherence`: `fullParses` names
+every operational full parse; `CaptureCoherent`/`EnvCoherent`/`ValueCoherent` separate map,
+scalar-view, and value agreement; `DecodesAs` is the grammar/value relation; and `Denotes`
+additionally relates per-parse acceptance constraints to the value. Under `FormatCoherent`,
+`decodeGatedMap_eq_some_iff_denotes` proves that first-match execution realizes the relation.
+`DecodeUnique` states a decidable sufficient condition; `#eval decide` checks a concrete input
+at runtime, while the coherence theorems consume a proof. A static all-input certificate
+(`GrammarDecodeUnique`) can now be synthesized for the conservative `Grammar.unaryUnique`
+fragment: one required symbol per production along a reference path, ending in a literal or
+token run. For grammars in this fragment, the DSL emits `grammarDecodeUnique` and, when a
+value exists, `grammarValueCoherent` and `parse_iff_denotes`; Graph receives all three.
+Extending the checker to sequences, alternatives, optionals, and repetitions requires stronger
+split/disjointness reasoning.
 
 Neither is "the compose side" nor "the decompose side" — they are two readings of
 one relation. `R` splits into two layers:
@@ -472,10 +494,11 @@ Naming rationale: `IsAccepted` is defined by *what the parser does*, not an Engl
 adjective, so it cannot drift. "valid" is avoided on both sides of the conjunction
 (the earlier `IsValid = IsWf ∧ IsValid` was tautological-looking).
 
-`Denotes v s := IsWf s ∧ computeValue s = some v ∧ SatisfiesConstraints v` is the
-value↔string *relation* (the Narcissus/PulseParse "format"); `IsAccepted s ↔ ∃ v,
-Denotes v s`. Keep `Denotes` a *conceptual* object — materialize it as a real def
-only if a contract theorem needs the relation form.
+`Denotes g accept valFn s v` is the value↔string *relation* (the
+Narcissus/PulseParse "format"): some full parse of `s` has capture map `m`, `accept m`
+holds, and `valFn m = v`. `CaptureAccepts constraints` supplies the generated format's
+capture-level acceptance predicate. When static unambiguity succeeds, the DSL emits
+`parse_iff_denotes`; for lifted parsers its relational reader is `σ ∘ valFn`.
 
 This preserves the useful distinction already present in the formats: **Decimal** keeps
 its final computed-value overflow bound outside `IsWf`, while **IPAddr** includes

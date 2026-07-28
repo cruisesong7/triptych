@@ -16,8 +16,13 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
 
 ## Build / environment
 
-- `lake build Triptych` — full build (~53 jobs). Lean **v4.31.0**, **batteries only, NO
-  Mathlib** (deliberate, for now).
+- `lake build Triptych` — Cedar-free core build (~37 jobs). Lean **v4.31.0**,
+  **batteries only, NO Mathlib** (deliberate, for now).
+- `cd other-examples && lake build` — Cedar-free Graph example package.
+- `cd cedar-examples && lake build` — optional Cedar bridges, soundness
+  proofs, and Cedar-backed examples.
+- `cd cedar-examples && lake build ConformanceTests` — explicit differential suite,
+  excluded from the Cedar examples package's default target.
 - Remote: `github.com/cruisesong7/triptych` (public), branch `main`.
 - Shell note: if the session's cwd resets between commands, prefix with
   `cd ~/Documents/triptych`.
@@ -26,8 +31,9 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
 
 - **Axioms:** every generated equivalence/decidability result must depend ONLY on
   `propext, Classical.choice, Quot.sound`. NEVER introduce `sorry`, `native_decide`,
-  `ofReduceBool`, or new axioms. The only intentional `sorry`s are the user-obligations in the
-  `soundness.lean` of examples with a `parser`/`printer` clause (currently 17): the 3
+  `ofReduceBool`, or new axioms. The only intentional source-level `sorry`s are the
+  user-obligations in the `soundness.lean` of examples with a `parser`/`printer` clause:
+  the 3
   external-parser obligations (`extparse_sound`/`_complete`/`_reject` vs the REAL Cedar parser)
   per example with a `parser` clause — Decimal, Duration, Datetime — plus, for examples that also
   have a `printer` clause (Decimal, Duration), 3 obligations: 2 encode
@@ -41,7 +47,9 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
   wraps, so the silent-wrap trap surfaces as a permanent sorry; its payoff `parse_sound_proj`,
   the π-view soundness of the generated lifted parser, is discharged via
   `gatedParseLift_sound_proj`). A lint additionally warns at elaboration when `lift` appears
-  with no value constraint at all. So: Decimal 7 + Duration 7 + Datetime 3 = 17. The printer
+  with no value constraint at all. Decimal's 7 and Duration's 7 obligations are discharged.
+  The remaining 8 are Datetime's 3 external-parser obligations and IPv4's 2 encode plus 3
+  external-parser obligations. The printer
   theorems derived from those obligations
   (`parse_toString_roundtrip`/`toString_injective`/`normalize_eq_iff_parse_eq`, plus the
   `extparse_*` trio) are NOT `sorry`d — they carry `sorryAx` only transitively. Both parsers'
@@ -72,10 +80,19 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
 - `Roundtrip.lean` — `decodeSome_iff_IsWf` (decode ↔ IsWf), `rep_iter`/`matchStar_iter`,
   `decIsWf` (conditional `DecidablePred (IsWf g)`, needs `g.repOk = true`).
 - `Coherence.lean` — value is grammar-determined, not decoder-selected: `fullParses`
-  (all full parses, `decode = head?` of them), `ValueCoherent`/`CaptureCoherent`, and
-  `computeValueF_coherent` (under coherence, value = `valFn` of ANY full parse).
-  `DecodeUnique` (≤ 1 full parse) is a `decide`-able sufficient condition; the shipped
-  (unambiguous) grammars satisfy it at every accepted string.
+  (all full parses, `decode = head?` of them), full-map `CaptureCoherent`, scalar-view
+  `EnvCoherent`, and map-generic `ValueCoherent`; `computeValueF_coherent` covers scalar
+  readers and `computeValueMap_coherent` covers repeated captures. `DecodesAs` is the
+  relational value semantics. `DecodeUnique` (≤ 1 full parse) is a decidable per-string
+  sufficient condition; `#eval decide` is a runtime diagnostic, while the theorems consume
+  a proof. `GrammarDecodeUnique` is the all-input certificate targeted by static analyses.
+- `Unambiguity.lean` — soundness of the conservative `Grammar.unaryUnique` syntax check.
+  It proves `GrammarDecodeUnique` for unary reference paths ending in one literal/token run;
+  the DSL emits `grammarDecodeUnique` and `grammarValueCoherent` when it succeeds.
+- `RelationalParser.lean` — connects generated gated parsers to capture-level `Denotes`.
+  Under `GrammarDecodeUnique`, it covers map/environment readers and lifted variants; the DSL
+  emits `parse_iff_denotes` from these theorems. Graph has this contract and both static
+  all-input certificates. Other example `#eval`s remain representative.
 - `Reconcile.lean` — reusable lemmas for emitted grammar/full-WF equivalences (leaf
   `_matchesTerm`, `matchesSym_rep_iff`, reader-agreement `natOf_getD` etc.).
 - `Assemble.lean` — bundles `isWf`/`satisfiesConstraints`/`isValid`; `component`;
@@ -85,7 +102,9 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
 - `Syntax.lean` — the `triptych` command (DSL surface → core, elaborate, write the three
   generated files). Emits `gatedParse`/`parserContractsProof` (the verified parser) and
   splits output into `spec`/`parser`/`soundness` (see below).
-- `Examples/{Decimal,Duration,Datetime,IPv4,IPv6,Graph}/` — each `grammar.lean` runs
+- `other-examples/Graph/` — the Cedar-free structured Graph example.
+- `cedar-examples/{Decimal,Duration,Datetime,IPv4,IPv6}/`
+  — each `grammar.lean` runs
   `triptych` and writes up to THREE modules beside it: `spec.lean` (readable surface,
   proof-free), `parser.lean` (engine bundle + auto-discharged proofs `IsWf_equiv`/
   `computeValue_eq`/decidability + the generated correct-by-construction parser `parse` and its
@@ -107,7 +126,8 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
   discharged printer theorems emitted there require a delete-and-regen to pick up.
   Importing the generated modules builds standalone (so they can't silently drift). Decimal's
   `parser` clause names the real `Cedar.Spec.Ext.Decimal.parse` (see below).
-- `Examples/ConformanceTests.lean` — a one-time confidence check (its own `ConformanceTests` lib
+- `cedar-examples/ConformanceTests.lean` — a one-time confidence
+  check (its own `ConformanceTests` lib
   target, out of `default_target`): runs the GENERATED EXECUTABLE parsers (`<Name>.parse` =
   `gatedParse[Lift] isValid computeValue …`, the decode-based engine — NOT the readable surface
   `IsValid` Prop) against Cedar's REAL parsers over Cedar's OWN unit-test corpus
@@ -115,12 +135,14 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
   return the SAME type as Cedar's, the check is direct equality `ourParse s = cedarParse s` (Cedar
   is the oracle — checks accept-set AND value at once); Datetime (no lift) compares
   `ourParse s = (cedarParse s).map datetimeMillis`. Plain `#eval` (no `native_decide`, no axioms);
-  a nonzero failure count aborts the build. Currently 32 Decimal + 42 Duration + 70 Datetime, all
-  passing. This is what caught the Duration sign bug (below).
-- **cedar-lean dependency:** `lakefile.lean` has `require Cedar from "../cedar-spec/cedar-lean"`
-  (same toolchain v4.31.0, same batteries commit) so `soundness.lean` can reference the real
-  Cedar ext parsers. After a generator edit affecting the dep, `lake build` twice (regeneration
-  timing quirk: a regenerated file's olean can lag its own source within one pass).
+  a nonzero failure count aborts the build. Currently 32 Decimal + 42 Duration + 74 Datetime +
+  30 IPv4 = 178 cases, all passing. This is what caught the Duration sign bug (below).
+- **Package boundary:** the root `lakefile.lean` and manifest depend only on Batteries.
+  `cedar-examples/lakefile.lean` owns the local cedar-lean dependency and imports Triptych
+  core as a path dependency. Its format modules live directly at `Decimal.*`, `Duration.*`,
+  `Datetime.*`, `IPv4.*`, and `IPv6.*`; shared bridge helpers live under `CedarSupport.*`.
+  After a generator edit, build `CedarExamples` twice if regeneration leaves an olean one
+  pass behind.
 
 ## DSL capabilities (current scope)
 
@@ -192,7 +214,7 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
    touches every reader-agreement proof (heavier); (b) exposing `#count` to `constraints'` by
    name. Unlocks (with (a)): arbitrary-order graphs via `rep` + a triangular-count constraint;
    per-element value constraints.
-2. **Add Mathlib** — swap the hand-rolled `Graph` struct in `Examples/Graph` for real
+2. **Add Mathlib** — swap the hand-rolled `Graph` struct in `other-examples/Graph` for real
    `SimpleGraph (Fin n)` / adjacency `Matrix`. Mathlib master currently needs toolchain
    ~v4.33.0-rc1 → a deliberate toolchain bump (do it as its own step; expect some proof drift).
 3. **DIMACS CNF example** — the actual SAT-solver input format (space-separated signed-int
@@ -207,7 +229,7 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
 
 The conventional SAT representation of a graph is the upper-triangle of its adjacency matrix
 as a space-separated bit assignment (the model read back from a Ramsey/coloring instance). The
-`Examples/Graph` example parses that into a structured graph value. "One grammar for all
+The Cedar-free Graph example parses that into a structured graph value. "One grammar for all
 orders" is achieved by a `bit+` grammar (any length) + a triangular-number constraint (carves
 out valid lengths) + a value that recovers `n` from the length — demonstrating the
 grammar-over-approximate / constraints-carve / value-interpret split. NOTE: DIMACS clauses are

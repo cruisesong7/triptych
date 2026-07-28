@@ -56,6 +56,34 @@ it generates up to three files, split by audience:
 Every generated proof outside `soundness.lean` depends only on the standard axioms
 `propext, Classical.choice, Quot.sound` — no `sorry`, `native_decide`, or extra axioms.
 
+## Ambiguity and value coherence
+
+The grammar class permits ambiguous decompositions through alternation, optional items, and
+backtracking token splits. `decode` enumerates every full parse and selects the first, so
+recognition correctness alone does not make the selected captures or value grammar-determined.
+
+`Triptych.Theorems.Coherence` exposes that boundary:
+
+* `fullParses` is the complete operational parse list, with `decode = fullParses.head?`;
+* `CaptureCoherent`, `EnvCoherent`, and `ValueCoherent` state progressively weaker forms of
+  agreement between all full parses;
+* `computeValueF_coherent` covers scalar capture readers, while `computeValueMap_coherent`
+  covers repeated-capture readers such as IPv6's `[H16]`;
+* `Denotes` gives a relational format semantics, and `decodeGatedMap_eq_some_iff_denotes`
+  proves that first-match execution realizes it when both acceptance and value are coherent;
+* `DecodeUnique` is a decidable sufficient condition; `#eval decide` checks concrete inputs,
+  while the coherence theorems consume a proof of the proposition.
+
+Representative example inputs evaluate as unique. Triptych does not yet emit a static
+all-input proof for the full grammar language. It does provide a first conservative checker:
+`Grammar.unaryUnique` recognizes unary reference paths ending in one literal/token run, and
+`GrammarDecodeUnique.of_unaryUnique` proves the check sound for every input. This certifies the
+Graph example statically; the DSL emits its `grammarDecodeUnique` and
+`grammarValueCoherent` theorems automatically, plus `parse_iff_denotes`, which states that
+parser success is equivalent to the capture-level `Denotes` relation. For a lifted parser,
+the relational reader is the lift composed with the grammar value reader. Sequence,
+alternative, optional, and repetition analysis remains.
+
 ## Example
 
 ```lean
@@ -65,7 +93,7 @@ triptych IPv6 where
     H16    ::= hexDigit{1,4}
   value'
     toV6Addr [H16]                       -- the eight groups as a `List String` → `IPv6Addr`
-  to "Triptych/Examples/IPv6"
+  to "IPv6"
 ```
 
 produces `IPv6.IsWf.V6Addr`, `IPv6.IsValid`, a `DecidablePred` validator,
@@ -84,8 +112,9 @@ injectivity, and normalization — for the *generated* parser, and (when a `pars
 present) for the *external* parser too, both stated in β-view via each parser's projection
 (matching Cedar's `parse_toString_roundtrip` etc.).
 
-See `DESIGN.md` for the full design, and `../Triptych/Examples/` for worked
-examples (Decimal, Duration, Datetime, IPv4, IPv6, Graph).
+See `DESIGN.md` for the full design. The Cedar-free Graph example lives in
+`../other-examples/Graph/`. Cedar-backed examples (Decimal, Duration, Datetime, IPv4, IPv6) live
+directly under `../cedar-examples/`.
 
 ## Scope
 
@@ -105,21 +134,36 @@ decidability still auto-proven; value/constraint contract left as a typed hole).
 
 ## Build
 
-```
-lake build Triptych
+```sh
+lake build
 ```
 
-Lean `v4.31.0`, batteries only (no Mathlib). The Decimal example additionally depends on
-cedar-lean (via a local `require Cedar from "../cedar-spec/cedar-lean"` — same toolchain, same
-batteries commit) so its `soundness.lean` can state obligations against the real
-`Cedar.Spec.Ext.Decimal.parse`. Clone `cedar-spec` beside this repo, or drop the Decimal
-`parser` clause to build without it.
+Lean `v4.31.0`, batteries only (no Mathlib). This root package is Cedar-free.
+
+Build the Cedar-free examples package separately:
+
+```sh
+cd other-examples
+lake build
+```
+
+The Cedar-backed examples and validation proofs are an optional companion package:
+
+```sh
+cd cedar-examples
+lake build
+lake build ConformanceTests
+```
+
+That package uses a local `require Cedar from "../../cedar-spec/cedar-lean"` so its
+soundness modules can target Cedar's real extension parsers. Clone `cedar-spec` beside this
+repo to build the integration; it is not needed to build or depend on Triptych core.
 
 ## Provenance
 
 Originated while verifying the Cedar extension-type parsers (Decimal, Duration,
-Datetime, IPAddr); extracted into a standalone library that now takes a light optional
-dependency back on cedar-lean for the Decimal external-parser example. Source files retain
-their original Apache-2.0 "Cedar Contributors" headers. Known as **FormatSpec** before
-2026-07; the name *Triptych* refers to the three hinged panels the tool emits from one
-grammar — spec, parser, and the reconciliation proof between them.
+Datetime, IPAddr); extracted into a standalone Cedar-free library with a separate optional
+Cedar examples package. Source files retain their original Apache-2.0 "Cedar
+Contributors" headers. Known as **FormatSpec** before 2026-07; the name *Triptych* refers to
+the three hinged panels the tool emits from one grammar — spec, parser, and the
+reconciliation proof between them.

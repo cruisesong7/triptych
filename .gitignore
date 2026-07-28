@@ -1,3 +1,5 @@
 /.lake
+/other-examples/.lake
+/cedar-examples/.lake
 /_site
 /verso-sources.json

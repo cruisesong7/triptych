@@ -40,12 +40,14 @@ Caveat (decoder-selected values): `decode` returns the FIRST full-consumption as
 (`head?`), and the scalar `Env` view (`toEnv`) keeps the FIRST span per name. Recognition
 (`IsWf`) forgets captures, so an *ambiguous* grammar's several full parses need not agree on
 the capture map — in general the computed value is decoder-selected, not grammar-determined.
-`Triptych.Theorems.Coherence` makes this precise and supplies the theorem that erases it when
-it can be erased: `computeValueF_coherent` shows that under `ValueCoherent` (all full parses
-agree on the value) the value equals `valFn` of ANY full parse, and `DecodeUnique` (≤ 1 full
-parse, `decide`-able) is a sufficient condition. Triptych's grammar class is a strict subclass
-of regular and the shipped examples are unambiguous (`DecodeUnique` holds at every accepted
-string), so their values are grammar-determined.
+`Triptych.Theorems.Coherence` makes this precise and supplies the theorems that erase it when
+it can be erased: `computeValueF_coherent` covers scalar `Env` readers, while
+`computeValueMap_coherent` covers repeated-capture readers over the full map. `DecodeUnique`
+(≤ 1 full parse) is a decidable sufficient condition, with `#eval decide` as a per-string
+runtime diagnostic. Representative inputs from the shipped examples evaluate as unique; a
+conservative unary-path analysis now proves the all-input `GrammarDecodeUnique` certificate
+for grammars such as Graph. Broader sequences, alternatives, and repetitions still require a
+stronger static analysis before claiming universal unambiguity.
 -/
 
 namespace Triptych
@@ -99,7 +101,7 @@ mutual
 
 /-- All ways symbol `sym` matches a prefix of `cs`: each result is (captures, remaining).
     `fuel` bounds ref-recursion (= #productions, the DAG depth), mirroring `Denote`; this
-    makes the function TOTAL and kernel-reducible (so `decide`, not `native_decide`).
+    makes the function total and executable.
 
     `qual` is the IMMEDIATE-PARENT production name (`""` at the start production). A matched
     nonterminal `name` is recorded under BOTH its bare key `name` AND — when `qual` is

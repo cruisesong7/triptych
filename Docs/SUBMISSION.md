@@ -6,7 +6,8 @@
 
 - **Hack Portal idea:** [link]
 - **Demo video:** [link]
-- **Other artifacts:** code: https://github.com/cruisesong7/triptych (Lean 4; builds with `lake build Triptych`)
+- **Other artifacts:** code: https://github.com/cruisesong7/triptych (Lean 4; Cedar-free core
+  builds with `lake build`; optional packages live in `other-examples/` and `cedar-examples/`)
 
 **Award categories (select up to 2):**
 
@@ -35,7 +36,9 @@ One `triptych` block in, three generated files out:
 - **`parser.lean` — run + trust.** An executable engine, a generated verified parser `parse` with auto-discharged soundness/completeness/rejection theorems, and machine-checked proofs that spec and engine agree on both *recognition* and *value*. Zero `sorry`, standard axioms only.
 - **`soundness.lean` — the obligation surface.** Emitted only when you point the spec at a real external parser/printer: the handful of `sorry`'d theorems a human must prove. We point Decimal, Duration, and Datetime at Cedar's actual parsers, and derive Cedar's printer theorems — roundtrip, injectivity, normalization — automatically from two encode obligations.
 
-Working today: six formats (Decimal, Duration, Datetime, IPv4, IPv6, Graph); the generated theorem set matches, one-to-one, what Cedar proves by hand for its extension types.
+Working today: six formats (Decimal, Duration, Datetime, IPv4, IPv6, Graph). Graph is the
+Cedar-free structured-value example; the Cedar-facing examples exercise the theorem surfaces
+needed to match Cedar's hand-written extension parsers.
 
 ## Architecture / How It Works
 
@@ -56,5 +59,6 @@ Built pair-programming with Claude Code end-to-end: the DSL/elaborator design, t
 
 - **rep-element capture exposure** — let structured values address individual repeated elements; unlocks a DIMACS CNF example with real header-vs-body cross-constraints (prior verified DIMACS parsers — CakeML, Isabelle — are bespoke; ours would be generated).
 - **Layout inverse (`asString`)** — auto-derive the default printer from the grammar, shrinking the printer obligations further.
-- **Discharge the Cedar obligations** — prove the 13 generated `sorry`s against Cedar's real parsers, making this a drop-in validation layer for cedar-lean.
+- **Discharge the remaining Cedar obligations** — prove the 8 Datetime/IPv4 `sorry`s against
+  Cedar's real parsers, making this a drop-in validation layer for cedar-lean.
 - Lessons: restricting the input class is what makes generation *total*; the right place for every unprovable fact is a small, typed, named obligation.

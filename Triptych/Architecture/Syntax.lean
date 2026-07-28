@@ -21,6 +21,8 @@ import Triptych.Architecture.Value
 import Triptych.Architecture.Constraint
 import Triptych.Architecture.Assemble
 import Triptych.Architecture.Emit
+import Triptych.Theorems.RelationalParser
+import Triptych.Theorems.Unambiguity
 
 /-!
 # `triptych` embedded DSL
@@ -485,6 +487,12 @@ def elabTriptych : CommandElab := fun stx => do
       -- These are reader-facing, so SPEC section. Emitted in topological (leaf-first) order.
       let gval : Triptych.Grammar :=
         { start := startName, prods := prodVals }
+      let grammarStaticallyUnique := gval.unaryUnique
+      if grammarStaticallyUnique then
+        let uniqueId := mkIdentFrom name (name.getId ++ `grammarDecodeUnique)
+        emitSound (←
+          `(theorem $uniqueId : GrammarDecodeUnique $grammarIdent :=
+              GrammarDecodeUnique.of_unaryUnique $grammarIdent (by decide)))
       for prod in Triptych.topoOrder gval do
         let pIdent := mkIdentFrom name (name.getId ++ `IsWf ++ prod.name.toName)
         let sVar ← `(s)
@@ -608,6 +616,22 @@ def elabTriptych : CommandElab := fun stx => do
           valueCaps := capArgs.map (·.1)
           valueCapArgs := capArgs
         | _ => throwUnsupportedSyntax
+      if grammarStaticallyUnique && (veIdent?.isSome || hasValueEsc) then
+        let coherentId := mkIdentFrom name (name.getId ++ `grammarValueCoherent)
+        let uniqueId := mkIdentFrom name (name.getId ++ `grammarDecodeUnique)
+        let vfnIdent := mkIdentFrom name (name.getId ++ `valueFn)
+        if veIdent?.isSome then
+          emitSound (←
+            `(theorem $coherentId :
+                GrammarValueCoherent $grammarIdent
+                  (fun m : CaptureMap => $vfnIdent m.toEnv) :=
+                GrammarValueCoherent.of_unique $grammarIdent
+                  (fun m : CaptureMap => $vfnIdent m.toEnv) $uniqueId))
+        else
+          emitSound (←
+            `(theorem $coherentId :
+                GrammarValueCoherent $grammarIdent $vfnIdent :=
+                GrammarValueCoherent.of_unique $grammarIdent $vfnIdent $uniqueId))
       -- Constraints (optional): constraint-DSL predicates, one per line, with `value`
       -- substituted by the value expression. The `fmtConstraints` node is
       -- `"constraints" (colGt constraintExpr)+`; arg 1 is the plain array of exprs.
@@ -754,6 +778,9 @@ def elabTriptych : CommandElab := fun stx => do
       if veIdent?.isSome || hasValueEsc then
         for cmd in ← Triptych.parserContractsProof name.getId veIdent?.isSome liftTerm? do
           emitParser cmd
+        if grammarStaticallyUnique then
+          emitParser (←
+            Triptych.relationalParserContractProof name.getId veIdent?.isSome liftTerm?)
       -- LIFT GUARD (lint): a `lift σ` whose σ is not injective on all of `Int` (e.g.
       -- `Int64.ofInt`, which WRAPS) needs a value constraint carving the accepted language down
       -- to σ's faithful domain — otherwise out-of-range inputs are ACCEPTED and σ silently wraps
@@ -1008,7 +1035,11 @@ def elabTriptych : CommandElab := fun stx => do
           guardedWrite specPath
             (specHeader ++ "\n" ++ specBanner ++ "\n\n" ++ joinDecls specDecls ++ "\n")
           -- ── parser.lean ── engine + all auto-discharged proofs + the generated verified parser.
-          let parserImports := libImports ++ [specMod]
+          let parserImports := libImports
+            ++ (if grammarStaticallyUnique then
+                  ["Triptych.Theorems.RelationalParser", "Triptych.Theorems.Unambiguity"]
+                else [])
+            ++ [specMod]
             ++ (if needsCallerParser then [callerImport] else [])
           let parserHeader := mkHeader parserImports needsCallerParser
           let engineBanner := "/- ══════════════════════════════ engine ══════════════════════════════\n\

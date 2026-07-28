@@ -19,6 +19,7 @@ import Triptych.Architecture.Grammar
 import Triptych.Architecture.Classify
 import Triptych.Architecture.Denote
 import Triptych.Theorems.Reconcile
+import Triptych.Theorems.RelationalParser
 import Triptych.Architecture.Value
 
 /-!
@@ -720,5 +721,59 @@ def parserContractsProof (specName : Name) (isDsl : Bool) (lift? : Option (TSynt
     let rejThm ← `(theorem $rejId (s : String) :
         $parseId s = none ↔ ¬ $validEng s := Triptych.gatedParse_reject _ _ $isSomeId s)
     return #[isSomeThm, parseDef, soundThm, compThm, rejThm]
+
+/-- Emit `<Name>.parse_iff_denotes`, the relational contract for a generated parser whose
+    grammar has a `GrammarDecodeUnique` certificate. The relation applies all constraints and
+    the value reader to one full parse; lifted parsers compose the lift with that reader. -/
+def relationalParserContractProof (specName : Name) (isDsl : Bool)
+    (lift? : Option (TSyntax `term)) : CommandElabM (TSyntax `command) := do
+  let theoremId := mkIdent (specName ++ `parse_iff_denotes)
+  let parseId := mkIdent (specName ++ `parse)
+  let cvId := mkIdent (specName ++ `computeValue)
+  let grammarId := mkIdent (specName ++ `grammar)
+  let constraintsId := mkIdent (specName ++ `constraints)
+  let valFnId := mkIdent (specName ++ `valueFn)
+  let uniqueId := mkIdent (specName ++ `grammarDecodeUnique)
+  match lift?, isDsl with
+  | none, false =>
+      let (valTy, valNm) ← optionPayloadBinder cvId
+      let valId := mkIdent valNm
+      `(theorem $theoremId (s : String) ($valId : $valTy) :
+          $parseId s = some $valId ↔
+            Triptych.Denotes $grammarId (Triptych.CaptureAccepts $constraintsId)
+              $valFnId s $valId := by
+        unfold $parseId $cvId
+        exact Triptych.gatedParseMap_eq_some_iff_denotes $grammarId $constraintsId
+          $valFnId $uniqueId s $valId)
+  | none, true =>
+      let (valTy, valNm) ← optionPayloadBinder cvId
+      let valId := mkIdent valNm
+      `(theorem $theoremId (s : String) ($valId : $valTy) :
+          $parseId s = some $valId ↔
+            Triptych.Denotes $grammarId (Triptych.CaptureAccepts $constraintsId)
+              (fun m : Triptych.CaptureMap => $valFnId m.toEnv) s $valId := by
+        unfold $parseId $cvId Triptych.computeValue
+        exact Triptych.gatedParseF_eq_some_iff_denotes $grammarId $constraintsId
+          $valFnId $uniqueId s $valId)
+  | some σT, false =>
+      let (domainTy, domainNm) ← liftCodomainBinder σT
+      let domainId := mkIdent domainNm
+      `(theorem $theoremId (s : String) ($domainId : $domainTy) :
+          $parseId s = some $domainId ↔
+            Triptych.Denotes $grammarId (Triptych.CaptureAccepts $constraintsId)
+              ($σT ∘ $valFnId) s $domainId := by
+        unfold $parseId $cvId
+        exact Triptych.gatedParseLiftMap_eq_some_iff_denotes $grammarId $constraintsId
+          $valFnId $σT $uniqueId s $domainId)
+  | some σT, true =>
+      let (domainTy, domainNm) ← liftCodomainBinder σT
+      let domainId := mkIdent domainNm
+      `(theorem $theoremId (s : String) ($domainId : $domainTy) :
+          $parseId s = some $domainId ↔
+            Triptych.Denotes $grammarId (Triptych.CaptureAccepts $constraintsId)
+              ($σT ∘ fun m : Triptych.CaptureMap => $valFnId m.toEnv) s $domainId := by
+        unfold $parseId $cvId Triptych.computeValue
+        exact Triptych.gatedParseLiftF_eq_some_iff_denotes $grammarId $constraintsId
+          $valFnId $σT $uniqueId s $domainId)
 
 end Triptych
