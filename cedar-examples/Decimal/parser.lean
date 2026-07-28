@@ -5,6 +5,8 @@ import Triptych.Architecture.Value
 import Triptych.Architecture.Constraint
 import Triptych.Architecture.Assemble
 import Triptych.Theorems.Reconcile
+import Triptych.Theorems.RelationalParser
+import Triptych.Theorems.Unambiguity
 import Decimal.spec
 import Decimal.grammar
 
@@ -56,6 +58,17 @@ engine: `IsWfGrammar_equiv` proves grammar-layout agreement and `IsWf_equiv`
 proves full well-formedness agreement. `computeValue_eq` proves the values agree,
 and the derived `DecidablePred` instances make the surface predicates executable
 via the engine. No `sorry`. -/
+
+theorem Decimal.grammarDecodeUnique : GrammarDecodeUnique Decimal.grammar :=
+  GrammarDecodeUnique.of_staticUnique Decimal.grammar (by decide)
+
+theorem Decimal.grammarCaptureFunctional : GrammarCaptureFunctional Decimal.grammar :=
+  GrammarCaptureFunctional.of_unique Decimal.grammar Decimal.grammarDecodeUnique
+
+theorem Decimal.grammarValueCoherent :
+    GrammarValueCoherent Decimal.grammar (fun m : CaptureMap => Decimal.valueFn m.toEnv) :=
+  GrammarValueCoherent.of_captureFunctional Decimal.grammar (fun m : CaptureMap => Decimal.valueFn m.toEnv)
+    Decimal.grammarCaptureFunctional
 
 theorem Decimal.Internal.matchesRef.Sign (fuel : Nat) (s : String) :
     matchesSym Decimal.grammar (fuel + 1) (Sym.ref "Sign") s ↔ Decimal.IsWf.Sign s :=
@@ -240,3 +253,13 @@ theorem Decimal.parse_complete (s : String) (i : Int64) :
 
 theorem Decimal.parse_reject (s : String) : Decimal.parse s = none ↔ ¬Decimal.isValid s :=
   Triptych.gatedParseLift_reject _ _ _ Decimal.computeValue_isSome s
+
+theorem Decimal.parse_iff_denotes (s : String) (i : Int64) :
+    Decimal.parse s = some i ↔
+      Triptych.Denotes Decimal.grammar (Triptych.CaptureAccepts Decimal.constraints)
+        (Int64.ofInt ∘ fun m : Triptych.CaptureMap => Decimal.valueFn m.toEnv) s i :=
+  by
+  unfold Decimal.parse Decimal.computeValue Triptych.computeValue
+  exact
+    Triptych.gatedParseLiftF_eq_some_iff_denotes Decimal.grammar Decimal.constraints Decimal.valueFn Int64.ofInt
+      Decimal.grammarCaptureFunctional s i

@@ -44,10 +44,15 @@ the capture map — in general the computed value is decoder-selected, not gramm
 it can be erased: `computeValueF_coherent` covers scalar `Env` readers, while
 `computeValueMap_coherent` covers repeated-capture readers over the full map. `DecodeUnique`
 (≤ 1 full parse) is a decidable sufficient condition, with `#eval decide` as a per-string
-runtime diagnostic. Representative inputs from the shipped examples evaluate as unique; a
-conservative unary-path analysis now proves the all-input `GrammarDecodeUnique` certificate
-for grammars such as Graph. Broader sequences, alternatives, and repetitions still require a
-stronger static analysis before claiming universal unambiguity.
+runtime diagnostic. `GrammarCaptureFunctional` is the weaker all-input semantic property that
+all full parses produce the same map. Representative inputs from the shipped examples evaluate
+as unique; a conservative static analysis now proves the stronger `GrammarDecodeUnique`
+certificate for unary paths, required sequences with deterministic prefix boundaries, and
+pairwise-distinct literal-leading alternatives, from which capture functionality follows.
+The checker now also covers a leading optional-literal reference separated from the remainder
+by FIRST-character exclusion and unary variable token paths bounded by an out-of-class literal
+delimiter. Recursive FIRST sets, shared-prefix alternatives, general nullable sequences, and
+repetitions still require stronger analysis.
 -/
 
 namespace Triptych

@@ -46,9 +46,14 @@ backtracking token splits), so coherence cannot be proved unconditionally. Inste
   coherence it is equivalent to the executable decoder returning that value.
 
 Representative inputs from the shipped examples evaluate to a one-element `fullParses`; this
-is evidence, not a grammar-wide proof. `GrammarDecodeUnique` names the all-input property.
-`Triptych.Theorems.Unambiguity` proves it from the first conservative static checker for unary
-reference paths; broader sequence/alternation/repetition analyses remain future work.
+is evidence, not a grammar-wide proof. `GrammarCaptureFunctional` names the exact all-input
+capture property; `GrammarDecodeUnique` is a stronger sufficient condition.
+`Triptych.Theorems.Unambiguity` proves the latter from `Grammar.staticUnique`, currently
+covering unary reference paths, required sequences with deterministic prefix matches, and
+pairwise-distinct literal-leading alternatives, unary token/literal delimiter boundaries, and
+a leading optional-literal reference separated by FIRST-character exclusion. Recursive FIRST
+sets, shared-prefix alternatives, general nullable sequences, and repetitions remain future
+work.
 -/
 
 namespace Triptych
@@ -185,21 +190,62 @@ theorem ValueCoherent.of_unique {α : Type} (g : Grammar) (valFn : CaptureMap �
 /-! ## Grammar-wide certificate surfaces
 
 These are propositions over every string, not per-input decision procedures. The conservative
-`Grammar.unaryUnique` syntax check has a soundness theorem into `GrammarDecodeUnique`; future
-LL/disjointness analyses can target the same interface. -/
+`Grammar.staticUnique` syntax check proves the stronger `GrammarDecodeUnique`; analyses that
+permit duplicate derivations with identical captures can target `GrammarCaptureFunctional`
+directly. -/
 
 /-- Every input has at most one full parse. Rejected inputs satisfy this through zero parses. -/
 def GrammarDecodeUnique (g : Grammar) : Prop := ∀ s, DecodeUnique g s
+
+/-- The grammar's capture semantics is a partial function: all full parses of an input produce
+    the same complete capture map. Unlike `GrammarDecodeUnique`, this permits duplicate or
+    otherwise distinct derivations when their observable captures are identical. -/
+def GrammarCaptureFunctional (g : Grammar) : Prop := ∀ s, CaptureCoherent g s
 
 /-- Every input is value-coherent for `valFn`. -/
 def GrammarValueCoherent {α : Type} (g : Grammar) (valFn : CaptureMap → α) : Prop :=
   ∀ s, ValueCoherent g valFn s
 
+/-- Grammar-wide derivation uniqueness implies capture functionality. -/
+theorem GrammarCaptureFunctional.of_unique (g : Grammar) (h : GrammarDecodeUnique g) :
+    GrammarCaptureFunctional g := by
+  intro s
+  exact CaptureCoherent.of_unique g s (h s)
+
+/-- Capture functionality implies grammar-wide coherence for every value reader. -/
+theorem GrammarValueCoherent.of_captureFunctional {α : Type} (g : Grammar)
+    (valFn : CaptureMap → α) (h : GrammarCaptureFunctional g) :
+    GrammarValueCoherent g valFn := by
+  intro s
+  exact ValueCoherent.of_captureCoherent g valFn s (h s)
+
 /-- A grammar-wide uniqueness certificate implies grammar-wide value coherence. -/
 theorem GrammarValueCoherent.of_unique {α : Type} (g : Grammar) (valFn : CaptureMap → α)
-    (h : GrammarDecodeUnique g) : GrammarValueCoherent g valFn := by
-  intro s
-  exact ValueCoherent.of_unique g valFn s (h s)
+    (h : GrammarDecodeUnique g) : GrammarValueCoherent g valFn :=
+  GrammarValueCoherent.of_captureFunctional g valFn
+    (GrammarCaptureFunctional.of_unique g h)
+
+/-! A grammar may have duplicate derivations while still defining one capture map. This
+regression example separates the public functionality contract from the stronger uniqueness
+certificate used by the first static checker. -/
+
+private def duplicateEmptyGrammar : Grammar where
+  start := "S"
+  prods := [{ name := "S", alts := [[], []] }]
+
+private theorem duplicateEmptyGrammar_functional :
+    GrammarCaptureFunctional duplicateEmptyGrammar := by
+  intro s m hm m' hm'
+  simp [fullParses, duplicateEmptyGrammar, Grammar.startProd?, Grammar.prod?, matchProd,
+    matchSeq] at hm hm'
+  exact hm.1.trans hm'.1.symm
+
+private theorem duplicateEmptyGrammar_not_unique :
+    ¬ GrammarDecodeUnique duplicateEmptyGrammar := by
+  intro h
+  have := h ""
+  simp [DecodeUnique, fullParses, duplicateEmptyGrammar, Grammar.startProd?, Grammar.prod?,
+    matchProd, matchSeq] at this
 
 /-! ## The payoff -/
 

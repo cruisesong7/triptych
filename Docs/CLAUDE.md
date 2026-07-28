@@ -81,18 +81,21 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
   `decIsWf` (conditional `DecidablePred (IsWf g)`, needs `g.repOk = true`).
 - `Coherence.lean` — value is grammar-determined, not decoder-selected: `fullParses`
   (all full parses, `decode = head?` of them), full-map `CaptureCoherent`, scalar-view
-  `EnvCoherent`, and map-generic `ValueCoherent`; `computeValueF_coherent` covers scalar
-  readers and `computeValueMap_coherent` covers repeated captures. `DecodesAs` is the
-  relational value semantics. `DecodeUnique` (≤ 1 full parse) is a decidable per-string
-  sufficient condition; `#eval decide` is a runtime diagnostic, while the theorems consume
-  a proof. `GrammarDecodeUnique` is the all-input certificate targeted by static analyses.
-- `Unambiguity.lean` — soundness of the conservative `Grammar.unaryUnique` syntax check.
-  It proves `GrammarDecodeUnique` for unary reference paths ending in one literal/token run;
-  the DSL emits `grammarDecodeUnique` and `grammarValueCoherent` when it succeeds.
+  `EnvCoherent`, and map-generic `ValueCoherent`; `GrammarCaptureFunctional` is the
+  all-input partial-function property. `computeValueF_coherent` covers scalar readers and
+  `computeValueMap_coherent` covers repeated captures. `DecodesAs` is the relational value
+  semantics. `DecodeUnique` (≤ 1 full parse) is a decidable per-string sufficient condition;
+  `#eval decide` is a runtime diagnostic, while the theorems consume a proof.
+  `GrammarDecodeUnique` is the stronger all-input derivation certificate.
+- `Unambiguity.lean` — soundness of the conservative `Grammar.staticUnique` syntax check.
+  It proves `GrammarDecodeUnique` for unary reference paths, required sequences with
+  prefix-deterministic intermediate symbols, and pairwise-distinct literal-leading
+  alternatives; the DSL derives and emits `grammarCaptureFunctional` and
+  `grammarValueCoherent` when it succeeds.
 - `RelationalParser.lean` — connects generated gated parsers to capture-level `Denotes`.
-  Under `GrammarDecodeUnique`, it covers map/environment readers and lifted variants; the DSL
-  emits `parse_iff_denotes` from these theorems. Graph has this contract and both static
-  all-input certificates. Other example `#eval`s remain representative.
+  Under `GrammarCaptureFunctional`, it covers map/environment readers and lifted variants;
+  the DSL emits `parse_iff_denotes` from these theorems. Graph has this contract and all three
+  static all-input certificates. Other example `#eval`s remain representative.
 - `Reconcile.lean` — reusable lemmas for emitted grammar/full-WF equivalences (leaf
   `_matchesTerm`, `matchesSym_rep_iff`, reader-agreement `natOf_getD` etc.).
 - `Assemble.lean` — bundles `isWf`/`satisfiesConstraints`/`isValid`; `component`;
@@ -204,26 +207,25 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
   list-carrying `Env`, touching every reader-agreement proof) remain a deferred, heavier step.
   List args are `value'`-only; `constraints'` rejects `[X]` explicitly.
 
-## Open next steps (discussed, not yet done)
+## Open next steps
 
-1. **rep-element capture exposure** — DONE for the value-escape tier (2026-07): `value' f [X]`
-   passes all repeated spans of `X` as `List String`, via `CaptureMap.toEnvList`/`componentList`/
-   `computeValueMap` (IPv6 now builds a structured `IPv6Addr` from its eight `H16` groups; proofs
-   axiom-clean). STILL OPEN: (a) in-DSL reductions `sum X`/`count X`/`forall X: …` for the SCALAR
-   value/constraint tiers — needs the single-valued `Env` re-abstracted to carry lists, which
-   touches every reader-agreement proof (heavier); (b) exposing `#count` to `constraints'` by
-   name. Unlocks (with (a)): arbitrary-order graphs via `rep` + a triangular-count constraint;
-   per-element value constraints.
-2. **Add Mathlib** — swap the hand-rolled `Graph` struct in `other-examples/Graph` for real
-   `SimpleGraph (Fin n)` / adjacency `Matrix`. Mathlib master currently needs toolchain
-   ~v4.33.0-rc1 → a deliberate toolchain bump (do it as its own step; expect some proof drift).
-3. **DIMACS CNF example** — the actual SAT-solver input format (space-separated signed-int
-   clauses, `0`-terminated, `p cnf` header). Squarely in the full-automation tier; a good test
-   of whether `rep … sepBy` wants a terminator variant (0-terminated vs separated).
-4. **SCOPE.md** — document the layered ceiling (grammar = subclass of regular; constraints lift
-   accepted language to any decidable; values any type) + the graceful-degradation gradient
-   (full auto-proof → escape with manual value/constraint contract → hand-written decode).
-5. Housekeeping: `HACKATHON.md` is legacy from the origin repo — review/prune.
+`ROADMAP.md` is authoritative. Work in this order:
+
+1. Extend static capture functionality beyond the currently proved unary/sequence/direct
+   literal-alternative/delimiter/optional-sign fragment: recursive FIRST sets, general nullable
+   sequences, repetition, and certificate composition through the production DAG. Emit a named
+   functionality obligation when analysis is inconclusive.
+2. Generalize repeated captures beyond `value' [X]`: analyzable `count`/`sum`/per-element
+   constraints, list-aware `constraints'`, and generated repetition-count access.
+3. Finish the existing Cedar package before adding examples: Datetime's 3 remaining obligations
+   and IPv4's 5, followed by a zero-`sorry`, axiom, and conformance audit.
+4. Improve compiler utility: generated layout printers, source-located ambiguity/coherence
+   diagnostics, deterministic execution paths, cost bounds, and package-level CI.
+5. Only after Cedar is complete, add UUIDv4/v7 and then DIMACS CNF. Full JSON and SQL require a
+   separate recursive-grammar project and are not near-term examples.
+
+Deferred housekeeping: consider Mathlib for the Graph representation as a separate toolchain
+upgrade; document the layered scope boundary; review or prune legacy `HACKATHON.md`.
 
 ## Context on the SAT-graph thread (why the Graph example exists)
 

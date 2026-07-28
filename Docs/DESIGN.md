@@ -72,13 +72,23 @@ scalar-view, and value agreement; `DecodesAs` is the grammar/value relation; and
 additionally relates per-parse acceptance constraints to the value. Under `FormatCoherent`,
 `decodeGatedMap_eq_some_iff_denotes` proves that first-match execution realizes the relation.
 `DecodeUnique` states a decidable sufficient condition; `#eval decide` checks a concrete input
-at runtime, while the coherence theorems consume a proof. A static all-input certificate
-(`GrammarDecodeUnique`) can now be synthesized for the conservative `Grammar.unaryUnique`
-fragment: one required symbol per production along a reference path, ending in a literal or
-token run. For grammars in this fragment, the DSL emits `grammarDecodeUnique` and, when a
-value exists, `grammarValueCoherent` and `parse_iff_denotes`; Graph receives all three.
-Extending the checker to sequences, alternatives, optionals, and repetitions requires stronger
-split/disjointness reasoning.
+at runtime, while the coherence theorems consume a proof. `GrammarCaptureFunctional` lifts
+capture coherence to all inputs and is the exact grammar-level property needed by arbitrary
+capture constraints and value readers. A stronger static all-input certificate
+(`GrammarDecodeUnique`) can now be synthesized for the conservative `Grammar.staticUnique`
+fragment: unary reference paths, required sequences whose intermediate symbols have unique
+prefix matches, and sequence-unique alternatives with pairwise-distinct direct literal
+leaders. Literals and exact-width token runs satisfy the prefix condition; the final symbol may
+be a unary variable-width path because only full consumption matters there. A variable-width
+unary token path may also precede a literal delimiter outside its token class. The checker
+handles a leading `X ::= ["lit"]` reference when the unique remainder excludes `lit`'s first
+character, which certifies Decimal's optional sign without assigning priority to it. For
+grammars in this fragment, the DSL emits `grammarDecodeUnique`, derives
+`grammarCaptureFunctional`, and, when a value exists, emits `grammarValueCoherent` and
+`parse_iff_denotes`; Graph and Decimal receive all four. Relational parser contracts consume
+only capture functionality. Extending the checker to recursive FIRST sets, shared-prefix
+alternatives, general nullable sequences, and repetitions requires stronger split/disjointness
+reasoning.
 
 Neither is "the compose side" nor "the decompose side" — they are two readings of
 one relation. `R` splits into two layers:
@@ -497,7 +507,7 @@ adjective, so it cannot drift. "valid" is avoided on both sides of the conjuncti
 `Denotes g accept valFn s v` is the value↔string *relation* (the
 Narcissus/PulseParse "format"): some full parse of `s` has capture map `m`, `accept m`
 holds, and `valFn m = v`. `CaptureAccepts constraints` supplies the generated format's
-capture-level acceptance predicate. When static unambiguity succeeds, the DSL emits
+capture-level acceptance predicate. When static capture functionality succeeds, the DSL emits
 `parse_iff_denotes`; for lifted parsers its relational reader is `σ ∘ valFn`.
 
 This preserves the useful distinction already present in the formats: **Decimal** keeps

@@ -22,8 +22,8 @@ import Triptych.Theorems.Coherence
 
 The generated parser checks the format constraints against `decode`'s selected capture map.
 `Denotes`, by contrast, quantifies over full parses and applies both the constraints and value
-reader to the same map. These views coincide for a grammar with a `GrammarDecodeUnique`
-certificate.
+reader to the same map. These views coincide when the grammar's capture semantics is
+functional: every full parse produces the same complete capture map.
 
 The map-valued theorems cover `value'`; the `F` variants cover readers through `Env`. Lifted
 variants compose the user's lift with the relational value reader.
@@ -56,19 +56,18 @@ private theorem gatedParseMap_eq_decodeGatedMap {α : Type}
     constraint-accepted full parse denotes the returned value. -/
 theorem gatedParseMap_eq_some_iff_denotes {α : Type}
     (g : Grammar) (cs : List ConstraintEntry) (valFn : CaptureMap → α)
-    (hunique : GrammarDecodeUnique g) (s : String) (v : α) :
+    (hfunctional : GrammarCaptureFunctional g) (s : String) (v : α) :
     gatedParse (fun s => isWf g cs s ∧ satisfiesConstraints g cs s)
         (computeValueMap g valFn) s = some v ↔
       Denotes g (CaptureAccepts cs) valFn s v := by
   rw [gatedParseMap_eq_decodeGatedMap]
   exact decodeGatedMap_eq_some_iff_denotes g (CaptureAccepts cs) valFn s v
-    (FormatCoherent.of_captureCoherent g (CaptureAccepts cs) valFn s
-      (CaptureCoherent.of_unique g s (hunique s)))
+    (FormatCoherent.of_captureCoherent g (CaptureAccepts cs) valFn s (hfunctional s))
 
 /-- Environment-reader specialization of `gatedParseMap_eq_some_iff_denotes`. -/
 theorem gatedParseF_eq_some_iff_denotes {α : Type}
     (g : Grammar) (cs : List ConstraintEntry) (valFn : Env → α)
-    (hunique : GrammarDecodeUnique g) (s : String) (v : α) :
+    (hfunctional : GrammarCaptureFunctional g) (s : String) (v : α) :
     gatedParse (fun s => isWf g cs s ∧ satisfiesConstraints g cs s)
         (computeValueF g valFn) s = some v ↔
       Denotes g (CaptureAccepts cs) (fun m => valFn m.toEnv) s v := by
@@ -76,7 +75,7 @@ theorem gatedParseF_eq_some_iff_denotes {α : Type}
     gatedParse (fun s => isWf g cs s ∧ satisfiesConstraints g cs s)
         (computeValueMap g (fun m => valFn m.toEnv)) s = some v ↔
       Denotes g (CaptureAccepts cs) (fun m => valFn m.toEnv) s v
-  exact gatedParseMap_eq_some_iff_denotes g cs (fun m => valFn m.toEnv) hunique s v
+  exact gatedParseMap_eq_some_iff_denotes g cs (fun m => valFn m.toEnv) hfunctional s v
 
 private theorem gatedParseLiftMap_eq_gatedParseComp {α δ : Type}
     (g : Grammar) (cs : List ConstraintEntry) (valFn : CaptureMap → α)
@@ -93,18 +92,18 @@ private theorem gatedParseLiftMap_eq_gatedParseComp {α δ : Type}
 /-- Lifted full-map parsers denote the lift composed with the underlying value reader. -/
 theorem gatedParseLiftMap_eq_some_iff_denotes {α δ : Type}
     (g : Grammar) (cs : List ConstraintEntry) (valFn : CaptureMap → α) (σ : α → δ)
-    (hunique : GrammarDecodeUnique g) (s : String) (d : δ) :
+    (hfunctional : GrammarCaptureFunctional g) (s : String) (d : δ) :
     gatedParseLift (fun s => isWf g cs s ∧ satisfiesConstraints g cs s)
         (computeValueMap g valFn) σ s = some d ↔
       Denotes g (CaptureAccepts cs) (σ ∘ valFn) s d := by
   rw [gatedParseLiftMap_eq_gatedParseComp]
-  exact gatedParseMap_eq_some_iff_denotes g cs (σ ∘ valFn) hunique s d
+  exact gatedParseMap_eq_some_iff_denotes g cs (σ ∘ valFn) hfunctional s d
 
 /-- Lifted environment-reader specialization of
     `gatedParseLiftMap_eq_some_iff_denotes`. -/
 theorem gatedParseLiftF_eq_some_iff_denotes {α δ : Type}
     (g : Grammar) (cs : List ConstraintEntry) (valFn : Env → α) (σ : α → δ)
-    (hunique : GrammarDecodeUnique g) (s : String) (d : δ) :
+    (hfunctional : GrammarCaptureFunctional g) (s : String) (d : δ) :
     gatedParseLift (fun s => isWf g cs s ∧ satisfiesConstraints g cs s)
         (computeValueF g valFn) σ s = some d ↔
       Denotes g (CaptureAccepts cs) (σ ∘ fun m => valFn m.toEnv) s d := by
@@ -113,6 +112,6 @@ theorem gatedParseLiftF_eq_some_iff_denotes {α δ : Type}
         (computeValueMap g (fun m => valFn m.toEnv)) σ s = some d ↔
       Denotes g (CaptureAccepts cs) (σ ∘ fun m => valFn m.toEnv) s d
   exact
-    gatedParseLiftMap_eq_some_iff_denotes g cs (fun m => valFn m.toEnv) σ hunique s d
+    gatedParseLiftMap_eq_some_iff_denotes g cs (fun m => valFn m.toEnv) σ hfunctional s d
 
 end Triptych

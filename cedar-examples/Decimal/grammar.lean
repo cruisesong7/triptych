@@ -62,10 +62,21 @@ triptych Decimal where
 #eval Decimal.parse "1.x"                    -- none  (rejected)
 #eval Decimal.parse "-0.15"                  -- some (-1500)  (the sign corner case)
 
--- Per-string runtime evidence: this accepted input evaluates to exactly ONE full parse.
--- A proof of `DecodeUnique` lets `computeValueF_of_unique` establish order-independent value
--- semantics. The evaluations are diagnostics, not the still-unproved grammar-wide certificate
--- `GrammarDecodeUnique Decimal.grammar`.
+-- The optional sign and digit-run/decimal-point boundary are statically unique for all inputs.
+#guard Decimal.grammar.staticUnique = true
+
+example : GrammarDecodeUnique Decimal.grammar :=
+  Decimal.grammarDecodeUnique
+
+example : GrammarCaptureFunctional Decimal.grammar :=
+  Decimal.grammarCaptureFunctional
+
+example :
+    GrammarValueCoherent Decimal.grammar
+      (fun m : CaptureMap => Decimal.valueFn m.toEnv) :=
+  Decimal.grammarValueCoherent
+
+-- Per-string diagnostics remain executable witnesses for representative inputs.
 #eval (Triptych.fullParses Decimal.grammar "-12.34").length    -- 1  (unique here)
 #eval decide (Triptych.DecodeUnique Decimal.grammar "-12.34") -- true
 

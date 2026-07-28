@@ -78,10 +78,13 @@ triptych Graph where
 #eval Graph.computeValue "1a1"      -- none ('a' is not a bit — grammar)
 
 -- Static, all-input value coherence: `Adj → Cells → bit+` is a unary deterministic path.
-#guard Graph.grammar.unaryUnique = true
+#guard Graph.grammar.staticUnique = true
 
 example : GrammarDecodeUnique Graph.grammar :=
   Graph.grammarDecodeUnique
+
+example : GrammarCaptureFunctional Graph.grammar :=
+  Graph.grammarCaptureFunctional
 
 example : GrammarValueCoherent Graph.grammar Graph.valueFn :=
   Graph.grammarValueCoherent

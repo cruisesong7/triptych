@@ -57,8 +57,14 @@ Built pair-programming with Claude Code end-to-end: the DSL/elaborator design, t
 
 ## What's Next
 
-- **rep-element capture exposure** — let structured values address individual repeated elements; unlocks a DIMACS CNF example with real header-vs-body cross-constraints (prior verified DIMACS parsers — CakeML, Isabelle — are bespoke; ours would be generated).
-- **Layout inverse (`asString`)** — auto-derive the default printer from the grammar, shrinking the printer obligations further.
-- **Discharge the remaining Cedar obligations** — prove the 8 Datetime/IPv4 `sorry`s against
-  Cedar's real parsers, making this a drop-in validation layer for cedar-lean.
+- **Static capture functionality** — build on the proved required-sequence, direct
+  literal-alternative, delimiter-boundary, and optional-sign certificates with recursive FIRST
+  sets, general nullable sequences, and repetition; emit explicit functionality obligations
+  when the checker cannot certify a grammar.
+- **Collection-aware constraints** — make repeated captures available to analyzable operations
+  such as `count`, `sum`, and per-element predicates.
+- **Complete Cedar validation** — prove the 8 remaining Datetime/IPv4 obligations and audit the
+  package for zero `sorry`, accepted axioms only, and full conformance.
+- **Then add examples** — UUIDv4/v7 first, followed by DIMACS CNF after the Cedar integration is
+  complete. See `ROADMAP.md` for the phase gates.
 - Lessons: restricting the input class is what makes generation *total*; the right place for every unprovable fact is a small, typed, named obligation.

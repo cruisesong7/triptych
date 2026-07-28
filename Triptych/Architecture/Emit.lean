@@ -723,8 +723,8 @@ def parserContractsProof (specName : Name) (isDsl : Bool) (lift? : Option (TSynt
     return #[isSomeThm, parseDef, soundThm, compThm, rejThm]
 
 /-- Emit `<Name>.parse_iff_denotes`, the relational contract for a generated parser whose
-    grammar has a `GrammarDecodeUnique` certificate. The relation applies all constraints and
-    the value reader to one full parse; lifted parsers compose the lift with that reader. -/
+    grammar has a `GrammarCaptureFunctional` certificate. The relation applies all constraints
+    and the value reader to one full parse; lifted parsers compose the lift with that reader. -/
 def relationalParserContractProof (specName : Name) (isDsl : Bool)
     (lift? : Option (TSyntax `term)) : CommandElabM (TSyntax `command) := do
   let theoremId := mkIdent (specName ++ `parse_iff_denotes)
@@ -733,7 +733,7 @@ def relationalParserContractProof (specName : Name) (isDsl : Bool)
   let grammarId := mkIdent (specName ++ `grammar)
   let constraintsId := mkIdent (specName ++ `constraints)
   let valFnId := mkIdent (specName ++ `valueFn)
-  let uniqueId := mkIdent (specName ++ `grammarDecodeUnique)
+  let functionalId := mkIdent (specName ++ `grammarCaptureFunctional)
   match lift?, isDsl with
   | none, false =>
       let (valTy, valNm) ← optionPayloadBinder cvId
@@ -744,7 +744,7 @@ def relationalParserContractProof (specName : Name) (isDsl : Bool)
               $valFnId s $valId := by
         unfold $parseId $cvId
         exact Triptych.gatedParseMap_eq_some_iff_denotes $grammarId $constraintsId
-          $valFnId $uniqueId s $valId)
+          $valFnId $functionalId s $valId)
   | none, true =>
       let (valTy, valNm) ← optionPayloadBinder cvId
       let valId := mkIdent valNm
@@ -754,7 +754,7 @@ def relationalParserContractProof (specName : Name) (isDsl : Bool)
               (fun m : Triptych.CaptureMap => $valFnId m.toEnv) s $valId := by
         unfold $parseId $cvId Triptych.computeValue
         exact Triptych.gatedParseF_eq_some_iff_denotes $grammarId $constraintsId
-          $valFnId $uniqueId s $valId)
+          $valFnId $functionalId s $valId)
   | some σT, false =>
       let (domainTy, domainNm) ← liftCodomainBinder σT
       let domainId := mkIdent domainNm
@@ -764,7 +764,7 @@ def relationalParserContractProof (specName : Name) (isDsl : Bool)
               ($σT ∘ $valFnId) s $domainId := by
         unfold $parseId $cvId
         exact Triptych.gatedParseLiftMap_eq_some_iff_denotes $grammarId $constraintsId
-          $valFnId $σT $uniqueId s $domainId)
+          $valFnId $σT $functionalId s $domainId)
   | some σT, true =>
       let (domainTy, domainNm) ← liftCodomainBinder σT
       let domainId := mkIdent domainNm
@@ -774,6 +774,6 @@ def relationalParserContractProof (specName : Name) (isDsl : Bool)
               ($σT ∘ fun m : Triptych.CaptureMap => $valFnId m.toEnv) s $domainId := by
         unfold $parseId $cvId Triptych.computeValue
         exact Triptych.gatedParseLiftF_eq_some_iff_denotes $grammarId $constraintsId
-          $valFnId $σT $uniqueId s $domainId)
+          $valFnId $σT $functionalId s $domainId)
 
 end Triptych

@@ -51,10 +51,13 @@ and the derived `DecidablePred` instances make the surface predicates executable
 via the engine. No `sorry`. -/
 
 theorem Graph.grammarDecodeUnique : GrammarDecodeUnique Graph.grammar :=
-  GrammarDecodeUnique.of_unaryUnique Graph.grammar (by decide)
+  GrammarDecodeUnique.of_staticUnique Graph.grammar (by decide)
+
+theorem Graph.grammarCaptureFunctional : GrammarCaptureFunctional Graph.grammar :=
+  GrammarCaptureFunctional.of_unique Graph.grammar Graph.grammarDecodeUnique
 
 theorem Graph.grammarValueCoherent : GrammarValueCoherent Graph.grammar Graph.valueFn :=
-  GrammarValueCoherent.of_unique Graph.grammar Graph.valueFn Graph.grammarDecodeUnique
+  GrammarValueCoherent.of_captureFunctional Graph.grammar Graph.valueFn Graph.grammarCaptureFunctional
 
 theorem Graph.Internal.matchesRef.Cells (fuel : Nat) (s : String) :
     matchesSym Graph.grammar (fuel + 1) (Sym.ref "Cells") s ↔ Graph.IsWf.Cells s :=
@@ -186,5 +189,5 @@ theorem Graph.parse_iff_denotes (s : String) (g : Graph) :
   by
   unfold Graph.parse Graph.computeValue
   exact
-    Triptych.gatedParseMap_eq_some_iff_denotes Graph.grammar Graph.constraints Graph.valueFn Graph.grammarDecodeUnique s
-      g
+    Triptych.gatedParseMap_eq_some_iff_denotes Graph.grammar Graph.constraints Graph.valueFn
+      Graph.grammarCaptureFunctional s g

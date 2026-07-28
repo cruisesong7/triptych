@@ -67,6 +67,8 @@ recognition correctness alone does not make the selected captures or value gramm
 * `fullParses` is the complete operational parse list, with `decode = fullParses.head?`;
 * `CaptureCoherent`, `EnvCoherent`, and `ValueCoherent` state progressively weaker forms of
   agreement between all full parses;
+* `GrammarCaptureFunctional` lifts capture coherence to every input: the grammar denotes a
+  partial function from strings to complete capture maps, even if duplicate derivations exist;
 * `computeValueF_coherent` covers scalar capture readers, while `computeValueMap_coherent`
   covers repeated-capture readers such as IPv6's `[H16]`;
 * `Denotes` gives a relational format semantics, and `decodeGatedMap_eq_some_iff_denotes`
@@ -76,13 +78,22 @@ recognition correctness alone does not make the selected captures or value gramm
 
 Representative example inputs evaluate as unique. Triptych does not yet emit a static
 all-input proof for the full grammar language. It does provide a first conservative checker:
-`Grammar.unaryUnique` recognizes unary reference paths ending in one literal/token run, and
-`GrammarDecodeUnique.of_unaryUnique` proves the check sound for every input. This certifies the
-Graph example statically; the DSL emits its `grammarDecodeUnique` and
-`grammarValueCoherent` theorems automatically, plus `parse_iff_denotes`, which states that
-parser success is equivalent to the capture-level `Denotes` relation. For a lifted parser,
-the relational reader is the lift composed with the grammar value reader. Sequence,
-alternative, optional, and repetition analysis remains.
+`Grammar.staticUnique` recognizes unary reference paths, required sequences with
+prefix-deterministic intermediate symbols, and alternatives beginning with pairwise-distinct
+literal characters. Literals and exact-width token runs are prefix-deterministic; a
+variable-width token is accepted at the sequence tail, where only its full-consumption match
+matters, or before a nonempty literal delimiter whose first character is outside the token
+class. A required reference of the form `X ::= ["lit"]` is also accepted at the sequence head
+when the unique remainder cannot begin with `lit`'s first character. This proves the optional
+sign and decimal-point boundaries in Decimal. `GrammarDecodeUnique.of_staticUnique` proves the
+check sound for every input and derives the weaker semantic target
+`GrammarCaptureFunctional`. This certifies both Graph and Decimal statically; the DSL emits
+`grammarDecodeUnique`,
+`grammarCaptureFunctional`, and `grammarValueCoherent` automatically. Its
+`parse_iff_denotes` theorem consumes only capture functionality and states that parser success
+is equivalent to the capture-level `Denotes` relation. For a lifted parser, the relational
+reader is the lift composed with the grammar value reader. Recursive FIRST-set alternatives,
+shared-prefix alternatives, general nullable sequences, and repetition remain.
 
 ## Example
 
@@ -131,6 +142,12 @@ Full automation (grammar reconciliation + decidability + value contract auto-dis
 covers flat-regular grammars with an `Int`-arithmetic value and comparison/cardinality
 constraints. Structured values and non-arithmetic constraints use escapes (grammar and
 decidability still auto-proven; value/constraint contract left as a typed hole).
+
+## Roadmap
+
+See [`ROADMAP.md`](ROADMAP.md). The current order is static capture functionality,
+collection-aware values and constraints, completion of every Cedar proof obligation, compiler
+utility and performance work, and only then new examples such as UUID and DIMACS CNF.
 
 ## Build
 

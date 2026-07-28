@@ -487,12 +487,16 @@ def elabTriptych : CommandElab := fun stx => do
       -- These are reader-facing, so SPEC section. Emitted in topological (leaf-first) order.
       let gval : Triptych.Grammar :=
         { start := startName, prods := prodVals }
-      let grammarStaticallyUnique := gval.unaryUnique
+      let grammarStaticallyUnique := gval.staticUnique
       if grammarStaticallyUnique then
         let uniqueId := mkIdentFrom name (name.getId ++ `grammarDecodeUnique)
         emitSound (←
           `(theorem $uniqueId : GrammarDecodeUnique $grammarIdent :=
-              GrammarDecodeUnique.of_unaryUnique $grammarIdent (by decide)))
+              GrammarDecodeUnique.of_staticUnique $grammarIdent (by decide)))
+        let functionalId := mkIdentFrom name (name.getId ++ `grammarCaptureFunctional)
+        emitSound (←
+          `(theorem $functionalId : GrammarCaptureFunctional $grammarIdent :=
+              GrammarCaptureFunctional.of_unique $grammarIdent $uniqueId))
       for prod in Triptych.topoOrder gval do
         let pIdent := mkIdentFrom name (name.getId ++ `IsWf ++ prod.name.toName)
         let sVar ← `(s)
@@ -618,20 +622,21 @@ def elabTriptych : CommandElab := fun stx => do
         | _ => throwUnsupportedSyntax
       if grammarStaticallyUnique && (veIdent?.isSome || hasValueEsc) then
         let coherentId := mkIdentFrom name (name.getId ++ `grammarValueCoherent)
-        let uniqueId := mkIdentFrom name (name.getId ++ `grammarDecodeUnique)
+        let functionalId := mkIdentFrom name (name.getId ++ `grammarCaptureFunctional)
         let vfnIdent := mkIdentFrom name (name.getId ++ `valueFn)
         if veIdent?.isSome then
           emitSound (←
             `(theorem $coherentId :
                 GrammarValueCoherent $grammarIdent
                   (fun m : CaptureMap => $vfnIdent m.toEnv) :=
-                GrammarValueCoherent.of_unique $grammarIdent
-                  (fun m : CaptureMap => $vfnIdent m.toEnv) $uniqueId))
+                GrammarValueCoherent.of_captureFunctional $grammarIdent
+                  (fun m : CaptureMap => $vfnIdent m.toEnv) $functionalId))
         else
           emitSound (←
             `(theorem $coherentId :
                 GrammarValueCoherent $grammarIdent $vfnIdent :=
-                GrammarValueCoherent.of_unique $grammarIdent $vfnIdent $uniqueId))
+                GrammarValueCoherent.of_captureFunctional $grammarIdent $vfnIdent
+                  $functionalId))
       -- Constraints (optional): constraint-DSL predicates, one per line, with `value`
       -- substituted by the value expression. The `fmtConstraints` node is
       -- `"constraints" (colGt constraintExpr)+`; arg 1 is the plain array of exprs.
