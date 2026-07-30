@@ -28,6 +28,7 @@ import Triptych.Theorems.RelationalParser
 import Triptych.Theorems.Unambiguity
 import Triptych.Theorems.Reconcile
 import Triptych.Theorems.DecodeLemmas
+import Triptych.Theorems.String
 import Triptych.Architecture.Syntax
 
 /-!

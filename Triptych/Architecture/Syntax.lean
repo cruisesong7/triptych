@@ -487,6 +487,17 @@ def elabTriptych : CommandElab := fun stx => do
       -- These are reader-facing, so SPEC section. Emitted in topological (leaf-first) order.
       let gval : Triptych.Grammar :=
         { start := startName, prods := prodVals }
+      let rec repeatedRefNames : Sym → List String
+        | .rep _ item _ _ => item.refName?.toList ++ repeatedRefNames item
+        | _ => []
+      let repeatedCaptures :=
+        gval.prods.flatMap (fun p =>
+          p.alts.flatMap (fun alt => alt.flatMap (repeatedRefNames ·.sym))) |>.eraseDups
+      let validateCounts (loc : Syntax) (names : List String) : CommandElabM Unit := do
+        for capture in names do
+          unless repeatedCaptures.contains capture do
+            throwErrorAt loc m!"`count {capture}` does not name a repeated item. Declare \
+              `rep {capture} sepBy \"...\" <len>` before reading its count."
       let grammarStaticallyUnique := gval.staticUnique
       if grammarStaticallyUnique then
         let uniqueId := mkIdentFrom name (name.getId ++ `grammarDecodeUnique)
@@ -559,10 +570,11 @@ def elabTriptych : CommandElab := fun stx => do
         let ve : TSyntax `valExpr := ⟨vStx.raw[1]⟩
         -- SIGN-REFERENCE VALIDATION: a BARE capture name in `value` denotes its sign (±1), so it
         -- must name a dedicated sign production (`X ::= sign`). Reject a bare ref to a non-sign
-        -- capture (the old silent-`+1` trap), and reject `nat`/`int`/`len` applied to a sign
+        -- capture (the old silent-`+1` trap), and reject magnitude readers applied to a sign
         -- capture (a sign holds only `""`/`"-"`, so a magnitude reader on it is meaningless).
         let signRefs := Triptych.valExprSignCaptures ve
         let magRefs := (Triptych.valExprCaptures ve).filter (· ∉ signRefs)
+        validateCounts ve.raw (Triptych.valExprCountCaptures ve)
         for r in signRefs do
           unless signCaptures.contains r do
             throwError "value references `{r}` bare, which reads its SIGN (±1) — but `{r}` is not \
@@ -655,6 +667,8 @@ def elabTriptych : CommandElab := fun stx => do
       let dslExprs : Array (TSyntax `constraintExpr) := match cs with
         | some csStx => csStx.raw[1].getArgs.map (⟨·⟩)
         | none       => #[]
+      for e in dslExprs do
+        validateCounts e.raw (Triptych.constraintCountCaptures e)
       -- The authoritative phase split is whether the ORIGINAL surface expression mentions the
       -- final `value` keyword. Capture arithmetic such as `nat MM ∈ [1, 12]` remains format
       -- well-formedness. This must happen before elaboration substitutes `valueExpr` for `value`.
@@ -758,16 +772,51 @@ def elabTriptych : CommandElab := fun stx => do
           `(Triptych.component $grammarIdent s $(Syntax.mkStrLit c)))
         emitSpec (← `(def $scSurf (s : String) : Prop := $cRIdent $args*))
       emitSpec (← `(abbrev $accSurf (s : String) : Prop := $wfSurf s ∧ $scSurf s))
+      let hasGeneratedValue := veIdent?.isSome || hasValueEsc
+      let resolvedValueCaps : List (String × Bool) :=
+        if veIdent?.isSome then valueCaps.map (·, false) else valueCapArgs
+      let viewCaps :=
+        resolvedValueCaps ++
+          (wfConstrCaps.getD []).map (·, false) ++
+          (valueConstrCaps.getD []).map (·, false)
+      let viewFields := Triptych.viewFieldSpecs gval viewCaps
+      if hasGeneratedValue || wfConstrCaps.isSome || valueConstrCaps.isSome then
+        emitSpec (← Triptych.viewStructureCommand name.getId viewFields)
+        for cmd in ←
+            Triptych.viewSurfaceCommands name.getId viewFields
+              (wfConstrCaps.getD []) (valueConstrCaps.getD [])
+              resolvedValueCaps hasGeneratedValue do
+          emitSpec cmd
+        for cmd in ← Triptych.viewEngineCommands name.getId grammarIdent viewFields do
+          emitEngine cmd
+        emitSound (← Triptych.decodeViewInputProof name.getId)
+      if let some caps := wfConstrCaps then
+        emitSound (←
+          Triptych.constraintsOfDecodeProof name.getId grammarIdent caps true)
+      if let some caps := valueConstrCaps then
+        emitSound (←
+          Triptych.constraintsOfDecodeProof name.getId grammarIdent caps false)
       -- Reconcile both public phases independently, then derive full acceptance equivalence.
       emitReconcile wfConstrCaps.isSome valueConstrCaps.isSome veIdent?.isSome
+      if hasGeneratedValue || wfConstrCaps.isSome || valueConstrCaps.isSome then
+        emitSound (←
+          Triptych.viewConstraintsOfDecodeProof name.getId grammarIdent
+            true wfConstrCaps.isSome)
+        emitSound (←
+          Triptych.viewConstraintsOfDecodeProof name.getId grammarIdent
+            false valueConstrCaps.isSome)
+        emitSound (← Triptych.isValidViewProof name.getId grammarIdent)
       -- VALUE equivalence (SOUNDNESS section): surface `value` ⟺ engine `computeValue`, as a
       -- standalone theorem (the value analogue of `IsWf_equiv`). Emitted whenever a value
       -- section is present — DSL tier (`veIdent?`) or `value'` escape (`hasValueEsc`).
       if veIdent?.isSome || hasValueEsc then
         -- Caps with list flags: DSL tier is all-scalar; the escape tier carries `[X]` flags.
-        let cvArgs : List (String × Bool) :=
-          if veIdent?.isSome then valueCaps.map (·, false) else valueCapArgs
-        emitSound (← Triptych.computeValueEqProof name.getId grammarIdent cvArgs veIdent?.isSome)
+        emitSound (←
+          Triptych.computeValueEqProof name.getId grammarIdent
+            resolvedValueCaps veIdent?.isSome)
+        emitSound (←
+          Triptych.computeValueOfDecodeProof name.getId grammarIdent resolvedValueCaps)
+        emitSound (← Triptych.computeValueViewProof name.getId grammarIdent)
       -- GENERATED VERIFIED PARSER (→ parser file): whenever a value section exists, emit the
       -- tool's own `<Name>.parse` and its three AUTO-DISCHARGED contracts (`parse_sound`/
       -- `parse_complete`/`parse_reject`). Gated on the engine `isValid` (structurally decidable),
@@ -783,6 +832,9 @@ def elabTriptych : CommandElab := fun stx => do
       if veIdent?.isSome || hasValueEsc then
         for cmd in ← Triptych.parserContractsProof name.getId veIdent?.isSome liftTerm? do
           emitParser cmd
+        emitParser (← Triptych.parseViewProof name.getId liftTerm?)
+        emitParser (← Triptych.parseEqSomeIffViewProof name.getId liftTerm?)
+        emitParser (← Triptych.parseEqNoneIffViewProof name.getId)
         if grammarStaticallyUnique then
           emitParser (←
             Triptych.relationalParserContractProof name.getId veIdent?.isSome liftTerm?)
@@ -839,6 +891,8 @@ def elabTriptych : CommandElab := fun stx => do
           let rejIdent := mkIdentFrom name (name.getId ++ `extparse_reject)
           emitContractExt (← `(theorem $rejIdent (s : String) :
               $parseT s = none ↔ ¬ $accSurf s := by sorry))
+          if hasGeneratedValue || wfConstrCaps.isSome || valueConstrCaps.isSome then
+            emitContractExt (← Triptych.externalParseEqNoneIffViewProof name.getId parseT)
           -- Concrete type + one-letter binder from the EXTERNAL parser's `Option` payload
           -- (e.g. Cedar `Decimal` → `d`); reused by both obligations and the printer theorems.
           let (extTy, extNm) ← Triptych.optionPayloadBinder parseT
@@ -856,6 +910,8 @@ def elabTriptych : CommandElab := fun stx => do
                 $parseT s = some $extId → $accSurf s ∧ $cvIdent s = some ($projT $extId) := by sorry))
             emitContractExt (← `(theorem $compIdent (s : String) ($extId : $extTy) :
                 $accSurf s → $cvIdent s = some ($projT $extId) → $parseT s = some $extId := by sorry))
+            emitContractExt (←
+              Triptych.externalParseEqSomeIffViewProof name.getId parseT projT)
       -- PRINTER (→ soundness file): `printer <toStr>` names ONE canonical serializer
       -- `toStr : δ → String` over the DOMAIN type δ (the type BOTH parsers return). From `sorry`d
       -- encode obligations the three printer theorems Cedar proves are AUTO-DERIVED in the clean
@@ -1041,6 +1097,7 @@ def elabTriptych : CommandElab := fun stx => do
             (specHeader ++ "\n" ++ specBanner ++ "\n\n" ++ joinDecls specDecls ++ "\n")
           -- ── parser.lean ── engine + all auto-discharged proofs + the generated verified parser.
           let parserImports := libImports
+            ++ ["Triptych.Theorems.DecodeLemmas"]
             ++ (if grammarStaticallyUnique then
                   ["Triptych.Theorems.RelationalParser", "Triptych.Theorems.Unambiguity"]
                 else [])
@@ -1051,6 +1108,7 @@ def elabTriptych : CommandElab := fun stx => do
             The executable counterpart of the spec. `decode` walks the grammar over an input\n\
             string and returns its captured components; `computeValue` then evaluates the value\n\
             function on those captures, and `isWf`/`isValid` decide well-formedness/acceptance.\n\
+            `decodeView` packages the exact input and value/constraint captures as a typed `View`.\n\
             \n\
             Naming convention: CAPITALIZED `IsWf.*`/`IsValid` are the surface `Prop`s you READ\n\
             and reason about; lowercase `isWf`/`isValid` are the engine's executable deciders you\n\
@@ -1060,12 +1118,15 @@ def elabTriptych : CommandElab := fun stx => do
             The auto-discharged guarantees relating the readable surface to the executable\n\
             engine: `IsWfGrammar_equiv` proves grammar-layout agreement and `IsWf_equiv`\n\
             proves full well-formedness agreement. `computeValue_eq` proves the values agree,\n\
-            and the derived `DecidablePred` instances make the surface predicates executable\n\
+            while `decodeView_input`, `IsValid_view`, and `computeValue_view` expose the typed\n\
+            parse view. Derived `DecidablePred` instances make the surface predicates executable\n\
             via the engine. No `sorry`. -/"
           let parserBanner := "/- ═══════════════════════════════ parser ══════════════════════════════\n\
             The generated correct-by-construction parser `parse` (= `computeValue` gated on the\n\
             decidable `isValid`) together with its guarantees — `parse_sound`, `parse_complete`,\n\
-            `parse_reject` — all AUTO-DISCHARGED here. A verified parser, no `sorry`. -/"
+            `parse_reject`, `parse_view`, and typed `parse_eq_some_iff_view` /\n\
+            `parse_eq_none_iff_view` normal forms — all AUTO-DISCHARGED here.\n\
+            A verified parser, no `sorry`. -/"
           let parserSections : List (String × Array String) :=
             [(engineBanner, engineDecls), (proofBanner, proofDecls), (parserBanner, parserDecls)]
           let parserBody := String.intercalate "\n\n"
@@ -1101,9 +1162,10 @@ def elabTriptych : CommandElab := fun stx => do
               Obligations for validating YOUR OWN external parser against this specification:\n\
               `extparse_sound`, `extparse_complete`, and `extparse_reject`, stated over the readable\n\
               surface `IsValid`/`computeValue`. These are left as `sorry` — they are claims about\n\
-              your parser, so you have to prove them yourself. Given them, the external printer\n\
-              theorems (`extparse_toString_*`) are DISCHARGED, reusing the generated section's\n\
-              `encode_*`. -/"
+              your parser, so you have to prove them yourself. `extparse_eq_some_iff_view` and\n\
+              `extparse_eq_none_iff_view` then package their success and rejection consequences as\n\
+              typed-view relations. The external printer theorems (`extparse_toString_*`) are also\n\
+              DISCHARGED, reusing the generated section's `encode_*`. -/"
             let soundSections : List (String × Array String) :=
               [(genBanner, genContractDecls), (extBanner, extContractDecls)]
             let soundBody := String.intercalate "\n\n"
@@ -1166,9 +1228,10 @@ from analysis and put correctness on you).
   literals:  123        Int64.MAX        Int64.MIN
   readers on a capture X (X = a production name; see CAPTURE RULE above):
     nat X    unsigned decimal value        int X    signed (leading '-')
-    len X    character length              X        ±1 sign of a `sign` capture (bare name)
+    len X    character length              count X  number of elements in `rep X ...`
+    X        ±1 sign of a `sign` capture (bare name)
   a BARE capture name reads its sign — valid only when `X ::= sign`; the checker rejects a bare
-  ref to a non-sign capture, and `nat/int/len` OF a sign capture.
+  ref to a non-sign capture, and `nat/int/len/count` OF a sign capture.
   arithmetic:  a + b    a - b    a * b    a ^ b    ( … )    (prec: ^ > * > +/-)
   lift <σ>   (optional trailing sub-clause)  σ : Int → δ lifts the GENERATED parser's output
              to the domain type δ (so `parse : String → Option δ`); with a

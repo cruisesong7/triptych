@@ -49,3 +49,19 @@ abbrev Graph.SatisfiesConstraints (s : String) : Prop :=
 
 abbrev Graph.IsValid (s : String) : Prop :=
   Graph.IsWf s ∧ Graph.SatisfiesConstraints s
+
+structure Graph.View where
+  input : String
+  cells : String
+
+def Graph.View.WfConstraints (v : Graph.View) : Prop :=
+  Graph.WfConstraints (Graph.View.cells v)
+
+abbrev Graph.View.Constraints (_ : Graph.View) : Prop :=
+  True
+
+abbrev Graph.View.Valid (v : Graph.View) : Prop :=
+  Graph.View.WfConstraints v ∧ Graph.View.Constraints v
+
+def Graph.View.denotation (v : Graph.View) :=
+  Graph.value (Graph.View.cells v)

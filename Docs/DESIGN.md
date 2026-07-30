@@ -126,11 +126,14 @@ computeValue = valuation ∘ decode
 
 ## 5. The synthesizability boundary (the core design idea)
 
-Two decidable, *syntactic* properties of the grammar determine whether a
-production is fully synthesized:
+An early design used fixed arity as a synthesis boundary. Full IPv6 showed that this was too
+strict. The useful questions are:
 
-1. **Fixed arity** — every field count is a literal (`4 groups`, `2 digits`).
-2. **Affine valuation** — the value is `Σ fieldᵢ · constᵢ` (a positional numeral).
+1. **Structurally bounded decomposition** — variable-length pieces still have explicit grammar
+   structure and recoverable boundaries.
+2. **Analyzable collection facts** — constraints can refer to generated repetition counts.
+3. **Value transparency** — scalar formulas are analyzable; structured reconstruction may use
+   the typed `value'` escape.
 
 Positional numeral formats are affine *by construction* (`value = Σ digitᵢ · baseⁱ`),
 so affinity dominates. You only escape it via a non-numeral semantics.
@@ -138,7 +141,7 @@ so affinity dominates. You only escape it via a non-numeral semantics.
 | Escape route | Example | Breaks |
 |---|---|---|
 | non-affine valuation | datetime → epoch millis (calendar) | `valuation` nonlinear |
-| variable-arity decode | IPv6 `::` zero-fill | `decode` not a fixed split; induces data-dependent weights |
+| collection reconstruction | IPv6 `::` zero-fill | needs repeated lists plus their counts |
 | non-affine constraint | Luhn / IBAN mod-97 checksum | `Valid` nonlinear (valuation still affine) |
 
 ### Cedar ext types against the boundary
@@ -147,38 +150,30 @@ so affinity dominates. You only escape it via a non-numeral semantics.
   (sum-of-products) → fully synthesizable. Codomain generality handled by making
   the positional combinator polymorphic over the accumulation
   semiring (`Nat`, `BitVec`, ...).
-- **IPv6 fully-expanded** (8 groups, no `::`) → synthesizable.
-- **IPv6 `::`** — variable-arity → **delegated** (see §6). Note `::` also threatens
-  **non-malleability** (`::1`, `0::1`, `0:0:0:0:0:0:0:1` all denote one address);
-  the hand-verification must prove `toString` emits a canonical (fully-expanded)
-  form. IPAddr sits exactly on the frontier: affine value, but variable-arity decode.
+- **IPv6, including `::`** — synthesized as `[Left] "::" [Right]`, with bounded repetitions
+  and `count H16L + count H16R < 8`; `value'` performs typed zero filling. Canonical printing
+  remains a separate serializer obligation.
 - **Datetime** — fixed-arity but calendar valuation is non-affine → `valuation`
   supplied as trusted `Std.Time.toTimestamp`; everything around it synthesizes.
 
-## 6. Boundary detection + typed-hole delegation
+## 6. Boundary detection + typed escapes
 
-The elaborator classifies each production by the §5 syntactic checks *before*
-emitting anything, and routes to synthesize-or-delegate. "Prompting the user" in a
-Lean metaprogram = emitting a **typed hole** whose type is the contract:
+The elaborator rejects grammar structures outside its regular, non-recursive class and provides
+typed value/constraint escapes for semantics outside the analyzable scalar DSL. Compressed IPv6
+does not require a custom decoder:
 
 ```lean
--- SYNTHESIZED (fixed-arity core)
-def IsWf_V4 ...        := ...   -- generated
-def computeValue_V4 ... := ...  -- generated (affine)
+Compressed ::= [Left] "::" [Right]
+Left       ::= rep H16L sepBy ":" {1,7}
+Right      ::= rep H16R sepBy ":" {1,7}
 
--- DELEGATED (variable-arity `::`): typed hole, type = the spec of what to build
-def decode_V6 (s : String) : Option (Vector (BitVec 16) 8) := by sorry
--- obligations emitted as named sorry'd statements:
---   decode_V6_roundtrip, decode_V6_canonical (non-malleability)
-
--- tool still synthesizes everything DOWNSTREAM of the hole:
-def computeValue_V6 (s : String) : Option IPNet := (decode_V6 s).map valuation_V6
+constraints
+  count H16L + count H16R < 8
 ```
 
-Plus a compile-time diagnostic listing which productions were synthesized vs
-delegated and *why*. The manual `decode` must return the **fixed capture shape**
-the synthesizer expects (`::` normalizes-to 8 groups), which keeps the
-synthesized/manual seam type-safe.
+The generated decoder, readable `IsWf`, reconciliation theorem, and verified parser remain
+generic. Only the structured `List String → IPNet` reconstruction is supplied through
+`value'`; its generated value-agreement theorem is still automatic.
 
 ## 7. What is generated free vs left as `sorry`
 
@@ -193,6 +188,23 @@ Because the layout combinators are a closed, pre-verified library:
   the readable `value` on the decoded captures). The value theorem holds for both tiers —
   the DSL `value` (reconciled via the reader-agreement lemmas) and the `value'` escape
   (surface and engine share the author's fn, so it is defeq).
+  The emitter also projects the exact input and every capture read by a value or constraint
+  into a typed `<Name>.View`. A grammar-wide must-presence analysis emits `String` for scalar
+  captures present in every derivation, `Option String` for potentially absent captures, and
+  `List String` for `[X]` repetition readers. Generated value and constraint functions convert
+  an absent option to `""` only at their existing semantic boundary, preserving behavior while
+  exposing syntactic absence to bridge proofs.
+  The generated `decodeView_input` theorem anchors every successful view to its source string,
+  `IsValid_view` packages recognition as successful `decodeView` plus `View.Valid`, and
+  `computeValue_view` packages denotation as mapping `View.denotation` over that same view.
+  `parse_view` writes the generated parser as the engine validity guard followed by typed-view
+  denotation (and the declared lift, when present). `parse_eq_some_iff_view` and
+  `parse_eq_none_iff_view` remove that guard for proofs: parser success is equivalent to one
+  decoded valid view with matching denotation, while rejection means no such valid view exists.
+  Once the external obligations are proved, matching `extparse_eq_some_iff_view` and
+  `extparse_eq_none_iff_view` theorems derive the same relations for the external parser. These
+  normal forms remove the need to unfold `component`, `envOf`, constraint AST evaluation, value
+  extraction, or generated parser gating after identifying a decode.
 - **Emitted as `sorry`d statements** — the *parser-specific* bridge:
   `parse_sound`, `parse_complete`, `parse_eq_none_iff`. These relate the generated
   spec to the **hand-written, external** parser (`Std.Time`, `splitToList`), so they
@@ -435,9 +447,9 @@ predicate); (d) executable differential testing of spec vs hand-written parser f
 free, before any proof.
 
 CORRECTION on "flatness": `IsWf` (recognition) is ALWAYS flat/decidable in this class,
-but `computeValue` (the VALUE function) is flat only for **affine positional numerals**
-(decimal, duration, IPv4). It is NOT flat for calendar arithmetic (datetime →
-epoch-ms: `isLeapYear`, `daysInMonth`) or variable-arity (IPv6 `::`). Non-recursive
+but `computeValue` (the VALUE function) is in the analyzable scalar DSL only for its supported
+formulas. Calendar arithmetic (datetime → epoch-ms: `isLeapYear`, `daysInMonth`) and structured
+collection reconstruction (IPv6 `::`) use typed value escapes. Non-recursive
 grammar ⟹ flat recognition; it does NOT ⟹ flat valuation. Two independent axes; do not
 conflate them (earlier drafts loosely called `computeValue` "a flat arithmetic formula"
 as a blanket claim — wrong).
@@ -544,7 +556,8 @@ triptych IPv4 where
 
 - **`grammar`** → EBNF productions (named nonterminals, DAG). Produces the `IsWf`
   structure, `decode`, `asString`. Bounded repetition `{n}` desugars to literal
-  repetition (stays fixed-arity); unbounded `*` (IPv6 `::`) triggers delegation.
+  repetition. IPv6 `::` is represented by two optional bounded repetitions around the
+  literal delimiter, rather than an unbounded wildcard.
 - **`constraints`** → a *grouped block* (NOT inline `where`). Chosen over inline
   because IPAddr has **cross-production / whole-string** constraints (`'::' at most
   once`; `sides total < 8`; default-prefix) that have no single production to attach
@@ -596,13 +609,11 @@ IPAddr's many NL descriptions sort as: (1) capture bounds `≤ 255/0xffff/128` �
 `constraints`/`IsWf`; (2) `noLeadingZero` → `constraints`/`IsWf`
 (capture-only); (3) default full-width prefix → `value` conditional; (4) "V4 tried
 first" → ordered alternation in `grammar`; (5) base-256/65536 assembly → `value`
-(affine, structured `IPNet` output); (6) **`::` gap** (unbounded `*`, variable arity,
-data-dependent zero-fill; the doc's own `V6Components` goes *inductive* `full | gap`
-with `∀ s ∈ list` folds) → **the one genuine escape**, delegated via typed hole. So
-the DSL covers V4 + full-V6 + all constraints (synthesized), and detects-and-delegates
-`::` alone. IPAddr sits half-in (synthesized), half-out (`::` delegated) — the case
-that proves the fixed-arity boundary is real. Consequence: the value-DSL MUST support
-structured (non-`Int`) output with constructor application; the contract-theorem
+(affine, structured `IPNet` output); (6) **`::` gap** → optional left/right bounded
+repetitions, an analyzable total-count constraint, and typed zero-fill reconstruction.
+The full IPv6 grammar and its recognition/value reconciliation are synthesized; only the
+structured constructor function is supplied through `value'`. Consequence: the value layer
+must support structured (non-`Int`) output with constructor application; the contract-theorem
 generator must handle structured value types, not assume a scalar `computeValue`
 (the doc already notes IPAddr soundness is "phrased per witnessing components").
 

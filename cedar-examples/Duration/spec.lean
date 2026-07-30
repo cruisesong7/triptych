@@ -109,3 +109,27 @@ def Duration.SatisfiesConstraints (s : String) : Prop :=
 
 abbrev Duration.IsValid (s : String) : Prop :=
   Duration.IsWf s ∧ Duration.SatisfiesConstraints s
+
+structure Duration.View where
+  input : String
+  «sign» : String
+  dDays : Option String
+  dHours : Option String
+  dMinutes : Option String
+  dSeconds : Option String
+  dMillis : Option String
+  components : String
+
+def Duration.View.WfConstraints (v : Duration.View) : Prop :=
+  Duration.WfConstraints (Duration.View.components v)
+
+def Duration.View.Constraints (v : Duration.View) : Prop :=
+  Duration.Constraints (Duration.View.sign v) ((Duration.View.dDays v).getD "") ((Duration.View.dHours v).getD "")
+    ((Duration.View.dMinutes v).getD "") ((Duration.View.dSeconds v).getD "") ((Duration.View.dMillis v).getD "")
+
+abbrev Duration.View.Valid (v : Duration.View) : Prop :=
+  Duration.View.WfConstraints v ∧ Duration.View.Constraints v
+
+def Duration.View.denotation (v : Duration.View) :=
+  Duration.value (Duration.View.sign v) ((Duration.View.dDays v).getD "") ((Duration.View.dHours v).getD "")
+    ((Duration.View.dMinutes v).getD "") ((Duration.View.dSeconds v).getD "") ((Duration.View.dMillis v).getD "")

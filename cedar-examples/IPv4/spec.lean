@@ -62,7 +62,7 @@ def IPv4.IsWf.V4Net (s : String) : Prop :=
     ∃ v4Addr «prefix», (s = v4Addr ++ "/" ++ «prefix» ∧ IPv4.IsWf.V4Addr v4Addr) ∧ IPv4.IsWf.Prefix «prefix»
 
 def IPv4.value (oct1 : String) (oct2 : String) (oct3 : String) (oct4 : String) («prefix» : String) :=
-  toIPNet oct1 oct2 oct3 oct4 «prefix»
+  toIPv4Net oct1 oct2 oct3 oct4 «prefix»
 
 def IPv4.WfConstraints (oct1 : String) (oct2 : String) (oct3 : String) (oct4 : String) («prefix» : String) : Prop :=
   ((((((((((oct1).startsWith "0" → oct1 = "0") ∧ (0 : Int) ≤ natOf oct1 ∧ natOf oct1 ≤ (255 : Int)) ∧
@@ -88,3 +88,24 @@ abbrev IPv4.SatisfiesConstraints (s : String) : Prop :=
 
 abbrev IPv4.IsValid (s : String) : Prop :=
   IPv4.IsWf s ∧ IPv4.SatisfiesConstraints s
+
+structure IPv4.View where
+  input : String
+  oct1 : String
+  oct2 : String
+  oct3 : String
+  oct4 : String
+  «prefix» : Option String
+
+def IPv4.View.WfConstraints (v : IPv4.View) : Prop :=
+  IPv4.WfConstraints (IPv4.View.oct1 v) (IPv4.View.oct2 v) (IPv4.View.oct3 v) (IPv4.View.oct4 v)
+    ((IPv4.View.prefix v).getD "")
+
+abbrev IPv4.View.Constraints (_ : IPv4.View) : Prop :=
+  True
+
+abbrev IPv4.View.Valid (v : IPv4.View) : Prop :=
+  IPv4.View.WfConstraints v ∧ IPv4.View.Constraints v
+
+def IPv4.View.denotation (v : IPv4.View) :=
+  IPv4.value (IPv4.View.oct1 v) (IPv4.View.oct2 v) (IPv4.View.oct3 v) (IPv4.View.oct4 v) ((IPv4.View.prefix v).getD "")

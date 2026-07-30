@@ -355,6 +355,19 @@ def constraintCaptures : TSyntax `constraintExpr → List String
       (valExprCaptures e ++ valExprCaptures lo ++ valExprCaptures hi).eraseDups
   | _ => []
 
+/-- Repetition item names referenced through `count X` in a constraint. -/
+def constraintCountCaptures : TSyntax `constraintExpr → List String
+  | `(constraintExpr| $a:valExpr ≤ $b:valExpr) =>
+      (valExprCountCaptures a ++ valExprCountCaptures b).eraseDups
+  | `(constraintExpr| $a:valExpr < $b:valExpr) =>
+      (valExprCountCaptures a ++ valExprCountCaptures b).eraseDups
+  | `(constraintExpr| $a:valExpr == $b:valExpr) =>
+      (valExprCountCaptures a ++ valExprCountCaptures b).eraseDups
+  | `(constraintExpr| $e:valExpr ∈ [ $lo:valExpr , $hi:valExpr ]) =>
+      (valExprCountCaptures e ++ valExprCountCaptures lo ++
+        valExprCountCaptures hi).eraseDups
+  | _ => []
+
 /-- `cstr% <predicate>` : a `Constraint` value from the constraint-DSL. -/
 macro "cstr% " c:constraintExpr : term => elabConstraint c
 

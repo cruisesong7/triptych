@@ -123,3 +123,32 @@ abbrev Datetime.SatisfiesConstraints (s : String) : Prop :=
 
 abbrev Datetime.IsValid (s : String) : Prop :=
   Datetime.IsWf s ∧ Datetime.SatisfiesConstraints s
+
+structure Datetime.View where
+  input : String
+  yyyy : String
+  mm : String
+  dd : String
+  time_hh : Option String
+  time_mm : Option String
+  ss : Option String
+  sss : Option String
+  offset_hh : Option String
+  offset_mm : Option String
+  offset : Option String
+
+def Datetime.View.WfConstraints (v : Datetime.View) : Prop :=
+  Datetime.WfConstraints (Datetime.View.mm v) ((Datetime.View.time_hh v).getD "") ((Datetime.View.time_mm v).getD "")
+    ((Datetime.View.ss v).getD "") ((Datetime.View.offset_hh v).getD "") ((Datetime.View.offset_mm v).getD "")
+    (Datetime.View.yyyy v) (Datetime.View.dd v)
+
+abbrev Datetime.View.Constraints (_ : Datetime.View) : Prop :=
+  True
+
+abbrev Datetime.View.Valid (v : Datetime.View) : Prop :=
+  Datetime.View.WfConstraints v ∧ Datetime.View.Constraints v
+
+def Datetime.View.denotation (v : Datetime.View) :=
+  Datetime.value (Datetime.View.yyyy v) (Datetime.View.mm v) (Datetime.View.dd v) ((Datetime.View.time_hh v).getD "")
+    ((Datetime.View.time_mm v).getD "") ((Datetime.View.ss v).getD "") ((Datetime.View.sss v).getD "")
+    ((Datetime.View.offset_hh v).getD "") ((Datetime.View.offset_mm v).getD "") ((Datetime.View.offset v).getD "")

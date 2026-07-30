@@ -3,7 +3,7 @@ Conformance tests: the GENERATED parsers vs Cedar's REAL parsers, over Cedar's O
 
 This is a one-time confidence check (NOT auto-generated, NOT part of the proof story): it runs the
 verified parsers `triptych` emits against the exact strings Cedar's own unit tests use
-(`cedar-lean/UnitTest/{Decimal,Datetime}.lean`), so we gain empirical assurance that our
+(`cedar-lean/UnitTest/{Decimal,Datetime,IPAddr}.lean`), so we gain empirical assurance that our
 `IsValid`/`computeValue` capture every requirement Cedar's parser enforces — the range checks, the
 overflow bounds, the reject cases — not just the ones we happened to think of.
 
@@ -23,10 +23,12 @@ import Decimal.parser
 import Duration.parser
 import Datetime.parser
 import IPv4.parser
+import IPv6.parser
 import Decimal.grammar
 import Duration.grammar
 import Datetime.grammar
 import IPv4.grammar
+import IPv6.grammar
 import Cedar.Spec.Ext.Decimal
 import Cedar.Spec.Ext.Datetime
 import Cedar.Spec.Ext.IPAddr
@@ -40,6 +42,7 @@ open CedarExamples.Decimal
 open CedarExamples.Duration
 open CedarExamples.Datetime
 open CedarExamples.IPv4
+open CedarExamples.IPv6
 
 namespace CedarExamples.ConformanceTests
 
@@ -139,9 +142,9 @@ def datetimeChecks : List (Option String) :=
     check s (Datetime.parse s)
       ((Cedar.Spec.Ext.Datetime.parse s).map datetimeMillis))
 
-/-! ## IPv4 — `lift`-free structured value, so our parse yields `Option IPNet`. Oracle is Cedar's
-    REAL `ip` restricted to its IPv4 answers (`(ip s).filter (·.isV4)` — what the `parser` clause
-    validates). Direct equality checks acceptance AND the reconstructed `IPNet` (addr + prefix) in
+/-! ## IPv4 — `lift`-free structured value, so our parse yields `Option IPv4Net`. Oracle is
+    Cedar's real `ip` through the example's `ipv4Only` family projection. Direct equality checks
+    acceptance AND the reconstructed IPv4 CIDR value (address + prefix) in
     one shot: a V6 or invalid string makes both sides `none`. Strings from `cedar-lean/UnitTest/
     IPAddr.lean` (V4 valid + invalid + prefix cases), plus V6 strings that our V4 spec must reject. -/
 
@@ -158,16 +161,39 @@ def ipv4Strings : List String :=
 
 def ipv4Checks : List (Option String) :=
   ipv4Strings.map (fun s =>
-    check s (IPv4.parse s) ((Cedar.Spec.Ext.IPAddr.ip s).filter (·.isV4)))
+    check s (IPv4.parse s) (ipv4Only s))
 
-/-- Run all four suites; print totals; return the total failure count. -/
+/-! ## IPv6 — direct equality against Cedar's `ip`, restricted to V6 results. This covers
+    full and compressed addresses, omitted groups on either side, CIDR prefixes, malformed
+    separators, group-count bounds, group width, embedded IPv4 rejection, and canonical prefix
+    spelling. Strings are taken from Cedar's `UnitTest/IPAddr.lean`. -/
+
+def ipv6Strings : List String :=
+  [ -- full and compressed valid forms
+    "1:2:3:4:a:b:c:d/128", "1:22:333:4444:a:bb:ccc:dddd/128",
+    "7:70:700:7000::a00/128", "::ffff/128", "ffff::/4", "::", "::/5", "a::", "::f",
+    "F:AE::F:5:F:F:0", "a::f/120", "::1", "::B", "::ffff:ff00:0001",
+    -- malformed compression, group counts and widths
+    "::::", "::f::", "F:AE::F:5:F:F:0:0", "F:A:F:5:F:F:0:0:1", "F:A", "::ffff1",
+    -- invalid prefixes and unsupported embedded IPv4
+    "F:AE::F:5:F:F:0/129", "::ffff:127.0.0.1", "::/00", "::/01", "::/001",
+    "F:AE::F:5:F:F:0/01",
+    -- V4 strings must be rejected by the V6-only generated parser
+    "127.0.0.1", "127.3.4.1/2", "0.0.0.0/31" ]
+
+def ipv6Checks : List (Option String) :=
+  ipv6Strings.map (fun s =>
+    check s (IPv6.parse s) ((Cedar.Spec.Ext.IPAddr.ip s).filter (·.isV6)))
+
+/-- Run all five suites; print totals; return the total failure count. -/
 def runAll : IO Nat := do
   IO.println "════════ Triptych ↔ Cedar parser conformance ════════"
   let d ← runChecks "Decimal"  decimalChecks
   let u ← runChecks "Duration" durationChecks
   let t ← runChecks "Datetime" datetimeChecks
   let p ← runChecks "IPv4"     ipv4Checks
-  let total := d + u + t + p
+  let p6 ← runChecks "IPv6"     ipv6Checks
+  let total := d + u + t + p + p6
   IO.println s!"════════ total failures: {total} ════════"
   pure total
 

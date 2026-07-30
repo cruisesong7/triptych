@@ -344,11 +344,15 @@ theorem cedar_compute_of_parts (s sgn natural fraction : String)
           decide
         · simp at hc
     | inr hc => exact no_dot_of_digits hi c hc
-  rw [hs]
-  rw [CedarSupport.DecimalInternals.computeValue_eq]
-  rw [split_decimal (sgn ++ natural) fraction hleftNoDot (no_dot_of_digits hfDigits)]
-  simp only
-  rw [toInt_parts_eq sgn natural hsgn hi', readNat_eq fraction hf']
+  have hsurface : Decimal.IsWf.Decimal s :=
+    ⟨sgn, natural, fraction, ⟨⟨hs, hsgn⟩, hi⟩, hf⟩
+  have hwf : Cedar.Thm.Decimal.IsWfDecimal s := surface_wf_to_cedar hsurface
+  have hsplit : s.splitToList (· = '.') = [sgn ++ natural, fraction] := by
+    rw [hs]
+    exact split_decimal (sgn ++ natural) fraction hleftNoDot (no_dot_of_digits hfDigits)
+  rw [CedarSupport.DecimalInternals.computeValue_eq_parser_value hwf hsplit
+    (toInt_parts_eq sgn natural hsgn hi') (readNat_eq fraction hf')]
+  simp only [Cedar.Spec.Ext.DECIMAL_DIGITS]
   have hlen : fraction.length ≤ 4 := hf.2.2
   have hexp : ((4 : Int) - (fraction.length : Int)).toNat = 4 - fraction.length := by
     omega
@@ -356,10 +360,9 @@ theorem cedar_compute_of_parts (s sgn natural fraction : String)
   rw [hexp]
   rw [show Int.pow 10 4 = (10000 : Int) from by rfl]
   rcases hsgn with rfl | rfl
-  · simp [Triptych.signOf]
-    rw [show (10 : Int) ^ (4 - fraction.length) =
+  · rw [show (10 : Int) ^ (4 - fraction.length) =
       Int.pow 10 (4 - fraction.length) from rfl]
-    simp [Int.neg_add, Int.neg_mul]
+    simp [Triptych.signOf, Int.sub_eq_add_neg, Int.neg_add, Int.neg_mul]
   · simp only [String.empty_append, Triptych.signOf]
     have hnot : ¬ ['-'] <+: natural.toList := by
       intro hp

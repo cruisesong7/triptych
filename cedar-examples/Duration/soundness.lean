@@ -113,6 +113,16 @@ theorem Duration.extparse_reject (s : String) :
         omega
     · exact Or.inl hwf
 
+theorem Duration.extparse_eq_none_iff_view (s : String) :
+    Cedar.Spec.Ext.Datetime.Duration.parse s = none ↔
+      ¬∃ v : Duration.View, Duration.decodeView s = some v ∧ Duration.View.Valid v := by
+  rw [Duration.extparse_reject]
+  constructor
+  · intro hinvalid ⟨v, hview, hvalidView⟩
+    exact hinvalid ((Duration.IsValid_view s).mpr ⟨v, hview, hvalidView⟩)
+  · intro hnoview hvalid
+    exact hnoview ((Duration.IsValid_view s).mp hvalid)
+
 theorem Duration.extparse_sound (s : String) (d : Cedar.Spec.Ext.Datetime.Duration) :
     Cedar.Spec.Ext.Datetime.Duration.parse s = some d →
       Duration.IsValid s ∧ Duration.computeValue s = some (durationMillis d) :=
@@ -135,6 +145,26 @@ theorem Duration.extparse_complete (s : String) (d : Cedar.Spec.Ext.Datetime.Dur
   rw [bridge_value s hwf] at hvalue
   exact Cedar.Thm.Duration.parse_complete s d hwf (by
     simpa [durationMillis, Cedar.Spec.Ext.Datetime.Duration.toMilliseconds] using hvalue)
+
+theorem Duration.extparse_eq_some_iff_view (s : String)
+    (d : Cedar.Spec.Ext.Datetime.Duration) :
+    Cedar.Spec.Ext.Datetime.Duration.parse s = some d ↔
+      ∃ v : Duration.View,
+        Duration.decodeView s = some v ∧
+        Duration.View.Valid v ∧
+        Duration.View.denotation v = durationMillis d := by
+  constructor
+  · intro hparse
+    obtain ⟨hvalid, hvalue⟩ := Duration.extparse_sound s d hparse
+    obtain ⟨v, hview, hvalidView⟩ := (Duration.IsValid_view s).mp hvalid
+    refine ⟨v, hview, hvalidView, ?_⟩
+    rw [Duration.computeValue_view, hview] at hvalue
+    exact Option.some.inj hvalue
+  · rintro ⟨v, hview, hvalidView, hvalue⟩
+    apply Duration.extparse_complete s d
+    · exact (Duration.IsValid_view s).mpr ⟨v, hview, hvalidView⟩
+    · rw [Duration.computeValue_view, hview]
+      exact congrArg some hvalue
 
 theorem Duration.extparse_toString_roundtrip (d : Cedar.Spec.Ext.Datetime.Duration) :
     Cedar.Spec.Ext.Datetime.Duration.parse (durationToStr d) = some d :=

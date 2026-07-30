@@ -18,12 +18,14 @@ Make the Cedar IP address family the primary integration target.
 
 ### IPv6
 
-- expand the current eight-explicit-group example to the complete IPv6 surface accepted by
-  Cedar, including compressed `::` forms and network prefixes;
-- produce Cedar's complete structured IP value rather than only the explicit-group address;
+- complete: full and compressed `::` grammar, optional network prefixes, and generated
+  `String → Option IPNet` parser;
+- complete: analyzable `count X` constraints and generic proof automation for the
+  cross-repetition `left + right < 8` bound;
+- complete: Cedar unit-test conformance for valid, invalid, compressed, boundary, prefix, and
+  family-dispatch cases;
 - add Cedar external-parser and canonical-printer clauses;
 - prove the generated value agrees with Cedar across every supported syntactic form;
-- add IPv6 valid, invalid, compressed, boundary, and prefix cases to conformance.
 
 ### Combined validation
 
@@ -40,6 +42,11 @@ conformance obligations are complete with no `sorry`.
 Use the finished IPAddr work to identify repeated proof patterns and move them into Triptych.
 Prioritize reductions in user-authored proof volume:
 
+- complete: emit typed decoded-component views with exact-input, validity, denotation,
+  generated-parser success, and derived external-parser success normal-form theorems;
+- complete: preserve scalar capture absence in views with grammar-derived `Option String`
+  fields instead of collapsing absence to `""`;
+- complete: emit decode-elimination lemmas for component readers, constraint phases, and values;
 - generate stronger bridge lemmas for common external parser combinators;
 - automate routine soundness, completeness, rejection, projection, and printer obligations;
 - turn recurring decomposition arguments into reusable tactics or theorem families;
@@ -75,11 +82,11 @@ After IPAddr and the automation pass:
 Repeated captures are already available to `value'` as `List String`. Generalize the
 analyzable value and constraint tiers with operations such as:
 
-- `count X`;
+- `count X` (complete);
 - `sum X`;
 - per-element predicates such as `forall X`;
 - list arguments for `constraints'`;
-- direct access to generated repetition counts.
+- richer access to repeated values beyond the completed generated count reader.
 
 ## 6. Broader capture-functionality certificates
 

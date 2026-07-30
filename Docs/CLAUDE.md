@@ -139,7 +139,7 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
   is the oracle — checks accept-set AND value at once); Datetime (no lift) compares
   `ourParse s = (cedarParse s).map datetimeMillis`. Plain `#eval` (no `native_decide`, no axioms);
   a nonzero failure count aborts the build. Currently 32 Decimal + 42 Duration + 74 Datetime +
-  30 IPv4 = 178 cases, all passing. This is what caught the Duration sign bug (below).
+  30 IPv4 + 29 IPv6 = 207 cases, all passing. This is what caught the Duration sign bug (below).
 - **Package boundary:** the root `lakefile.lean` and manifest depend only on Batteries.
   `cedar-examples/lakefile.lean` owns the local cedar-lean dependency and imports Triptych
   core as a path dependency. Its format modules live directly at `Decimal.*`, `Duration.*`,
@@ -198,30 +198,27 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
   collapse in the SCALAR (`Env`) view. The rep's item COUNT is captured under `<Item>#count`.
   The individual repeated elements ARE now addressable via `CaptureMap.toEnvList` (all spans of
   a name, in order) / the surface `componentList`: a `value'` escape marks a list argument `[X]`
-  and receives `List String` (all of `X`'s repeated spans). IPv6 uses this — `value' toV6Addr
-  [H16]` builds a structured `IPv6Addr` from the eight groups. Plumbing: `computeValueMap`
+  and receives `List String` (all of `X`'s repeated spans). IPv6 uses this for the full,
+  left-of-`::`, and right-of-`::` group lists, then builds a structured `IPNet`. Plumbing:
+  `computeValueMap`
   (`CaptureMap → α`, vs `computeValueF`'s `Env → α`) drives the escape; `opaqueMapClosure` builds
   the closure; `computeValueEqProof` reads a list cap via `componentList`, a scalar via
-  `component`. This is escape-tier only — the SCALAR value/constraint DSLs still evaluate against
-  the single-valued `Env`, so in-DSL `sum X`/`count X`/`forall X` reductions (which would need a
-  list-carrying `Env`, touching every reader-agreement proof) remain a deferred, heavier step.
+  `component`. The scalar DSL also supports `count X`, backed by the generated `X#count`
+  capture; this is enough for bounds such as IPv6's `count H16L + count H16R < 8`.
+  General `sum X`/`forall X` reductions still require collection-aware semantics.
   List args are `value'`-only; `constraints'` rejects `[X]` explicitly.
 
 ## Open next steps
 
 `ROADMAP.md` is authoritative. Work in this order:
 
-1. Extend static capture functionality beyond the currently proved unary/sequence/direct
-   literal-alternative/delimiter/optional-sign fragment: recursive FIRST sets, general nullable
-   sequences, repetition, and certificate composition through the production DAG. Emit a named
-   functionality obligation when analysis is inconclusive.
-2. Generalize repeated captures beyond `value' [X]`: analyzable `count`/`sum`/per-element
-   constraints, list-aware `constraints'`, and generated repetition-count access.
-3. Finish the existing Cedar package before adding examples: Datetime's 3 remaining obligations
-   and IPv4's 5, followed by a zero-`sorry`, axiom, and conformance audit.
-4. Improve compiler utility: generated layout printers, source-located ambiguity/coherence
+1. Finish IPAddr's external-parser and printer proofs now that full IPv6 grammar, values,
+   generated proofs, and conformance are working.
+2. Generalize repeated captures beyond `count X` and `value' [X]`: analyzable sums and
+   per-element constraints, plus list-aware `constraints'`.
+3. Improve compiler utility: generated layout printers, source-located ambiguity/coherence
    diagnostics, deterministic execution paths, cost bounds, and package-level CI.
-5. Only after Cedar is complete, add UUIDv4/v7 and then DIMACS CNF. Full JSON and SQL require a
+4. Only after Cedar is complete, add UUIDv4/v7 and then DIMACS CNF. Full JSON and SQL require a
    separate recursive-grammar project and are not near-term examples.
 
 Deferred housekeeping: consider Mathlib for the Graph representation as a separate toolchain

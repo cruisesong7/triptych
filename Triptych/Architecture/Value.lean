@@ -49,6 +49,9 @@ inductive ValExpr where
   | int    (field : String)
   /-- `len X` — character length of capture `X` (0 if absent). -/
   | len    (field : String)
+  /-- `count X` — number of elements matched by a `rep X ...` (0 if absent). The decoder
+      records this under the derived capture key `X#count`. -/
+  | count  (field : String)
   /-- `sign X` — `-1` if capture `X` starts with `-`, else `+1` (used for the doc's
       `sign` helper; `+1` if absent). -/
   | signOf (field : String)
@@ -96,10 +99,12 @@ These are the per-field-reference cases of `ValExpr.eval`, named to read like th
 is written in terms of these — the readable counterpart of the `ValExpr` AST engine, just
 as the inlined `IsWf` is the readable counterpart of the interpreter. `eval` is defined
 via them, so the surface value is DEFINITIONALLY `valueExpr.eval` (no equivalence gap).
-Absent field ⟹ `0` (`nat`/`int`/`len`) or `+1` (`sign`), matching the doc's "0 if omitted". -/
+Absent field gives `0` (`nat`/`int`/`len`/`count`) or `+1` (`sign`), matching the doc's
+"0 if omitted". -/
 def Env.natVal  (env : Env) (f : String) : Int := match env f with | some s => (readNat s : Int) | none => 0
 def Env.intVal  (env : Env) (f : String) : Int := match env f with | some s => readInt s          | none => 0
 def Env.lenVal  (env : Env) (f : String) : Int := match env f with | some s => (s.length : Int)   | none => 0
+def Env.countVal (env : Env) (f : String) : Int := env.natVal (f ++ "#count")
 def Env.signVal (env : Env) (f : String) : Int := match env f with | some s => if s.startsWith "-" then -1 else 1 | none => 1
 
 /-! ### String-level readers (surface API)
@@ -108,10 +113,11 @@ The SURFACE value/constraint functions are phrased directly over the captured co
 *strings* (matching the doc's `int(Integer)`, `nat(Fraction)`, `|Fraction|`, `sign`),
 NOT over an `Env` — so the generated spec never mentions the internal capture map. An
 absent optional component is passed as `""`, and each reader maps `""` to the doc's
-"0 if omitted" (`natOf "" = 0`, `signOf "" = 1`). -/
+"0 if omitted" (`natOf "" = 0`, `countOf "" = 0`, `signOf "" = 1`). -/
 def natOf  (s : String) : Int := (readNat s : Int)
 def intOf  (s : String) : Int := if s == "" then 0 else readInt s
 def lenOf  (s : String) : Int := (s.length : Int)
+def countOf (s : String) : Int := (readNat s : Int)
 def signOf (s : String) : Int := if s.startsWith "-" then -1 else 1
 
 /-- Count how many of the captured component strings are *present* (nonempty). The base of
@@ -129,6 +135,7 @@ def ValExpr.eval (env : Env) : ValExpr → Int
   | .nat f    => env.natVal f
   | .int f    => env.intVal f
   | .len f    => env.lenVal f
+  | .count f  => env.countVal f
   | .signOf f => env.signVal f
   | .add a b  => a.eval env + b.eval env
   | .sub a b  => a.eval env - b.eval env
@@ -150,6 +157,7 @@ syntax:max num             : valExpr
 syntax:max "nat " ident    : valExpr
 syntax:max "int " ident    : valExpr
 syntax:max "len " ident    : valExpr
+syntax:max "count " ident  : valExpr
 -- A BARE capture name denotes its SIGN (±1): `Sign` ⟺ the old `sign Sign`. Reserved for
 -- productions declared `Sign ::= sign` (a dedicated sign capture); the `"nat "`/`"int "`/`"len "`
 -- atoms above are keywords, so a bare ident never collides with them. See `elabTriptych`,
@@ -183,6 +191,7 @@ partial def elabValExprWith (valueSub : Option (TSyntax `term)) :
   | `(valExpr| nat $i:ident)  => `(ValExpr.nat $(quote i.getId.toString))
   | `(valExpr| int $i:ident)  => `(ValExpr.int $(quote i.getId.toString))
   | `(valExpr| len $i:ident)  => `(ValExpr.len $(quote i.getId.toString))
+  | `(valExpr| count $i:ident) => `(ValExpr.count $(quote i.getId.toString))
   | `(valExpr| $i:ident)      => `(ValExpr.signOf $(quote i.getId.toString))
   | `(valExpr| ( $e:valExpr )) => elabValExprWith valueSub e
   | `(valExpr| $a:valExpr + $b:valExpr) => do `(ValExpr.add $(← elabValExprWith valueSub a) $(← elabValExprWith valueSub b))
@@ -218,7 +227,7 @@ def surfaceBinder (capture : String) : String :=
     | c :: cs =>
       if (c :: cs).all (fun ch => !ch.isLower) then s.toLower   -- all-uppercase acronym
       else String.ofList (c.toLower :: cs)                       -- CamelCase: first char only
-  String.intercalate "_" ((capture.splitOn ".").map seg)
+  String.intercalate "_" (((capture.replace "#" ".").splitOn ".").map seg)
 
 /-- Translate a `valExpr` into a READABLE `Int` term over the captured component STRINGS
     (via `natOf`/`intOf`/`lenOf`/`signOf` applied to lowercase-named binders), NOT over an
@@ -238,6 +247,9 @@ partial def elabValReadableWith (valueSub : Option (TSyntax `term)) :
   | `(valExpr| nat $i:ident)  => let b := mkIdent (Name.mkSimple (surfaceBinder i.getId.toString)); `(natOf $b)
   | `(valExpr| int $i:ident)  => let b := mkIdent (Name.mkSimple (surfaceBinder i.getId.toString)); `(intOf $b)
   | `(valExpr| len $i:ident)  => let b := mkIdent (Name.mkSimple (surfaceBinder i.getId.toString)); `(lenOf $b)
+  | `(valExpr| count $i:ident) =>
+      let b := mkIdent (Name.mkSimple (surfaceBinder (i.getId.toString ++ "#count")))
+      `(countOf $b)
   | `(valExpr| $i:ident)      => let b := mkIdent (Name.mkSimple (surfaceBinder i.getId.toString)); `(signOf $b)
   | `(valExpr| ( $e:valExpr )) => do `(($(← elabValReadableWith valueSub e)))
   | `(valExpr| $a:valExpr + $b:valExpr) => do `($(← elabValReadableWith valueSub a) + $(← elabValReadableWith valueSub b))
@@ -252,6 +264,7 @@ partial def valExprCaptures : TSyntax `valExpr → List String
   | `(valExpr| nat $i:ident)  => [i.getId.toString]
   | `(valExpr| int $i:ident)  => [i.getId.toString]
   | `(valExpr| len $i:ident)  => [i.getId.toString]
+  | `(valExpr| count $i:ident) => [i.getId.toString ++ "#count"]
   | `(valExpr| $i:ident)      => [i.getId.toString]
   | `(valExpr| ( $e:valExpr )) => valExprCaptures e
   | `(valExpr| $a:valExpr + $b:valExpr) => (valExprCaptures a ++ valExprCaptures b).eraseDups
@@ -268,12 +281,29 @@ partial def valExprSignCaptures : TSyntax `valExpr → List String
   | `(valExpr| nat $_:ident)  => []
   | `(valExpr| int $_:ident)  => []
   | `(valExpr| len $_:ident)  => []
+  | `(valExpr| count $_:ident) => []
   | `(valExpr| $i:ident)      => [i.getId.toString]
   | `(valExpr| ( $e:valExpr )) => valExprSignCaptures e
   | `(valExpr| $a:valExpr + $b:valExpr) => (valExprSignCaptures a ++ valExprSignCaptures b).eraseDups
   | `(valExpr| $a:valExpr - $b:valExpr) => (valExprSignCaptures a ++ valExprSignCaptures b).eraseDups
   | `(valExpr| $a:valExpr * $b:valExpr) => (valExprSignCaptures a ++ valExprSignCaptures b).eraseDups
   | `(valExpr| $a:valExpr ^ $b:valExpr) => (valExprSignCaptures a ++ valExprSignCaptures b).eraseDups
+  | _ => []
+
+/-- The repetition item names referenced by `count X` in a value expression. Kept separate
+    from `valExprCaptures`, which returns the decoder key `X#count`, so the command can verify
+    that each `X` is actually the direct item of a `rep X ...`. -/
+partial def valExprCountCaptures : TSyntax `valExpr → List String
+  | `(valExpr| count $i:ident) => [i.getId.toString]
+  | `(valExpr| ( $e:valExpr )) => valExprCountCaptures e
+  | `(valExpr| $a:valExpr + $b:valExpr) =>
+      (valExprCountCaptures a ++ valExprCountCaptures b).eraseDups
+  | `(valExpr| $a:valExpr - $b:valExpr) =>
+      (valExprCountCaptures a ++ valExprCountCaptures b).eraseDups
+  | `(valExpr| $a:valExpr * $b:valExpr) =>
+      (valExprCountCaptures a ++ valExprCountCaptures b).eraseDups
+  | `(valExpr| $a:valExpr ^ $b:valExpr) =>
+      (valExprCountCaptures a ++ valExprCountCaptures b).eraseDups
   | _ => []
 
 end Triptych

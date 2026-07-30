@@ -5,6 +5,7 @@ import Triptych.Architecture.Value
 import Triptych.Architecture.Constraint
 import Triptych.Architecture.Assemble
 import Triptych.Theorems.Reconcile
+import Triptych.Theorems.DecodeLemmas
 import Duration.spec
 import Duration.grammar
 
@@ -18,6 +19,7 @@ set_option linter.unusedVariables false
 The executable counterpart of the spec. `decode` walks the grammar over an input
 string and returns its captured components; `computeValue` then evaluates the value
 function on those captures, and `isWf`/`isValid` decide well-formedness/acceptance.
+`decodeView` packages the exact input and value/constraint captures as a typed `View`.
 
 Naming convention: CAPITALIZED `IsWf.*`/`IsValid` are the surface `Prop`s you READ
 and reason about; lowercase `isWf`/`isValid` are the engine's executable deciders you
@@ -56,12 +58,50 @@ abbrev Duration.isValid (s : String) : Prop :=
 def Duration.computeValue (s : String) : Option Int :=
   Triptych.computeValue Duration.grammar Duration.valueExpr s
 
+def Duration.View.ofMap (input : String) (m : Triptych.CaptureMap) : Duration.View :=
+  Duration.View.mk input ((Triptych.CaptureMap.toEnv m "Sign").getD "") (Triptych.CaptureMap.toEnv m "DDays")
+    (Triptych.CaptureMap.toEnv m "DHours") (Triptych.CaptureMap.toEnv m "DMinutes")
+    (Triptych.CaptureMap.toEnv m "DSeconds") (Triptych.CaptureMap.toEnv m "DMillis")
+    ((Triptych.CaptureMap.toEnv m "Components").getD "")
+
+def Duration.decodeView (s : String) : Option Duration.View :=
+  (decode Duration.grammar s).map (Duration.View.ofMap s)
+
 /- ════════════════════════════ equivalence ════════════════════════════
 The auto-discharged guarantees relating the readable surface to the executable
 engine: `IsWfGrammar_equiv` proves grammar-layout agreement and `IsWf_equiv`
 proves full well-formedness agreement. `computeValue_eq` proves the values agree,
-and the derived `DecidablePred` instances make the surface predicates executable
+while `decodeView_input`, `IsValid_view`, and `computeValue_view` expose the typed
+parse view. Derived `DecidablePred` instances make the surface predicates executable
 via the engine. No `sorry`. -/
+
+theorem Duration.decodeView_input {s : String} {v : Duration.View} (h : Duration.decodeView s = some v) :
+    Duration.View.input v = s := by
+  unfold Duration.decodeView at h
+  rw [Option.map_eq_some_iff] at h
+  obtain ⟨m, _, hv⟩ := h
+  subst v
+  rfl
+
+theorem Duration.SatisfiesWfConstraints_of_decode {s : String} {m : Triptych.CaptureMap}
+    (h : decode Duration.grammar s = some m) :
+    Duration.SatisfiesWfConstraints s ↔ Duration.WfConstraints ((Triptych.CaptureMap.toEnv m "Components").getD "") :=
+  by
+  unfold Duration.SatisfiesWfConstraints
+  simp only [Triptych.component_eq_of_decode h "Components"]
+
+theorem Duration.SatisfiesConstraints_of_decode {s : String} {m : Triptych.CaptureMap}
+    (h : decode Duration.grammar s = some m) :
+    Duration.SatisfiesConstraints s ↔
+      Duration.Constraints ((Triptych.CaptureMap.toEnv m "Sign").getD "")
+        ((Triptych.CaptureMap.toEnv m "DDays").getD "") ((Triptych.CaptureMap.toEnv m "DHours").getD "")
+        ((Triptych.CaptureMap.toEnv m "DMinutes").getD "") ((Triptych.CaptureMap.toEnv m "DSeconds").getD "")
+        ((Triptych.CaptureMap.toEnv m "DMillis").getD "") :=
+  by
+  unfold Duration.SatisfiesConstraints
+  simp only [Triptych.component_eq_of_decode h "Sign", Triptych.component_eq_of_decode h "DDays",
+    Triptych.component_eq_of_decode h "DHours", Triptych.component_eq_of_decode h "DMinutes",
+    Triptych.component_eq_of_decode h "DSeconds", Triptych.component_eq_of_decode h "DMillis"]
 
 theorem Duration.Internal.matchesRef.Sign (fuel : Nat) (s : String) :
     matchesSym Duration.grammar (fuel + 1) (Sym.ref "Sign") s ↔ Duration.IsWf.Sign s :=
@@ -330,7 +370,7 @@ theorem Duration.IsWf_equiv (s : String) : Duration.IsWf s ↔ Duration.isWf s :
   unfold Duration.SatisfiesWfConstraints Duration.WfConstraints Duration.constraints
   simp only [Triptych.component, List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const,
     ConstraintEntry.wfPart, Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD,
-    signOf_getD, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
+    countOf_getD, signOf_getD, Env.countVal, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
   try grind
 
 theorem Duration.SatisfiesConstraints_equiv (s : String) :
@@ -340,7 +380,7 @@ theorem Duration.SatisfiesConstraints_equiv (s : String) :
   unfold Duration.SatisfiesConstraints Duration.Constraints Duration.constraints Duration.value Duration.valueExpr
   simp only [Triptych.component, List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const,
     ConstraintEntry.valPart, Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD,
-    signOf_getD, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
+    countOf_getD, signOf_getD, Env.countVal, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
   try grind
 
 theorem Duration.IsValid_equiv (s : String) : Duration.IsValid s ↔ Duration.isValid s :=
@@ -359,6 +399,46 @@ instance Duration.instDecidableSatisfiesConstraints : DecidablePred Duration.Sat
 
 instance Duration.instDecidableIsValid : DecidablePred Duration.IsValid := fun s => inferInstanceAs (Decidable (_ ∧ _))
 
+theorem Duration.View.wfConstraints_of_decode {s : String} {m : Triptych.CaptureMap}
+    (h : decode Duration.grammar s = some m) :
+    Duration.SatisfiesWfConstraints s ↔ Duration.View.WfConstraints (Duration.View.ofMap s m) :=
+  by
+  rw [Duration.SatisfiesWfConstraints_of_decode h]
+  rfl
+
+theorem Duration.View.constraints_of_decode {s : String} {m : Triptych.CaptureMap}
+    (h : decode Duration.grammar s = some m) :
+    Duration.SatisfiesConstraints s ↔ Duration.View.Constraints (Duration.View.ofMap s m) :=
+  by
+  rw [Duration.SatisfiesConstraints_of_decode h]
+  rfl
+
+theorem Duration.IsValid_view (s : String) :
+    Duration.IsValid s ↔ ∃ v : Duration.View, Duration.decodeView s = some v ∧ Duration.View.Valid v :=
+  by
+  constructor
+  · intro hvalid
+    have hengine : Duration.isValid s := (Duration.IsValid_equiv s).mp hvalid
+    have hsome : (decode Duration.grammar s).isSome = true := by exact hengine.1.1
+    obtain ⟨m, hm⟩ := Option.isSome_iff_exists.mp hsome
+    refine ⟨Duration.View.ofMap s m, ?_, ?_⟩
+    · unfold Duration.decodeView
+      simp [hm]
+    ·
+      exact
+        ⟨(Duration.View.wfConstraints_of_decode hm).mp hvalid.1.2, (Duration.View.constraints_of_decode hm).mp hvalid.2⟩
+  · rintro ⟨v, hview, hvalid⟩
+    unfold Duration.decodeView at hview
+    rw [Option.map_eq_some_iff] at hview
+    obtain ⟨m, hm, hv⟩ := hview
+    subst v
+    have hdecoded : (decode Duration.grammar s).isSome = true := by simp [hm]
+    have hgrammar :=
+      (Duration.IsWfGrammar_equiv s).mp ((decodeSome_iff_IsWf Duration.grammar (by decide) s).mp hdecoded)
+    exact
+      ⟨⟨hgrammar, (Duration.View.wfConstraints_of_decode hm).mpr hvalid.1⟩,
+        (Duration.View.constraints_of_decode hm).mpr hvalid.2⟩
+
 theorem Duration.computeValue_eq (s : String) :
     Duration.computeValue s =
       (decode Duration.grammar s).map
@@ -370,12 +450,45 @@ theorem Duration.computeValue_eq (s : String) :
   unfold Duration.computeValue Triptych.computeValue Triptych.component Triptych.envOf Duration.value Duration.valueExpr
   cases h : decode Duration.grammar s with
   | none => simp
-  | some m => simp only [Option.map_some, natOf_getD, intOf_getD, lenOf_getD, signOf_getD, ValExpr.eval]
+  | some m =>
+    simp only [Option.map_some, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, Env.countVal,
+      ValExpr.eval]
+
+theorem Duration.computeValue_of_decode {s : String} {m : Triptych.CaptureMap}
+    (h : decode Duration.grammar s = some m) :
+    Duration.computeValue s =
+      some
+        (Duration.value ((Triptych.CaptureMap.toEnv m "Sign").getD "") ((Triptych.CaptureMap.toEnv m "DDays").getD "")
+          ((Triptych.CaptureMap.toEnv m "DHours").getD "") ((Triptych.CaptureMap.toEnv m "DMinutes").getD "")
+          ((Triptych.CaptureMap.toEnv m "DSeconds").getD "") ((Triptych.CaptureMap.toEnv m "DMillis").getD "")) :=
+  by
+  rw [Duration.computeValue_eq, h]
+  simp only [Option.map_some, Triptych.component_eq_of_decode h "Sign", Triptych.component_eq_of_decode h "DDays",
+    Triptych.component_eq_of_decode h "DHours", Triptych.component_eq_of_decode h "DMinutes",
+    Triptych.component_eq_of_decode h "DSeconds", Triptych.component_eq_of_decode h "DMillis"]
+
+theorem Duration.computeValue_view (s : String) :
+    Duration.computeValue s = (Duration.decodeView s).map Duration.View.denotation :=
+  by
+  unfold Duration.decodeView
+  cases h : decode Duration.grammar s with
+  |
+    none =>
+    rw [show Duration.computeValue s = none by
+        rw [Duration.computeValue_eq, h]
+        rfl]
+    rfl
+  | some m =>
+    rw [Duration.computeValue_of_decode h]
+    simp only [Option.map_some]
+    rfl
 
 /- ═══════════════════════════════ parser ══════════════════════════════
 The generated correct-by-construction parser `parse` (= `computeValue` gated on the
 decidable `isValid`) together with its guarantees — `parse_sound`, `parse_complete`,
-`parse_reject` — all AUTO-DISCHARGED here. A verified parser, no `sorry`. -/
+`parse_reject`, `parse_view`, and typed `parse_eq_some_iff_view` /
+`parse_eq_none_iff_view` normal forms — all AUTO-DISCHARGED here.
+A verified parser, no `sorry`. -/
 
 theorem Duration.computeValue_isSome (s : String) : Duration.isValid s → (Duration.computeValue s).isSome :=
   by
@@ -398,3 +511,42 @@ theorem Duration.parse_complete (s : String) (d : Cedar.Spec.Ext.Datetime.Durati
 
 theorem Duration.parse_reject (s : String) : Duration.parse s = none ↔ ¬Duration.isValid s :=
   Triptych.gatedParseLift_reject _ _ _ Duration.computeValue_isSome s
+
+theorem Duration.parse_view (s : String) :
+    Duration.parse s =
+      if decide (Duration.isValid s) then (Duration.decodeView s).map (millisToDuration ∘ Duration.View.denotation)
+      else none :=
+  by
+  unfold Duration.parse Triptych.gatedParseLift Triptych.gatedParse
+  rw [Duration.computeValue_view]
+  by_cases h : Duration.isValid s <;> simp [h, Option.map_map]
+
+theorem Duration.parse_eq_some_iff_view (s : String) (d : Cedar.Spec.Ext.Datetime.Duration) :
+    Duration.parse s = some d ↔
+      ∃ v : Duration.View,
+        Duration.decodeView s = some v ∧ Duration.View.Valid v ∧ millisToDuration (Duration.View.denotation v) = d :=
+  by
+  constructor
+  · intro hparse
+    obtain ⟨hvalidEngine, hvalue⟩ := Duration.parse_sound s d hparse
+    have hvalidSurface := (Duration.IsValid_equiv s).mpr hvalidEngine
+    obtain ⟨v, hview, hvalidView⟩ := (Duration.IsValid_view s).mp hvalidSurface
+    refine ⟨v, hview, hvalidView, ?_⟩
+    rw [Duration.computeValue_view, hview] at hvalue
+    simpa using Option.some.inj hvalue
+  · rintro ⟨v, hview, hvalidView, hvalue⟩
+    apply Duration.parse_complete s d
+    · exact (Duration.IsValid_equiv s).mp ((Duration.IsValid_view s).mpr ⟨v, hview, hvalidView⟩)
+    · rw [Duration.computeValue_view, hview]
+      simpa using congrArg some hvalue
+
+theorem Duration.parse_eq_none_iff_view (s : String) :
+    Duration.parse s = none ↔ ¬∃ v : Duration.View, Duration.decodeView s = some v ∧ Duration.View.Valid v :=
+  by
+  rw [Duration.parse_reject]
+  constructor
+  · intro hinvalid ⟨v, hview, hvalidView⟩
+    exact hinvalid ((Duration.IsValid_equiv s).mp ((Duration.IsValid_view s).mpr ⟨v, hview, hvalidView⟩))
+  · intro hnoview hvalidEngine
+    have hvalidSurface := (Duration.IsValid_equiv s).mpr hvalidEngine
+    exact hnoview ((Duration.IsValid_view s).mp hvalidSurface)

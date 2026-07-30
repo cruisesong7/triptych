@@ -15,6 +15,7 @@ lean_lib Triptych where
     .one `Triptych.Theorems.Reconcile,
     .one `Triptych.Theorems.RelationalParser,
     .one `Triptych.Theorems.Roundtrip,
+    .one `Triptych.Theorems.String,
     .one `Triptych.Theorems.Unambiguity
   ]
   defaultFacets := #[LeanLib.staticFacet]

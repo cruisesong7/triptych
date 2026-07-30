@@ -63,3 +63,21 @@ def Decimal.SatisfiesConstraints (s : String) : Prop :=
 
 abbrev Decimal.IsValid (s : String) : Prop :=
   Decimal.IsWf s ∧ Decimal.SatisfiesConstraints s
+
+structure Decimal.View where
+  input : String
+  «sign» : String
+  natural : String
+  fraction : String
+
+abbrev Decimal.View.WfConstraints (_ : Decimal.View) : Prop :=
+  True
+
+def Decimal.View.Constraints (v : Decimal.View) : Prop :=
+  Decimal.Constraints (Decimal.View.sign v) (Decimal.View.natural v) (Decimal.View.fraction v)
+
+abbrev Decimal.View.Valid (v : Decimal.View) : Prop :=
+  Decimal.View.WfConstraints v ∧ Decimal.View.Constraints v
+
+def Decimal.View.denotation (v : Decimal.View) :=
+  Decimal.value (Decimal.View.sign v) (Decimal.View.natural v) (Decimal.View.fraction v)

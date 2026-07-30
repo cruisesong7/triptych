@@ -55,20 +55,18 @@ public theorem isWfStr_iff (s : String) :
   simpa [Cedar.Spec.Ext.DECIMAL_DIGITS] using
     (Cedar.Thm.Decimal.isWfDecimal_iff (s := s))
 
-public theorem computeValue_eq (s : String) :
+public theorem computeValue_eq_parser_value {s left right : String} {l : Int} {r : Nat}
+    (hwf : Cedar.Thm.Decimal.IsWfDecimal s)
+    (h_split : s.splitToList (· = '.') = [left, right])
+    (hl : Cedar.Spec.Ext.toInt?' left = some l)
+    (hr : Cedar.Spec.Ext.toNat?' right = some r) :
     Cedar.Thm.Decimal.computeValue s =
-      match s.splitToList (· = '.') with
-      | [left, right] =>
-        match Cedar.Spec.Ext.toInt?' left, Cedar.Spec.Ext.toNat?' right with
-        | some l, some r =>
-          some (l * Int.pow 10 4 +
-            (if left.startsWith "-" then (-1 : Int) else 1) *
-              r * Int.pow 10 (4 - right.length))
-        | _, _ => none
-      | _ => none := by
-  unfold Cedar.Thm.Decimal.computeValue
-  simp only [Cedar.Spec.Ext.DECIMAL_DIGITS]
-  rfl
+      some (if !left.startsWith "-"
+        then l * Int.pow 10 Cedar.Spec.Ext.DECIMAL_DIGITS +
+          r * Int.pow 10 (Cedar.Spec.Ext.DECIMAL_DIGITS - right.length)
+        else l * Int.pow 10 Cedar.Spec.Ext.DECIMAL_DIGITS -
+          r * Int.pow 10 (Cedar.Spec.Ext.DECIMAL_DIGITS - right.length)) :=
+  Cedar.Thm.Decimal.computeValue_eq_parser_value hwf h_split hl hr
 
 public theorem computeValue_isSome_of_isWfDecimal {s : String}
     (h : Cedar.Thm.Decimal.IsWfDecimal s) :

@@ -104,6 +104,16 @@ theorem Decimal.extparse_reject (s : String) :
       exact hinvalid ((bridge_isValid s).mpr ⟨hwf, v, hvalue, hbounds⟩)
     · exact Or.inl hwf
 
+theorem Decimal.extparse_eq_none_iff_view (s : String) :
+    Cedar.Spec.Ext.Decimal.parse s = none ↔
+      ¬∃ v : Decimal.View, Decimal.decodeView s = some v ∧ Decimal.View.Valid v := by
+  rw [Decimal.extparse_reject]
+  constructor
+  · intro hinvalid ⟨v, hview, hvalidView⟩
+    exact hinvalid ((Decimal.IsValid_view s).mpr ⟨v, hview, hvalidView⟩)
+  · intro hnoview hvalid
+    exact hnoview ((Decimal.IsValid_view s).mp hvalid)
+
 theorem Decimal.extparse_sound (s : String) (d : Cedar.Spec.Ext.Decimal) :
     Cedar.Spec.Ext.Decimal.parse s = some d →
       Decimal.IsValid s ∧ Decimal.computeValue s = some (Int64.toInt d) := by
@@ -119,6 +129,25 @@ theorem Decimal.extparse_complete (s : String) (d : Cedar.Spec.Ext.Decimal) :
   obtain ⟨hwf, _⟩ := (bridge_isValid s).mp hvalid
   rw [bridge_value s hwf] at hvalue
   exact Cedar.Thm.Decimal.parse_complete s d hwf hvalue
+
+theorem Decimal.extparse_eq_some_iff_view (s : String) (d : Cedar.Spec.Ext.Decimal) :
+    Cedar.Spec.Ext.Decimal.parse s = some d ↔
+      ∃ v : Decimal.View,
+        Decimal.decodeView s = some v ∧
+        Decimal.View.Valid v ∧
+        Decimal.View.denotation v = Int64.toInt d := by
+  constructor
+  · intro hparse
+    obtain ⟨hvalid, hvalue⟩ := Decimal.extparse_sound s d hparse
+    obtain ⟨v, hview, hvalidView⟩ := (Decimal.IsValid_view s).mp hvalid
+    refine ⟨v, hview, hvalidView, ?_⟩
+    rw [Decimal.computeValue_view, hview] at hvalue
+    exact Option.some.inj hvalue
+  · rintro ⟨v, hview, hvalidView, hvalue⟩
+    apply Decimal.extparse_complete s d
+    · exact (Decimal.IsValid_view s).mpr ⟨v, hview, hvalidView⟩
+    · rw [Decimal.computeValue_view, hview]
+      exact congrArg some hvalue
 
 theorem Decimal.extparse_toString_roundtrip (i : Int64) : Cedar.Spec.Ext.Decimal.parse (decimalToStr i) = some i :=
   Triptych.parse_toString_roundtrip Decimal.extparse_complete

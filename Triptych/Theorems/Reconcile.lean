@@ -137,6 +137,10 @@ theorem readInt_empty : readInt "" = 0 := by unfold readInt; simp [readNat]
   unfold intOf Env.intVal; cases h : env f <;> simp; rintro rfl; exact readInt_empty.symm
 @[simp] theorem lenOf_getD (env : Env) (f : String) : lenOf ((env f).getD "") = env.lenVal f := by
   unfold lenOf Env.lenVal; cases env f <;> simp
+@[simp] theorem countOf_getD (env : Env) (key : String) :
+    countOf ((env key).getD "") = env.natVal key := by
+  unfold countOf Env.natVal
+  cases env key <;> simp [readNat]
 @[simp] theorem signOf_getD (env : Env) (f : String) : signOf ((env f).getD "") = env.signVal f := by
   unfold signOf Env.signVal; cases env f <;> simp
 

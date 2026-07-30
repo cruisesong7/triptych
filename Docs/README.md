@@ -28,8 +28,16 @@ it generates up to three files, split by audience:
   correct-by-construction parser** `parse` (= `computeValue` gated on the decidable `isValid`)
   with its **auto-discharged** contracts `parse_sound`/`parse_complete`/`parse_reject`; and the
   machine-checked, axiom-clean surface⟺engine reconciliation on **both recognition and value**
-  — `IsWf_equiv` (via the `decode ↔ IsWf` roundtrip) and `computeValue_eq`. No `sorry` (what
-  you *run + trust*);
+  — `IsWf_equiv` (via the `decode ↔ IsWf` roundtrip) and `computeValue_eq`. It also emits a
+  typed `<Name>.View` containing the exact input plus the captures used by values and
+  constraints (`String` when always present, `Option String` when grammar-optional, and
+  `List String` when repeated). `decodeView_input`, `IsValid_view`, and `computeValue_view`
+  let bridge proofs reason over named fields instead of `CaptureMap` plumbing. `parse_view`
+  gives the executable validation/denotation equation, while `parse_eq_some_iff_view` and
+  `parse_eq_none_iff_view` give its guard-free success and rejection relations. For declared
+  external parsers, the discharged `extparse_eq_some_iff_view` and
+  `extparse_eq_none_iff_view` package the external obligations in the same form. No `sorry`
+  (what you *run + trust*);
 * **`soundness.lean` — the obligation surface** — emitted *only* when a `parser … projection …`
   or `printer <toString>` clause is present: the `sorry`'d obligations that a *user-supplied*
   external parser (`extparse_sound`/`_complete`/`_reject`) or value serializer
@@ -100,19 +108,33 @@ shared-prefix alternatives, general nullable sequences, and repetition remain.
 ```lean
 triptych IPv6 where
   grammar
-    V6Addr ::= rep H16 sepBy ":" {8}     -- eight H16 groups joined by ":"
-    H16    ::= hexDigit{1,4}
+    V6Net      ::= V6Addr | V6Addr "/" CIDRPrefix
+    V6Addr     ::= Full | Compressed
+    Full       ::= rep H16 sepBy ":" {8}
+    Compressed ::= [Left] "::" [Right]
+    Left       ::= rep H16L sepBy ":" {1,7}
+    Right      ::= rep H16R sepBy ":" {1,7}
+    H16        ::= hexDigit{1,4}
+    H16L       ::= hexDigit{1,4}
+    H16R       ::= hexDigit{1,4}
+    CIDRPrefix ::= digit{1,3}
   value'
-    toV6Addr [H16]                       -- the eight groups as a `List String` → `IPv6Addr`
+    toIPv6Net [H16] [H16L] [H16R] CIDRPrefix
+  constraints
+    count H16L + count H16R < 8
+    noLeadingZero CIDRPrefix
+    nat CIDRPrefix ∈ [0, 128]
   to "IPv6"
 ```
 
-produces `IPv6.IsWf.V6Addr`, `IPv6.IsValid`, a `DecidablePred` validator,
-`IPv6.IsWf_equiv : ∀ s, IsWf IPv6.grammar s ↔ IPv6.IsWf.V6Addr s`, and — from the `value'`
-escape reading the `[H16]` list capture — the verified parser `IPv6.parse : String → Option
-IPv6Addr` building a structured 128-bit address from all eight repeated groups (a `[X]` list
-argument passes every span a `rep`-repeated capture matched, not just the first). A spec with a value
-section additionally gets the verified parser `<Name>.parse : String → Option α` (with its
+produces `IPv6.IsWf.V6Net`, `IPv6.IsValid`, a `DecidablePred` validator, the automatically
+proved surface/engine equivalences, and a verified `IPv6.parse : String → Option IPNet`.
+`count X` reads the generated repetition count, while a `[X]` list argument passes every span
+matched by `rep X ...`; together they express and reconstruct full and compressed IPv6.
+`IPv6.View` exposes those lists and the prefix as typed fields, and the generated theorems
+state `IPv6.IsValid s ↔ ∃ v, IPv6.decodeView s = some v ∧ v.Valid` and
+`IPv6.computeValue s = (IPv6.decodeView s).map View.denotation`. A spec with a value section
+additionally gets the verified parser `<Name>.parse : String → Option α` (with its
 auto-discharged `parse_sound`/`parse_complete`/`parse_reject`) and the reconciliation theorem
 `<Name>.computeValue_eq` (see Decimal, Duration, Datetime, Graph). Adding a
 `parser <p> projection <π>` clause emits `soundness.lean` with the `sorry`'d obligations for an

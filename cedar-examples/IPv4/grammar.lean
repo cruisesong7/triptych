@@ -45,34 +45,34 @@ namespace CedarExamples.IPv4
 open Triptych
 open Cedar.Spec.Ext.IPAddr
 
--- The value type `IPNet` lives in Cedar's namespace, but the value's a `value'` escape, so the
--- generated `parser.lean`/`soundness.lean` state their contracts over `IPNet` while opening only
--- THIS (caller) namespace. Re-export it here so that short name resolves in the generated files
--- (the caller open is the sanctioned hook — like Graph's own-namespace `Graph` type).
-export Cedar.Spec.Ext.IPAddr (IPNet)
+abbrev IPv4Net := CIDR V4_WIDTH
 
 /-- Structured value (`value'` escape): the four octet strings + the CIDR prefix string →
-    Cedar's `IPNet.V4 ⟨addr, pre⟩`. An absent prefix (empty string, the bare-address
+    Cedar's V4 `CIDR`. An absent prefix (empty string, the bare-address
     alternative) is Cedar's full `/32` (`ADDR_SIZE V4_WIDTH`, which `IPv4Prefix` encodes as
     `none`). Reuses Cedar's own `IPv4Addr.mk`, `IPv4Prefix` coercion, and `readNat` — the same
     digit reader the value/`IsWf` layer uses — so the reconstruction is Cedar's `parseSegsV4` /
     `parseIPv4Net` on the already-validated components. -/
-def toIPNet (o1 o2 o3 o4 pre : String) : IPNet :=
+def toIPv4Net (o1 o2 o3 o4 pre : String) : IPv4Net :=
   let oct (s : String) : BitVec 8 := BitVec.ofNat 8 (readNat s)
   let p : IPv4Prefix :=
     if pre == "" then (ADDR_SIZE V4_WIDTH : IPv4Prefix) else (readNat pre : IPv4Prefix)
-  IPNet.V4 { addr := IPv4Addr.mk (oct o1) (oct o2) (oct o3) (oct o4), pre := p }
+  { addr := IPv4Addr.mk (oct o1) (oct o2) (oct o3) (oct o4), pre := p }
 
-/-- Canonical serializer for the `printer` clause, over the domain type `IPNet`; reuses Cedar's
-    own `ToString IPNet` (renders `a.b.c.d/pre`). -/
-def ipNetToStr (n : IPNet) : String := toString n
+/-- The corresponding Cedar family-tagged value, used by the executable parser bridge. -/
+def toIPNet (o1 o2 o3 o4 pre : String) : IPNet :=
+  .V4 (toIPv4Net o1 o2 o3 o4 pre)
+
+/-- Canonical serializer for the V4-only domain; reuses Cedar's `ToString IPNet`. -/
+def ipNetToStr (n : IPv4Net) : String := toString (IPNet.V4 n)
 
 /-- External parser for the `parser` clause: Cedar's REAL `ip`, restricted to its IPv4 answers.
-    `ip` tries IPv4 then IPv6 (`parse`), so on a V6 string it returns `some (.V6 …)`; filtering to
-    `IPNet.isV4` keeps this spec's language exactly the V4 one — without it the `extparse_reject`
-    obligation (`ipv4Only s = none ↔ ¬ IsValid s`) would be false on every V6 string. On V4 inputs
-    `ipv4Only` IS Cedar's `parseIPv4Net`, so the obligations validate the real parser. -/
-def ipv4Only (s : String) : Option IPNet := (ip s).filter (·.isV4)
+    `ip` tries IPv4 then IPv6, so the family match rejects its V6 answers while returning the
+    underlying V4 `CIDR`. -/
+def ipv4Only (s : String) : Option IPv4Net :=
+  match ip s with
+  | some (.V4 cidr) => some cidr
+  | _ => none
 
 triptych IPv4 where
   grammar
@@ -85,7 +85,7 @@ triptych IPv4 where
     Oct4   ::= digit{1,3}
     Prefix ::= digit{1,2}
   value'
-    toIPNet Oct1 Oct2 Oct3 Oct4 Prefix
+    toIPv4Net Oct1 Oct2 Oct3 Oct4 Prefix
   constraints
     -- canonical decimal per octet: no leading zeros (unless exactly "0"), and value ≤ 255.
     noLeadingZero Oct1     nat Oct1 ∈ [0, 255]

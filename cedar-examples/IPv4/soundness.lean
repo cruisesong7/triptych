@@ -2,6 +2,7 @@
 
 import IPv4.parser
 import IPv4.grammar
+import IPv4.CedarBridge
 
 open Triptych
 open CedarExamples.IPv4
@@ -17,14 +18,14 @@ theorems (`parse_toString_roundtrip`/`toString_injective`/`normalize_eq_iff_pars
 are DISCHARGED here. These same `encode_*` obligations are reused by the external
 section below. -/
 
-theorem IPv4.encode_accepted (i : IPNet) : IPv4.isValid (ipNetToStr i) := by sorry
+theorem IPv4.encode_accepted (i : IPv4Net) : IPv4.isValid (ipNetToStr i) := by sorry
 
-theorem IPv4.encode_value (i : IPNet) : IPv4.computeValue (ipNetToStr i) = some i := by sorry
+theorem IPv4.encode_value (i : IPv4Net) : IPv4.computeValue (ipNetToStr i) = some i := by sorry
 
-theorem IPv4.parse_toString_roundtrip (i : IPNet) : IPv4.parse (ipNetToStr i) = some i :=
+theorem IPv4.parse_toString_roundtrip (i : IPv4Net) : IPv4.parse (ipNetToStr i) = some i :=
   Triptych.gatedParse_toString_roundtrip IPv4.isValid IPv4.computeValue IPv4.encode_accepted IPv4.encode_value i
 
-theorem IPv4.toString_injective (i i' : IPNet) (h : ipNetToStr i = ipNetToStr i') : i = i' :=
+theorem IPv4.toString_injective (i i' : IPv4Net) (h : ipNetToStr i = ipNetToStr i') : i = i' :=
   Triptych.toString_injective IPv4.parse_toString_roundtrip i i' h
 
 theorem IPv4.normalize_eq_iff_parse_eq (s s' : String) :
@@ -39,19 +40,53 @@ your parser, so you have to prove them yourself. Given them, the external printe
 theorems (`extparse_toString_*`) are DISCHARGED, reusing the generated section's
 `encode_*`. -/
 
-theorem IPv4.extparse_reject (s : String) : ipv4Only s = none ↔ ¬IPv4.IsValid s := by sorry
+theorem IPv4.extparse_reject (s : String) : ipv4Only s = none ↔ ¬IPv4.IsValid s :=
+  IPv4.CedarBridge.parser_rejects_iff s
 
-theorem IPv4.extparse_sound (s : String) (i : IPNet) :
-    ipv4Only s = some i → IPv4.IsValid s ∧ IPv4.computeValue s = some (id i) := by sorry
+theorem IPv4.extparse_eq_none_iff_view (s : String) :
+    ipv4Only s = none ↔
+      ¬∃ v : IPv4.View, IPv4.decodeView s = some v ∧ IPv4.View.Valid v := by
+  rw [IPv4.extparse_reject]
+  constructor
+  · intro hinvalid ⟨v, hview, hvalidView⟩
+    exact hinvalid ((IPv4.IsValid_view s).mpr ⟨v, hview, hvalidView⟩)
+  · intro hnoview hvalid
+    exact hnoview ((IPv4.IsValid_view s).mp hvalid)
 
-theorem IPv4.extparse_complete (s : String) (i : IPNet) :
-    IPv4.IsValid s → IPv4.computeValue s = some (id i) → ipv4Only s = some i := by sorry
+theorem IPv4.extparse_sound (s : String) (i : IPv4Net) :
+    ipv4Only s = some i → IPv4.IsValid s ∧ IPv4.computeValue s = some (id i) := by
+  simpa using (IPv4.CedarBridge.parser_agrees s i).mp
 
-theorem IPv4.extparse_toString_roundtrip (i : IPNet) : ipv4Only (ipNetToStr i) = some i :=
+theorem IPv4.extparse_complete (s : String) (i : IPv4Net) :
+    IPv4.IsValid s → IPv4.computeValue s = some (id i) → ipv4Only s = some i := by
+  intro hvalid hvalue
+  exact (IPv4.CedarBridge.parser_agrees s i).mpr ⟨hvalid, by simpa using hvalue⟩
+
+theorem IPv4.extparse_eq_some_iff_view (s : String) (i : IPv4Net) :
+    ipv4Only s = some i ↔
+      ∃ v : IPv4.View,
+        IPv4.decodeView s = some v ∧
+        IPv4.View.Valid v ∧
+        IPv4.View.denotation v = id i := by
+  constructor
+  · intro hparse
+    obtain ⟨hvalid, hvalue⟩ := IPv4.extparse_sound s i hparse
+    obtain ⟨v, hview, hvalidView⟩ := (IPv4.IsValid_view s).mp hvalid
+    refine ⟨v, hview, hvalidView, ?_⟩
+    rw [IPv4.computeValue_view, hview] at hvalue
+    exact Option.some.inj hvalue
+  · rintro ⟨v, hview, hvalidView, hvalue⟩
+    apply IPv4.extparse_complete s i
+    · exact (IPv4.IsValid_view s).mpr ⟨v, hview, hvalidView⟩
+    · rw [IPv4.computeValue_view, hview]
+      exact congrArg some hvalue
+
+theorem IPv4.extparse_toString_roundtrip (i : IPv4Net) : ipv4Only (ipNetToStr i) = some i :=
   Triptych.parse_toString_roundtrip IPv4.extparse_complete
     (fun d => (IPv4.IsValid_equiv (ipNetToStr d)).mpr (IPv4.encode_accepted d)) IPv4.encode_value i
 
-theorem IPv4.extparse_toString_injective (i i' : IPNet) (h : ipNetToStr i = ipNetToStr i') : i = i' :=
+theorem IPv4.extparse_toString_injective (i i' : IPv4Net)
+    (h : ipNetToStr i = ipNetToStr i') : i = i' :=
   Triptych.toString_injective IPv4.extparse_toString_roundtrip i i' h
 
 theorem IPv4.extparse_normalize_eq_iff_parse_eq (s s' : String) :

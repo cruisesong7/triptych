@@ -5,6 +5,7 @@ import Triptych.Architecture.Value
 import Triptych.Architecture.Constraint
 import Triptych.Architecture.Assemble
 import Triptych.Theorems.Reconcile
+import Triptych.Theorems.DecodeLemmas
 import Triptych.Theorems.RelationalParser
 import Triptych.Theorems.Unambiguity
 import Graph.spec
@@ -20,6 +21,7 @@ set_option linter.unusedVariables false
 The executable counterpart of the spec. `decode` walks the grammar over an input
 string and returns its captured components; `computeValue` then evaluates the value
 function on those captures, and `isWf`/`isValid` decide well-formedness/acceptance.
+`decodeView` packages the exact input and value/constraint captures as a typed `View`.
 
 Naming convention: CAPITALIZED `IsWf.*`/`IsValid` are the surface `Prop`s you READ
 and reason about; lowercase `isWf`/`isValid` are the engine's executable deciders you
@@ -43,11 +45,18 @@ abbrev Graph.isValid (s : String) : Prop :=
 def Graph.computeValue (s : String) :=
   Triptych.computeValueMap Graph.grammar Graph.valueFn s
 
+def Graph.View.ofMap (input : String) (m : Triptych.CaptureMap) : Graph.View :=
+  Graph.View.mk input ((Triptych.CaptureMap.toEnv m "Cells").getD "")
+
+def Graph.decodeView (s : String) : Option Graph.View :=
+  (decode Graph.grammar s).map (Graph.View.ofMap s)
+
 /- ════════════════════════════ equivalence ════════════════════════════
 The auto-discharged guarantees relating the readable surface to the executable
 engine: `IsWfGrammar_equiv` proves grammar-layout agreement and `IsWf_equiv`
 proves full well-formedness agreement. `computeValue_eq` proves the values agree,
-and the derived `DecidablePred` instances make the surface predicates executable
+while `decodeView_input`, `IsValid_view`, and `computeValue_view` expose the typed
+parse view. Derived `DecidablePred` instances make the surface predicates executable
 via the engine. No `sorry`. -/
 
 theorem Graph.grammarDecodeUnique : GrammarDecodeUnique Graph.grammar :=
@@ -58,6 +67,21 @@ theorem Graph.grammarCaptureFunctional : GrammarCaptureFunctional Graph.grammar 
 
 theorem Graph.grammarValueCoherent : GrammarValueCoherent Graph.grammar Graph.valueFn :=
   GrammarValueCoherent.of_captureFunctional Graph.grammar Graph.valueFn Graph.grammarCaptureFunctional
+
+theorem Graph.decodeView_input {s : String} {v : Graph.View} (h : Graph.decodeView s = some v) :
+    Graph.View.input v = s := by
+  unfold Graph.decodeView at h
+  rw [Option.map_eq_some_iff] at h
+  obtain ⟨m, _, hv⟩ := h
+  subst v
+  rfl
+
+theorem Graph.SatisfiesWfConstraints_of_decode {s : String} {m : Triptych.CaptureMap}
+    (h : decode Graph.grammar s = some m) :
+    Graph.SatisfiesWfConstraints s ↔ Graph.WfConstraints ((Triptych.CaptureMap.toEnv m "Cells").getD "") :=
+  by
+  unfold Graph.SatisfiesWfConstraints
+  simp only [Triptych.component_eq_of_decode h "Cells"]
 
 theorem Graph.Internal.matchesRef.Cells (fuel : Nat) (s : String) :
     matchesSym Graph.grammar (fuel + 1) (Sym.ref "Cells") s ↔ Graph.IsWf.Cells s :=
@@ -119,7 +143,7 @@ theorem Graph.IsWf_equiv (s : String) : Graph.IsWf s ↔ Graph.isWf s :=
   unfold Graph.SatisfiesWfConstraints Graph.WfConstraints Graph.constraints
   simp only [Triptych.component, List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const,
     ConstraintEntry.wfPart, Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD,
-    signOf_getD, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
+    countOf_getD, signOf_getD, Env.countVal, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
   try grind
 
 theorem Graph.SatisfiesConstraints_equiv (s : String) : Graph.SatisfiesConstraints s ↔ Graph.satisfiesConstraints s :=
@@ -128,7 +152,7 @@ theorem Graph.SatisfiesConstraints_equiv (s : String) : Graph.SatisfiesConstrain
   unfold Graph.SatisfiesConstraints Graph.constraints
   simp only [Triptych.component, List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const,
     ConstraintEntry.valPart, Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD,
-    signOf_getD, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
+    countOf_getD, signOf_getD, Env.countVal, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
   try grind
 
 theorem Graph.IsValid_equiv (s : String) : Graph.IsValid s ↔ Graph.isValid s :=
@@ -147,6 +171,39 @@ instance Graph.instDecidableSatisfiesConstraints : DecidablePred Graph.Satisfies
 
 instance Graph.instDecidableIsValid : DecidablePred Graph.IsValid := fun s => inferInstanceAs (Decidable (_ ∧ _))
 
+theorem Graph.View.wfConstraints_of_decode {s : String} {m : Triptych.CaptureMap}
+    (h : decode Graph.grammar s = some m) :
+    Graph.SatisfiesWfConstraints s ↔ Graph.View.WfConstraints (Graph.View.ofMap s m) :=
+  by
+  rw [Graph.SatisfiesWfConstraints_of_decode h]
+  rfl
+
+theorem Graph.View.constraints_of_decode {s : String} {m : Triptych.CaptureMap} (_ : decode Graph.grammar s = some m) :
+    Graph.SatisfiesConstraints s ↔ Graph.View.Constraints (Graph.View.ofMap s m) := by rfl
+
+theorem Graph.IsValid_view (s : String) :
+    Graph.IsValid s ↔ ∃ v : Graph.View, Graph.decodeView s = some v ∧ Graph.View.Valid v :=
+  by
+  constructor
+  · intro hvalid
+    have hengine : Graph.isValid s := (Graph.IsValid_equiv s).mp hvalid
+    have hsome : (decode Graph.grammar s).isSome = true := by exact hengine.1.1
+    obtain ⟨m, hm⟩ := Option.isSome_iff_exists.mp hsome
+    refine ⟨Graph.View.ofMap s m, ?_, ?_⟩
+    · unfold Graph.decodeView
+      simp [hm]
+    · exact ⟨(Graph.View.wfConstraints_of_decode hm).mp hvalid.1.2, (Graph.View.constraints_of_decode hm).mp hvalid.2⟩
+  · rintro ⟨v, hview, hvalid⟩
+    unfold Graph.decodeView at hview
+    rw [Option.map_eq_some_iff] at hview
+    obtain ⟨m, hm, hv⟩ := hview
+    subst v
+    have hdecoded : (decode Graph.grammar s).isSome = true := by simp [hm]
+    have hgrammar := (Graph.IsWfGrammar_equiv s).mp ((decodeSome_iff_IsWf Graph.grammar (by decide) s).mp hdecoded)
+    exact
+      ⟨⟨hgrammar, (Graph.View.wfConstraints_of_decode hm).mpr hvalid.1⟩,
+        (Graph.View.constraints_of_decode hm).mpr hvalid.2⟩
+
 theorem Graph.computeValue_eq (s : String) :
     Graph.computeValue s =
       (decode Graph.grammar s).map (fun _ => Graph.value (Triptych.component Graph.grammar s "Cells")) :=
@@ -154,12 +211,37 @@ theorem Graph.computeValue_eq (s : String) :
   unfold Graph.computeValue Triptych.computeValueMap Triptych.component Triptych.envOf Graph.value Graph.valueFn
   cases h : decode Graph.grammar s with
   | none => simp
-  | some m => simp only [Option.map_some, natOf_getD, intOf_getD, lenOf_getD, signOf_getD, ValExpr.eval]
+  | some m =>
+    simp only [Option.map_some, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, Env.countVal,
+      ValExpr.eval]
+
+theorem Graph.computeValue_of_decode {s : String} {m : Triptych.CaptureMap} (h : decode Graph.grammar s = some m) :
+    Graph.computeValue s = some (Graph.value ((Triptych.CaptureMap.toEnv m "Cells").getD "")) :=
+  by
+  rw [Graph.computeValue_eq, h]
+  simp only [Option.map_some, Triptych.component_eq_of_decode h "Cells"]
+
+theorem Graph.computeValue_view (s : String) : Graph.computeValue s = (Graph.decodeView s).map Graph.View.denotation :=
+  by
+  unfold Graph.decodeView
+  cases h : decode Graph.grammar s with
+  |
+    none =>
+    rw [show Graph.computeValue s = none by
+        rw [Graph.computeValue_eq, h]
+        rfl]
+    rfl
+  | some m =>
+    rw [Graph.computeValue_of_decode h]
+    simp only [Option.map_some]
+    rfl
 
 /- ═══════════════════════════════ parser ══════════════════════════════
 The generated correct-by-construction parser `parse` (= `computeValue` gated on the
 decidable `isValid`) together with its guarantees — `parse_sound`, `parse_complete`,
-`parse_reject` — all AUTO-DISCHARGED here. A verified parser, no `sorry`. -/
+`parse_reject`, `parse_view`, and typed `parse_eq_some_iff_view` /
+`parse_eq_none_iff_view` normal forms — all AUTO-DISCHARGED here.
+A verified parser, no `sorry`. -/
 
 theorem Graph.computeValue_isSome (s : String) : Graph.isValid s → (Graph.computeValue s).isSome :=
   by
@@ -182,6 +264,41 @@ theorem Graph.parse_complete (s : String) (g : Graph) :
 
 theorem Graph.parse_reject (s : String) : Graph.parse s = none ↔ ¬Graph.isValid s :=
   Triptych.gatedParse_reject _ _ Graph.computeValue_isSome s
+
+theorem Graph.parse_view (s : String) :
+    Graph.parse s = if decide (Graph.isValid s) then (Graph.decodeView s).map Graph.View.denotation else none :=
+  by
+  unfold Graph.parse Triptych.gatedParse
+  rw [Graph.computeValue_view]
+
+theorem Graph.parse_eq_some_iff_view (s : String) (g : Graph) :
+    Graph.parse s = some g ↔
+      ∃ v : Graph.View, Graph.decodeView s = some v ∧ Graph.View.Valid v ∧ Graph.View.denotation v = g :=
+  by
+  constructor
+  · intro hparse
+    obtain ⟨hvalidEngine, hvalue⟩ := Graph.parse_sound s g hparse
+    have hvalidSurface := (Graph.IsValid_equiv s).mpr hvalidEngine
+    obtain ⟨v, hview, hvalidView⟩ := (Graph.IsValid_view s).mp hvalidSurface
+    refine ⟨v, hview, hvalidView, ?_⟩
+    rw [Graph.computeValue_view, hview] at hvalue
+    exact Option.some.inj hvalue
+  · rintro ⟨v, hview, hvalidView, hvalue⟩
+    apply Graph.parse_complete s g
+    · exact (Graph.IsValid_equiv s).mp ((Graph.IsValid_view s).mpr ⟨v, hview, hvalidView⟩)
+    · rw [Graph.computeValue_view, hview]
+      exact congrArg some hvalue
+
+theorem Graph.parse_eq_none_iff_view (s : String) :
+    Graph.parse s = none ↔ ¬∃ v : Graph.View, Graph.decodeView s = some v ∧ Graph.View.Valid v :=
+  by
+  rw [Graph.parse_reject]
+  constructor
+  · intro hinvalid ⟨v, hview, hvalidView⟩
+    exact hinvalid ((Graph.IsValid_equiv s).mp ((Graph.IsValid_view s).mpr ⟨v, hview, hvalidView⟩))
+  · intro hnoview hvalidEngine
+    have hvalidSurface := (Graph.IsValid_equiv s).mpr hvalidEngine
+    exact hnoview ((Graph.IsValid_view s).mp hvalidSurface)
 
 theorem Graph.parse_iff_denotes (s : String) (g : Graph) :
     Graph.parse s = some g ↔

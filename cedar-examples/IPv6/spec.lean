@@ -22,28 +22,96 @@ says the same thing. `WfConstraints` contains capture-derived format conditions;
 `IsValid` combines both phases. This file is proof-free — it is what you cite. -/
 
 def IPv6.grammar : Grammar :=
-  Grammar.mk "V6Addr"
-    [Production.mk "V6Addr" [[SymItem.mk (Sym.rep ":" (Sym.ref "H16") 8 (some 8)) false]],
-      Production.mk "H16" [[SymItem.mk (Sym.term TokClass.hexDigit (LenSpec.between 1 4)) false]]]
+  Grammar.mk "V6Net"
+    [Production.mk "V6Net"
+        [[SymItem.mk (Sym.ref "V6Addr") false],
+          [SymItem.mk (Sym.ref "V6Addr") false, SymItem.mk (Sym.lit "/") false,
+            SymItem.mk (Sym.ref "CIDRPrefix") false]],
+      Production.mk "V6Addr" [[SymItem.mk (Sym.ref "Full") false], [SymItem.mk (Sym.ref "Compressed") false]],
+      Production.mk "Full" [[SymItem.mk (Sym.rep ":" (Sym.ref "H16") 8 (some 8)) false]],
+      Production.mk "Compressed"
+        [[SymItem.mk (Sym.ref "Left") true, SymItem.mk (Sym.lit "::") false, SymItem.mk (Sym.ref "Right") true]],
+      Production.mk "Left" [[SymItem.mk (Sym.rep ":" (Sym.ref "H16L") 1 (some 7)) false]],
+      Production.mk "Right" [[SymItem.mk (Sym.rep ":" (Sym.ref "H16R") 1 (some 7)) false]],
+      Production.mk "H16" [[SymItem.mk (Sym.term TokClass.hexDigit (LenSpec.between 1 4)) false]],
+      Production.mk "H16L" [[SymItem.mk (Sym.term TokClass.hexDigit (LenSpec.between 1 4)) false]],
+      Production.mk "H16R" [[SymItem.mk (Sym.term TokClass.hexDigit (LenSpec.between 1 4)) false]],
+      Production.mk "CIDRPrefix" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.between 1 3)) false]]]
 
 def IPv6.IsWf.H16 (s : String) : Prop :=
   IsHexDigitsBetween 1 4 s
 
-def IPv6.IsWf.V6Addr (s : String) : Prop :=
+def IPv6.IsWf.Full (s : String) : Prop :=
   ∃ parts : List String,
     8 ≤ parts.length ∧ parts.length ≤ 8 ∧ (∀ p ∈ parts, IPv6.IsWf.H16 p) ∧ s = String.intercalate ":" parts
 
-def IPv6.value (h16 : List String) :=
-  toV6Addr h16
+def IPv6.IsWf.H16L (s : String) : Prop :=
+  IsHexDigitsBetween 1 4 s
 
-abbrev IPv6.SatisfiesWfConstraints (s : String) : Prop :=
-  True
+def IPv6.IsWf.Left (s : String) : Prop :=
+  ∃ parts : List String,
+    1 ≤ parts.length ∧ parts.length ≤ 7 ∧ (∀ p ∈ parts, IPv6.IsWf.H16L p) ∧ s = String.intercalate ":" parts
+
+def IPv6.IsWf.H16R (s : String) : Prop :=
+  IsHexDigitsBetween 1 4 s
+
+def IPv6.IsWf.Right (s : String) : Prop :=
+  ∃ parts : List String,
+    1 ≤ parts.length ∧ parts.length ≤ 7 ∧ (∀ p ∈ parts, IPv6.IsWf.H16R p) ∧ s = String.intercalate ":" parts
+
+def IPv6.IsWf.Compressed (s : String) : Prop :=
+  (∃ left rest,
+      s = left ++ rest ∧ IPv6.IsWf.Left left ∧ ∃ rest₁, rest = "::" ++ rest₁ ∧ (IPv6.IsWf.Right rest₁ ∨ rest₁ = "")) ∨
+    ∃ rest₁, s = "::" ++ rest₁ ∧ (IPv6.IsWf.Right rest₁ ∨ rest₁ = "")
+
+def IPv6.IsWf.V6Addr (s : String) : Prop :=
+  IPv6.IsWf.Full s ∨ IPv6.IsWf.Compressed s
+
+def IPv6.IsWf.CIDRPrefix (s : String) : Prop :=
+  IsDigitsBetween 1 3 s
+
+def IPv6.IsWf.V6Net (s : String) : Prop :=
+  IPv6.IsWf.V6Addr s ∨
+    ∃ v6Addr cIDRPrefix, (s = v6Addr ++ "/" ++ cIDRPrefix ∧ IPv6.IsWf.V6Addr v6Addr) ∧ IPv6.IsWf.CIDRPrefix cIDRPrefix
+
+def IPv6.value (h16 : List String) (h16l : List String) (h16r : List String) (cIDRPrefix : String) :=
+  toIPv6Net h16 h16l h16r cIDRPrefix
+
+def IPv6.WfConstraints (h16l_count : String) (h16r_count : String) (cIDRPrefix : String) : Prop :=
+  (countOf h16l_count + countOf h16r_count < (8 : Int) ∧ ((cIDRPrefix).startsWith "0" → cIDRPrefix = "0")) ∧
+    (0 : Int) ≤ natOf cIDRPrefix ∧ natOf cIDRPrefix ≤ (128 : Int)
+
+def IPv6.SatisfiesWfConstraints (s : String) : Prop :=
+  IPv6.WfConstraints (Triptych.component IPv6.grammar s "H16L#count") (Triptych.component IPv6.grammar s "H16R#count")
+    (Triptych.component IPv6.grammar s "CIDRPrefix")
 
 abbrev IPv6.IsWf (s : String) : Prop :=
-  IPv6.IsWf.V6Addr s ∧ IPv6.SatisfiesWfConstraints s
+  IPv6.IsWf.V6Net s ∧ IPv6.SatisfiesWfConstraints s
 
 abbrev IPv6.SatisfiesConstraints (s : String) : Prop :=
   True
 
 abbrev IPv6.IsValid (s : String) : Prop :=
   IPv6.IsWf s ∧ IPv6.SatisfiesConstraints s
+
+structure IPv6.View where
+  input : String
+  h16All : List String
+  h16lAll : List String
+  h16rAll : List String
+  cIDRPrefix : Option String
+  h16l_count : Option String
+  h16r_count : Option String
+
+def IPv6.View.WfConstraints (v : IPv6.View) : Prop :=
+  IPv6.WfConstraints ((IPv6.View.h16l_count v).getD "") ((IPv6.View.h16r_count v).getD "")
+    ((IPv6.View.cIDRPrefix v).getD "")
+
+abbrev IPv6.View.Constraints (_ : IPv6.View) : Prop :=
+  True
+
+abbrev IPv6.View.Valid (v : IPv6.View) : Prop :=
+  IPv6.View.WfConstraints v ∧ IPv6.View.Constraints v
+
+def IPv6.View.denotation (v : IPv6.View) :=
+  IPv6.value (IPv6.View.h16All v) (IPv6.View.h16lAll v) (IPv6.View.h16rAll v) ((IPv6.View.cIDRPrefix v).getD "")

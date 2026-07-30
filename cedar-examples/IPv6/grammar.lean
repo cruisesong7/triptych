@@ -21,31 +21,32 @@ import Triptych.Theorems.Coherence
 import Cedar.Spec.Ext.IPAddr
 
 /-!
-# IPv6 example — GROUP repetition (`rep … sepBy …`) with a STRUCTURED, list-captured value
+# Full IPv6/CIDR example
 
-Transcribes the eight-group IPv6 form from `doc/CedarDoc/IPAddr.lean`, expressed with the
-`rep` combinator: `rep H16 sepBy ":" {8}` is a single repeated-group node (not eight unrolled
-refs), so it decodes and proves at fixed cost. The `H16 ≤ 0xffff` bound is automatic from
-`hexDigit{1,4}`.
+Transcribes Cedar's IPv6 language, including both eight-group addresses and `::` compression,
+plus the optional CIDR prefix. The compressed form is ordinary grammar structure:
 
-Beyond mere recognition, this example produces a **structured value** — Cedar's `IPv6Addr` (a
-`BitVec 128`), not just accept/reject — via the `value'` escape reading the repeated `H16`
-group as a LIST: `value' toV6Addr [H16]`. The `[H16]` marker hands the escape EVERY matched
-`H16` span (all eight groups), where the scalar reader would collapse them to the first. This is
-the "addressable repetition" increment: a `rep`-repeated capture, exposed to the value layer as
-`List String`.
+```
+Compressed ::= [Left] "::" [Right]
+```
 
-The `::` (gap) form is omitted — a two-sided variable-arity split that needs a hand-written
-`decode`; see the docs.
+Each present side is a separated repetition. The format constraint
+`count H16L + count H16R < 8` says that `::` replaces at least one group. `count` is an
+analyzable DSL reader backed by the repetition count already captured by the decoder, so this
+shared bound remains part of generated `IsWf` and its automatically generated equivalence
+proof.
+
+The structured value escape receives each repetition as a `List String`, inserts the omitted
+zero groups, and constructs Cedar's `IPNet.V6` value. This exercises grammar alternation,
+mixed optional sequences, repeated captures, collection-valued extraction, capture-only
+arithmetic constraints, and optional-prefix value reconstruction in one example.
 -/
 
 namespace CedarExamples.IPv6
 open Triptych
 open Cedar.Spec.Ext.IPAddr
 
--- The value type `IPv6Addr` lives in Cedar's namespace; re-export so the short name resolves in
--- the generated `spec.lean`/`parser.lean` (which open only THIS caller namespace), as in IPv4.
-export Cedar.Spec.Ext.IPAddr (IPv6Addr)
+export Cedar.Spec.Ext.IPAddr (IPv6Addr IPNet)
 
 /-- Unsigned value of a hex-digit string (`"1a" ↦ 26`). PRECONDITION: `s` is a run of 1–4 hex
     digits, guaranteed by the grammar's `hexDigit{1,4}` (via `decode`); a non-hex char folds to
@@ -58,38 +59,58 @@ def readHex (s : String) : Nat :=
        else if 'A' ≤ c && c ≤ 'F' then c.toNat - 'A'.toNat + 10
        else 0)) 0
 
-/-- Structured value (`value'` escape): the eight `H16` group strings → Cedar's `IPv6Addr` (a
-    128-bit number, `a₀ ++ … ++ a₇`). Takes the groups as a `List String` (the `[H16]` list
-    capture) and reads each as a 16-bit hex group via `readHex`. On the grammar-guaranteed
-    eight-group input the list has exactly eight entries; a defensive `getD 0` pads a short list
-    (unreachable on well-formed input, where `rep … {8}` pins the count). Reuses Cedar's own
-    `IPv6Addr.mk`. -/
+/-- Eight explicit or zero-expanded groups as Cedar's 128-bit IPv6 address. -/
 def toV6Addr (groups : List String) : IPv6Addr :=
   let g (i : Nat) : BitVec 16 := BitVec.ofNat 16 (readHex (groups.getD i ""))
   IPv6Addr.mk (g 0) (g 1) (g 2) (g 3) (g 4) (g 5) (g 6) (g 7)
 
+/-- Reconstruct a full IPv6 CIDR value from either the full repetition or the two sides of
+    `::`. On well-formed compressed input, `left.length + right.length < 8`, so the replicate
+    count is positive and the resulting list has exactly eight groups. -/
+def toIPv6Net (full left right : List String) (pre : String) : IPNet :=
+  let groups :=
+    if full.isEmpty then
+      let omitted := 8 - (left.length + right.length)
+      left ++ List.replicate omitted "" ++ right
+    else
+      full
+  let preValue : IPv6Prefix :=
+    if pre == "" then (ADDR_SIZE V6_WIDTH : IPv6Prefix) else (readNat pre : IPv6Prefix)
+  .V6 { addr := toV6Addr groups, pre := preValue }
+
 triptych IPv6 where
   grammar
-    V6Addr ::= rep H16 sepBy ":" {8}
-    H16    ::= hexDigit{1,4}
+    V6Net      ::= V6Addr | V6Addr "/" CIDRPrefix
+    V6Addr     ::= Full | Compressed
+    Full       ::= rep H16 sepBy ":" {8}
+    Compressed ::= [Left] "::" [Right]
+    Left       ::= rep H16L sepBy ":" {1,7}
+    Right      ::= rep H16R sepBy ":" {1,7}
+    H16        ::= hexDigit{1,4}
+    H16L       ::= hexDigit{1,4}
+    H16R       ::= hexDigit{1,4}
+    CIDRPrefix ::= digit{1,3}
   value'
-    toV6Addr [H16]
+    toIPv6Net [H16] [H16L] [H16R] CIDRPrefix
+  constraints
+    count H16L + count H16R < 8
+    noLeadingZero CIDRPrefix
+    nat CIDRPrefix ∈ [0, 128]
   to "IPv6"
 
--- The generated verified parser (`String → Option IPv6Addr`), built from the eight list-captured
--- `H16` groups, run on sample strings:
-#eval IPv6.parse "1:2:3:4:5:6:7:8"          -- some 0x0001000200030004…0008  (8 groups)
-#eval IPv6.parse "dead:beef:0:0:0:0:0:1"     -- some … (hex groups)
-#eval IPv6.parse "1:2:3:4"                    -- none  (4 groups ≠ 8)
-#eval IPv6.parse "1:2:3:4:5:6:7:12345"        -- none  (5 hex digits > 4)
-#eval IPv6.parse "1::4"                        -- none  (`::` out of scope)
+#eval IPv6.parse "1:2:3:4:5:6:7:8"
+#eval IPv6.parse "2001:db8::1"
+#eval IPv6.parse "::"
+#eval IPv6.parse "::1/128"
+#eval IPv6.parse "1::/64"
+#eval IPv6.parse "1:2:3:4:5:6:7::8" -- none: `::` must omit at least one group
+#eval IPv6.parse "1:2:3:4"           -- none: neither full nor compressed
+#eval IPv6.parse "::1/129"           -- none: prefix exceeds 128
+#eval IPv6.parse "::1/01"            -- none: non-canonical prefix
 
--- `value'` reads the full map, so this exercises the repeated-capture coherence theorem.
-#eval (fullParses IPv6.grammar "1:2:3:4:5:6:7:8").length -- 1  (runtime evidence)
-
-example (hUnique : DecodeUnique IPv6.grammar "1:2:3:4:5:6:7:8") {m : CaptureMap}
-    (hm : m ∈ fullParses IPv6.grammar "1:2:3:4:5:6:7:8") :
-    IPv6.computeValue "1:2:3:4:5:6:7:8" = some (IPv6.valueFn m) :=
-  computeValueMap_of_unique IPv6.grammar IPv6.valueFn _ hUnique hm
+-- Executable agreement checks against Cedar's parser on representative cases.
+#eval IPv6.parse "2001:db8::1" == ip "2001:db8::1"
+#eval IPv6.parse "::1/128" == ip "::1/128"
+#eval IPv6.parse "1:2:3:4:5:6:7::8" == ip "1:2:3:4:5:6:7::8"
 
 end CedarExamples.IPv6
