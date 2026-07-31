@@ -1,4 +1,4 @@
-import Datetime.CedarBridge
+import Datetime.GrammarView
 import Triptych.Theorems.DecodeLemmas
 
 /-! Exact structural reconstruction for Datetime's generated decoded view. -/
@@ -6,7 +6,7 @@ import Triptych.Theorems.DecodeLemmas
 open Triptych
 open CedarExamples.Datetime
 
-namespace Datetime.CedarBridge
+namespace Datetime.GrammarView
 
 def dateCaptures (date : Cedar.Thm.Datetime.DateComponents) : CaptureMap :=
   [("Date", date.asString),
@@ -281,4 +281,4 @@ theorem offset_of_mem (fuel : Nat) (cs r : List Char) (m : CaptureMap)
       ⟨(fixedDigits_iff 2 (by omega) hours).mp hhwf,
         (fixedDigits_iff 2 (by omega) minutes).mp hmwf⟩⟩
 
-end Datetime.CedarBridge
+end Datetime.GrammarView

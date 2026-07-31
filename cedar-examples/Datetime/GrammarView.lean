@@ -1,14 +1,14 @@
 import Datetime.parser
 import CedarSupport.String
-import Cedar.Thm.Ext.Datetime
+import Cedar.Thm.Ext.Datetime.Grammar
 
-/-! Bridges the generated Datetime view to Cedar's parser-independent components. -/
+/-! Relates the generated Datetime view to parser-independent grammar components. -/
 
 open Triptych
 open CedarSupport.String
 open CedarExamples.Datetime
 
-namespace Datetime.CedarBridge
+namespace Datetime.GrammarView
 
 def cedarDate (v : Datetime.View) : Cedar.Thm.Datetime.DateComponents :=
   { year := v.yyyy, month := v.mm, day := v.dd }
@@ -204,4 +204,4 @@ theorem view_valid_iff_constraintsWf {v : Datetime.View}
       Bool.and_eq_true, decide_eq_true_eq] at hsyn ⊢
   all_goals omega
 
-end Datetime.CedarBridge
+end Datetime.GrammarView

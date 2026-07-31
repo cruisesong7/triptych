@@ -18,12 +18,12 @@ import IPv4.GrammarView
 import IPv6.grammar
 import IPv6.spec
 import IPv6.parser
-import Datetime.CedarBridge
+import Datetime.ComponentView
 
 /-!
 # Cedar examples
 
-Worked formats, generated artifacts, parser-validation obligations, Cedar bridge proofs, and
+Worked formats, generated artifacts, parser-validation obligations, component views, and
 conformance tests. This companion package is intentionally separate from Cedar-free Triptych
 core; its Lake manifest owns the optional cedar-lean dependency.
 -/

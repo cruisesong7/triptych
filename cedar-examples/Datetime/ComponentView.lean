@@ -1,12 +1,12 @@
 import Datetime.DecodedComponents
 import CedarSupport.Datetime
 
-/-! Agreement between Datetime's generated view and Cedar's component specification. -/
+/-! Agreement between Datetime's generated view and parser-independent components. -/
 
 open Triptych
 open CedarExamples.Datetime
 
-namespace Datetime.CedarBridge
+namespace Datetime.GrammarView
 
 theorem surfaceDate {d : Cedar.Thm.Datetime.DateComponents}
     (h : d.syntaxWf) : Datetime.IsWf.Date d.asString := by
@@ -107,7 +107,7 @@ theorem components_eq_of_asString
   rw [h, hp'] at hp
   exact (Option.some.inj hp).symm
 
-theorem bridge_isValid (s : String) :
+theorem isValid_iff_cedarWf (s : String) :
     Datetime.IsValid s ↔ Cedar.Thm.Datetime.IsWfDatetime s := by
   constructor
   · intro hvalid
@@ -140,11 +140,11 @@ theorem bridge_isValid (s : String) :
     apply (Datetime.IsValid_view s).mpr
     exact ⟨v, hview, (view_valid_iff_constraintsWf hc' hsyn).mpr hconstraints⟩
 
-theorem bridge_value (s : String) (hwf : Cedar.Thm.Datetime.IsWfDatetime s) :
+theorem computeValue_eq_cedar (s : String) (hwf : Cedar.Thm.Datetime.IsWfDatetime s) :
     Datetime.computeValue s = Cedar.Thm.Datetime.computeValue s := by
   obtain ⟨c, hsyn, hconstraints, hs⟩ := hwf
   have hvalid : Datetime.IsValid s :=
-    (bridge_isValid s).mpr ⟨c, hsyn, hconstraints, hs⟩
+    (isValid_iff_cedarWf s).mpr ⟨c, hsyn, hconstraints, hs⟩
   obtain ⟨v, hview, _⟩ := (Datetime.IsValid_view s).mp hvalid
   obtain ⟨c', hc', hvstr, hsyn'⟩ := components_of_decodeView hview
   have hcstr : c'.asString = c.asString := by
@@ -160,4 +160,4 @@ theorem bridge_value (s : String) (hwf : Cedar.Thm.Datetime.IsWfDatetime s) :
   simp only [Option.map_some]
   exact congrArg some (view_denotation_eq_toMillis hc' hsyn)
 
-end Datetime.CedarBridge
+end Datetime.GrammarView

@@ -2,7 +2,7 @@
 
 import Datetime.parser
 import Datetime.grammar
-import Datetime.ViewBridge
+import Datetime.ComponentView
 
 open Triptych
 open CedarExamples.Datetime
@@ -13,13 +13,13 @@ set_option linter.unusedVariables false
 /- ══════════════════════ soundness · external parser ══════════════════════
 Obligations for validating YOUR OWN external parser against this specification:
 `extparse_sound`, `extparse_complete`, and `extparse_reject`, stated over the readable
-surface `IsValid`/`computeValue`. Cedar's Datetime parser theorems discharge them
-through the generated structural view and the component bridge. -/
+surface `IsValid`/`computeValue`. This module still uses Cedar's Datetime parser theorems;
+the generated structural and component views isolate the remaining parser-specific work. -/
 
 theorem Datetime.extparse_reject (s : String) :
     Cedar.Spec.Ext.Datetime.parse s = none ↔ ¬Datetime.IsValid s := by
   rw [Cedar.Thm.Datetime.parse_eq_none_iff_not_wf,
-    Datetime.CedarBridge.bridge_isValid]
+    Datetime.GrammarView.isValid_iff_cedarWf]
 
 theorem Datetime.extparse_eq_none_iff_view (s : String) :
     Cedar.Spec.Ext.Datetime.parse s = none ↔
@@ -37,8 +37,8 @@ theorem Datetime.extparse_sound (s : String) (d : Cedar.Spec.Ext.Datetime) :
   by
   intro hparse
   obtain ⟨hwf, hvalue⟩ := Cedar.Thm.Datetime.parse_sound s d hparse
-  refine ⟨(Datetime.CedarBridge.bridge_isValid s).mpr hwf, ?_⟩
-  rw [Datetime.CedarBridge.bridge_value s hwf]
+  refine ⟨(Datetime.GrammarView.isValid_iff_cedarWf s).mpr hwf, ?_⟩
+  rw [Datetime.GrammarView.computeValue_eq_cedar s hwf]
   simpa [datetimeMillis] using hvalue
 
 theorem Datetime.checkedExtParse_eq_extparse :
@@ -52,8 +52,8 @@ theorem Datetime.extparse_complete (s : String) (d : Cedar.Spec.Ext.Datetime) :
       Cedar.Spec.Ext.Datetime.parse s = some d :=
   by
   intro hvalid hvalue
-  have hwf := (Datetime.CedarBridge.bridge_isValid s).mp hvalid
-  rw [Datetime.CedarBridge.bridge_value s hwf] at hvalue
+  have hwf := (Datetime.GrammarView.isValid_iff_cedarWf s).mp hvalid
+  rw [Datetime.GrammarView.computeValue_eq_cedar s hwf] at hvalue
   exact Cedar.Thm.Datetime.parse_complete s d hwf (by
     simpa [datetimeMillis] using hvalue)
 

@@ -3,7 +3,7 @@ import Datetime.StructuralView
 open Triptych
 open CedarExamples.Datetime
 
-namespace Datetime.CedarBridge
+namespace Datetime.GrammarView
 
 theorem components_of_decode {s : String} {m : CaptureMap}
     (h : decode Datetime.grammar s = some m) :
@@ -245,4 +245,4 @@ theorem components_of_decodeView {s : String} {v : Datetime.View}
           offsetCaptures, Datetime.View.toCedarComponents?, cedarDate, cedarTime,
           cedarOffset_asString, CaptureMap.toEnv]
 
-end Datetime.CedarBridge
+end Datetime.GrammarView
