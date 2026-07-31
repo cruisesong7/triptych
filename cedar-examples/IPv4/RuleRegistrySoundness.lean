@@ -1,12 +1,12 @@
 import IPv4.RuleRegistryProof
-import IPv4.CedarBridge
+import IPv4.GrammarView
 
 /-!
 # End-to-end IPv4 soundness via registered parser summaries
 
-The executable side comes entirely from `RuleRegistryProof`. This file uses only the
-grammar-side component facts from `CedarBridge`; it does not use that module's parser agreement
-or rejection theorems, nor Cedar's unfinished `Cedar.Thm.Ext.IPAddr` theorem layer.
+The executable side comes entirely from `RuleRegistryProof`; `GrammarView` contributes only
+facts about Triptych's generated grammar, captures, constraints, and denotation. The proof does
+not use Cedar's unfinished `Cedar.Thm.Ext.IPAddr` theorem layer.
 -/
 
 open Cedar.Spec.Ext.IPAddr
@@ -17,8 +17,8 @@ namespace IPv4.RuleRegistrySoundness
 open IPv4.RuleRegistryProof
 
 private theorem octetValid_iff {s : String} :
-    OctetValid s ↔ IPv4.CedarBridge.OctetWf s := by
-  unfold OctetValid IPv4.CedarBridge.OctetWf IPv4.CedarBridge.OctetConstraints
+    OctetValid s ↔ IPv4.GrammarView.OctetWf s := by
+  unfold OctetValid IPv4.GrammarView.OctetWf IPv4.GrammarView.OctetConstraints
   constructor
   · rintro ⟨hsyntax, hcanonical, hbound⟩
     refine ⟨hsyntax, hcanonical, ?_⟩
@@ -30,8 +30,8 @@ private theorem octetValid_iff {s : String} :
     omega
 
 private theorem prefixValid_iff {s : String} :
-    PrefixValid 2 32 s ↔ IPv4.CedarBridge.PrefixWf 2 32 s := by
-  unfold PrefixValid IPv4.CedarBridge.PrefixWf IPv4.CedarBridge.PrefixConstraints
+    PrefixValid 2 32 s ↔ IPv4.GrammarView.PrefixWf 2 32 s := by
+  unfold PrefixValid IPv4.GrammarView.PrefixWf IPv4.GrammarView.PrefixConstraints
   constructor
   · rintro ⟨hsyntax, hcanonical, hbound⟩
     refine ⟨hsyntax, hcanonical, ?_⟩
@@ -43,15 +43,15 @@ private theorem prefixValid_iff {s : String} :
     omega
 
 private theorem optionalPrefixValid_iff (pre : Option String) :
-    OptionalPrefixValid pre ↔ IPv4.CedarBridge.OptionalPrefixWf pre := by
+    OptionalPrefixValid pre ↔ IPv4.GrammarView.OptionalPrefixWf pre := by
   cases pre with
-  | none => simp [OptionalPrefixValid, IPv4.CedarBridge.OptionalPrefixWf]
+  | none => simp [OptionalPrefixValid, IPv4.GrammarView.OptionalPrefixWf]
   | some pre =>
-      simpa [OptionalPrefixValid, IPv4.CedarBridge.OptionalPrefixWf] using
+      simpa [OptionalPrefixValid, IPv4.GrammarView.OptionalPrefixWf] using
         (prefixValid_iff (s := pre))
 
 private theorem renderNet_eq_renderV4 (o₁ o₂ o₃ o₄ : String) (pre : Option String) :
-    renderNet o₁ o₂ o₃ o₄ pre = IPv4.CedarBridge.renderV4 o₁ o₂ o₃ o₄ pre := by
+    renderNet o₁ o₂ o₃ o₄ pre = IPv4.GrammarView.renderV4 o₁ o₂ o₃ o₄ pre := by
   rfl
 
 private theorem toNat_mk (a₀ a₁ a₂ a₃ : BitVec 8) :
@@ -147,13 +147,13 @@ theorem parser_agrees (s : String) (cidr : CIDR V4_WIDTH) :
     have hb₃ := octetValid_iff.mp h₃
     have hb₄ := octetValid_iff.mp h₄
     have hbp := optionalPrefixValid_iff pre |>.mp hp
-    have hs' : s = IPv4.CedarBridge.renderV4 o₁ o₂ o₃ o₄ pre := by
+    have hs' : s = IPv4.GrammarView.renderV4 o₁ o₂ o₃ o₄ pre := by
       simpa only [renderNet_eq_renderV4] using hs
     have hvalid : IPv4.IsValid s :=
-      (IPv4.CedarBridge.isValid_iff_parts s).mpr
+      (IPv4.GrammarView.isValid_iff_parts s).mpr
         ⟨o₁, o₂, o₃, o₄, pre, hs', hb₁, hb₂, hb₃, hb₄, hbp⟩
     have hvalue :=
-      IPv4.CedarBridge.computeValue_eq_of_parts hs' hb₁ hb₂ hb₃ hb₄ hbp
+      IPv4.GrammarView.computeValue_eq_of_parts hs' hb₁ hb₂ hb₃ hb₄ hbp
     have hdenote := cidrValue_eq_toIPv4Net (o₁ := o₁) (o₂ := o₂) (o₃ := o₃)
       (o₄ := o₄) hp
     refine ⟨hvalid, ?_⟩
@@ -163,14 +163,14 @@ theorem parser_agrees (s : String) (cidr : CIDR V4_WIDTH) :
       _ = some cidr := congrArg some (hdenote.symm.trans hcidr.symm)
   · rintro ⟨hvalid, hvalue⟩
     obtain ⟨o₁, o₂, o₃, o₄, pre, hs, hb₁, hb₂, hb₃, hb₄, hbp⟩ :=
-      (IPv4.CedarBridge.isValid_iff_parts s).mp hvalid
+      (IPv4.GrammarView.isValid_iff_parts s).mp hvalid
     have h₁ := octetValid_iff.mpr hb₁
     have h₂ := octetValid_iff.mpr hb₂
     have h₃ := octetValid_iff.mpr hb₃
     have h₄ := octetValid_iff.mpr hb₄
     have hp := optionalPrefixValid_iff pre |>.mpr hbp
     have hformat :=
-      IPv4.CedarBridge.computeValue_eq_of_parts hs hb₁ hb₂ hb₃ hb₄ hbp
+      IPv4.GrammarView.computeValue_eq_of_parts hs hb₁ hb₂ hb₃ hb₄ hbp
     rw [hvalue] at hformat
     have hcidr :
         cidr = CedarExamples.IPv4.toIPv4Net o₁ o₂ o₃ o₄ (pre.getD "") :=
@@ -227,9 +227,9 @@ theorem parser_rejects_iff (s : String) :
   constructor
   · intro hnone hvalid
     obtain ⟨o₁, o₂, o₃, o₄, pre, hs, h₁, h₂, h₃, h₄, hp⟩ :=
-      (IPv4.CedarBridge.isValid_iff_parts s).mp hvalid
+      (IPv4.GrammarView.isValid_iff_parts s).mp hvalid
     have hvalue :=
-      IPv4.CedarBridge.computeValue_eq_of_parts hs h₁ h₂ h₃ h₄ hp
+      IPv4.GrammarView.computeValue_eq_of_parts hs h₁ h₂ h₃ h₄ hp
     have hsome := (parser_agrees s _).mpr ⟨hvalid, hvalue⟩
     rw [hnone] at hsome
     simp at hsome

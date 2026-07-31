@@ -1,18 +1,21 @@
 import Duration.parser
 import CedarSupport.String
 import Triptych.Theorems.DecodeLemmas
-import CedarSupport.DurationInternals
-import Cedar.Thm.Ext.Duration
+import Cedar.Thm.Ext.Duration.Grammar
 
-/-! Bridges the generated Duration specification to Cedar's Duration metatheory. -/
+/-!
+# Duration grammar and capture view
+
+These proofs describe only Triptych's generated grammar, captures, constraints, and
+denotation. They do not use Cedar's executable parser or its correctness theorems.
+-/
 
 open Cedar.Spec.Ext
 open Cedar.Spec.Ext.Datetime
 open Triptych
 open CedarSupport.String
-open CedarSupport.DurationInternals
 
-namespace Duration.CedarBridge
+namespace Duration.GrammarView
 
 def OptionalDigitsWf : Option String → Prop
   | none => True
@@ -304,17 +307,6 @@ theorem components_mem (fuel : Nat) (cs r : List Char) (m : CaptureMap) :
         simp
       simp [htake]
 
-theorem optional_digits_wf_iff (digits : Option String) :
-    OptionalDigitsWf digits ↔ Cedar.Thm.Duration.IsWfOptionalQuantity digits := by
-  cases digits <;>
-    simp [OptionalDigitsWf, Cedar.Thm.Duration.IsWfOptionalQuantity, digits_iff]
-
-theorem components_wf_iff (components : Cedar.Thm.Duration.Components) :
-    ComponentsWf components ↔ components.quantitiesWf := by
-  rcases components with ⟨days, hours, minutes, seconds, milliseconds⟩
-  simp [ComponentsWf, Cedar.Thm.Duration.Components.quantitiesWf,
-    optional_digits_wf_iff]
-
 theorem components_nonempty_iff (components : Cedar.Thm.Duration.Components) :
     components.asString ≠ "" ↔ components.nonempty := by
   rcases components with ⟨days, hours, minutes, seconds, milliseconds⟩
@@ -443,13 +435,6 @@ theorem components_to_surface (components : Cedar.Thm.Duration.Components)
         Cedar.Thm.Duration.Components.asString], hdays⟩, hhours⟩, hminutes⟩,
       hseconds⟩, hmillis⟩⟩
 
-theorem cedar_wf_to_surface {s : String} (h : Cedar.Thm.Duration.IsWfDuration s) :
-    Duration.IsWf.Duration s := by
-  obtain ⟨sgn, body, hs, hsgn, components, _, hwf, hbody⟩ := h
-  refine ⟨sgn, body, ⟨⟨hs, hsgn⟩, ?_⟩⟩
-  rw [hbody]
-  exact components_to_surface components ((components_wf_iff components).mpr hwf)
-
 theorem decode_parts_of_surface_wf {s : String} (h : Duration.IsWf.Duration s) :
     ∃ sgn components,
       decode Duration.grammar s =
@@ -465,61 +450,6 @@ theorem decode_parts_of_surface_wf {s : String} (h : Duration.IsWf.Duration s) :
   obtain ⟨m, hm⟩ := Option.isSome_iff_exists.mp hsome
   obtain ⟨sgn, components, hsgn, rfl, hs, hwf⟩ := decode_duration_sound hm
   exact ⟨sgn, components, hm, hsgn, hs, hwf⟩
-
-theorem wf_body_ne_empty {body : String} (h : Cedar.Thm.Duration.IsWfBody body) :
-    body ≠ "" := by
-  rintro rfl
-  obtain ⟨components, hnonempty, _, hcomponents⟩ := h
-  exact (components_nonempty_iff components).mpr hnonempty hcomponents.symm
-
-theorem not_wf_duration_empty : ¬ Cedar.Thm.Duration.IsWfDuration "" := by
-  rintro ⟨sgn, body, hs, hsgn, hbody⟩
-  rcases hsgn with rfl | rfl
-  · simp at hs
-  · have : body = "" := by simpa using hs.symm
-    exact wf_body_ne_empty hbody this
-
-theorem not_wf_duration_dash : ¬ Cedar.Thm.Duration.IsWfDuration "-" := by
-  rintro ⟨sgn, body, hs, hsgn, hbody⟩
-  rcases hsgn with rfl | rfl
-  · have hlist := congrArg String.toList hs
-    have : body = "" := by
-      apply String.toList_inj.mp
-      simpa [String.toList_append] using hlist
-    subst body
-    exact wf_body_ne_empty hbody rfl
-  · have : body = "-" := by simpa using hs.symm
-    subst body
-    exact isWfBody_front_ne_dash "-" hbody (by decide)
-
-theorem components_nonempty_of_cedar {s sgn : String}
-    (components : Cedar.Thm.Duration.Components)
-    (hcedar : Cedar.Thm.Duration.IsWfDuration s)
-    (hs : s = sgn ++ components.asString)
-    (hsgn : sgn = "-" ∨ sgn = "") :
-    components.nonempty := by
-  by_contra hnonempty
-  have hempty : components.asString = "" := by
-    by_contra hne
-    exact hnonempty ((components_nonempty_iff components).mp hne)
-  rcases hsgn with rfl | rfl
-  · have hs' : s = "-" := by simpa [hempty] using hs
-    rw [hs'] at hcedar
-    exact not_wf_duration_dash hcedar
-  · have hs' : s = "" := by simpa [hempty] using hs
-    rw [hs'] at hcedar
-    exact not_wf_duration_empty hcedar
-
-theorem parts_to_cedar {s sgn : String}
-    (components : Cedar.Thm.Duration.Components)
-    (hs : s = sgn ++ components.asString)
-    (hsgn : sgn = "-" ∨ sgn = "")
-    (hwf : ComponentsWf components)
-    (hnonempty : components.nonempty) :
-    Cedar.Thm.Duration.IsWfDuration s := by
-  have hbody : Cedar.Thm.Duration.IsWfBody components.asString :=
-    ⟨components, hnonempty, (components_wf_iff components).mp hwf, rfl⟩
-  exact ⟨sgn, components.asString, hs, hsgn, hbody⟩
 
 def formatQuantity : Option String → Int
   | none => 0
@@ -549,54 +479,6 @@ theorem format_compute_of_decode (s sgn : String)
       formatValue, formatQuantity, componentsCaptures, unitCaptures, ValExpr.eval,
       CaptureMap.toEnv, Triptych.Env.signVal, Triptych.Env.natVal,
       Triptych.signOf, Triptych.natOf]
-
-theorem quantityNat_eq_formatQuantity (digits : Option String)
-    (hwf : OptionalDigitsWf digits) :
-    (quantityNat digits : Int) = formatQuantity digits := by
-  cases digits with
-  | none => simp [quantityNat, formatQuantity]
-  | some digits =>
-      have hcedar : _root_.IsDigits digits := (digits_iff digits).mp hwf
-      rw [quantityNat, readNat_eq digits hcedar]
-      simp [formatQuantity, Triptych.natOf]
-
-theorem cedar_body_value (components : Cedar.Thm.Duration.Components)
-    (hwf : ComponentsWf components) :
-    Cedar.Thm.Duration.computeBodyValue components.asString =
-      some (formatValue "" components) := by
-  have hcedarWf : components.quantitiesWf := (components_wf_iff components).mp hwf
-  rw [computeBodyValue_components components hcedarWf]
-  rcases components with ⟨days, hours, minutes, seconds, milliseconds⟩
-  simp only [ComponentsWf] at hwf
-  rcases hwf with ⟨hdays, hhours, hminutes, hseconds, hmilliseconds⟩
-  rw [quantityNat_eq_formatQuantity days hdays,
-    quantityNat_eq_formatQuantity hours hhours,
-    quantityNat_eq_formatQuantity minutes hminutes,
-    quantityNat_eq_formatQuantity seconds hseconds,
-    quantityNat_eq_formatQuantity milliseconds hmilliseconds]
-  simp [formatValue, Triptych.signOf, Cedar.Spec.Ext.Datetime.MILLISECONDS_PER_DAY,
-    Cedar.Spec.Ext.Datetime.MILLISECONDS_PER_HOUR,
-    Cedar.Spec.Ext.Datetime.MILLISECONDS_PER_MINUTE,
-    Cedar.Spec.Ext.Datetime.MILLISECONDS_PER_SECOND]
-
-theorem cedar_compute_of_parts (s sgn : String)
-    (components : Cedar.Thm.Duration.Components)
-    (hs : s = sgn ++ components.asString)
-    (hsgn : sgn = "-" ∨ sgn = "")
-    (hwf : ComponentsWf components)
-    (hnonempty : components.nonempty) :
-    Cedar.Thm.Duration.computeValue s = some (formatValue sgn components) := by
-  have hbody : Cedar.Thm.Duration.IsWfBody components.asString :=
-    ⟨components, hnonempty, (components_wf_iff components).mp hwf, rfl⟩
-  rcases hsgn with rfl | rfl
-  · rw [hs, computeValue_neg_body, Cedar.Thm.Duration.computeSignedBodyValue,
-      cedar_body_value components hwf]
-    simp [formatValue, Triptych.signOf]
-  · have hs' : s = components.asString := by simpa using hs
-    rw [hs', computeValue_pos_body components.asString
-      (isWfBody_front_ne_dash components.asString hbody),
-      Cedar.Thm.Duration.computeSignedBodyValue, cedar_body_value components hwf]
-    simp
 
 theorem constraints_of_decode (s sgn : String)
     (components : Cedar.Thm.Duration.Components)
@@ -633,50 +515,4 @@ theorem wf_constraints_of_decode (s sgn : String)
   rw [h]
   simp [CaptureMap.toEnv]
 
-theorem bridge_value (s : String) (hcedar : Cedar.Thm.Duration.IsWfDuration s) :
-    Duration.computeValue s = Cedar.Thm.Duration.computeValue s := by
-  have hsurface := cedar_wf_to_surface hcedar
-  obtain ⟨sgn, components, hdecode, hsgn, hs, hwf⟩ :=
-    decode_parts_of_surface_wf hsurface
-  have hnonempty := components_nonempty_of_cedar components hcedar hs hsgn
-  rw [format_compute_of_decode s sgn components hdecode,
-    cedar_compute_of_parts s sgn components hs hsgn hwf hnonempty]
-
-theorem bridge_isValid (s : String) :
-    Duration.IsValid s ↔
-      Cedar.Thm.Duration.IsWfDuration s ∧
-        ∃ v,
-          Cedar.Thm.Duration.computeValue s = some v ∧
-            (-9223372036854775808 : Int) ≤ v ∧
-            v ≤ (9223372036854775807 : Int) := by
-  constructor
-  · rintro ⟨hsurface, hconstraints⟩
-    obtain ⟨sgn, components, hdecode, hsgn, hs, hwf⟩ :=
-      decode_parts_of_surface_wf hsurface.1
-    obtain ⟨hlo, hhi⟩ :=
-      (constraints_of_decode s sgn components hdecode).mp hconstraints
-    have hne :=
-      (wf_constraints_of_decode s sgn components hdecode).mp hsurface.2
-    have hnonempty : components.nonempty :=
-      (components_nonempty_iff components).mp hne
-    have hcedar := parts_to_cedar components hs hsgn hwf hnonempty
-    exact ⟨hcedar, formatValue sgn components,
-      cedar_compute_of_parts s sgn components hs hsgn hwf hnonempty, hlo, hhi⟩
-  · rintro ⟨hcedar, v, hvalue, hlo, hhi⟩
-    have hsurface := cedar_wf_to_surface hcedar
-    obtain ⟨sgn, components, hdecode, hsgn, hs, hwf⟩ :=
-      decode_parts_of_surface_wf hsurface
-    have hnonempty := components_nonempty_of_cedar components hcedar hs hsgn
-    have hparts :=
-      cedar_compute_of_parts s sgn components hs hsgn hwf hnonempty
-    have heq : formatValue sgn components = v := by
-      rw [hparts] at hvalue
-      exact Option.some.inj hvalue
-    have hwfConstraints : Duration.SatisfiesWfConstraints s :=
-      (wf_constraints_of_decode s sgn components hdecode).mpr
-        ((components_nonempty_iff components).mpr hnonempty)
-    refine ⟨⟨hsurface, hwfConstraints⟩,
-      (constraints_of_decode s sgn components hdecode).mpr ?_⟩
-    simpa [heq] using And.intro hlo hhi
-
-end Duration.CedarBridge
+end Duration.GrammarView

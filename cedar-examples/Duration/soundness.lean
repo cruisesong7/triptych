@@ -2,11 +2,12 @@
 
 import Duration.parser
 import Duration.grammar
-import Duration.CedarBridge
+import Duration.RuleRegistrySoundness
+-- Retained only for Cedar's independent serializer roundtrip theorem.
+import Cedar.Thm.Ext.Duration
 
 open Triptych
 open CedarExamples.Duration
-open Duration.CedarBridge
 
 set_option linter.unusedSimpArgs false
 set_option linter.unusedVariables false
@@ -23,11 +24,17 @@ theorem Duration.toSpec_ofSpec (s : String) (v : Int) :
       durationMillis (millisToDuration v) = v := by
   intro hvalid hvalue
   have hsurface : Duration.IsValid s := (Duration.IsValid_equiv s).mpr hvalid
-  obtain ⟨hwf, w, hcedarValue, hlo, hhi⟩ := (bridge_isValid s).mp hsurface
-  have hbridge := bridge_value s hwf
-  rw [hvalue, hcedarValue] at hbridge
-  have hv : v = w := Option.some.inj hbridge
-  subst w
+  obtain ⟨view, hview, hvalidView⟩ :=
+    (Duration.IsValid_view s).mp hsurface
+  have hdenotation : Duration.View.denotation view = v := by
+    rw [Duration.computeValue_view, hview] at hvalue
+    exact Option.some.inj hvalue
+  have hbounds := hvalidView.2
+  unfold Duration.View.Constraints Duration.Constraints at hbounds
+  change
+    (-9223372036854775808 : Int) ≤ Duration.View.denotation view ∧
+      Duration.View.denotation view ≤ (9223372036854775807 : Int) at hbounds
+  rw [hdenotation] at hbounds
   unfold durationMillis millisToDuration
     Cedar.Spec.Ext.Datetime.Duration.toMilliseconds
   exact Int64.toInt_ofInt_of_le (by omega) (by omega)
@@ -44,12 +51,8 @@ theorem Duration.encode_accepted (d : Cedar.Spec.Ext.Datetime.Duration) :
     change Cedar.Spec.Ext.Datetime.Duration.parse
       (Cedar.Spec.Ext.Datetime.Duration.toString d) = some d
     exact Cedar.Thm.Duration.parse_toString_roundtrip d
-  obtain ⟨hwf, hvalue⟩ := Cedar.Thm.Duration.parse_sound _ _ hparse
-  have hlo := Int64.le_toInt d.val
-  have hhi := Int64.toInt_lt d.val
   exact (Duration.IsValid_equiv _).mp
-    ((bridge_isValid _).mpr
-      ⟨hwf, d.val.toInt, hvalue, by omega, by omega⟩)
+    ((Duration.RuleRegistrySoundness.parser_agrees _ _).mp hparse).1
 
 theorem Duration.encode_value (d : Cedar.Spec.Ext.Datetime.Duration) :
     Duration.computeValue (durationToStr d) = some (durationMillis d) := by
@@ -57,9 +60,7 @@ theorem Duration.encode_value (d : Cedar.Spec.Ext.Datetime.Duration) :
     change Cedar.Spec.Ext.Datetime.Duration.parse
       (Cedar.Spec.Ext.Datetime.Duration.toString d) = some d
     exact Cedar.Thm.Duration.parse_toString_roundtrip d
-  obtain ⟨hwf, hvalue⟩ := Cedar.Thm.Duration.parse_sound _ _ hparse
-  rw [bridge_value _ hwf]
-  simpa [durationMillis, Cedar.Spec.Ext.Datetime.Duration.toMilliseconds] using hvalue
+  exact ((Duration.RuleRegistrySoundness.parser_agrees _ _).mp hparse).2
 
 theorem Duration.ofSpec_toSpec (d : Cedar.Spec.Ext.Datetime.Duration) :
     millisToDuration (durationMillis d) = d := by
@@ -90,31 +91,7 @@ section's `encode_*`. -/
 
 theorem Duration.extparse_reject (s : String) :
     Cedar.Spec.Ext.Datetime.Duration.parse s = none ↔ ¬Duration.IsValid s := by
-  rw [Cedar.Thm.Duration.parse_eq_none_iff]
-  constructor
-  · intro hbad hvalid
-    obtain ⟨hwf, w, hvalue, hlo, hhi⟩ := (bridge_isValid s).mp hvalid
-    rcases hbad with hnwf | ⟨v, hv, hoverflow⟩
-    · exact hnwf hwf
-    · rw [hvalue] at hv
-      have heq : v = w := (Option.some.inj hv).symm
-      subst v
-      simp only [Int64.«MIN», Int64.«MAX»] at hoverflow
-      omega
-  · intro hinvalid
-    by_cases hwf : Cedar.Thm.Duration.IsWfDuration s
-    · obtain ⟨v, hvalue⟩ :=
-        Option.isSome_iff_exists.mp
-          (Cedar.Thm.Duration.computeValue_isSome_of_isWfDuration hwf)
-      by_cases hrange :
-          (-9223372036854775808 : Int) ≤ v ∧
-            v ≤ (9223372036854775807 : Int)
-      · exact (hinvalid ((bridge_isValid s).mpr ⟨hwf, v, hvalue, hrange⟩)).elim
-      · right
-        refine ⟨v, hvalue, ?_⟩
-        simp only [Int64.«MIN», Int64.«MAX»]
-        omega
-    · exact Or.inl hwf
+  exact Duration.RuleRegistrySoundness.parser_rejects_iff s
 
 theorem Duration.extparse_eq_none_iff_view (s : String) :
     Cedar.Spec.Ext.Datetime.Duration.parse s = none ↔
@@ -129,25 +106,12 @@ theorem Duration.extparse_eq_none_iff_view (s : String) :
 theorem Duration.extparse_sound (s : String) (d : Cedar.Spec.Ext.Datetime.Duration) :
     Cedar.Spec.Ext.Datetime.Duration.parse s = some d →
       Duration.IsValid s ∧ Duration.computeValue s = some (durationMillis d) :=
-  by
-  intro hparse
-  obtain ⟨hwf, hvalue⟩ := Cedar.Thm.Duration.parse_sound s d hparse
-  have hlo := Int64.le_toInt d.val
-  have hhi := Int64.toInt_lt d.val
-  refine ⟨(bridge_isValid s).mpr
-    ⟨hwf, d.val.toInt, hvalue, by omega, by omega⟩, ?_⟩
-  rw [bridge_value s hwf]
-  simpa [durationMillis, Cedar.Spec.Ext.Datetime.Duration.toMilliseconds] using hvalue
+  Duration.RuleRegistrySoundness.parser_sound s d
 
 theorem Duration.extparse_complete (s : String) (d : Cedar.Spec.Ext.Datetime.Duration) :
     Duration.IsValid s →
       Duration.computeValue s = some (durationMillis d) → Cedar.Spec.Ext.Datetime.Duration.parse s = some d :=
-  by
-  intro hvalid hvalue
-  obtain ⟨hwf, _, _, _, _⟩ := (bridge_isValid s).mp hvalid
-  rw [bridge_value s hwf] at hvalue
-  exact Cedar.Thm.Duration.parse_complete s d hwf (by
-    simpa [durationMillis, Cedar.Spec.Ext.Datetime.Duration.toMilliseconds] using hvalue)
+  Duration.RuleRegistrySoundness.parser_complete s d
 
 theorem Duration.extparse_eq_some_iff_view (s : String)
     (d : Cedar.Spec.Ext.Datetime.Duration) :
