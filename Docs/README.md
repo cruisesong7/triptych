@@ -22,7 +22,9 @@ it generates up to three files, split by audience:
 
 * **`spec.lean` — a readable surface specification** — inlined per-production well-formedness
   predicates (`IsWf.*`), a `value` function, and the `IsValid` acceptance predicate,
-  reading like a hand-written spec. Proof-free (what you *cite*);
+  reading like a hand-written spec. Empty constraint phases are omitted: without
+  capture constraints `IsWf` aliases the start-production predicate, and without value
+  constraints `IsValid` aliases `IsWf`. Proof-free (what you *cite*);
 * **`parser.lean` — the runnable, verified artifact** — the analyzable deep-embedded engine
   (total capture-extracting `decode`, decidable `isValid`, `computeValue`); the **generated
   correct-by-construction parser** `parse` (= `computeValue` gated on the decidable `isValid`)
@@ -35,21 +37,30 @@ it generates up to three files, split by audience:
   let bridge proofs reason over named fields instead of `CaptureMap` plumbing. `parse_view`
   gives the executable validation/denotation equation, while `parse_eq_some_iff_view` and
   `parse_eq_none_iff_view` give its guard-free success and rejection relations. For declared
-  external parsers, the discharged `extparse_eq_some_iff_view` and
-  `extparse_eq_none_iff_view` package the external obligations in the same form. No `sorry`
-  (what you *run + trust*);
-* **`soundness.lean` — the obligation surface** — emitted *only* when a `parser … projection …`
+  external parsers, `checkedExtParse` validates every external success against the generated
+  parser. Its exact success, soundness, and typed-view theorems are auto-discharged without
+  trusting the external implementation. Once static external-parser soundness is proved,
+  `checkedExternalParse_eq_of_sound` shows that checking does not change its behavior. The
+  wrapper is emitted when the spec value type has `DecidableEq`; otherwise Triptych leaves the
+  static integration unchanged and reports a source-located warning. The
+  extensible `triptych_parser` registry and `triptych_sound` tactic provide the first static
+  automation layer: independently proved backend rules invert successful `Option` binds, maps,
+  alternatives, guards, filters, and conditionals while leaving unsupported primitives explicit.
+  The discharged `extparse_eq_some_iff_view` and `extparse_eq_none_iff_view` package the
+  stronger static external obligations in the same form. No `sorry` (what you *run + trust*);
+* **`soundness.lean` — the obligation surface** — emitted *only* when a `parser … toSpec …`
   or `printer <toString>` clause is present: the `sorry`'d obligations that a *user-supplied*
   external parser (`extparse_sound`/`_complete`/`_reject`) or value serializer
   (`encode_accepted`/`encode_value`) satisfies the spec — plus the printer theorems
   (`parse_toString_roundtrip`/`toString_injective`/`normalize_eq_iff_parse_eq`) auto-derived
-  from the encode obligations (Cedar's ext-type printer results). With both a `lift σ` and a
-  `projection π`, one more obligation guards the lift: `lift_faithful` (π∘σ = id *on accepted
-  values* — provable exactly when the constraints pin accepted values inside σ's faithful
-  domain, e.g. `value ∈ [Int64.MIN, Int64.MAX]` for a wrapping σ like `Int64.ofInt`; a
+  from the encode obligations (Cedar's ext-type printer results). With both `ofSpec` and
+  `toSpec`, one more obligation guards the conversion: `toSpec_ofSpec`
+  (`toSpec (ofSpec v) = v` *on accepted values* — provable exactly when the constraints pin
+  accepted values inside `ofSpec`'s faithful domain, e.g.
+  `value ∈ [Int64.MIN, Int64.MAX]` for `Int64.ofInt`; a
   missing range constraint makes it unprovable, surfacing the silent-wrap trap as a permanent
-  `sorry`), from which the π-view soundness `parse_sound_proj` of the *generated* parser is
-  auto-derived. A lint additionally warns at elaboration when `lift` appears with no value
+  `sorry`), from which `parse_sound_toSpec` for the *generated* parser is
+  auto-derived. A lint additionally warns at elaboration when `ofSpec` appears with no value
   constraint at all. These seams have no formal
   oracle (real-world-format conformance and the canonical serializer are user choices); they
   are the *only* proofs left to the human. Because this file holds *your* proofs, it is a
@@ -99,8 +110,8 @@ check sound for every input and derives the weaker semantic target
 `grammarDecodeUnique`,
 `grammarCaptureFunctional`, and `grammarValueCoherent` automatically. Its
 `parse_iff_denotes` theorem consumes only capture functionality and states that parser success
-is equivalent to the capture-level `Denotes` relation. For a lifted parser, the relational
-reader is the lift composed with the grammar value reader. Recursive FIRST-set alternatives,
+is equivalent to the capture-level `Denotes` relation. For a domain-valued parser, the relational
+reader is `ofSpec` composed with the grammar value reader. Recursive FIRST-set alternatives,
 shared-prefix alternatives, general nullable sequences, and repetition remain.
 
 ## Example
@@ -137,12 +148,13 @@ state `IPv6.IsValid s ↔ ∃ v, IPv6.decodeView s = some v ∧ v.Valid` and
 additionally gets the verified parser `<Name>.parse : String → Option α` (with its
 auto-discharged `parse_sound`/`parse_complete`/`parse_reject`) and the reconciliation theorem
 `<Name>.computeValue_eq` (see Decimal, Duration, Datetime, Graph). Adding a
-`parser <p> projection <π>` clause emits `soundness.lean` with the `sorry`'d obligations for an
-external parser — Decimal points it at the real `Cedar.Spec.Ext.Decimal.parse`. A
+`parser <p> toSpec <f>` clause immediately emits a sound `checkedExtParse` wrapper plus
+`soundness.lean` with the stronger static obligations for the unwrapped external parser —
+Decimal points it at the real `Cedar.Spec.Ext.Decimal.parse`. A
 `printer <toString>` clause names one canonical serializer over the spec value type and, from
 two `sorry`'d encode obligations, auto-derives the parse/print roundtrip, `toString`
 injectivity, and normalization — for the *generated* parser, and (when a `parser` clause is also
-present) for the *external* parser too, both stated in β-view via each parser's projection
+present) for the *external* parser too, with spec values related through `toSpec`
 (matching Cedar's `parse_toString_roundtrip` etc.).
 
 See `DESIGN.md` for the full design. The Cedar-free Graph example lives in

@@ -95,7 +95,7 @@ triptych IPv4 where
     -- the CIDR prefix, when present: no leading zeros ("/01" rejected) and ≤ 32.
     -- Absent (bare-address alternative) ⟹ vacuous, and `toIPNet` reads "" as /32.
     noLeadingZero Prefix   nat Prefix ∈ [0, 32]
-  parser ipv4Only projection id
+  parser ipv4Only toSpec id
   printer ipNetToStr
   to "IPv4"
 

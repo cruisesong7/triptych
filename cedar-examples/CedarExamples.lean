@@ -2,6 +2,7 @@ import Decimal.grammar
 import Decimal.spec
 import Decimal.parser
 import Decimal.soundness
+import Decimal.RuleRegistrySoundness
 import Duration.grammar
 import Duration.spec
 import Duration.parser
@@ -17,8 +18,8 @@ import IPv4.CedarBridge
 import IPv6.grammar
 import IPv6.spec
 import IPv6.parser
-import Decimal.CedarBridge
 import Duration.CedarBridge
+import Datetime.CedarBridge
 
 /-!
 # Cedar examples

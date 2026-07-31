@@ -35,27 +35,28 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
   user-obligations in the `soundness.lean` of examples with a `parser`/`printer` clause:
   the 3
   external-parser obligations (`extparse_sound`/`_complete`/`_reject` vs the REAL Cedar parser)
-  per example with a `parser` clause — Decimal, Duration, Datetime — plus, for examples that also
+  per example with a `parser` clause — Decimal, Duration, Datetime, IPv4 — plus, for examples that also
   have a `printer` clause (Decimal, Duration), 3 obligations: 2 encode
-  (`encode_accepted`/`encode_value`, the latter phrased π-view `computeValue (toStr d) = some (π
-  d)`) + 1 section (`lift_section : σ (π d) = d`, needed because the δ-view printer roundtrip lifts
-  the generated parser through `σ`; = Cedar's `Int64.ofInt_toInt` for Decimal) — plus, for
-  examples with BOTH `lift` and `parser … projection` (Decimal, Duration), 1 faithfulness
-  obligation `lift_faithful : isValid s → computeValue s = some v → π (σ v) = v` (π∘σ = id ON
-  ACCEPTED VALUES — the dual of `lift_section`, provable exactly when the range constraint pins
-  accepted values inside σ's faithful domain; UNPROVABLE if the constraint is missing and σ
-  wraps, so the silent-wrap trap surfaces as a permanent sorry; its payoff `parse_sound_proj`,
-  the π-view soundness of the generated lifted parser, is discharged via
-  `gatedParseLift_sound_proj`). A lint additionally warns at elaboration when `lift` appears
-  with no value constraint at all. Decimal's 7 and Duration's 7 obligations are discharged.
-  The remaining 8 are Datetime's 3 external-parser obligations and IPv4's 2 encode plus 3
-  external-parser obligations. The printer
+  (`encode_accepted`/`encode_value`, the latter phrased as
+  `computeValue (toStr d) = some (toSpec d)`) + 1 conversion law
+  (`ofSpec_toSpec : ofSpec (toSpec d) = d`; Cedar's `Int64.ofInt_toInt` for Decimal) — plus, for
+  examples with BOTH `ofSpec` and `parser … toSpec` (Decimal, Duration), 1 faithfulness
+  obligation `toSpec_ofSpec : isValid s → computeValue s = some v →
+  toSpec (ofSpec v) = v` on accepted values. It is provable exactly when the range constraint
+  pins accepted values inside `ofSpec`'s faithful domain and unprovable when a wrapping
+  conversion is left unguarded. Its payoff `parse_sound_toSpec` is discharged via
+  `gatedParseOfSpec_sound_toSpec`. A lint additionally warns at elaboration when `ofSpec` appears
+  with no value constraint at all. Decimal's and Duration's obligations are discharged, as are
+  all Datetime and IPv4 external-parser obligations. The only remaining source-level `sorry`s
+  are IPv4's 2 encode obligations. The printer
   theorems derived from those obligations
   (`parse_toString_roundtrip`/`toString_injective`/`normalize_eq_iff_parse_eq`, plus the
   `extparse_*` trio) are NOT `sorry`d — they carry `sorryAx` only transitively. Both parsers'
   printer theorems are stated in the clean δ-VIEW `parse (toStr d) = some d` (matching Cedar
   exactly). The generated `parse_sound`/`_complete`/`_reject` are fully axiom-clean. (Datetime has
-  no `printer`: Cedar has no canonical `ToString Datetime`.)
+  no `printer`: Cedar has no canonical `ToString Datetime`.) A `parser` clause also emits the
+  axiom-clean `checkedExtParse` fallback and its soundness/view theorems whenever the spec value
+  has `DecidableEq`; these introduce no additional obligation.
 - Verify axiom-cleanliness with a temp `#print axioms <name>` file, then delete it.
 - `simp` config syntax (v4.31): `simp (config := { maxSteps := N }) only [...]` — config
   BEFORE `only`. `grind` is available; `tauto` is NOT (no Mathlib).
@@ -93,13 +94,14 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
   alternatives; the DSL derives and emits `grammarCaptureFunctional` and
   `grammarValueCoherent` when it succeeds.
 - `RelationalParser.lean` — connects generated gated parsers to capture-level `Denotes`.
-  Under `GrammarCaptureFunctional`, it covers map/environment readers and lifted variants;
+  Under `GrammarCaptureFunctional`, it covers map/environment readers and `ofSpec` variants;
   the DSL emits `parse_iff_denotes` from these theorems. Graph has this contract and all three
   static all-input certificates. Other example `#eval`s remain representative.
 - `Reconcile.lean` — reusable lemmas for emitted grammar/full-WF equivalences (leaf
   `_matchesTerm`, `matchesSym_rep_iff`, reader-agreement `natOf_getD` etc.).
 - `Assemble.lean` — bundles `isWf`/`satisfiesConstraints`/`isValid`; `component`;
-  contract statements `SoundStmt`/`CompleteStmt`/`RejectStmt` (over value type `β`, `π : α→β`).
+  contract statements `SoundStmt`/`CompleteStmt`/`RejectStmt`
+  (over value type `β`, `toSpec : α → β`).
 - `Emit.lean` — renders surface predicates (`symPred`/`termPred`), grammar literals,
   `matchesRefProof`/`isWfGrammarEquivProof`/`isWfEquivProof`/`isValidEquivProof`.
 - `Syntax.lean` — the `triptych` command (DSL surface → core, elaborate, write the three
@@ -112,10 +114,10 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
   proof-free), `parser.lean` (engine bundle + auto-discharged proofs `IsWf_equiv`/
   `computeValue_eq`/decidability + the generated correct-by-construction parser `parse` and its
   discharged `parse_sound`/`parse_complete`/`parse_reject`), and — ONLY when the `triptych`
-  has a `parser <p> projection <π>` clause OR a `printer` clause — `soundness.lean` (the `sorry`d
+  has a `parser <p> toSpec <f>` clause OR a `printer` clause — `soundness.lean` (the `sorry`d
   obligations, PARTITIONED into two banner-delimited sections: "· generated parser" — the shared
-  `encode_*`/`lift_section` obligations (plus, with `lift` + `projection`, `lift_faithful` and its
-  discharged payoff `parse_sound_proj`) + the discharged `parse_toString_*` printer theorems about
+  `encode_*`/`ofSpec_toSpec` obligations (plus, with `ofSpec` + `toSpec`, `toSpec_ofSpec` and its
+  discharged payoff `parse_sound_toSpec`) + the discharged `parse_toString_*` printer theorems about
   `<Name>.parse`; then "· external parser" — the `extparse_*` obligations + discharged external
   printer theorems about the real Cedar `parse`. Generated-first, since the external printer
   theorems reuse the generated section's `encode_*`. A `printer`-only spec has just the generated
@@ -132,11 +134,11 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
 - `cedar-examples/ConformanceTests.lean` — a one-time confidence
   check (its own `ConformanceTests` lib
   target, out of `default_target`): runs the GENERATED EXECUTABLE parsers (`<Name>.parse` =
-  `gatedParse[Lift] isValid computeValue …`, the decode-based engine — NOT the readable surface
+  `gatedParse[OfSpec] isValid computeValue …`, the decode-based engine — NOT the readable surface
   `IsValid` Prop) against Cedar's REAL parsers over Cedar's OWN unit-test corpus
-  (`cedar-lean/UnitTest/{Decimal,Datetime}.lean`). Because `lift` makes Decimal/Duration `parse`
+  (`cedar-lean/UnitTest/{Decimal,Datetime}.lean`). Because `ofSpec` makes Decimal/Duration `parse`
   return the SAME type as Cedar's, the check is direct equality `ourParse s = cedarParse s` (Cedar
-  is the oracle — checks accept-set AND value at once); Datetime (no lift) compares
+  is the oracle — checks accept-set AND value at once); Datetime (no `ofSpec`) compares
   `ourParse s = (cedarParse s).map datetimeMillis`. Plain `#eval` (no `native_decide`, no axioms);
   a nonzero failure count aborts the build. Currently 32 Decimal + 42 Duration + 74 Datetime +
   30 IPv4 + 29 IPv6 = 207 cases, all passing. This is what caught the Duration sign bug (below).
@@ -166,20 +168,14 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
   capture (the old silent-`+1` trap) and `nat/int/len` of a sign capture. `sign` lowers to the
   same `Sym` as `["-"]` (optional lit), so it's pure grammar sugar — the engine/denotation/proofs
   never see a new constructor; detection of sign productions is SYNTACTIC (in `elabTriptych`).
-- Clause nesting (two duals): `lift <σ>` is a SUB-clause of `value` (parses only after a scalar
-  `value <arith>`, not `value'` — a `value'` already picks its own output type), and `projection
-  <π>` is a sub-clause of `parser`. They are opposite maps: `σ : β → δ` lifts the spec value type
-  UP to the domain type so the GENERATED parser returns `Option δ`; `π : δ → β` reads an EXTERNAL
-  parser's domain value DOWN to `β` to state its contract. For a lifted example they are a
-  section/retraction pair (`σ ∘ π = id`, the `lift_section` obligation; the dual `π ∘ σ = id` ON
-  ACCEPTED VALUES is the `lift_faithful` obligation, emitted whenever lift + projection are both
-  present — see the axiom-invariant bullet above). So: `projection` is
-  parser-only (and, with `printer`, also underpins the lifted generated roundtrip via
-  `lift_section`); `lift` needs a scalar `value` and works standalone (no parser/printer needed).
-  LIFT GUARD: `lift` with NO value constraint at all draws an elaboration-time lint warning
-  (a wrapping σ like `Int64.ofInt` silently wraps out-of-range accepted inputs; the range
-  constraint is what makes `lift_faithful` provable — ignore the warning only for a
-  total-embedding σ).
+- Clause nesting: `ofSpec <f>` is a sub-clause of scalar `value` (not `value'`, which already
+  chooses its output type), and `toSpec <g>` is a sub-clause of `parser`. The maps have opposite
+  directions: `ofSpec : β → δ` converts a spec value to the generated parser's domain type;
+  `toSpec : δ → β` converts an external parser's result to the spec value used in its contract.
+  When both are present, the emitted laws are `ofSpec_toSpec : ofSpec (toSpec d) = d` and
+  `toSpec_ofSpec : toSpec (ofSpec v) = v` on accepted values. `ofSpec` works standalone.
+  CONVERSION GUARD: `ofSpec` with no value constraint draws an elaboration-time warning because
+  a wrapping conversion such as `Int64.ofInt` can silently convert out-of-range accepted inputs.
 - `rep` well-formedness (enforced at parse time + carried in `repOk`, required by the
   roundtrip): separator must be NON-EMPTY and lower bound >= 1. Both are cases where the
   decoder (`item (sep item)*`) genuinely disagrees with the denotation.

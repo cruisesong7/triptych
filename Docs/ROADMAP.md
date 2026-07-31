@@ -11,7 +11,7 @@ Make the Cedar IP address family the primary integration target.
 ### IPv4
 
 - discharge the two remaining printer obligations;
-- discharge the three remaining external-parser obligations;
+- complete: discharge all three external-parser obligations;
 - retain exact agreement with Cedar for bare addresses, CIDR prefixes, numeric bounds, and
   canonical decimal spelling;
 - remove every `sorry` from `IPv4/soundness.lean`.
@@ -47,8 +47,21 @@ Prioritize reductions in user-authored proof volume:
 - complete: preserve scalar capture absence in views with grammar-derived `Option String`
   fields instead of collapsing absence to `""`;
 - complete: emit decode-elimination lemmas for component readers, constraint phases, and values;
+- complete: emit `checkedExtParse`, an exact success theorem, and soundness/view theorems that
+  validate arbitrary external parser results against the generated parser;
+- complete: prove the checked wrapper is extensionally equal to an external parser once its
+  static soundness theorem is available;
+- independently specify and verify reusable DSL components such as signs, fixed-width digits,
+  bounded integers, and separators at the language, capture, and denotation levels;
+- complete: register Cedar decimal natural/signed conversion rules and IPv4 parser components
+  as reusable automation rules so downstream proofs apply a
+  named component specification instead of unfolding its implementation;
+- complete: build an extensible external-parser rule registry and `triptych_sound` tactic for
+  successful `Option` paths, alternatives, maps, filters, guards, and conditionals;
 - generate stronger bridge lemmas for common external parser combinators;
-- automate routine soundness, completeness, rejection, projection, and printer obligations;
+- generate exact capture-view inversion/construction theorems from the grammar, eliminating the
+  remaining format-shaped `decode`/`matchProd` proofs currently demonstrated by Decimal;
+- automate routine soundness, completeness, rejection, `toSpec`, and printer obligations;
 - turn recurring decomposition arguments into reusable tactics or theorem families;
 - generate useful proof hints and source-located diagnostics when automation stops;
 - separate genuinely semantic obligations from bookkeeping that the compiler can discharge;
@@ -72,7 +85,7 @@ for the user, with routine parser plumbing discharged automatically.
 
 After IPAddr and the automation pass:
 
-- discharge Datetime's three external-parser obligations;
+- complete: discharge Datetime's three external-parser obligations;
 - audit Decimal and Duration after applying the new automation;
 - require zero `sorry`, accepted axioms only, and complete conformance for all shipped Cedar
   examples.

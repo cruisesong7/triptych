@@ -2,11 +2,11 @@
 
 import Decimal.parser
 import Decimal.grammar
-import Decimal.CedarBridge
+import Decimal.RuleRegistrySoundness
+import Cedar.Thm.Ext.Decimal
 
 open Triptych
 open CedarExamples.Decimal
-open Decimal.CedarBridge
 
 set_option linter.unusedSimpArgs false
 set_option linter.unusedVariables false
@@ -18,47 +18,45 @@ Cedar's Decimal theorems; from them the printer theorems
 (`parse_toString_roundtrip`/`toString_injective`/`normalize_eq_iff_parse_eq`) follow.
 These same `encode_*` obligations are reused by the external section below. -/
 
-private theorem int64_toInt_bounds (i : Int64) :
-    (-9223372036854775808 : Int) ≤ i.toInt ∧ i.toInt ≤ (9223372036854775807 : Int) := by
-  have hrange : Int64.«MIN» ≤ i.toInt ∧ i.toInt ≤ Int64.«MAX» :=
-    (Int64.ofInt?_some_iff (i := i.toInt)).mpr (by
-      simpa using Int64.ofInt?_toInt i)
-  simpa only [Int64.«MIN», Int64.«MAX»] using hrange
-
-theorem Decimal.lift_faithful (s : String) (v : Int) :
+theorem Decimal.toSpec_ofSpec (s : String) (v : Int) :
     Decimal.isValid s → Decimal.computeValue s = some v → Int64.toInt (Int64.ofInt v) = v := by
   intro hvalid hvalue
   have hsurface : Decimal.IsValid s := (Decimal.IsValid_equiv s).mpr hvalid
-  obtain ⟨hwf, cedarValue, hcedarValue, hlo, hhi⟩ := (bridge_isValid s).mp hsurface
-  have hformatValue := bridge_value s hwf
-  rw [hvalue] at hformatValue
-  rw [hcedarValue] at hformatValue
-  have hv : v = cedarValue := Option.some.inj hformatValue
-  rw [hv]
+  obtain ⟨view, hview, hvalidView⟩ := (Decimal.IsValid_view s).mp hsurface
+  have hdenotation : Decimal.View.denotation view = v := by
+    rw [Decimal.computeValue_view, hview] at hvalue
+    exact Option.some.inj hvalue
+  have hbounds :
+      (-9223372036854775808 : Int) ≤ v ∧ v ≤ (9223372036854775807 : Int) := by
+    unfold Decimal.View.Valid Decimal.View.Constraints Decimal.Constraints at hvalidView
+    change
+      (-9223372036854775808 : Int) ≤ Decimal.View.denotation view ∧
+        Decimal.View.denotation view ≤ (9223372036854775807 : Int) at hvalidView
+    rw [hdenotation] at hvalidView
+    exact hvalidView
   exact Int64.toInt_ofInt_of_le (by omega) (by omega)
 
-theorem Decimal.parse_sound_proj (s : String) (i : Int64) :
+theorem Decimal.parse_sound_toSpec (s : String) (i : Int64) :
     Decimal.parse s = some i → Decimal.isValid s ∧ Decimal.computeValue s = some (Int64.toInt i) :=
-  Triptych.gatedParseLift_sound_proj Decimal.isValid Decimal.computeValue Int64.ofInt Int64.toInt
-    Decimal.lift_faithful s i
+  Triptych.gatedParseOfSpec_sound_toSpec
+    Decimal.isValid Decimal.computeValue Int64.ofInt Int64.toInt Decimal.toSpec_ofSpec s i
 
 theorem Decimal.encode_accepted (i : Int64) : Decimal.isValid (decimalToStr i) := by
   have hparse := Cedar.Thm.Decimal.parse_toString_roundtrip i
-  obtain ⟨hwf, hvalue⟩ := Cedar.Thm.Decimal.parse_sound (decimalToStr i) i hparse
   exact (Decimal.IsValid_equiv _).mp
-    ((bridge_isValid _).mpr ⟨hwf, i.toInt, hvalue, int64_toInt_bounds i⟩)
+    (Decimal.RuleRegistrySoundness.parser_sound (decimalToStr i) i hparse).1
 
 theorem Decimal.encode_value (i : Int64) :
     Decimal.computeValue (decimalToStr i) = some (Int64.toInt i) := by
   have hparse := Cedar.Thm.Decimal.parse_toString_roundtrip i
-  obtain ⟨hwf, hvalue⟩ := Cedar.Thm.Decimal.parse_sound (decimalToStr i) i hparse
-  rw [bridge_value _ hwf, hvalue]
+  exact (Decimal.RuleRegistrySoundness.parser_sound (decimalToStr i) i hparse).2
 
-theorem Decimal.lift_section (i : Int64) : Int64.ofInt (Int64.toInt i) = i :=
+theorem Decimal.ofSpec_toSpec (i : Int64) : Int64.ofInt (Int64.toInt i) = i :=
   Int64.ofInt_toInt i
 
 theorem Decimal.parse_toString_roundtrip (i : Int64) : Decimal.parse (decimalToStr i) = some i :=
-  Triptych.gatedParseLift_toString_roundtrip Decimal.encode_accepted Decimal.encode_value Decimal.lift_section i
+  Triptych.gatedParseOfSpec_toString_roundtrip
+    Decimal.encode_accepted Decimal.encode_value Decimal.ofSpec_toSpec i
 
 theorem Decimal.toString_injective (i i' : Int64) (h : decimalToStr i = decimalToStr i') : i = i' :=
   Triptych.toString_injective Decimal.parse_toString_roundtrip i i' h
@@ -70,39 +68,14 @@ theorem Decimal.normalize_eq_iff_parse_eq (s s' : String) :
 /- ══════════════════════ soundness · external parser ══════════════════════
 Obligations for validating YOUR OWN external parser against this specification:
 `extparse_sound`, `extparse_complete`, and `extparse_reject`, stated over the readable
-surface `IsValid`/`computeValue`. Cedar's Decimal parser theorems discharge them below.
+surface `IsValid`/`computeValue`. Registered successful-path rules proved directly from
+Cedar's executable parser discharge them below; no Cedar Decimal correctness theorem is used.
 The external printer theorems (`extparse_toString_*`) then follow, reusing the generated
 section's `encode_*`. -/
 
 theorem Decimal.extparse_reject (s : String) :
-    Cedar.Spec.Ext.Decimal.parse s = none ↔ ¬Decimal.IsValid s := by
-  rw [Cedar.Thm.Decimal.parse_eq_none_iff]
-  constructor
-  · rintro (hnwf | ⟨v, hvalue, hlow | hhigh⟩) hvalid
-    · exact hnwf ((bridge_isValid s).mp hvalid).1
-    · obtain ⟨_, v', hvalue', hlo, _⟩ := (bridge_isValid s).mp hvalid
-      rw [hvalue] at hvalue'
-      have : v = v' := Option.some.inj hvalue'
-      simp only [Int64.«MIN»] at hlow
-      omega
-    · obtain ⟨_, v', hvalue', _, hhi⟩ := (bridge_isValid s).mp hvalid
-      rw [hvalue] at hvalue'
-      have : v = v' := Option.some.inj hvalue'
-      simp only [Int64.«MAX»] at hhigh
-      omega
-  · intro hinvalid
-    by_cases hwf : Cedar.Thm.Decimal.IsWfDecimal s
-    · right
-      obtain ⟨v, hvalue⟩ := Option.isSome_iff_exists.mp
-        (CedarSupport.DecimalInternals.computeValue_isSome_of_isWfDecimal hwf)
-      refine ⟨v, hvalue, ?_⟩
-      by_contra hnot
-      have hbounds :
-          (-9223372036854775808 : Int) ≤ v ∧ v ≤ (9223372036854775807 : Int) := by
-        simp only [Int64.«MIN», Int64.«MAX»] at hnot
-        omega
-      exact hinvalid ((bridge_isValid s).mpr ⟨hwf, v, hvalue, hbounds⟩)
-    · exact Or.inl hwf
+    Cedar.Spec.Ext.Decimal.parse s = none ↔ ¬Decimal.IsValid s :=
+  Decimal.RuleRegistrySoundness.parser_rejects_iff s
 
 theorem Decimal.extparse_eq_none_iff_view (s : String) :
     Cedar.Spec.Ext.Decimal.parse s = none ↔
@@ -116,19 +89,13 @@ theorem Decimal.extparse_eq_none_iff_view (s : String) :
 
 theorem Decimal.extparse_sound (s : String) (d : Cedar.Spec.Ext.Decimal) :
     Cedar.Spec.Ext.Decimal.parse s = some d →
-      Decimal.IsValid s ∧ Decimal.computeValue s = some (Int64.toInt d) := by
-  intro hparse
-  obtain ⟨hwf, hvalue⟩ := Cedar.Thm.Decimal.parse_sound s d hparse
-  exact ⟨(bridge_isValid s).mpr ⟨hwf, d.toInt, hvalue, int64_toInt_bounds d⟩, by
-    rw [bridge_value s hwf, hvalue]⟩
+      Decimal.IsValid s ∧ Decimal.computeValue s = some (Int64.toInt d) :=
+  Decimal.RuleRegistrySoundness.parser_sound s d
 
 theorem Decimal.extparse_complete (s : String) (d : Cedar.Spec.Ext.Decimal) :
     Decimal.IsValid s → Decimal.computeValue s = some (Int64.toInt d) →
-      Cedar.Spec.Ext.Decimal.parse s = some d := by
-  intro hvalid hvalue
-  obtain ⟨hwf, _⟩ := (bridge_isValid s).mp hvalid
-  rw [bridge_value s hwf] at hvalue
-  exact Cedar.Thm.Decimal.parse_complete s d hwf hvalue
+      Cedar.Spec.Ext.Decimal.parse s = some d :=
+  Decimal.RuleRegistrySoundness.parser_complete s d
 
 theorem Decimal.extparse_eq_some_iff_view (s : String) (d : Cedar.Spec.Ext.Decimal) :
     Cedar.Spec.Ext.Decimal.parse s = some d ↔

@@ -408,20 +408,17 @@ theorem Datetime.IsWf_equiv (s : String) : Datetime.IsWf s ↔ Datetime.isWf s :
     countOf_getD, signOf_getD, Env.countVal, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
   try grind
 
-theorem Datetime.SatisfiesConstraints_equiv (s : String) :
-    Datetime.SatisfiesConstraints s ↔ Datetime.satisfiesConstraints s :=
-  by
-  unfold Datetime.satisfiesConstraints Triptych.satisfiesConstraints
-  unfold Datetime.SatisfiesConstraints Datetime.constraints
-  simp only [Triptych.component, List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const,
-    ConstraintEntry.valPart, Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD,
-    countOf_getD, signOf_getD, Env.countVal, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
-  try grind
-
 theorem Datetime.IsValid_equiv (s : String) : Datetime.IsValid s ↔ Datetime.isValid s :=
   by
   unfold Datetime.IsValid Datetime.isValid
-  rw [(Datetime.IsWf_equiv s), (Datetime.SatisfiesConstraints_equiv s)]
+  rw [(Datetime.IsWf_equiv s)]
+  unfold Datetime.satisfiesConstraints Triptych.satisfiesConstraints Datetime.constraints
+  simp only [List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, ConstraintEntry.valPart, false_implies,
+    true_and, and_true]
+  constructor
+  · intro h
+    exact ⟨h, fun _ => True.intro⟩
+  · exact And.left
 
 instance Datetime.instDecidableGrammar : DecidablePred Datetime.IsWf.Datetime := fun s =>
   @decidable_of_iff _ _ (Datetime.IsWfGrammar_equiv s) (Triptych.decIsWf Datetime.grammar (by decide) s)
@@ -429,10 +426,7 @@ instance Datetime.instDecidableGrammar : DecidablePred Datetime.IsWf.Datetime :=
 instance Datetime.instDecidableIsWf : DecidablePred Datetime.IsWf := fun s =>
   @decidable_of_iff _ _ (Datetime.IsWf_equiv s).symm inferInstance
 
-instance Datetime.instDecidableSatisfiesConstraints : DecidablePred Datetime.SatisfiesConstraints := fun s =>
-  @decidable_of_iff _ _ (Datetime.SatisfiesConstraints_equiv s).symm inferInstance
-
-instance Datetime.instDecidableIsValid : DecidablePred Datetime.IsValid := fun s => inferInstanceAs (Decidable (_ ∧ _))
+instance Datetime.instDecidableIsValid : DecidablePred Datetime.IsValid := fun s => inferInstance
 
 theorem Datetime.View.wfConstraints_of_decode {s : String} {m : Triptych.CaptureMap}
     (h : decode Datetime.grammar s = some m) :
@@ -440,10 +434,6 @@ theorem Datetime.View.wfConstraints_of_decode {s : String} {m : Triptych.Capture
   by
   rw [Datetime.SatisfiesWfConstraints_of_decode h]
   rfl
-
-theorem Datetime.View.constraints_of_decode {s : String} {m : Triptych.CaptureMap}
-    (_ : decode Datetime.grammar s = some m) :
-    Datetime.SatisfiesConstraints s ↔ Datetime.View.Constraints (Datetime.View.ofMap s m) := by rfl
 
 theorem Datetime.IsValid_view (s : String) :
     Datetime.IsValid s ↔ ∃ v : Datetime.View, Datetime.decodeView s = some v ∧ Datetime.View.Valid v :=
@@ -456,9 +446,7 @@ theorem Datetime.IsValid_view (s : String) :
     refine ⟨Datetime.View.ofMap s m, ?_, ?_⟩
     · unfold Datetime.decodeView
       simp [hm]
-    ·
-      exact
-        ⟨(Datetime.View.wfConstraints_of_decode hm).mp hvalid.1.2, (Datetime.View.constraints_of_decode hm).mp hvalid.2⟩
+    · exact (Datetime.View.wfConstraints_of_decode hm).mp hvalid.2
   · rintro ⟨v, hview, hvalid⟩
     unfold Datetime.decodeView at hview
     rw [Option.map_eq_some_iff] at hview
@@ -467,9 +455,7 @@ theorem Datetime.IsValid_view (s : String) :
     have hdecoded : (decode Datetime.grammar s).isSome = true := by simp [hm]
     have hgrammar :=
       (Datetime.IsWfGrammar_equiv s).mp ((decodeSome_iff_IsWf Datetime.grammar (by decide) s).mp hdecoded)
-    exact
-      ⟨⟨hgrammar, (Datetime.View.wfConstraints_of_decode hm).mpr hvalid.1⟩,
-        (Datetime.View.constraints_of_decode hm).mpr hvalid.2⟩
+    exact ⟨hgrammar, (Datetime.View.wfConstraints_of_decode hm).mpr hvalid⟩
 
 theorem Datetime.computeValue_eq (s : String) :
     Datetime.computeValue s =
@@ -527,6 +513,8 @@ The generated correct-by-construction parser `parse` (= `computeValue` gated on 
 decidable `isValid`) together with its guarantees — `parse_sound`, `parse_complete`,
 `parse_reject`, `parse_view`, and typed `parse_eq_some_iff_view` /
 `parse_eq_none_iff_view` normal forms — all AUTO-DISCHARGED here.
+When an external parser is declared, `checkedExtParse` additionally validates each
+external result against this parser and ships an AUTO-DISCHARGED soundness theorem.
 A verified parser, no `sorry`. -/
 
 theorem Datetime.computeValue_isSome (s : String) : Datetime.isValid s → (Datetime.computeValue s).isSome :=
@@ -586,3 +574,30 @@ theorem Datetime.parse_eq_none_iff_view (s : String) :
   · intro hnoview hvalidEngine
     have hvalidSurface := (Datetime.IsValid_equiv s).mpr hvalidEngine
     exact hnoview ((Datetime.IsValid_view s).mp hvalidSurface)
+
+def Datetime.checkedExtParse (s : String) : Option Cedar.Spec.Ext.Datetime :=
+  Triptych.checkedExternalParse Datetime.IsValid Datetime.computeValue Cedar.Spec.Ext.Datetime.parse datetimeMillis s
+
+theorem Datetime.checkedExtParse_eq_some_iff (s : String) (d : Cedar.Spec.Ext.Datetime) :
+    Datetime.checkedExtParse s = some d ↔
+      Cedar.Spec.Ext.Datetime.parse s = some d ∧
+        Datetime.IsValid s ∧ Datetime.computeValue s = some (datetimeMillis d) :=
+  Triptych.checkedExternalParse_eq_some_iff Datetime.IsValid Datetime.computeValue Cedar.Spec.Ext.Datetime.parse
+    datetimeMillis s d
+
+theorem Datetime.checkedExtParse_sound (s : String) (d : Cedar.Spec.Ext.Datetime) :
+    Datetime.checkedExtParse s = some d → Datetime.IsValid s ∧ Datetime.computeValue s = some (datetimeMillis d) :=
+  Triptych.checkedExternalParse_sound Datetime.IsValid Datetime.computeValue Cedar.Spec.Ext.Datetime.parse
+    datetimeMillis s d
+
+theorem Datetime.checkedExtParse_sound_view (s : String) (d : Cedar.Spec.Ext.Datetime) :
+    Datetime.checkedExtParse s = some d →
+      ∃ v : Datetime.View,
+        Datetime.decodeView s = some v ∧ Datetime.View.Valid v ∧ Datetime.View.denotation v = datetimeMillis d :=
+  by
+  intro hparse
+  obtain ⟨hvalid, hvalue⟩ := Datetime.checkedExtParse_sound s d hparse
+  obtain ⟨v, hview, hvalidView⟩ := (Datetime.IsValid_view s).mp hvalid
+  refine ⟨v, hview, hvalidView, ?_⟩
+  rw [Datetime.computeValue_view, hview] at hvalue
+  exact Option.some.inj hvalue

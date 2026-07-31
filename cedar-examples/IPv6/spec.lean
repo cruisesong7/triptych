@@ -17,9 +17,10 @@ set_option linter.unusedVariables false
 The more readable specification. Each production of the input grammar becomes an
 inlined well-formedness predicate `IsWf.*` written as a plain existential over the
 named captures, so you can read it side-by-side with the grammar and check that it
-says the same thing. `WfConstraints` contains capture-derived format conditions;
-`Constraints` contains only conditions that explicitly mention the final `value`.
-`IsValid` combines both phases. This file is proof-free — it is what you cite. -/
+says the same thing. When present, `WfConstraints` contains capture-derived format
+conditions and `Constraints` contains conditions that explicitly mention the final
+`value`. Empty phases are omitted; `IsWf` and `IsValid` specialize accordingly.
+This file is proof-free — it is what you cite. -/
 
 def IPv6.grammar : Grammar :=
   Grammar.mk "V6Net"
@@ -88,11 +89,8 @@ def IPv6.SatisfiesWfConstraints (s : String) : Prop :=
 abbrev IPv6.IsWf (s : String) : Prop :=
   IPv6.IsWf.V6Net s ∧ IPv6.SatisfiesWfConstraints s
 
-abbrev IPv6.SatisfiesConstraints (s : String) : Prop :=
-  True
-
 abbrev IPv6.IsValid (s : String) : Prop :=
-  IPv6.IsWf s ∧ IPv6.SatisfiesConstraints s
+  IPv6.IsWf s
 
 structure IPv6.View where
   input : String
@@ -107,11 +105,8 @@ def IPv6.View.WfConstraints (v : IPv6.View) : Prop :=
   IPv6.WfConstraints ((IPv6.View.h16l_count v).getD "") ((IPv6.View.h16r_count v).getD "")
     ((IPv6.View.cIDRPrefix v).getD "")
 
-abbrev IPv6.View.Constraints (_ : IPv6.View) : Prop :=
-  True
-
 abbrev IPv6.View.Valid (v : IPv6.View) : Prop :=
-  IPv6.View.WfConstraints v ∧ IPv6.View.Constraints v
+  IPv6.View.WfConstraints v
 
 def IPv6.View.denotation (v : IPv6.View) :=
   IPv6.value (IPv6.View.h16All v) (IPv6.View.h16lAll v) (IPv6.View.h16rAll v) ((IPv6.View.cIDRPrefix v).getD "")

@@ -18,7 +18,7 @@ Cedar's Duration theorems; from them the printer theorems
 (`parse_toString_roundtrip`/`toString_injective`/`normalize_eq_iff_parse_eq`) follow.
 These same `encode_*` obligations are reused by the external section below. -/
 
-theorem Duration.lift_faithful (s : String) (v : Int) :
+theorem Duration.toSpec_ofSpec (s : String) (v : Int) :
     Duration.isValid s → Duration.computeValue s = some v →
       durationMillis (millisToDuration v) = v := by
   intro hvalid hvalue
@@ -32,10 +32,11 @@ theorem Duration.lift_faithful (s : String) (v : Int) :
     Cedar.Spec.Ext.Datetime.Duration.toMilliseconds
   exact Int64.toInt_ofInt_of_le (by omega) (by omega)
 
-theorem Duration.parse_sound_proj (s : String) (d : Cedar.Spec.Ext.Datetime.Duration) :
+theorem Duration.parse_sound_toSpec (s : String) (d : Cedar.Spec.Ext.Datetime.Duration) :
     Duration.parse s = some d → Duration.isValid s ∧ Duration.computeValue s = some (durationMillis d) :=
-  Triptych.gatedParseLift_sound_proj Duration.isValid Duration.computeValue millisToDuration durationMillis
-    Duration.lift_faithful s d
+  Triptych.gatedParseOfSpec_sound_toSpec
+    Duration.isValid Duration.computeValue millisToDuration durationMillis
+      Duration.toSpec_ofSpec s d
 
 theorem Duration.encode_accepted (d : Cedar.Spec.Ext.Datetime.Duration) :
     Duration.isValid (durationToStr d) := by
@@ -60,14 +61,16 @@ theorem Duration.encode_value (d : Cedar.Spec.Ext.Datetime.Duration) :
   rw [bridge_value _ hwf]
   simpa [durationMillis, Cedar.Spec.Ext.Datetime.Duration.toMilliseconds] using hvalue
 
-theorem Duration.lift_section (d : Cedar.Spec.Ext.Datetime.Duration) : millisToDuration (durationMillis d) = d := by
+theorem Duration.ofSpec_toSpec (d : Cedar.Spec.Ext.Datetime.Duration) :
+    millisToDuration (durationMillis d) = d := by
   rcases d with ⟨val⟩
   simp [millisToDuration, durationMillis,
     Cedar.Spec.Ext.Datetime.Duration.toMilliseconds, Int64.ofInt_toInt]
 
 theorem Duration.parse_toString_roundtrip (d : Cedar.Spec.Ext.Datetime.Duration) :
     Duration.parse (durationToStr d) = some d :=
-  Triptych.gatedParseLift_toString_roundtrip Duration.encode_accepted Duration.encode_value Duration.lift_section d
+  Triptych.gatedParseOfSpec_toString_roundtrip
+    Duration.encode_accepted Duration.encode_value Duration.ofSpec_toSpec d
 
 theorem Duration.toString_injective (d d' : Cedar.Spec.Ext.Datetime.Duration) (h : durationToStr d = durationToStr d') :
     d = d' :=

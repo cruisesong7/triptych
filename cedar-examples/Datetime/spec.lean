@@ -17,9 +17,10 @@ set_option linter.unusedVariables false
 The more readable specification. Each production of the input grammar becomes an
 inlined well-formedness predicate `IsWf.*` written as a plain existential over the
 named captures, so you can read it side-by-side with the grammar and check that it
-says the same thing. `WfConstraints` contains capture-derived format conditions;
-`Constraints` contains only conditions that explicitly mention the final `value`.
-`IsValid` combines both phases. This file is proof-free — it is what you cite. -/
+says the same thing. When present, `WfConstraints` contains capture-derived format
+conditions and `Constraints` contains conditions that explicitly mention the final
+`value`. Empty phases are omitted; `IsWf` and `IsValid` specialize accordingly.
+This file is proof-free — it is what you cite. -/
 
 def Datetime.grammar : Grammar :=
   Grammar.mk "Datetime"
@@ -118,11 +119,8 @@ def Datetime.SatisfiesWfConstraints (s : String) : Prop :=
 abbrev Datetime.IsWf (s : String) : Prop :=
   Datetime.IsWf.Datetime s ∧ Datetime.SatisfiesWfConstraints s
 
-abbrev Datetime.SatisfiesConstraints (s : String) : Prop :=
-  True
-
 abbrev Datetime.IsValid (s : String) : Prop :=
-  Datetime.IsWf s ∧ Datetime.SatisfiesConstraints s
+  Datetime.IsWf s
 
 structure Datetime.View where
   input : String
@@ -142,11 +140,8 @@ def Datetime.View.WfConstraints (v : Datetime.View) : Prop :=
     ((Datetime.View.ss v).getD "") ((Datetime.View.offset_hh v).getD "") ((Datetime.View.offset_mm v).getD "")
     (Datetime.View.yyyy v) (Datetime.View.dd v)
 
-abbrev Datetime.View.Constraints (_ : Datetime.View) : Prop :=
-  True
-
 abbrev Datetime.View.Valid (v : Datetime.View) : Prop :=
-  Datetime.View.WfConstraints v ∧ Datetime.View.Constraints v
+  Datetime.View.WfConstraints v
 
 def Datetime.View.denotation (v : Datetime.View) :=
   Datetime.value (Datetime.View.yyyy v) (Datetime.View.mm v) (Datetime.View.dd v) ((Datetime.View.time_hh v).getD "")

@@ -7,10 +7,10 @@ verified parsers `triptych` emits against the exact strings Cedar's own unit tes
 `IsValid`/`computeValue` capture every requirement Cedar's parser enforces — the range checks, the
 overflow bounds, the reject cases — not just the ones we happened to think of.
 
-Why direct equality against Cedar works as the oracle: for Decimal and Duration the `lift` clause
+Why direct equality against Cedar works as the oracle: for Decimal and Duration the `ofSpec` clause
 makes our `parse` return the SAME type as Cedar's parser (`Option Decimal` / `Option Duration`), so
 `ourParse s = cedarParse s` checks BOTH acceptance and value in one shot, uniformly for valid AND
-invalid strings (a rejected string makes both sides `none`). Datetime has no `lift` (Cedar has no
+invalid strings (a rejected string makes both sides `none`). Datetime has no `ofSpec` (Cedar has no
 canonical `ToString`), so our parse yields `Option Int` (epoch millis) and we compare against
 `(cedarParse s).map datetimeMillis`.
 
@@ -35,7 +35,7 @@ import Cedar.Spec.Ext.IPAddr
 
 open Triptych
 -- Bring the generated example decls into scope so we write `Decimal.parse` (the EXECUTABLE parser
--- — `gatedParseLift isValid computeValue …`, i.e. the decode-based engine, NOT the readable
+-- — `gatedParseOfSpec isValid computeValue …`, i.e. the decode-based engine, NOT the readable
 -- surface `IsValid` Prop) rather than a caller-namespace declaration.
 -- Cedar's parsers stay fully qualified (they live under `Cedar.Spec.Ext.*`, no clash).
 open CedarExamples.Decimal
@@ -55,6 +55,17 @@ namespace CedarExamples.ConformanceTests
 -- A final-value overflow is grammatically well-formed but not fully valid.
 #guard decide (Decimal.IsWf "922337203685477.5808") = true
 #guard decide (Decimal.IsValid "922337203685477.5808") = false
+
+-- A checked wrapper rejects a dishonest parser result without any theorem about that parser.
+def dishonestDecimalParser (_ : String) : Option Cedar.Spec.Ext.Decimal :=
+  some (Int64.ofInt 0)
+
+#guard
+  Triptych.checkedExternalParse Decimal.IsValid Decimal.computeValue
+    dishonestDecimalParser Int64.toInt "3.14" = none
+#guard
+  Triptych.checkedExternalParse Decimal.IsValid Decimal.computeValue
+    dishonestDecimalParser Int64.toInt "not-a-decimal" = none
 
 /-- A single string-keyed check: does `actual` match `expected`? Returns `none` on pass, or a
     failure message on mismatch. Both sides are `Repr`-printable. -/
@@ -91,6 +102,10 @@ def decimalChecks : List (Option String) :=
   decimalStrings.map (fun s =>
     check s (Decimal.parse s) (Cedar.Spec.Ext.Decimal.parse s))
 
+def decimalCheckedExternalChecks : List (Option String) :=
+  decimalStrings.map (fun s =>
+    check s (Decimal.checkedExtParse s) (Cedar.Spec.Ext.Decimal.parse s))
+
 /-! ## Duration — direct equality vs `Cedar.Spec.Ext.Datetime.Duration.parse` (same `Option
     Duration` type). Strings from `cedar-lean/UnitTest/Datetime.lean`. -/
 
@@ -109,7 +124,11 @@ def durationChecks : List (Option String) :=
   durationStrings.map (fun s =>
     check s (Duration.parse s) (Cedar.Spec.Ext.Datetime.Duration.parse s))
 
-/-! ## Datetime — no `lift`, so our parse yields `Option Int` (epoch millis). Compare against
+def durationCheckedExternalChecks : List (Option String) :=
+  durationStrings.map (fun s =>
+    check s (Duration.checkedExtParse s) (Cedar.Spec.Ext.Datetime.Duration.parse s))
+
+/-! ## Datetime — no `ofSpec`, so our parse yields `Option Int` (epoch millis). Compare against
     `(Cedar…Datetime.parse s).map datetimeMillis`. Strings from `cedar-lean/UnitTest/Datetime.lean`. -/
 
 def datetimeStrings : List String :=
@@ -142,7 +161,12 @@ def datetimeChecks : List (Option String) :=
     check s (Datetime.parse s)
       ((Cedar.Spec.Ext.Datetime.parse s).map datetimeMillis))
 
-/-! ## IPv4 — `lift`-free structured value, so our parse yields `Option IPv4Net`. Oracle is
+def datetimeCheckedExternalChecks : List (Option String) :=
+  datetimeStrings.map (fun s =>
+    check s (Datetime.checkedExtParse s) (Cedar.Spec.Ext.Datetime.parse s))
+
+/-! ## IPv4 — its structured spec value already has the domain type, so our parse yields
+    `Option IPv4Net`. Oracle is
     Cedar's real `ip` through the example's `ipv4Only` family projection. Direct equality checks
     acceptance AND the reconstructed IPv4 CIDR value (address + prefix) in
     one shot: a V6 or invalid string makes both sides `none`. Strings from `cedar-lean/UnitTest/
@@ -162,6 +186,10 @@ def ipv4Strings : List String :=
 def ipv4Checks : List (Option String) :=
   ipv4Strings.map (fun s =>
     check s (IPv4.parse s) (ipv4Only s))
+
+def ipv4CheckedExternalChecks : List (Option String) :=
+  ipv4Strings.map (fun s =>
+    check s (IPv4.checkedExtParse s) (ipv4Only s))
 
 /-! ## IPv6 — direct equality against Cedar's `ip`, restricted to V6 results. This covers
     full and compressed addresses, omitted groups on either side, CIDR prefixes, malformed
@@ -193,7 +221,11 @@ def runAll : IO Nat := do
   let t ← runChecks "Datetime" datetimeChecks
   let p ← runChecks "IPv4"     ipv4Checks
   let p6 ← runChecks "IPv6"     ipv6Checks
-  let total := d + u + t + p + p6
+  let dc ← runChecks "Decimal checked external" decimalCheckedExternalChecks
+  let uc ← runChecks "Duration checked external" durationCheckedExternalChecks
+  let tc ← runChecks "Datetime checked external" datetimeCheckedExternalChecks
+  let pc ← runChecks "IPv4 checked external" ipv4CheckedExternalChecks
+  let total := d + u + t + p + p6 + dc + uc + tc + pc
   IO.println s!"════════ total failures: {total} ════════"
   pure total
 

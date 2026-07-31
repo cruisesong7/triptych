@@ -34,10 +34,10 @@ open Triptych
 /-! ## Author-supplied calendar helpers, used by the `constraints'` / `value'` escapes. -/
 
 /-- Is `y` a leap year? `(4 ∣ y) ∧ (¬(100 ∣ y) ∨ (400 ∣ y))`. -/
-def isLeapYear (y : Int) : Bool := y % 4 == 0 && (y % 100 != 0 || y % 400 == 0)
+def isLeapYear (y : Nat) : Bool := y % 4 == 0 && (y % 100 != 0 || y % 400 == 0)
 
 /-- Days in month `m` of year `y` (30 for Apr/Jun/Sep/Nov, 28/29 for Feb, else 31). -/
-def daysInMonth (y m : Int) : Int :=
+def daysInMonth (y m : Nat) : Nat :=
   if m == 4 || m == 6 || m == 9 || m == 11 then 30
   else if m == 2 then (if isLeapYear y then 29 else 28)
   else 31
@@ -45,33 +45,33 @@ def daysInMonth (y m : Int) : Int :=
 /-- The calendar day-bound `01 ≤ DD ≤ daysInMonth(YYYY, MM)` — cross-field and non-affine, so
     it goes in the `constraints'` escape. Takes the captures as plain strings. -/
 def dayBound (yyyy mm dd : String) : Bool :=
-  1 ≤ natOf dd && natOf dd ≤ daysInMonth (natOf yyyy) (natOf mm)
+  1 ≤ readNat dd && readNat dd ≤ daysInMonth (readNat yyyy) (readNat mm)
 
 /-- Days from the Unix epoch (1970-01-01) to civil date `y-m-d`, via Howard Hinnant's
-    `days_from_civil` algorithm — chosen because it uses only truncating integer division
-    (matching Lean `Int` `/`, `%`), is branch-light, and is correct for the full proleptic
-    Gregorian range. Shifts the year so the leap day falls at the era's end, counts era
-    (400-year) cycles, then the day-of-era. Result is negative for pre-epoch dates. -/
-def daysFromCivil (y m d : Int) : Int :=
-  let y := if m ≤ 2 then y - 1 else y            -- March-based year (Feb at the end)
-  let era := (if y ≥ 0 then y else y - 399) / 400
-  let yoe := y - era * 400                        -- year of era [0, 399]
-  let doy := (153 * (if m > 2 then m - 3 else m + 9) + 2) / 5 + d - 1   -- day of year [0, 365]
-  let doe := yoe * 365 + yoe / 4 - yoe / 100 + doy                       -- day of era [0, 146096]
-  era * 146097 + doe - 719468                     -- 719468 = days from 0000-03-01 to 1970-01-01
+    `days_from_civil` algorithm. Calendar fields remain `Nat`; conversion to `Int` happens
+    only where signed pre-epoch results are required. -/
+def daysFromCivil (year month day : Nat) : Int :=
+  let m : Int := month
+  let d : Int := day
+  let y : Int := if m > 2 then year else (year : Int) - 1
+  let era : Int := (if y ≥ 0 then y else y - 399).tdiv 400
+  let yoe : Int := y - era * 400
+  let doy : Int := (153 * (m + (if m > 2 then -3 else 9)) + 2).tdiv 5 + d - 1
+  let doe : Int := yoe * 365 + yoe.tdiv 4 - yoe.tdiv 100 + doy
+  era * 146097 + doe - 719468
 
 /-- Epoch milliseconds, as a `value'` escape (calendar arithmetic + zone offset):
       ms = (daysFromCivil(Y,M,D)·86400 + hh·3600 + mm·60 + ss)·1000 + SSS  −  offset_ms.
     Absent optional components read as 0 / UTC (via `natOf ""` / `signOf ""`). -/
 def epochMillis (yyyy mm dd time_hh time_mm ss sss offset_hh offset_mm offset : String) : Int :=
-  let days := daysFromCivil (natOf yyyy) (natOf mm) (natOf dd)
+  let days := daysFromCivil (readNat yyyy) (readNat mm) (readNat dd)
   let localMs :=
     (days * 86400 + natOf time_hh * 3600 + natOf time_mm * 60 + natOf ss) * 1000 + natOf sss
   let offsetMs := signOf offset * (natOf offset_hh * 3600000 + natOf offset_mm * 60000)
   localMs - offsetMs
 
-/-- The `parser`-clause projection: Cedar's `Datetime` stores epoch millis in `val : Int64`,
-    matching our `epochMillis` value. -/
+/-- The `parser` clause's `toSpec` conversion: Cedar's `Datetime` stores epoch millis in
+    `val : Int64`, matching our `epochMillis` value. -/
 def datetimeMillis (d : Cedar.Spec.Ext.Datetime) : Int := d.val.toInt
 
 triptych Datetime where
@@ -106,7 +106,7 @@ triptych Datetime where
   -- The cross-field, non-affine calendar day-bound, via the `constraints'` escape.
   constraints'
     dayBound YYYY MM DD
-  parser Cedar.Spec.Ext.Datetime.parse projection datetimeMillis
+  parser Cedar.Spec.Ext.Datetime.parse toSpec datetimeMillis
   to "Datetime"
 
 -- The generated parser (value = epoch milliseconds, matching Unix timestamps):

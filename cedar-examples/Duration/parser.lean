@@ -397,7 +397,7 @@ instance Duration.instDecidableIsWf : DecidablePred Duration.IsWf := fun s =>
 instance Duration.instDecidableSatisfiesConstraints : DecidablePred Duration.SatisfiesConstraints := fun s =>
   @decidable_of_iff _ _ (Duration.SatisfiesConstraints_equiv s).symm inferInstance
 
-instance Duration.instDecidableIsValid : DecidablePred Duration.IsValid := fun s => inferInstanceAs (Decidable (_ ∧ _))
+instance Duration.instDecidableIsValid : DecidablePred Duration.IsValid := fun s => inferInstance
 
 theorem Duration.View.wfConstraints_of_decode {s : String} {m : Triptych.CaptureMap}
     (h : decode Duration.grammar s = some m) :
@@ -488,6 +488,8 @@ The generated correct-by-construction parser `parse` (= `computeValue` gated on 
 decidable `isValid`) together with its guarantees — `parse_sound`, `parse_complete`,
 `parse_reject`, `parse_view`, and typed `parse_eq_some_iff_view` /
 `parse_eq_none_iff_view` normal forms — all AUTO-DISCHARGED here.
+When an external parser is declared, `checkedExtParse` additionally validates each
+external result against this parser and ships an AUTO-DISCHARGED soundness theorem.
 A verified parser, no `sorry`. -/
 
 theorem Duration.computeValue_isSome (s : String) : Duration.isValid s → (Duration.computeValue s).isSome :=
@@ -499,25 +501,25 @@ theorem Duration.computeValue_isSome (s : String) : Duration.isValid s → (Dura
   exact h.1.1
 
 def Duration.parse (s : String) :=
-  Triptych.gatedParseLift Duration.isValid Duration.computeValue millisToDuration s
+  Triptych.gatedParseOfSpec Duration.isValid Duration.computeValue millisToDuration s
 
 theorem Duration.parse_sound (s : String) (d : Cedar.Spec.Ext.Datetime.Duration) :
     Duration.parse s = some d → Duration.isValid s ∧ (Duration.computeValue s).map millisToDuration = some d :=
-  Triptych.gatedParseLift_sound _ _ _ s d
+  Triptych.gatedParseOfSpec_sound _ _ _ s d
 
 theorem Duration.parse_complete (s : String) (d : Cedar.Spec.Ext.Datetime.Duration) :
     Duration.isValid s → (Duration.computeValue s).map millisToDuration = some d → Duration.parse s = some d :=
-  Triptych.gatedParseLift_complete _ _ _ s d
+  Triptych.gatedParseOfSpec_complete _ _ _ s d
 
 theorem Duration.parse_reject (s : String) : Duration.parse s = none ↔ ¬Duration.isValid s :=
-  Triptych.gatedParseLift_reject _ _ _ Duration.computeValue_isSome s
+  Triptych.gatedParseOfSpec_reject _ _ _ Duration.computeValue_isSome s
 
 theorem Duration.parse_view (s : String) :
     Duration.parse s =
       if decide (Duration.isValid s) then (Duration.decodeView s).map (millisToDuration ∘ Duration.View.denotation)
       else none :=
   by
-  unfold Duration.parse Triptych.gatedParseLift Triptych.gatedParse
+  unfold Duration.parse Triptych.gatedParseOfSpec Triptych.gatedParse
   rw [Duration.computeValue_view]
   by_cases h : Duration.isValid s <;> simp [h, Option.map_map]
 
@@ -550,3 +552,31 @@ theorem Duration.parse_eq_none_iff_view (s : String) :
   · intro hnoview hvalidEngine
     have hvalidSurface := (Duration.IsValid_equiv s).mpr hvalidEngine
     exact hnoview ((Duration.IsValid_view s).mp hvalidSurface)
+
+def Duration.checkedExtParse (s : String) : Option Cedar.Spec.Ext.Datetime.Duration :=
+  Triptych.checkedExternalParse Duration.IsValid Duration.computeValue Cedar.Spec.Ext.Datetime.Duration.parse
+    durationMillis s
+
+theorem Duration.checkedExtParse_eq_some_iff (s : String) (d : Cedar.Spec.Ext.Datetime.Duration) :
+    Duration.checkedExtParse s = some d ↔
+      Cedar.Spec.Ext.Datetime.Duration.parse s = some d ∧
+        Duration.IsValid s ∧ Duration.computeValue s = some (durationMillis d) :=
+  Triptych.checkedExternalParse_eq_some_iff Duration.IsValid Duration.computeValue
+    Cedar.Spec.Ext.Datetime.Duration.parse durationMillis s d
+
+theorem Duration.checkedExtParse_sound (s : String) (d : Cedar.Spec.Ext.Datetime.Duration) :
+    Duration.checkedExtParse s = some d → Duration.IsValid s ∧ Duration.computeValue s = some (durationMillis d) :=
+  Triptych.checkedExternalParse_sound Duration.IsValid Duration.computeValue Cedar.Spec.Ext.Datetime.Duration.parse
+    durationMillis s d
+
+theorem Duration.checkedExtParse_sound_view (s : String) (d : Cedar.Spec.Ext.Datetime.Duration) :
+    Duration.checkedExtParse s = some d →
+      ∃ v : Duration.View,
+        Duration.decodeView s = some v ∧ Duration.View.Valid v ∧ Duration.View.denotation v = durationMillis d :=
+  by
+  intro hparse
+  obtain ⟨hvalid, hvalue⟩ := Duration.checkedExtParse_sound s d hparse
+  obtain ⟨v, hview, hvalidView⟩ := (Duration.IsValid_view s).mp hvalid
+  refine ⟨v, hview, hvalidView, ?_⟩
+  rw [Duration.computeValue_view, hview] at hvalue
+  exact Option.some.inj hvalue

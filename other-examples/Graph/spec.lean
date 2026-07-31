@@ -17,9 +17,10 @@ set_option linter.unusedVariables false
 The more readable specification. Each production of the input grammar becomes an
 inlined well-formedness predicate `IsWf.*` written as a plain existential over the
 named captures, so you can read it side-by-side with the grammar and check that it
-says the same thing. `WfConstraints` contains capture-derived format conditions;
-`Constraints` contains only conditions that explicitly mention the final `value`.
-`IsValid` combines both phases. This file is proof-free — it is what you cite. -/
+says the same thing. When present, `WfConstraints` contains capture-derived format
+conditions and `Constraints` contains conditions that explicitly mention the final
+`value`. Empty phases are omitted; `IsWf` and `IsValid` specialize accordingly.
+This file is proof-free — it is what you cite. -/
 
 def Graph.grammar : Grammar :=
   Grammar.mk "Adj"
@@ -44,11 +45,8 @@ def Graph.SatisfiesWfConstraints (s : String) : Prop :=
 abbrev Graph.IsWf (s : String) : Prop :=
   Graph.IsWf.Adj s ∧ Graph.SatisfiesWfConstraints s
 
-abbrev Graph.SatisfiesConstraints (s : String) : Prop :=
-  True
-
 abbrev Graph.IsValid (s : String) : Prop :=
-  Graph.IsWf s ∧ Graph.SatisfiesConstraints s
+  Graph.IsWf s
 
 structure Graph.View where
   input : String
@@ -57,11 +55,8 @@ structure Graph.View where
 def Graph.View.WfConstraints (v : Graph.View) : Prop :=
   Graph.WfConstraints (Graph.View.cells v)
 
-abbrev Graph.View.Constraints (_ : Graph.View) : Prop :=
-  True
-
 abbrev Graph.View.Valid (v : Graph.View) : Prop :=
-  Graph.View.WfConstraints v ∧ Graph.View.Constraints v
+  Graph.View.WfConstraints v
 
 def Graph.View.denotation (v : Graph.View) :=
   Graph.value (Graph.View.cells v)

@@ -26,13 +26,13 @@ Transcribes `doc/CedarDoc/Duration.lean`. Exercises the all-optional `Components
 reconciliation (the O(2⁵) present/absent tree ⟺ flat form) and the sub-capture pattern (each
 unit's digit run is its own nonterminal `DDays ::= digit+`, so `value` reads `nat DDays`).
 Names Cedar's own `Duration.parse` in the `parser` clause; see the docs for the
-`lift`/`projection`/δ-view story.
+`ofSpec`/`toSpec` conversion story.
 -/
 
 namespace CedarExamples.Duration
 open Triptych
 
-/-- Projection and its section for the millisecond `Int` value, plus the canonical serializer
+/-- Conversions for the millisecond `Int` value, plus the canonical serializer
     (reusing Cedar's `ToString Duration`) for the `printer` clause. -/
 def durationMillis  (d : Cedar.Spec.Ext.Datetime.Duration) : Int := d.toMilliseconds.toInt
 def millisToDuration (i : Int) : Cedar.Spec.Ext.Datetime.Duration :=
@@ -57,13 +57,13 @@ triptych Duration where
   value
     Sign * (nat DDays * 86400000 + nat DHours * 3600000 + nat DMinutes * 60000
       + nat DSeconds * 1000 + nat DMillis)
-    lift millisToDuration
+    ofSpec millisToDuration
   constraints
     -- Reject "" and "-": every component is optional, so the grammar alone accepts them.
     -- `Components` captures the whole run, so `nonempty Components` = "≥1 component present".
     nonempty Components
     value ∈ [Int64.MIN, Int64.MAX]
-  parser Cedar.Spec.Ext.Datetime.Duration.parse projection durationMillis
+  parser Cedar.Spec.Ext.Datetime.Duration.parse toSpec durationMillis
   printer durationToStr
   to "Duration"
 

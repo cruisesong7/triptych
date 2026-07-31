@@ -871,7 +871,7 @@ theorem isValid_iff_parts (s : String) :
         OctetWf o₁ ∧ OctetWf o₂ ∧ OctetWf o₃ ∧ OctetWf o₄ ∧
         OptionalPrefixWf pre := by
   constructor
-  · rintro ⟨⟨hgrammar, hconstraints⟩, _⟩
+  · rintro ⟨hgrammar, hconstraints⟩
     obtain ⟨o₁, o₂, o₃, o₄, pre, hdecode, hs, h₁, h₂, h₃, h₄, hp⟩ :=
       decode_parts_of_surface_wf hgrammar
     obtain ⟨hc₁, hc₂, hc₃, hc₄, hcpre⟩ :=
@@ -886,8 +886,8 @@ theorem isValid_iff_parts (s : String) :
     have hconstraints : IPv4.SatisfiesWfConstraints s :=
       (wf_constraints_of_decode s o₁ o₂ o₃ o₄ pre hdecode).mpr
         ⟨h₁.2, h₂.2, h₃.2, h₄.2, hconstraintsPre⟩
-    exact ⟨⟨surface_wf_of_parts hs h₁.1 h₂.1 h₃.1 h₄.1 hsyntaxPre,
-      hconstraints⟩, trivial⟩
+    exact
+      ⟨surface_wf_of_parts hs h₁.1 h₂.1 h₃.1 h₄.1 hsyntaxPre, hconstraints⟩
 
 /-- Accepted strings in the proof-facing component normal form. -/
 theorem isValid_iff_view (s : String) :

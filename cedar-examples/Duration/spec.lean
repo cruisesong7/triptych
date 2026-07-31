@@ -15,9 +15,10 @@ set_option linter.unusedVariables false
 The more readable specification. Each production of the input grammar becomes an
 inlined well-formedness predicate `IsWf.*` written as a plain existential over the
 named captures, so you can read it side-by-side with the grammar and check that it
-says the same thing. `WfConstraints` contains capture-derived format conditions;
-`Constraints` contains only conditions that explicitly mention the final `value`.
-`IsValid` combines both phases. This file is proof-free — it is what you cite. -/
+says the same thing. When present, `WfConstraints` contains capture-derived format
+conditions and `Constraints` contains conditions that explicitly mention the final
+`value`. Empty phases are omitted; `IsWf` and `IsValid` specialize accordingly.
+This file is proof-free — it is what you cite. -/
 
 def Duration.grammar : Grammar :=
   Grammar.mk "Duration"

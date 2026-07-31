@@ -2,7 +2,7 @@
 
 import IPv4.parser
 import IPv4.grammar
-import IPv4.CedarBridge
+import IPv4.RuleRegistrySoundness
 
 open Triptych
 open CedarExamples.IPv4
@@ -12,15 +12,20 @@ set_option linter.unusedVariables false
 
 /- ══════════════════════ soundness · generated parser ══════════════════════
 Obligations about the GENERATED parser `parse`. The `encode_*` obligations (a
-serialized value is accepted, and evaluates back to itself) are left as `sorry` — a
-serializer is a choice, so its correctness is yours to prove; from them the printer
+serialized value is accepted, and evaluates back to itself) are yours to prove because
+a serializer is a choice; they are discharged below. From them the printer
 theorems (`parse_toString_roundtrip`/`toString_injective`/`normalize_eq_iff_parse_eq`)
 are DISCHARGED here. These same `encode_*` obligations are reused by the external
 section below. -/
 
-theorem IPv4.encode_accepted (i : IPv4Net) : IPv4.isValid (ipNetToStr i) := by sorry
+theorem IPv4.encode_accepted (i : IPv4Net) : IPv4.isValid (ipNetToStr i) := by
+  have hparse := IPv4.RuleRegistrySoundness.parser_ipNetToStr i
+  have hvalid := (IPv4.RuleRegistrySoundness.parser_agrees (ipNetToStr i) i).mp hparse |>.1
+  exact (IPv4.IsValid_equiv (ipNetToStr i)).mp hvalid
 
-theorem IPv4.encode_value (i : IPv4Net) : IPv4.computeValue (ipNetToStr i) = some i := by sorry
+theorem IPv4.encode_value (i : IPv4Net) : IPv4.computeValue (ipNetToStr i) = some i := by
+  have hparse := IPv4.RuleRegistrySoundness.parser_ipNetToStr i
+  exact (IPv4.RuleRegistrySoundness.parser_agrees (ipNetToStr i) i).mp hparse |>.2
 
 theorem IPv4.parse_toString_roundtrip (i : IPv4Net) : IPv4.parse (ipNetToStr i) = some i :=
   Triptych.gatedParse_toString_roundtrip IPv4.isValid IPv4.computeValue IPv4.encode_accepted IPv4.encode_value i
@@ -35,13 +40,13 @@ theorem IPv4.normalize_eq_iff_parse_eq (s s' : String) :
 /- ══════════════════════ soundness · external parser ══════════════════════
 Obligations for validating YOUR OWN external parser against this specification:
 `extparse_sound`, `extparse_complete`, and `extparse_reject`, stated over the readable
-surface `IsValid`/`computeValue`. These are left as `sorry` — they are claims about
-your parser, so you have to prove them yourself. Given them, the external printer
+surface `IsValid`/`computeValue`. The scaffold initially leaves these as `sorry` because
+they are claims about your parser; they are discharged below. Given them, the external printer
 theorems (`extparse_toString_*`) are DISCHARGED, reusing the generated section's
 `encode_*`. -/
 
 theorem IPv4.extparse_reject (s : String) : ipv4Only s = none ↔ ¬IPv4.IsValid s :=
-  IPv4.CedarBridge.parser_rejects_iff s
+  IPv4.RuleRegistrySoundness.parser_rejects_iff s
 
 theorem IPv4.extparse_eq_none_iff_view (s : String) :
     ipv4Only s = none ↔
@@ -55,12 +60,13 @@ theorem IPv4.extparse_eq_none_iff_view (s : String) :
 
 theorem IPv4.extparse_sound (s : String) (i : IPv4Net) :
     ipv4Only s = some i → IPv4.IsValid s ∧ IPv4.computeValue s = some (id i) := by
-  simpa using (IPv4.CedarBridge.parser_agrees s i).mp
+  simpa using (IPv4.RuleRegistrySoundness.parser_agrees s i).mp
 
 theorem IPv4.extparse_complete (s : String) (i : IPv4Net) :
     IPv4.IsValid s → IPv4.computeValue s = some (id i) → ipv4Only s = some i := by
   intro hvalid hvalue
-  exact (IPv4.CedarBridge.parser_agrees s i).mpr ⟨hvalid, by simpa using hvalue⟩
+  exact (IPv4.RuleRegistrySoundness.parser_agrees s i).mpr
+    ⟨hvalid, by simpa using hvalue⟩
 
 theorem IPv4.extparse_eq_some_iff_view (s : String) (i : IPv4Net) :
     ipv4Only s = some i ↔

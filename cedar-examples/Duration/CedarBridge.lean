@@ -445,14 +445,10 @@ theorem components_to_surface (components : Cedar.Thm.Duration.Components)
 
 theorem cedar_wf_to_surface {s : String} (h : Cedar.Thm.Duration.IsWfDuration s) :
     Duration.IsWf.Duration s := by
-  rcases h with hbody | ⟨body, hs, hbody⟩
-  · obtain ⟨components, _, hwf, rfl⟩ := hbody
-    refine ⟨"", components.asString, ⟨⟨by simp, Or.inr rfl⟩, ?_⟩⟩
-    exact components_to_surface components ((components_wf_iff components).mpr hwf)
-  · obtain ⟨components, _, hwf, hbody⟩ := hbody
-    refine ⟨"-", body, ⟨⟨hs, Or.inl rfl⟩, ?_⟩⟩
-    rw [hbody]
-    exact components_to_surface components ((components_wf_iff components).mpr hwf)
+  obtain ⟨sgn, body, hs, hsgn, components, _, hwf, hbody⟩ := h
+  refine ⟨sgn, body, ⟨⟨hs, hsgn⟩, ?_⟩⟩
+  rw [hbody]
+  exact components_to_surface components ((components_wf_iff components).mpr hwf)
 
 theorem decode_parts_of_surface_wf {s : String} (h : Duration.IsWf.Duration s) :
     ∃ sgn components,
@@ -477,19 +473,24 @@ theorem wf_body_ne_empty {body : String} (h : Cedar.Thm.Duration.IsWfBody body) 
   exact (components_nonempty_iff components).mpr hnonempty hcomponents.symm
 
 theorem not_wf_duration_empty : ¬ Cedar.Thm.Duration.IsWfDuration "" := by
-  rintro (hbody | ⟨body, hs, _⟩)
-  · exact wf_body_ne_empty hbody rfl
+  rintro ⟨sgn, body, hs, hsgn, hbody⟩
+  rcases hsgn with rfl | rfl
   · simp at hs
+  · have : body = "" := by simpa using hs.symm
+    exact wf_body_ne_empty hbody this
 
 theorem not_wf_duration_dash : ¬ Cedar.Thm.Duration.IsWfDuration "-" := by
-  rintro (hbody | ⟨body, hs, hbody⟩)
-  · exact isWfBody_front_ne_dash "-" hbody (by decide)
+  rintro ⟨sgn, body, hs, hsgn, hbody⟩
+  rcases hsgn with rfl | rfl
   · have hlist := congrArg String.toList hs
     have : body = "" := by
       apply String.toList_inj.mp
       simpa [String.toList_append] using hlist
     subst body
     exact wf_body_ne_empty hbody rfl
+  · have : body = "-" := by simpa using hs.symm
+    subst body
+    exact isWfBody_front_ne_dash "-" hbody (by decide)
 
 theorem components_nonempty_of_cedar {s sgn : String}
     (components : Cedar.Thm.Duration.Components)
@@ -518,11 +519,7 @@ theorem parts_to_cedar {s sgn : String}
     Cedar.Thm.Duration.IsWfDuration s := by
   have hbody : Cedar.Thm.Duration.IsWfBody components.asString :=
     ⟨components, hnonempty, (components_wf_iff components).mp hwf, rfl⟩
-  rcases hsgn with rfl | rfl
-  · exact Or.inr ⟨components.asString, hs, hbody⟩
-  · have hs' : s = components.asString := by simpa using hs
-    rw [hs']
-    exact Or.inl hbody
+  exact ⟨sgn, components.asString, hs, hsgn, hbody⟩
 
 def formatQuantity : Option String → Int
   | none => 0

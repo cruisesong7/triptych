@@ -146,19 +146,17 @@ theorem Graph.IsWf_equiv (s : String) : Graph.IsWf s ↔ Graph.isWf s :=
     countOf_getD, signOf_getD, Env.countVal, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
   try grind
 
-theorem Graph.SatisfiesConstraints_equiv (s : String) : Graph.SatisfiesConstraints s ↔ Graph.satisfiesConstraints s :=
-  by
-  unfold Graph.satisfiesConstraints Triptych.satisfiesConstraints
-  unfold Graph.SatisfiesConstraints Graph.constraints
-  simp only [Triptych.component, List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const,
-    ConstraintEntry.valPart, Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD,
-    countOf_getD, signOf_getD, Env.countVal, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
-  try grind
-
 theorem Graph.IsValid_equiv (s : String) : Graph.IsValid s ↔ Graph.isValid s :=
   by
   unfold Graph.IsValid Graph.isValid
-  rw [(Graph.IsWf_equiv s), (Graph.SatisfiesConstraints_equiv s)]
+  rw [(Graph.IsWf_equiv s)]
+  unfold Graph.satisfiesConstraints Triptych.satisfiesConstraints Graph.constraints
+  simp only [List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, ConstraintEntry.valPart, false_implies,
+    true_and, and_true]
+  constructor
+  · intro h
+    exact ⟨h, fun _ => True.intro⟩
+  · exact And.left
 
 instance Graph.instDecidableGrammar : DecidablePred Graph.IsWf.Adj := fun s =>
   @decidable_of_iff _ _ (Graph.IsWfGrammar_equiv s) (Triptych.decIsWf Graph.grammar (by decide) s)
@@ -166,10 +164,7 @@ instance Graph.instDecidableGrammar : DecidablePred Graph.IsWf.Adj := fun s =>
 instance Graph.instDecidableIsWf : DecidablePred Graph.IsWf := fun s =>
   @decidable_of_iff _ _ (Graph.IsWf_equiv s).symm inferInstance
 
-instance Graph.instDecidableSatisfiesConstraints : DecidablePred Graph.SatisfiesConstraints := fun s =>
-  @decidable_of_iff _ _ (Graph.SatisfiesConstraints_equiv s).symm inferInstance
-
-instance Graph.instDecidableIsValid : DecidablePred Graph.IsValid := fun s => inferInstanceAs (Decidable (_ ∧ _))
+instance Graph.instDecidableIsValid : DecidablePred Graph.IsValid := fun s => inferInstance
 
 theorem Graph.View.wfConstraints_of_decode {s : String} {m : Triptych.CaptureMap}
     (h : decode Graph.grammar s = some m) :
@@ -177,9 +172,6 @@ theorem Graph.View.wfConstraints_of_decode {s : String} {m : Triptych.CaptureMap
   by
   rw [Graph.SatisfiesWfConstraints_of_decode h]
   rfl
-
-theorem Graph.View.constraints_of_decode {s : String} {m : Triptych.CaptureMap} (_ : decode Graph.grammar s = some m) :
-    Graph.SatisfiesConstraints s ↔ Graph.View.Constraints (Graph.View.ofMap s m) := by rfl
 
 theorem Graph.IsValid_view (s : String) :
     Graph.IsValid s ↔ ∃ v : Graph.View, Graph.decodeView s = some v ∧ Graph.View.Valid v :=
@@ -192,7 +184,7 @@ theorem Graph.IsValid_view (s : String) :
     refine ⟨Graph.View.ofMap s m, ?_, ?_⟩
     · unfold Graph.decodeView
       simp [hm]
-    · exact ⟨(Graph.View.wfConstraints_of_decode hm).mp hvalid.1.2, (Graph.View.constraints_of_decode hm).mp hvalid.2⟩
+    · exact (Graph.View.wfConstraints_of_decode hm).mp hvalid.2
   · rintro ⟨v, hview, hvalid⟩
     unfold Graph.decodeView at hview
     rw [Option.map_eq_some_iff] at hview
@@ -200,9 +192,7 @@ theorem Graph.IsValid_view (s : String) :
     subst v
     have hdecoded : (decode Graph.grammar s).isSome = true := by simp [hm]
     have hgrammar := (Graph.IsWfGrammar_equiv s).mp ((decodeSome_iff_IsWf Graph.grammar (by decide) s).mp hdecoded)
-    exact
-      ⟨⟨hgrammar, (Graph.View.wfConstraints_of_decode hm).mpr hvalid.1⟩,
-        (Graph.View.constraints_of_decode hm).mpr hvalid.2⟩
+    exact ⟨hgrammar, (Graph.View.wfConstraints_of_decode hm).mpr hvalid⟩
 
 theorem Graph.computeValue_eq (s : String) :
     Graph.computeValue s =
@@ -241,6 +231,8 @@ The generated correct-by-construction parser `parse` (= `computeValue` gated on 
 decidable `isValid`) together with its guarantees — `parse_sound`, `parse_complete`,
 `parse_reject`, `parse_view`, and typed `parse_eq_some_iff_view` /
 `parse_eq_none_iff_view` normal forms — all AUTO-DISCHARGED here.
+When an external parser is declared, `checkedExtParse` additionally validates each
+external result against this parser and ships an AUTO-DISCHARGED soundness theorem.
 A verified parser, no `sorry`. -/
 
 theorem Graph.computeValue_isSome (s : String) : Graph.isValid s → (Graph.computeValue s).isSome :=

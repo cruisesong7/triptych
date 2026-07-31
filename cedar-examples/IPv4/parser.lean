@@ -290,19 +290,17 @@ theorem IPv4.IsWf_equiv (s : String) : IPv4.IsWf s ↔ IPv4.isWf s :=
     countOf_getD, signOf_getD, Env.countVal, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
   try grind
 
-theorem IPv4.SatisfiesConstraints_equiv (s : String) : IPv4.SatisfiesConstraints s ↔ IPv4.satisfiesConstraints s :=
-  by
-  unfold IPv4.satisfiesConstraints Triptych.satisfiesConstraints
-  unfold IPv4.SatisfiesConstraints IPv4.constraints
-  simp only [Triptych.component, List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const,
-    ConstraintEntry.valPart, Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD,
-    countOf_getD, signOf_getD, Env.countVal, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
-  try grind
-
 theorem IPv4.IsValid_equiv (s : String) : IPv4.IsValid s ↔ IPv4.isValid s :=
   by
   unfold IPv4.IsValid IPv4.isValid
-  rw [(IPv4.IsWf_equiv s), (IPv4.SatisfiesConstraints_equiv s)]
+  rw [(IPv4.IsWf_equiv s)]
+  unfold IPv4.satisfiesConstraints Triptych.satisfiesConstraints IPv4.constraints
+  simp only [List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, ConstraintEntry.valPart, false_implies,
+    true_and, and_true]
+  constructor
+  · intro h
+    exact ⟨h, fun _ => True.intro⟩
+  · exact And.left
 
 instance IPv4.instDecidableGrammar : DecidablePred IPv4.IsWf.V4Net := fun s =>
   @decidable_of_iff _ _ (IPv4.IsWfGrammar_equiv s) (Triptych.decIsWf IPv4.grammar (by decide) s)
@@ -310,19 +308,13 @@ instance IPv4.instDecidableGrammar : DecidablePred IPv4.IsWf.V4Net := fun s =>
 instance IPv4.instDecidableIsWf : DecidablePred IPv4.IsWf := fun s =>
   @decidable_of_iff _ _ (IPv4.IsWf_equiv s).symm inferInstance
 
-instance IPv4.instDecidableSatisfiesConstraints : DecidablePred IPv4.SatisfiesConstraints := fun s =>
-  @decidable_of_iff _ _ (IPv4.SatisfiesConstraints_equiv s).symm inferInstance
-
-instance IPv4.instDecidableIsValid : DecidablePred IPv4.IsValid := fun s => inferInstanceAs (Decidable (_ ∧ _))
+instance IPv4.instDecidableIsValid : DecidablePred IPv4.IsValid := fun s => inferInstance
 
 theorem IPv4.View.wfConstraints_of_decode {s : String} {m : Triptych.CaptureMap} (h : decode IPv4.grammar s = some m) :
     IPv4.SatisfiesWfConstraints s ↔ IPv4.View.WfConstraints (IPv4.View.ofMap s m) :=
   by
   rw [IPv4.SatisfiesWfConstraints_of_decode h]
   rfl
-
-theorem IPv4.View.constraints_of_decode {s : String} {m : Triptych.CaptureMap} (_ : decode IPv4.grammar s = some m) :
-    IPv4.SatisfiesConstraints s ↔ IPv4.View.Constraints (IPv4.View.ofMap s m) := by rfl
 
 theorem IPv4.IsValid_view (s : String) :
     IPv4.IsValid s ↔ ∃ v : IPv4.View, IPv4.decodeView s = some v ∧ IPv4.View.Valid v :=
@@ -335,7 +327,7 @@ theorem IPv4.IsValid_view (s : String) :
     refine ⟨IPv4.View.ofMap s m, ?_, ?_⟩
     · unfold IPv4.decodeView
       simp [hm]
-    · exact ⟨(IPv4.View.wfConstraints_of_decode hm).mp hvalid.1.2, (IPv4.View.constraints_of_decode hm).mp hvalid.2⟩
+    · exact (IPv4.View.wfConstraints_of_decode hm).mp hvalid.2
   · rintro ⟨v, hview, hvalid⟩
     unfold IPv4.decodeView at hview
     rw [Option.map_eq_some_iff] at hview
@@ -343,9 +335,7 @@ theorem IPv4.IsValid_view (s : String) :
     subst v
     have hdecoded : (decode IPv4.grammar s).isSome = true := by simp [hm]
     have hgrammar := (IPv4.IsWfGrammar_equiv s).mp ((decodeSome_iff_IsWf IPv4.grammar (by decide) s).mp hdecoded)
-    exact
-      ⟨⟨hgrammar, (IPv4.View.wfConstraints_of_decode hm).mpr hvalid.1⟩,
-        (IPv4.View.constraints_of_decode hm).mpr hvalid.2⟩
+    exact ⟨hgrammar, (IPv4.View.wfConstraints_of_decode hm).mpr hvalid⟩
 
 theorem IPv4.computeValue_eq (s : String) :
     IPv4.computeValue s =
@@ -394,6 +384,8 @@ The generated correct-by-construction parser `parse` (= `computeValue` gated on 
 decidable `isValid`) together with its guarantees — `parse_sound`, `parse_complete`,
 `parse_reject`, `parse_view`, and typed `parse_eq_some_iff_view` /
 `parse_eq_none_iff_view` normal forms — all AUTO-DISCHARGED here.
+When an external parser is declared, `checkedExtParse` additionally validates each
+external result against this parser and ships an AUTO-DISCHARGED soundness theorem.
 A verified parser, no `sorry`. -/
 
 theorem IPv4.computeValue_isSome (s : String) : IPv4.isValid s → (IPv4.computeValue s).isSome :=
@@ -452,3 +444,25 @@ theorem IPv4.parse_eq_none_iff_view (s : String) :
   · intro hnoview hvalidEngine
     have hvalidSurface := (IPv4.IsValid_equiv s).mpr hvalidEngine
     exact hnoview ((IPv4.IsValid_view s).mp hvalidSurface)
+
+def IPv4.checkedExtParse (s : String) : Option IPv4Net :=
+  Triptych.checkedExternalParse IPv4.IsValid IPv4.computeValue ipv4Only id s
+
+theorem IPv4.checkedExtParse_eq_some_iff (s : String) (i : IPv4Net) :
+    IPv4.checkedExtParse s = some i ↔ ipv4Only s = some i ∧ IPv4.IsValid s ∧ IPv4.computeValue s = some (id i) :=
+  Triptych.checkedExternalParse_eq_some_iff IPv4.IsValid IPv4.computeValue ipv4Only id s i
+
+theorem IPv4.checkedExtParse_sound (s : String) (i : IPv4Net) :
+    IPv4.checkedExtParse s = some i → IPv4.IsValid s ∧ IPv4.computeValue s = some (id i) :=
+  Triptych.checkedExternalParse_sound IPv4.IsValid IPv4.computeValue ipv4Only id s i
+
+theorem IPv4.checkedExtParse_sound_view (s : String) (i : IPv4Net) :
+    IPv4.checkedExtParse s = some i →
+      ∃ v : IPv4.View, IPv4.decodeView s = some v ∧ IPv4.View.Valid v ∧ IPv4.View.denotation v = id i :=
+  by
+  intro hparse
+  obtain ⟨hvalid, hvalue⟩ := IPv4.checkedExtParse_sound s i hparse
+  obtain ⟨v, hview, hvalidView⟩ := (IPv4.IsValid_view s).mp hvalid
+  refine ⟨v, hview, hvalidView, ?_⟩
+  rw [IPv4.computeValue_view, hview] at hvalue
+  exact Option.some.inj hvalue

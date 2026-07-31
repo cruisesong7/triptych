@@ -198,17 +198,28 @@ Because the layout combinators are a closed, pre-verified library:
   `IsValid_view` packages recognition as successful `decodeView` plus `View.Valid`, and
   `computeValue_view` packages denotation as mapping `View.denotation` over that same view.
   `parse_view` writes the generated parser as the engine validity guard followed by typed-view
-  denotation (and the declared lift, when present). `parse_eq_some_iff_view` and
+  denotation (and the declared `ofSpec` conversion, when present). `parse_eq_some_iff_view` and
   `parse_eq_none_iff_view` remove that guard for proofs: parser success is equivalent to one
   decoded valid view with matching denotation, while rejection means no such valid view exists.
+  A declared external parser additionally receives `checkedExtParse`: it returns an external
+  result only after the generated parser confirms acceptance and denotation equality.
+  `checkedExtParse_eq_some_iff`, `checkedExtParse_sound`, and
+  `checkedExtParse_sound_view` are discharged without any theorem about the external
+  implementation. This provides immediate soundness at the cost of running the reference parser.
+  Static proof automation uses the extensible `triptych_parser` rule registry. The
+  `triptych_sound` tactic symbolically inverts successful `Option` paths using registered,
+  independently proved equivalences for binds, maps, alternatives, filters, guards, and
+  conditionals. A parser backend extends the tactic by tagging its primitive theorems with
+  `@[triptych_parser]`; unsupported operations remain visible instead of being trusted.
   Once the external obligations are proved, matching `extparse_eq_some_iff_view` and
   `extparse_eq_none_iff_view` theorems derive the same relations for the external parser. These
   normal forms remove the need to unfold `component`, `envOf`, constraint AST evaluation, value
   extraction, or generated parser gating after identifying a decode.
 - **Emitted as `sorry`d statements** — the *parser-specific* bridge:
-  `parse_sound`, `parse_complete`, `parse_eq_none_iff`. These relate the generated
+  `extparse_sound`, `extparse_complete`, `extparse_reject`. These relate the generated
   spec to the **hand-written, external** parser (`Std.Time`, `splitToList`), so they
-  cannot be free. Crucially, the *statements* are faithful-by-construction (generated
+  cannot be free for the unwrapped implementation. Crucially, the *statements* are
+  faithful-by-construction (generated
   from the same `R`), so the human can't accidentally state the wrong bound/disjunct.
 
 Prerequisite refactor: extract a `VerifiedParser α` bundle (`IsWf`, `computeValue`,
@@ -512,6 +523,10 @@ IsAccepted           s : Prop  := IsWf s ∧ SatisfiesConstraints s
 computeValue         s : D      -- the value function (D may be structured, e.g. IPNet)
 ```
 
+Only nonempty constraint phases are emitted. If there are no capture constraints, `IsWf`
+is the grammar predicate directly; if there are no final-value constraints, the acceptance
+predicate is `IsWf` directly. The decomposition above describes the general two-phase case.
+
 Naming rationale: `IsAccepted` is defined by *what the parser does*, not an English
 adjective, so it cannot drift. "valid" is avoided on both sides of the conjunction
 (the earlier `IsValid = IsWf ∧ IsValid` was tautological-looking).
@@ -520,7 +535,7 @@ adjective, so it cannot drift. "valid" is avoided on both sides of the conjuncti
 Narcissus/PulseParse "format"): some full parse of `s` has capture map `m`, `accept m`
 holds, and `valFn m = v`. `CaptureAccepts constraints` supplies the generated format's
 capture-level acceptance predicate. When static capture functionality succeeds, the DSL emits
-`parse_iff_denotes`; for lifted parsers its relational reader is `σ ∘ valFn`.
+`parse_iff_denotes`; with `ofSpec`, its relational reader is `ofSpec ∘ valFn`.
 
 This preserves the useful distinction already present in the formats: **Decimal** keeps
 its final computed-value overflow bound outside `IsWf`, while **IPAddr** includes
@@ -632,11 +647,11 @@ unnecessary and is dropped.** The reasoning:
   succeeds ⟺ `Int64.MIN ≤ computeValue s ≤ Int64.MAX`. That is exactly a
   `SatisfiesConstraints` entry — and exactly the existing Decimal `parse_eq_none_iff`
   disjunct. So `Int64`-enforcement lives in `constraints`, as the user intuited.
-- **The spec NEVER constructs `D`; it projects the parser's output DOWN.** The proposed
+- **The spec need not construct `D`; it converts the parser's output to the spec value.** The proposed
   `package` also did *construction* (build `Decimal`/`IPNet` from `Int`s) — but the
   spec never needs to. `parse_sound` compares `computeValue s : Int` against
-  `d.val.toInt` — it takes the parser's *already-built* `d : D` and projects it *down*
-  to `Int` via a projection `π : D → Int`. Construction is the *parser's* job;
+  `d.val.toInt` — it takes the parser's *already-built* `d : D` and converts it
+  to `Int` via `toSpec : D → Int`. Construction is the *parser's* job;
   verification only reads the `Int` back out. So construction (the other half of
   `package`) evaporates too.
 
@@ -645,21 +660,21 @@ unnecessary and is dropped.** The reasoning:
 computeValue         : String → Int      -- ValExpr.eval ∘ decode; arbitrary precision
 SatisfiesConstraints : String → Prop     -- includes Int64.MIN ≤ · ≤ Int64.MAX (the "cast" check)
 IsAccepted           := IsWf ∧ SatisfiesConstraints
--- contract theorem: parse s = some d → IsAccepted s ∧ computeValue s = π d
---   where π : D → Int is a small PROJECTION (Int64 wrapper ↦ .toInt), used only in the
+-- contract theorem: parse s = some d → IsAccepted s ∧ computeValue s = toSpec d
+--   where toSpec : D → Int is a small conversion (Int64 wrapper ↦ .toInt), used only in the
 --   theorem STATEMENT, not a computational stage; derivable from D's structure.
 ```
 
 - **Non-number / structured `D` (IPAddr → `IPNet`):** same principle. No construction on
-  the spec side; instead **per-component** `computeValue`s + **per-component projections**
+  the spec side; instead **per-component** `computeValue`s + **per-component conversions**
   (compare `nat g₀ = <octet 0 of d>`, …). Confirmed by the doc: IPAddr soundness is
   "phrased per witnessing components rather than through a single computeValue." So
-  structured output needs multiple `Int`-valued `computeValue`s + a tuple projection,
+  structured output needs multiple `Int`-valued `computeValue`s + a tuple-valued `toSpec`,
   NOT a `package`/constructor layer in the spec.
 
 Net: `ValExpr` stays scalar-`Int` (correct); `Int64` = a `constraints` bound; typed/
 structured output handled by projecting the PARSER's result down to `Int`(s) in the
-contract statement. The earlier `package` layer was construction the projection-based
+contract statement. The earlier `package` layer was construction the `toSpec`-based
 contract makes unnecessary.
 
 ### 16.7 The expressiveness trilemma + the `opaque` escape (why a closed DSL is OK)

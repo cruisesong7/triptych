@@ -25,8 +25,8 @@ The generated parser checks the format constraints against `decode`'s selected c
 reader to the same map. These views coincide when the grammar's capture semantics is
 functional: every full parse produces the same complete capture map.
 
-The map-valued theorems cover `value'`; the `F` variants cover readers through `Env`. Lifted
-variants compose the user's lift with the relational value reader.
+The map-valued theorems cover `value'`; the `F` variants cover readers through `Env`.
+Domain-valued variants compose `ofSpec` with the relational value reader.
 -/
 
 namespace Triptych
@@ -77,41 +77,44 @@ theorem gatedParseF_eq_some_iff_denotes {α : Type}
       Denotes g (CaptureAccepts cs) (fun m => valFn m.toEnv) s v
   exact gatedParseMap_eq_some_iff_denotes g cs (fun m => valFn m.toEnv) hfunctional s v
 
-private theorem gatedParseLiftMap_eq_gatedParseComp {α δ : Type}
+private theorem gatedParseOfSpecMap_eq_gatedParseComp {α δ : Type}
     (g : Grammar) (cs : List ConstraintEntry) (valFn : CaptureMap → α)
-    (σ : α → δ) (s : String) :
-    gatedParseLift (fun s => isWf g cs s ∧ satisfiesConstraints g cs s)
-        (computeValueMap g valFn) σ s =
+    (ofSpec : α → δ) (s : String) :
+    gatedParseOfSpec (fun s => isWf g cs s ∧ satisfiesConstraints g cs s)
+        (computeValueMap g valFn) ofSpec s =
       gatedParse (fun s => isWf g cs s ∧ satisfiesConstraints g cs s)
-        (computeValueMap g (σ ∘ valFn)) s := by
-  unfold gatedParseLift gatedParse
+        (computeValueMap g (ofSpec ∘ valFn)) s := by
+  unfold gatedParseOfSpec gatedParse
   by_cases h : isWf g cs s ∧ satisfiesConstraints g cs s
   · simp [h, computeValueMap, Function.comp_def, Option.map_map]
   · simp [h]
 
-/-- Lifted full-map parsers denote the lift composed with the underlying value reader. -/
-theorem gatedParseLiftMap_eq_some_iff_denotes {α δ : Type}
-    (g : Grammar) (cs : List ConstraintEntry) (valFn : CaptureMap → α) (σ : α → δ)
+/-- Domain-valued full-map parsers denote `ofSpec` composed with the value reader. -/
+theorem gatedParseOfSpecMap_eq_some_iff_denotes {α δ : Type}
+    (g : Grammar) (cs : List ConstraintEntry) (valFn : CaptureMap → α)
+    (ofSpec : α → δ)
     (hfunctional : GrammarCaptureFunctional g) (s : String) (d : δ) :
-    gatedParseLift (fun s => isWf g cs s ∧ satisfiesConstraints g cs s)
-        (computeValueMap g valFn) σ s = some d ↔
-      Denotes g (CaptureAccepts cs) (σ ∘ valFn) s d := by
-  rw [gatedParseLiftMap_eq_gatedParseComp]
-  exact gatedParseMap_eq_some_iff_denotes g cs (σ ∘ valFn) hfunctional s d
+    gatedParseOfSpec (fun s => isWf g cs s ∧ satisfiesConstraints g cs s)
+        (computeValueMap g valFn) ofSpec s = some d ↔
+      Denotes g (CaptureAccepts cs) (ofSpec ∘ valFn) s d := by
+  rw [gatedParseOfSpecMap_eq_gatedParseComp]
+  exact gatedParseMap_eq_some_iff_denotes g cs (ofSpec ∘ valFn) hfunctional s d
 
-/-- Lifted environment-reader specialization of
-    `gatedParseLiftMap_eq_some_iff_denotes`. -/
-theorem gatedParseLiftF_eq_some_iff_denotes {α δ : Type}
-    (g : Grammar) (cs : List ConstraintEntry) (valFn : Env → α) (σ : α → δ)
+/-- Domain-valued environment-reader specialization of
+    `gatedParseOfSpecMap_eq_some_iff_denotes`. -/
+theorem gatedParseOfSpecF_eq_some_iff_denotes {α δ : Type}
+    (g : Grammar) (cs : List ConstraintEntry) (valFn : Env → α)
+    (ofSpec : α → δ)
     (hfunctional : GrammarCaptureFunctional g) (s : String) (d : δ) :
-    gatedParseLift (fun s => isWf g cs s ∧ satisfiesConstraints g cs s)
-        (computeValueF g valFn) σ s = some d ↔
-      Denotes g (CaptureAccepts cs) (σ ∘ fun m => valFn m.toEnv) s d := by
+    gatedParseOfSpec (fun s => isWf g cs s ∧ satisfiesConstraints g cs s)
+        (computeValueF g valFn) ofSpec s = some d ↔
+      Denotes g (CaptureAccepts cs) (ofSpec ∘ fun m => valFn m.toEnv) s d := by
   change
-    gatedParseLift (fun s => isWf g cs s ∧ satisfiesConstraints g cs s)
-        (computeValueMap g (fun m => valFn m.toEnv)) σ s = some d ↔
-      Denotes g (CaptureAccepts cs) (σ ∘ fun m => valFn m.toEnv) s d
+    gatedParseOfSpec (fun s => isWf g cs s ∧ satisfiesConstraints g cs s)
+        (computeValueMap g (fun m => valFn m.toEnv)) ofSpec s = some d ↔
+      Denotes g (CaptureAccepts cs) (ofSpec ∘ fun m => valFn m.toEnv) s d
   exact
-    gatedParseLiftMap_eq_some_iff_denotes g cs (fun m => valFn m.toEnv) σ hfunctional s d
+    gatedParseOfSpecMap_eq_some_iff_denotes
+      g cs (fun m => valFn m.toEnv) ofSpec hfunctional s d
 
 end Triptych

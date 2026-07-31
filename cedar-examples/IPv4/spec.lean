@@ -17,9 +17,10 @@ set_option linter.unusedVariables false
 The more readable specification. Each production of the input grammar becomes an
 inlined well-formedness predicate `IsWf.*` written as a plain existential over the
 named captures, so you can read it side-by-side with the grammar and check that it
-says the same thing. `WfConstraints` contains capture-derived format conditions;
-`Constraints` contains only conditions that explicitly mention the final `value`.
-`IsValid` combines both phases. This file is proof-free — it is what you cite. -/
+says the same thing. When present, `WfConstraints` contains capture-derived format
+conditions and `Constraints` contains conditions that explicitly mention the final
+`value`. Empty phases are omitted; `IsWf` and `IsValid` specialize accordingly.
+This file is proof-free — it is what you cite. -/
 
 def IPv4.grammar : Grammar :=
   Grammar.mk "V4Net"
@@ -83,11 +84,8 @@ def IPv4.SatisfiesWfConstraints (s : String) : Prop :=
 abbrev IPv4.IsWf (s : String) : Prop :=
   IPv4.IsWf.V4Net s ∧ IPv4.SatisfiesWfConstraints s
 
-abbrev IPv4.SatisfiesConstraints (s : String) : Prop :=
-  True
-
 abbrev IPv4.IsValid (s : String) : Prop :=
-  IPv4.IsWf s ∧ IPv4.SatisfiesConstraints s
+  IPv4.IsWf s
 
 structure IPv4.View where
   input : String
@@ -101,11 +99,8 @@ def IPv4.View.WfConstraints (v : IPv4.View) : Prop :=
   IPv4.WfConstraints (IPv4.View.oct1 v) (IPv4.View.oct2 v) (IPv4.View.oct3 v) (IPv4.View.oct4 v)
     ((IPv4.View.prefix v).getD "")
 
-abbrev IPv4.View.Constraints (_ : IPv4.View) : Prop :=
-  True
-
 abbrev IPv4.View.Valid (v : IPv4.View) : Prop :=
-  IPv4.View.WfConstraints v ∧ IPv4.View.Constraints v
+  IPv4.View.WfConstraints v
 
 def IPv4.View.denotation (v : IPv4.View) :=
   IPv4.value (IPv4.View.oct1 v) (IPv4.View.oct2 v) (IPv4.View.oct3 v) (IPv4.View.oct4 v) ((IPv4.View.prefix v).getD "")

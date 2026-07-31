@@ -29,6 +29,7 @@ import Triptych.Theorems.Unambiguity
 import Triptych.Theorems.Reconcile
 import Triptych.Theorems.DecodeLemmas
 import Triptych.Theorems.String
+import Triptych.Automation.ExternalParser
 import Triptych.Architecture.Syntax
 
 /-!
@@ -49,6 +50,7 @@ Module layout:
                                 DSLs, assembly, emission, and `triptych` syntax
 * `Triptych.Theorems.*`     — reusable decoder, roundtrip, coherence, unambiguity, and
                                 reconciliation theorems
+* `Triptych.Automation.*`   — extensible static external-parser proof rules and tactics
 
 The Cedar-free Graph example lives in the separate `other-examples` package. Cedar-backed examples
 and validation proofs live in `cedar-examples`. The core library has no dependency on either.

@@ -2,6 +2,7 @@
 
 import Datetime.parser
 import Datetime.grammar
+import Datetime.ViewBridge
 
 open Triptych
 open CedarExamples.Datetime
@@ -12,12 +13,13 @@ set_option linter.unusedVariables false
 /- ══════════════════════ soundness · external parser ══════════════════════
 Obligations for validating YOUR OWN external parser against this specification:
 `extparse_sound`, `extparse_complete`, and `extparse_reject`, stated over the readable
-surface `IsValid`/`computeValue`. These are left as `sorry` — they are claims about
-your parser, so you have to prove them yourself. Given them, the external printer
-theorems (`extparse_toString_*`) are DISCHARGED, reusing the generated section's
-`encode_*`. -/
+surface `IsValid`/`computeValue`. Cedar's Datetime parser theorems discharge them
+through the generated structural view and the component bridge. -/
 
-theorem Datetime.extparse_reject (s : String) : Cedar.Spec.Ext.Datetime.parse s = none ↔ ¬Datetime.IsValid s := by sorry
+theorem Datetime.extparse_reject (s : String) :
+    Cedar.Spec.Ext.Datetime.parse s = none ↔ ¬Datetime.IsValid s := by
+  rw [Cedar.Thm.Datetime.parse_eq_none_iff_not_wf,
+    Datetime.CedarBridge.bridge_isValid]
 
 theorem Datetime.extparse_eq_none_iff_view (s : String) :
     Cedar.Spec.Ext.Datetime.parse s = none ↔
@@ -30,12 +32,30 @@ theorem Datetime.extparse_eq_none_iff_view (s : String) :
     exact hnoview ((Datetime.IsValid_view s).mp hvalid)
 
 theorem Datetime.extparse_sound (s : String) (d : Cedar.Spec.Ext.Datetime) :
-    Cedar.Spec.Ext.Datetime.parse s = some d → Datetime.IsValid s ∧ Datetime.computeValue s = some (datetimeMillis d) :=
-  by sorry
+    Cedar.Spec.Ext.Datetime.parse s = some d →
+      Datetime.IsValid s ∧ Datetime.computeValue s = some (datetimeMillis d) :=
+  by
+  intro hparse
+  obtain ⟨hwf, hvalue⟩ := Cedar.Thm.Datetime.parse_sound s d hparse
+  refine ⟨(Datetime.CedarBridge.bridge_isValid s).mpr hwf, ?_⟩
+  rw [Datetime.CedarBridge.bridge_value s hwf]
+  simpa [datetimeMillis] using hvalue
+
+theorem Datetime.checkedExtParse_eq_extparse :
+    Datetime.checkedExtParse = Cedar.Spec.Ext.Datetime.parse :=
+  Triptych.checkedExternalParse_eq_of_sound
+    Datetime.IsValid Datetime.computeValue Cedar.Spec.Ext.Datetime.parse
+      datetimeMillis Datetime.extparse_sound
 
 theorem Datetime.extparse_complete (s : String) (d : Cedar.Spec.Ext.Datetime) :
-    Datetime.IsValid s → Datetime.computeValue s = some (datetimeMillis d) → Cedar.Spec.Ext.Datetime.parse s = some d :=
-  by sorry
+    Datetime.IsValid s → Datetime.computeValue s = some (datetimeMillis d) →
+      Cedar.Spec.Ext.Datetime.parse s = some d :=
+  by
+  intro hvalid hvalue
+  have hwf := (Datetime.CedarBridge.bridge_isValid s).mp hvalid
+  rw [Datetime.CedarBridge.bridge_value s hwf] at hvalue
+  exact Cedar.Thm.Datetime.parse_complete s d hwf (by
+    simpa [datetimeMillis] using hvalue)
 
 theorem Datetime.extparse_eq_some_iff_view (s : String) (d : Cedar.Spec.Ext.Datetime) :
     Cedar.Spec.Ext.Datetime.parse s = some d ↔

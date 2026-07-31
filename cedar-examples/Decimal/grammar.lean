@@ -26,7 +26,7 @@ import Cedar.Spec.Ext.Decimal
 Transcribes `doc/CedarDoc/Decimal.lean`. The `parser` clause names Cedar's own
 `Decimal.parse` (`Decimal := Int64`) and the `printer` clause a single canonical serializer,
 so the generated `soundness.lean` carries obligations for both the generated verified parser
-and the external one. See the docs for the `lift`/`projection`/δ-view story.
+and the external one. See the docs for the `ofSpec`/`toSpec` conversion story.
 -/
 
 namespace CedarExamples.Decimal
@@ -47,18 +47,18 @@ triptych Decimal where
     Fraction ::= digit{1,4}
   value
     Sign * (nat Natural * 10 ^ 4 + nat Fraction * 10 ^ (4 - len Fraction))
-    -- `lift`: upgrade the generated parser's spec value (`Int`, ×10⁴ fixed point) to the
-    -- domain type `Decimal` (= `Int64`) via `Int64.ofInt`, a section of the projection below.
-    lift Int64.ofInt
+    -- Convert the generated parser's spec value (`Int`, ×10⁴ fixed point) to the domain type
+    -- `Decimal` (= `Int64`).
+    ofSpec Int64.ofInt
   constraints
     value ∈ [Int64.MIN, Int64.MAX]
-  parser Cedar.Spec.Ext.Decimal.parse projection Int64.toInt
+  parser Cedar.Spec.Ext.Decimal.parse toSpec Int64.toInt
   printer decimalToStr
   to "Decimal"
 
--- The generated verified parser (lifted to `Option Decimal` by `lift Int64.ofInt`), run on
+-- The generated verified parser (returning `Option Decimal` via `ofSpec Int64.ofInt`), run on
 -- sample strings:
-#eval Decimal.parse "1.5"                    -- some 15000  (as a Decimal, via `lift Int64.ofInt`)
+#eval Decimal.parse "1.5"                    -- some 15000  (as a Decimal)
 #eval Decimal.parse "1.x"                    -- none  (rejected)
 #eval Decimal.parse "-0.15"                  -- some (-1500)  (the sign corner case)
 

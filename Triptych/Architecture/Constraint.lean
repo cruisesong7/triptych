@@ -45,9 +45,10 @@ extensionally-equivalent checks can land in different phases: `nat X ∈ [1, 12]
 author's INTENT ("is this part of what 'well-formed' means, or a constraint on the
 interpreted value?"), which cannot be recovered after `value` is substituted by its
 `ValExpr` (that is exactly why the phase is stored on the entry rather than re-derived).
-The two phases carve the same accepted language either way — `IsValid = IsWf ∧
-SatisfiesConstraints` — so the split only affects how the spec READS, never which strings
-it accepts.
+The two phases carve the same accepted language either way. When both are present,
+`IsValid = IsWf ∧ SatisfiesConstraints`; an absent phase is omitted rather than represented
+by a predicate equal to `True`. The split only affects how the spec reads, never which
+strings it accepts.
 -/
 
 namespace Triptych

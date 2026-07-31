@@ -10,6 +10,7 @@ lean_lib Triptych where
   globs := #[
     .one `Triptych,
     .submodules `Triptych.Architecture,
+    .submodules `Triptych.Automation,
     .one `Triptych.Theorems.Coherence,
     .one `Triptych.Theorems.DecodeLemmas,
     .one `Triptych.Theorems.Reconcile,

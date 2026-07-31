@@ -328,19 +328,17 @@ theorem IPv6.IsWf_equiv (s : String) : IPv6.IsWf s ↔ IPv6.isWf s :=
     countOf_getD, signOf_getD, Env.countVal, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
   try grind
 
-theorem IPv6.SatisfiesConstraints_equiv (s : String) : IPv6.SatisfiesConstraints s ↔ IPv6.satisfiesConstraints s :=
-  by
-  unfold IPv6.satisfiesConstraints Triptych.satisfiesConstraints
-  unfold IPv6.SatisfiesConstraints IPv6.constraints
-  simp only [Triptych.component, List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const,
-    ConstraintEntry.valPart, Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD,
-    countOf_getD, signOf_getD, Env.countVal, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
-  try grind
-
 theorem IPv6.IsValid_equiv (s : String) : IPv6.IsValid s ↔ IPv6.isValid s :=
   by
   unfold IPv6.IsValid IPv6.isValid
-  rw [(IPv6.IsWf_equiv s), (IPv6.SatisfiesConstraints_equiv s)]
+  rw [(IPv6.IsWf_equiv s)]
+  unfold IPv6.satisfiesConstraints Triptych.satisfiesConstraints IPv6.constraints
+  simp only [List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, ConstraintEntry.valPart, false_implies,
+    true_and, and_true]
+  constructor
+  · intro h
+    exact ⟨h, fun _ => True.intro⟩
+  · exact And.left
 
 instance IPv6.instDecidableGrammar : DecidablePred IPv6.IsWf.V6Net := fun s =>
   @decidable_of_iff _ _ (IPv6.IsWfGrammar_equiv s) (Triptych.decIsWf IPv6.grammar (by decide) s)
@@ -348,19 +346,13 @@ instance IPv6.instDecidableGrammar : DecidablePred IPv6.IsWf.V6Net := fun s =>
 instance IPv6.instDecidableIsWf : DecidablePred IPv6.IsWf := fun s =>
   @decidable_of_iff _ _ (IPv6.IsWf_equiv s).symm inferInstance
 
-instance IPv6.instDecidableSatisfiesConstraints : DecidablePred IPv6.SatisfiesConstraints := fun s =>
-  @decidable_of_iff _ _ (IPv6.SatisfiesConstraints_equiv s).symm inferInstance
-
-instance IPv6.instDecidableIsValid : DecidablePred IPv6.IsValid := fun s => inferInstanceAs (Decidable (_ ∧ _))
+instance IPv6.instDecidableIsValid : DecidablePred IPv6.IsValid := fun s => inferInstance
 
 theorem IPv6.View.wfConstraints_of_decode {s : String} {m : Triptych.CaptureMap} (h : decode IPv6.grammar s = some m) :
     IPv6.SatisfiesWfConstraints s ↔ IPv6.View.WfConstraints (IPv6.View.ofMap s m) :=
   by
   rw [IPv6.SatisfiesWfConstraints_of_decode h]
   rfl
-
-theorem IPv6.View.constraints_of_decode {s : String} {m : Triptych.CaptureMap} (_ : decode IPv6.grammar s = some m) :
-    IPv6.SatisfiesConstraints s ↔ IPv6.View.Constraints (IPv6.View.ofMap s m) := by rfl
 
 theorem IPv6.IsValid_view (s : String) :
     IPv6.IsValid s ↔ ∃ v : IPv6.View, IPv6.decodeView s = some v ∧ IPv6.View.Valid v :=
@@ -373,7 +365,7 @@ theorem IPv6.IsValid_view (s : String) :
     refine ⟨IPv6.View.ofMap s m, ?_, ?_⟩
     · unfold IPv6.decodeView
       simp [hm]
-    · exact ⟨(IPv6.View.wfConstraints_of_decode hm).mp hvalid.1.2, (IPv6.View.constraints_of_decode hm).mp hvalid.2⟩
+    · exact (IPv6.View.wfConstraints_of_decode hm).mp hvalid.2
   · rintro ⟨v, hview, hvalid⟩
     unfold IPv6.decodeView at hview
     rw [Option.map_eq_some_iff] at hview
@@ -381,9 +373,7 @@ theorem IPv6.IsValid_view (s : String) :
     subst v
     have hdecoded : (decode IPv6.grammar s).isSome = true := by simp [hm]
     have hgrammar := (IPv6.IsWfGrammar_equiv s).mp ((decodeSome_iff_IsWf IPv6.grammar (by decide) s).mp hdecoded)
-    exact
-      ⟨⟨hgrammar, (IPv6.View.wfConstraints_of_decode hm).mpr hvalid.1⟩,
-        (IPv6.View.constraints_of_decode hm).mpr hvalid.2⟩
+    exact ⟨hgrammar, (IPv6.View.wfConstraints_of_decode hm).mpr hvalid⟩
 
 theorem IPv6.computeValue_eq (s : String) :
     IPv6.computeValue s =
@@ -430,6 +420,8 @@ The generated correct-by-construction parser `parse` (= `computeValue` gated on 
 decidable `isValid`) together with its guarantees — `parse_sound`, `parse_complete`,
 `parse_reject`, `parse_view`, and typed `parse_eq_some_iff_view` /
 `parse_eq_none_iff_view` normal forms — all AUTO-DISCHARGED here.
+When an external parser is declared, `checkedExtParse` additionally validates each
+external result against this parser and ships an AUTO-DISCHARGED soundness theorem.
 A verified parser, no `sorry`. -/
 
 theorem IPv6.computeValue_isSome (s : String) : IPv6.isValid s → (IPv6.computeValue s).isSome :=

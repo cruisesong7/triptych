@@ -33,8 +33,8 @@ Impact: anyone maintaining a string-format parser (policy languages, config form
 One `triptych` block in, three generated files out:
 
 - **`spec.lean` — cite.** Each grammar production becomes a readable predicate you can eyeball against the grammar. Proof-free.
-- **`parser.lean` — run + trust.** An executable engine, a generated verified parser `parse` with auto-discharged soundness/completeness/rejection theorems, and machine-checked proofs that spec and engine agree on both *recognition* and *value*. Zero `sorry`, standard axioms only.
-- **`soundness.lean` — the obligation surface.** Emitted only when you point the spec at a real external parser/printer: the handful of `sorry`'d theorems a human must prove. We point Decimal, Duration, and Datetime at Cedar's actual parsers, and derive Cedar's printer theorems — roundtrip, injectivity, normalization — automatically from two encode obligations.
+- **`parser.lean` — run + trust.** An executable engine, a generated verified parser `parse` with auto-discharged soundness/completeness/rejection theorems, and machine-checked proofs that spec and engine agree on both *recognition* and *value*. Declared external parsers also receive `checkedExtParse`, a sound wrapper that validates every result against the generated parser without trusting the external implementation. Zero `sorry`, standard axioms only.
+- **`soundness.lean` — the static obligation surface.** Emitted only when you point the spec at a real external parser/printer: the stronger theorems required to remove runtime checking and prove full soundness/completeness/rejection of the original parser. We point Decimal, Duration, Datetime, and IPv4 at Cedar's actual parsers, and derive Cedar's printer theorems — roundtrip, injectivity, normalization — automatically from two encode obligations.
 
 Working today: six formats (Decimal, Duration, Datetime, IPv4, IPv6, Graph). Graph is the
 Cedar-free structured-value example; the Cedar-facing examples exercise the theorem surfaces

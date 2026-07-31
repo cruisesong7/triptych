@@ -211,7 +211,7 @@ theorem Decimal.IsWf_equiv (s : String) : Decimal.IsWf s ↔ Decimal.isWf s :=
   by
   unfold Decimal.IsWf Decimal.isWf Triptych.isWf
   rw [← Decimal.IsWfGrammar_equiv, ← decodeSome_iff_IsWf Decimal.grammar (by decide)]
-  unfold Decimal.SatisfiesWfConstraints Decimal.constraints
+  unfold Decimal.constraints
   simp only [Triptych.component, List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const,
     ConstraintEntry.wfPart, Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD,
     countOf_getD, signOf_getD, Env.countVal, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
@@ -241,11 +241,7 @@ instance Decimal.instDecidableIsWf : DecidablePred Decimal.IsWf := fun s =>
 instance Decimal.instDecidableSatisfiesConstraints : DecidablePred Decimal.SatisfiesConstraints := fun s =>
   @decidable_of_iff _ _ (Decimal.SatisfiesConstraints_equiv s).symm inferInstance
 
-instance Decimal.instDecidableIsValid : DecidablePred Decimal.IsValid := fun s => inferInstanceAs (Decidable (_ ∧ _))
-
-theorem Decimal.View.wfConstraints_of_decode {s : String} {m : Triptych.CaptureMap}
-    (_ : decode Decimal.grammar s = some m) :
-    Decimal.SatisfiesWfConstraints s ↔ Decimal.View.WfConstraints (Decimal.View.ofMap s m) := by rfl
+instance Decimal.instDecidableIsValid : DecidablePred Decimal.IsValid := fun s => inferInstance
 
 theorem Decimal.View.constraints_of_decode {s : String} {m : Triptych.CaptureMap}
     (h : decode Decimal.grammar s = some m) :
@@ -265,9 +261,7 @@ theorem Decimal.IsValid_view (s : String) :
     refine ⟨Decimal.View.ofMap s m, ?_, ?_⟩
     · unfold Decimal.decodeView
       simp [hm]
-    ·
-      exact
-        ⟨(Decimal.View.wfConstraints_of_decode hm).mp hvalid.1.2, (Decimal.View.constraints_of_decode hm).mp hvalid.2⟩
+    · exact (Decimal.View.constraints_of_decode hm).mp hvalid.2
   · rintro ⟨v, hview, hvalid⟩
     unfold Decimal.decodeView at hview
     rw [Option.map_eq_some_iff] at hview
@@ -275,9 +269,7 @@ theorem Decimal.IsValid_view (s : String) :
     subst v
     have hdecoded : (decode Decimal.grammar s).isSome = true := by simp [hm]
     have hgrammar := (Decimal.IsWfGrammar_equiv s).mp ((decodeSome_iff_IsWf Decimal.grammar (by decide) s).mp hdecoded)
-    exact
-      ⟨⟨hgrammar, (Decimal.View.wfConstraints_of_decode hm).mpr hvalid.1⟩,
-        (Decimal.View.constraints_of_decode hm).mpr hvalid.2⟩
+    exact ⟨hgrammar, (Decimal.View.constraints_of_decode hm).mpr hvalid⟩
 
 theorem Decimal.computeValue_eq (s : String) :
     Decimal.computeValue s =
@@ -324,6 +316,8 @@ The generated correct-by-construction parser `parse` (= `computeValue` gated on 
 decidable `isValid`) together with its guarantees — `parse_sound`, `parse_complete`,
 `parse_reject`, `parse_view`, and typed `parse_eq_some_iff_view` /
 `parse_eq_none_iff_view` normal forms — all AUTO-DISCHARGED here.
+When an external parser is declared, `checkedExtParse` additionally validates each
+external result against this parser and ships an AUTO-DISCHARGED soundness theorem.
 A verified parser, no `sorry`. -/
 
 theorem Decimal.computeValue_isSome (s : String) : Decimal.isValid s → (Decimal.computeValue s).isSome :=
@@ -335,24 +329,24 @@ theorem Decimal.computeValue_isSome (s : String) : Decimal.isValid s → (Decima
   exact h.1.1
 
 def Decimal.parse (s : String) :=
-  Triptych.gatedParseLift Decimal.isValid Decimal.computeValue Int64.ofInt s
+  Triptych.gatedParseOfSpec Decimal.isValid Decimal.computeValue Int64.ofInt s
 
 theorem Decimal.parse_sound (s : String) (i : Int64) :
     Decimal.parse s = some i → Decimal.isValid s ∧ (Decimal.computeValue s).map Int64.ofInt = some i :=
-  Triptych.gatedParseLift_sound _ _ _ s i
+  Triptych.gatedParseOfSpec_sound _ _ _ s i
 
 theorem Decimal.parse_complete (s : String) (i : Int64) :
     Decimal.isValid s → (Decimal.computeValue s).map Int64.ofInt = some i → Decimal.parse s = some i :=
-  Triptych.gatedParseLift_complete _ _ _ s i
+  Triptych.gatedParseOfSpec_complete _ _ _ s i
 
 theorem Decimal.parse_reject (s : String) : Decimal.parse s = none ↔ ¬Decimal.isValid s :=
-  Triptych.gatedParseLift_reject _ _ _ Decimal.computeValue_isSome s
+  Triptych.gatedParseOfSpec_reject _ _ _ Decimal.computeValue_isSome s
 
 theorem Decimal.parse_view (s : String) :
     Decimal.parse s =
       if decide (Decimal.isValid s) then (Decimal.decodeView s).map (Int64.ofInt ∘ Decimal.View.denotation) else none :=
   by
-  unfold Decimal.parse Triptych.gatedParseLift Triptych.gatedParse
+  unfold Decimal.parse Triptych.gatedParseOfSpec Triptych.gatedParse
   rw [Decimal.computeValue_view]
   by_cases h : Decimal.isValid s <;> simp [h, Option.map_map]
 
@@ -393,5 +387,30 @@ theorem Decimal.parse_iff_denotes (s : String) (i : Int64) :
   by
   unfold Decimal.parse Decimal.computeValue Triptych.computeValue
   exact
-    Triptych.gatedParseLiftF_eq_some_iff_denotes Decimal.grammar Decimal.constraints Decimal.valueFn Int64.ofInt
+    Triptych.gatedParseOfSpecF_eq_some_iff_denotes Decimal.grammar Decimal.constraints Decimal.valueFn Int64.ofInt
       Decimal.grammarCaptureFunctional s i
+
+def Decimal.checkedExtParse (s : String) : Option Cedar.Spec.Ext.Decimal :=
+  Triptych.checkedExternalParse Decimal.IsValid Decimal.computeValue Cedar.Spec.Ext.Decimal.parse Int64.toInt s
+
+theorem Decimal.checkedExtParse_eq_some_iff (s : String) (d : Cedar.Spec.Ext.Decimal) :
+    Decimal.checkedExtParse s = some d ↔
+      Cedar.Spec.Ext.Decimal.parse s = some d ∧ Decimal.IsValid s ∧ Decimal.computeValue s = some (Int64.toInt d) :=
+  Triptych.checkedExternalParse_eq_some_iff Decimal.IsValid Decimal.computeValue Cedar.Spec.Ext.Decimal.parse
+    Int64.toInt s d
+
+theorem Decimal.checkedExtParse_sound (s : String) (d : Cedar.Spec.Ext.Decimal) :
+    Decimal.checkedExtParse s = some d → Decimal.IsValid s ∧ Decimal.computeValue s = some (Int64.toInt d) :=
+  Triptych.checkedExternalParse_sound Decimal.IsValid Decimal.computeValue Cedar.Spec.Ext.Decimal.parse Int64.toInt s d
+
+theorem Decimal.checkedExtParse_sound_view (s : String) (d : Cedar.Spec.Ext.Decimal) :
+    Decimal.checkedExtParse s = some d →
+      ∃ v : Decimal.View,
+        Decimal.decodeView s = some v ∧ Decimal.View.Valid v ∧ Decimal.View.denotation v = Int64.toInt d :=
+  by
+  intro hparse
+  obtain ⟨hvalid, hvalue⟩ := Decimal.checkedExtParse_sound s d hparse
+  obtain ⟨v, hview, hvalidView⟩ := (Decimal.IsValid_view s).mp hvalid
+  refine ⟨v, hview, hvalidView, ?_⟩
+  rw [Decimal.computeValue_view, hview] at hvalue
+  exact Option.some.inj hvalue

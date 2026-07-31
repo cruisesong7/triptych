@@ -132,39 +132,36 @@ syntax ident (ppSpace fmtEscArg)+ : fmtEscEntry
     `constraints` section". -/
 syntax fmtConstraintsEsc := "constraints'" (colGt fmtEscEntry)+
 
-/-- The `lift <σ>` sub-clause of `value` — *upgrade the generated parser's output type*.
+/-- The `ofSpec <f>` sub-clause of `value` converts spec values to domain values.
 
 **Why it exists.** The value DSL computes in a *spec* value type `β` chosen for analyzability,
 not for use: `Decimal` is really a `×10⁴` fixed-point `Int`, `Duration` is a millisecond `Int`.
 That is the right type for the affine formula and the overflow constraint, but a real parser
-should hand back the *domain* type `δ` — an actual `Decimal`/`Duration`. `lift σ` bridges the
-gap: `σ : β → δ` maps the spec value up to the domain type, and the generated parser then
-returns `Option δ` (`(gatedParse …).map σ`), type-identical to a hand-written external parser.
-Its contracts become the σ-VIEW analogues, stated with `(computeValue s).map σ` in place of
-`computeValue s`.
+should hand back the *domain* type `δ` — an actual `Decimal`/`Duration`. `ofSpec` bridges the
+gap: `ofSpec : β → δ` converts the spec value to the domain type, and the generated parser
+returns `Option δ` (`(gatedParse …).map ofSpec`), type-identical to a hand-written parser.
+Its contracts are stated with `(computeValue s).map ofSpec`.
 
 **How to use it.** Write it as a trailing sub-clause of `value`:
-`value <formula> lift <σ>`, where `σ` is any `<spec type> → <domain type>` function (e.g.
-`lift Int64.ofInt`). It works **standalone** — no `parser`/`printer` needed — since it only
+`value <formula> ofSpec <f>`, where `f` is any `<spec type> → <domain type>` function (e.g.
+`ofSpec Int64.ofInt`). It works **standalone** — no `parser`/`printer` needed — since it only
 changes the output type. Two cautions:
-* If `σ` is lossy (e.g. `Int64.ofInt` wraps mod 2⁶⁴), pair it with a range constraint that
-  keeps accepted values inside `σ`'s faithful window (`value ∈ [Int64.MIN, Int64.MAX]`);
-  otherwise the σ-view silently wraps out-of-range values. A lint warns when `lift` appears
+* If `ofSpec` is lossy (e.g. `Int64.ofInt` wraps mod 2⁶⁴), pair it with a range constraint that
+  keeps accepted values inside its faithful window (`value ∈ [Int64.MIN, Int64.MAX]`);
+  otherwise out-of-range values silently wrap. A lint warns when `ofSpec` appears
   with no such constraint.
-* With a `parser … projection π` clause, `σ` must be a **section** of that projection:
-  `σ ∘ π = id` (the `lift_section` obligation) and `π ∘ σ = id` on accepted values (the
-  `lift_faithful` obligation) — both emitted into `soundness.lean`. This is what pins *which*
-  `σ` is correct, and why `σ` can't be inferred from the domain type `δ` alone.
+* With a `parser … toSpec g` clause, the conversions must satisfy
+  `ofSpec (toSpec d) = d` (the `ofSpec_toSpec` obligation) and
+  `toSpec (ofSpec v) = v` on accepted values (the `toSpec_ofSpec` obligation). Both are
+  emitted into `soundness.lean`.
 
-Nested inside `value` (as `projection` nests inside `parser`) because a lift only makes sense
-for the scalar `value` DSL — the `value'` escape already picks its own output type, so a lift
-there would be a redundant `id`. -/
-syntax fmtLift := "lift" term
+Nested inside `value` (as `toSpec` nests inside `parser`) because `ofSpec` only makes sense for
+the scalar `value` DSL. The `value'` escape already chooses its output type. -/
+syntax fmtOfSpec := "ofSpec" term
 
 /-- The optional `value` section: the value-DSL formula (`valExpr`); analyzable, `value(X)=…`.
-    May carry a trailing `lift <σ>` sub-clause (see `fmtLift`) — grammatically nested here (like
-    `projection` inside `parser`), because a lift only makes sense for the scalar `value` DSL. -/
-syntax fmtValue := "value" valExpr (fmtLift)?
+    May carry a trailing `ofSpec <f>` sub-clause (see `fmtOfSpec`). -/
+syntax fmtValue := "value" valExpr (fmtOfSpec)?
 
 /-- The optional `value'` ESCAPE section (design note §16.4/§16.7): a value outside the DSL
     vocabulary, an `f X Y …` call with `f : String → … → Int`. Same shape/contract as
@@ -173,26 +170,33 @@ syntax fmtValueEsc := "value'" fmtEscEntry
 
 /-- The optional `parser` clause — *validate an existing external parser against this spec*.
 
-Shape: `parser <parse> projection <π>`. Names a hand-written parser `parse : String → Option δ`
-you already have and want to trust, together with a **projection** `π : δ → β` (see below).
+Shape: `parser <parse> toSpec <f>`. Names a hand-written parser `parse : String → Option δ`
+you already have and want to trust, together with `toSpec : δ → β` (see below).
 When present, the command emits the three external-parser contract *obligations* as `sorry`d
 theorems in `soundness.lean`, relating `parse` to the generated spec:
-* `extparse_sound` — everything `parse` accepts is `IsValid`, and its value projects to the
-  spec value (`parse s = some d → IsValid s ∧ computeValue s = some (π d)`);
+* `extparse_sound` — everything `parse` accepts is `IsValid`, and its value converts to the
+  spec value (`parse s = some d → IsValid s ∧ computeValue s = some (toSpec d)`);
 * `extparse_complete` — the converse: every valid string with a matching value is accepted;
 * `extparse_reject` — `parse` rejects exactly the non-valid strings.
+
+When a value section is present, it also emits `checkedExtParse`, an immediately usable sound
+wrapper that retains an external result only when the generated parser accepts the same input
+with the same denotation.
+`checkedExtParse_sound` and `checkedExtParse_sound_view` are discharged automatically without
+trusting or inspecting the external parser. Proving `extparse_sound` later shows that this runtime
+check is observationally redundant via `Triptych.checkedExternalParse_eq_of_sound`. Runtime
+checking requires `DecidableEq` for the spec value type; without it, Triptych reports a warning
+and retains the static obligations.
 
 Discharging them (against the parser's own metatheory) is the translation-validation payoff:
 no rewrite, just a proof that the parser you ship agrees with the readable spec.
 
-**The `projection π`.** The external parser returns a rich domain value `d : δ` (a `Decimal`,
-a `Duration`), but the spec computes a scalar `β` (the `Int` denotation). `π : δ → β` reads the
-scalar back out of `d` (e.g. `Int64.toInt`, `Duration.toMilliseconds.toInt`) so the two sides
-are comparable — every contract above is phrased through it. Like `lift`, `π` is not inferable
-from types alone (many `δ → β` exist); it's the specific denotation your spec's value is
-computing, so you name it. It also lives in a section/faithfulness relationship with a `value`
-`lift σ` when both are present (`σ ∘ π = id`); see `fmtLift`. -/
-syntax fmtParser := "parser" term " projection " term
+**The `toSpec` conversion.** The external parser returns a domain value `d : δ`, but the spec
+computes a value in `β`. `toSpec : δ → β` converts `d` to the value denoted by the spec (e.g.
+`Int64.toInt` or `Duration.toMilliseconds.toInt`) so the two sides are comparable. It is not
+inferable from the types alone. When `ofSpec` is also present, the generated conversion laws
+connect the two directions; see `fmtOfSpec`. -/
+syntax fmtParser := "parser" term " toSpec " term
 
 /-- The optional `printer` clause: names the user's canonical serializer `toStr : β → String`
     for the spec value type `β`. A serializer can't be synthesized (the canonical form is a
@@ -201,8 +205,7 @@ syntax fmtParser := "parser" term " projection " term
     Cedar proves (`parse_toString_roundtrip` / `toString_injective` /
     `normalize_eq_iff_parse_eq`) for the GENERATED parser, and — when a `parser` clause is also
     present — the same trio (`extparse_*`) for the EXTERNAL parser, stated in β-VIEW via that
-    parser's projection (both parsers project to `β`, so ONE serializer serves both; the
-    generated parser is the `π = id` case). Needs a `value` section. -/
+    parser's `toSpec` conversion. Needs a `value` section. -/
 syntax fmtPrinter := "printer" term
 
 /-- Optional trailing clause: `to "<dir>"` writes the generated modules
@@ -216,8 +219,8 @@ syntax fmtPrinter := "printer" term
 syntax fmtTo := "to " str
 
 /-- The `triptych` command, sections in order: `grammar` (required), `value`
-    (optional, with an optional trailing `lift`), `constraints` (optional), `parser`
-    (optional, with a required `projection`), `printer` (optional), `to` (optional).
+    (optional, with an optional trailing `ofSpec`), `constraints` (optional), `parser`
+    (optional, with a required `toSpec`), `printer` (optional), `to` (optional).
     `value` precedes `constraints` so a constraint can refer to `value`.
     The `parser`/`printer` clauses emit the sorried obligations; the `to "<dir>"` clause
     writes the generated modules. `#show` logs each declaration. -/
@@ -389,14 +392,31 @@ partial def deHygiene (stx : Syntax) : Syntax :=
   | .node info kind args       => .node info kind (args.map deHygiene)
   | s                          => s
 
+/-- Return the module import for the file containing the `triptych` command.
+
+Lean's language server may name a file relative to the workspace root even when it belongs to
+a nested Lake package (`cedar-examples.Decimal.grammar` instead of `Decimal.grammar`). When the
+caller and generated files share a directory, reconstruct the package-local module from the
+output directory and source-file leaf. Otherwise retain Lean's full module name. -/
+private def callerModuleForOutput (dir dirMod : String) : CommandElabM String := do
+  let main ← getMainModule
+  let fallback := main.toString
+  let sourcePath := System.FilePath.mk (← getFileName)
+  let some sourceDir := sourcePath.parent | return fallback
+  let sourceDir ← IO.FS.realPath sourceDir
+  let outputDir ← IO.FS.realPath (System.FilePath.mk dir)
+  if sourceDir.normalize == outputDir.normalize then
+    let leaf := main.getString!
+    return if dirMod.isEmpty then leaf else dirMod ++ "." ++ leaf
+  return fallback
+
 /-- Elaborate the `triptych` command: generates + elaborates the declarations, tagged
     into four sections, and — with a `to "<dir>"` clause — writes them as one module
     `<dir>/spec.lean`. `#show` additionally logs each declaration.
 
     The generated file is ONE module in four `═══`-banner sections (dependency order):
     * **spec** (`emitSpec`) — the reader-facing spec: `grammar`, readable per-production
-      `IsWf.*` predicates, `value`, `Constraints`, `SatisfiesConstraints`, `IsValid`
-      (valid = grammar ∧ constraints, matching Cedar's wording).
+      `IsWf.*` predicates, `value`, present constraint phases, and `IsValid`.
     * **engine** (`emitEngine`) — the analyzable/executable machinery: deep `valueExpr`/
       `valueFn`/`constraints` ASTs + the decode-backed interpreter bundle (`isWf`/
       `isValid`/`computeValue`).
@@ -413,13 +433,13 @@ def elabTriptych : CommandElab := fun stx => do
       let showing := sh.isSome
       -- Buffers, one per GENERATED FILE (the output is split three ways by audience):
       --   spec.lean     ← bufS: the readable surface (cite) — grammar, `IsWf.*`, `value`,
-      --                   `Constraints`, `SatisfiesConstraints`, `IsValid`. Proof-free.
+      --                   present constraint phases, `IsValid`. Proof-free.
       --   parser.lean   ← bufE ++ bufP ++ bufR: the runnable + trusted artifact (run + trust)
       --                   — engine bundle, ALL auto-discharged proofs (`IsWf_equiv`,
       --                   `computeValue_eq`, decidability), and the generated verified `parse`
       --                   + its discharged contracts. No `sorry`.
       --   soundness.lean ← bufC: ONLY the external-parser obligations (`sorry`d), emitted only
-      --                   when a `parser … projection …` clause names a real external parser.
+      --                   when a `parser … toSpec …` clause names a real external parser.
       let bufS ← IO.mkRef (#[] : Array String)   -- spec file
       let bufE ← IO.mkRef (#[] : Array String)   -- engine (→ parser file)
       let bufP ← IO.mkRef (#[] : Array String)   -- reconciliation proofs (→ parser file)
@@ -525,29 +545,32 @@ def elabTriptych : CommandElab := fun stx => do
         if let some startProd := gval.prods.find? (·.name == gval.start) then
           emitSound (← Triptych.isWfGrammarEquivProof name.getId grammarIdent startProd)
           emitSound (← Triptych.isWfEquivProof name.getId hasWfConstraints)
-          emitSound (←
-            Triptych.satisfiesConstraintsEquivProof name.getId hasValueConstraints hasValue)
-          emitSound (← Triptych.isValidEquivProof name.getId)
+          if hasValueConstraints then
+            emitSound (←
+              Triptych.satisfiesConstraintsEquivProof name.getId true hasValue)
+          emitSound (← Triptych.isValidEquivProof name.getId hasValueConstraints)
           let grammarEquivId := mkIdentFrom name (name.getId ++ `IsWfGrammar_equiv)
           let wfEquivId := mkIdentFrom name (name.getId ++ `IsWf_equiv)
-          let scEquivId := mkIdentFrom name (name.getId ++ `SatisfiesConstraints_equiv)
           let startIsWfId := mkIdentFrom name (name.getId ++ `IsWf ++ startProd.name.toName)
           let wfSurfId := mkIdentFrom name (name.getId ++ `IsWf)
-          let scSurfId := mkIdentFrom name (name.getId ++ `SatisfiesConstraints)
           let accSurfId := mkIdentFrom name (name.getId ++ `IsValid)
           let instGrammarId := mkIdentFrom name (name.getId ++ `instDecidableGrammar)
           let instWfId := mkIdentFrom name (name.getId ++ `instDecidableIsWf)
-          let instScId  := mkIdentFrom name (name.getId ++ `instDecidableSatisfiesConstraints)
           let instAccId := mkIdentFrom name (name.getId ++ `instDecidableIsValid)
           emitSound (← `(instance $instGrammarId:ident : DecidablePred $startIsWfId := fun s =>
                         @decidable_of_iff _ _ ($grammarEquivId s)
                           (Triptych.decIsWf $grammarIdent (by decide) s)))
           emitSound (← `(instance $instWfId:ident : DecidablePred $wfSurfId := fun s =>
                         @decidable_of_iff _ _ ($wfEquivId s).symm inferInstance))
-          emitSound (← `(instance $instScId:ident : DecidablePred $scSurfId := fun s =>
-                        @decidable_of_iff _ _ ($scEquivId s).symm inferInstance))
+          if hasValueConstraints then
+            let scEquivId := mkIdentFrom name (name.getId ++ `SatisfiesConstraints_equiv)
+            let scSurfId := mkIdentFrom name (name.getId ++ `SatisfiesConstraints)
+            let instScId :=
+              mkIdentFrom name (name.getId ++ `instDecidableSatisfiesConstraints)
+            emitSound (← `(instance $instScId:ident : DecidablePred $scSurfId := fun s =>
+                          @decidable_of_iff _ _ ($scEquivId s).symm inferInstance))
           emitSound (← `(instance $instAccId:ident : DecidablePred $accSurfId :=
-                        fun s => inferInstanceAs (Decidable (_ ∧ _))))
+                        fun s => inferInstance))
       -- Value (optional), processed BEFORE constraints so a constraint may refer to `value`.
       -- DSL tier (`value <formula>`, `v`): elaborate the value-DSL to a `ValExpr` (bound as
       -- `valueExpr`) whose `eval` is the value fn; `valueSub` is the `ValExpr` substituted for
@@ -563,7 +586,7 @@ def elabTriptych : CommandElab := fun stx => do
       let mut valueCapArgs : List (String × Bool) := []
       let mut hasValueEsc : Bool := false
       -- Capture binders for the two readable constraint phases. `none` means that phase has no
-      -- entries, so its string-level predicate is emitted as `True`.
+      -- entries and no phase-specific surface predicate is emitted.
       let mut wfConstrCaps : Option (List String) := none
       let mut valueConstrCaps : Option (List String) := none
       if let some vStx := v then
@@ -756,22 +779,22 @@ def elabTriptych : CommandElab := fun stx => do
       let accSurf := mkIdentFrom name (name.getId ++ `IsValid)
       match wfConstrCaps with
       | none =>
-        emitSpec (← `(abbrev $wfScSurf (s : String) : Prop := True))
+        emitSpec (← `(abbrev $wfSurf (s : String) : Prop := $grammarWf s))
       | some caps =>
         let wfRIdent := mkIdentFrom name (name.getId ++ `WfConstraints)
         let args : Array (TSyntax `term) ← caps.toArray.mapM (fun c =>
           `(Triptych.component $grammarIdent s $(Syntax.mkStrLit c)))
         emitSpec (← `(def $wfScSurf (s : String) : Prop := $wfRIdent $args*))
-      emitSpec (← `(abbrev $wfSurf (s : String) : Prop := $grammarWf s ∧ $wfScSurf s))
+        emitSpec (← `(abbrev $wfSurf (s : String) : Prop := $grammarWf s ∧ $wfScSurf s))
       match valueConstrCaps with
       | none =>
-        emitSpec (← `(abbrev $scSurf (s : String) : Prop := True))
+        emitSpec (← `(abbrev $accSurf (s : String) : Prop := $wfSurf s))
       | some caps =>
         let cRIdent := mkIdentFrom name (name.getId ++ `Constraints)
         let args : Array (TSyntax `term) ← caps.toArray.mapM (fun c =>
           `(Triptych.component $grammarIdent s $(Syntax.mkStrLit c)))
         emitSpec (← `(def $scSurf (s : String) : Prop := $cRIdent $args*))
-      emitSpec (← `(abbrev $accSurf (s : String) : Prop := $wfSurf s ∧ $scSurf s))
+        emitSpec (← `(abbrev $accSurf (s : String) : Prop := $wfSurf s ∧ $scSurf s))
       let hasGeneratedValue := veIdent?.isSome || hasValueEsc
       let resolvedValueCaps : List (String × Bool) :=
         if veIdent?.isSome then valueCaps.map (·, false) else valueCapArgs
@@ -799,13 +822,15 @@ def elabTriptych : CommandElab := fun stx => do
       -- Reconcile both public phases independently, then derive full acceptance equivalence.
       emitReconcile wfConstrCaps.isSome valueConstrCaps.isSome veIdent?.isSome
       if hasGeneratedValue || wfConstrCaps.isSome || valueConstrCaps.isSome then
+        if wfConstrCaps.isSome then
+          emitSound (←
+            Triptych.viewConstraintsOfDecodeProof name.getId grammarIdent true)
+        if valueConstrCaps.isSome then
+          emitSound (←
+            Triptych.viewConstraintsOfDecodeProof name.getId grammarIdent false)
         emitSound (←
-          Triptych.viewConstraintsOfDecodeProof name.getId grammarIdent
-            true wfConstrCaps.isSome)
-        emitSound (←
-          Triptych.viewConstraintsOfDecodeProof name.getId grammarIdent
-            false valueConstrCaps.isSome)
-        emitSound (← Triptych.isValidViewProof name.getId grammarIdent)
+          Triptych.isValidViewProof name.getId grammarIdent
+            wfConstrCaps.isSome valueConstrCaps.isSome)
       -- VALUE equivalence (SOUNDNESS section): surface `value` ⟺ engine `computeValue`, as a
       -- standalone theorem (the value analogue of `IsWf_equiv`). Emitted whenever a value
       -- section is present — DSL tier (`veIdent?`) or `value'` escape (`hasValueEsc`).
@@ -822,72 +847,94 @@ def elabTriptych : CommandElab := fun stx => do
       -- `parse_complete`/`parse_reject`). Gated on the engine `isValid` (structurally decidable),
       -- so the parser is self-contained relative to the engine — no `sorry`. This is the
       -- correct-by-construction parser; the external obligations below are the SEPARATE
-      -- translation-validation surface. A `lift <σ>` clause LIFTS the output to the domain type
-      -- `δ` (so `parse : String → Option δ`, σ-view contracts); otherwise it returns `β`.
-      let liftTerm? : Option (TSyntax `term) := do
+      -- translation-validation surface. An `ofSpec <f>` clause converts the output to the
+      -- domain type `δ` (so `parse : String → Option δ`); otherwise it returns `β`.
+      let ofSpecTerm? : Option (TSyntax `term) := do
         let vStx ← v
         match vStx with
-        | `(fmtValue| value $_:valExpr lift $σT:term) => some σT
+        | `(fmtValue| value $_:valExpr ofSpec $ofSpecT:term) => some ofSpecT
         | _ => none
       if veIdent?.isSome || hasValueEsc then
-        for cmd in ← Triptych.parserContractsProof name.getId veIdent?.isSome liftTerm? do
+        for cmd in ← Triptych.parserContractsProof name.getId veIdent?.isSome ofSpecTerm? do
           emitParser cmd
-        emitParser (← Triptych.parseViewProof name.getId liftTerm?)
-        emitParser (← Triptych.parseEqSomeIffViewProof name.getId liftTerm?)
+        emitParser (← Triptych.parseViewProof name.getId ofSpecTerm?)
+        emitParser (← Triptych.parseEqSomeIffViewProof name.getId ofSpecTerm?)
         emitParser (← Triptych.parseEqNoneIffViewProof name.getId)
         if grammarStaticallyUnique then
           emitParser (←
-            Triptych.relationalParserContractProof name.getId veIdent?.isSome liftTerm?)
-      -- LIFT GUARD (lint): a `lift σ` whose σ is not injective on all of `Int` (e.g.
+            Triptych.relationalParserContractProof name.getId veIdent?.isSome ofSpecTerm?)
+      -- CONVERSION GUARD (lint): an `ofSpec` not injective on all of `Int` (e.g.
       -- `Int64.ofInt`, which WRAPS) needs a value constraint carving the accepted language down
-      -- to σ's faithful domain — otherwise out-of-range inputs are ACCEPTED and σ silently wraps
-      -- them (internally consistent, so no generated proof fails; only `lift_faithful` below —
-      -- when a projection exists — or a conformance test would catch it). We can't inspect σ
+      -- to its faithful domain. Otherwise out-of-range inputs are accepted and silently wrap.
+      -- The generated `toSpec_ofSpec` obligation catches this when `toSpec` is present.
+      -- We cannot inspect the supplied function
       -- (an opaque term), so this is a heuristic WARNING, not an error: no DSL constraint
-      -- mentions `value` and no `constraints'` escape is present ⟹ warn. A total-injective σ
+      -- mentions `value` and no `constraints'` escape is present ⟹ warn. A total injection
       -- (a plain embedding) legitimately needs no constraint — then ignore the warning.
-      if let some σT := liftTerm? then
+      if let some ofSpecT := ofSpecTerm? then
         unless dslExprs.any Triptych.constraintUsesValue do
-          logWarningAt σT m!"`lift` without a value constraint: if `{σT}` is not injective on \
+          logWarningAt ofSpecT m!"`ofSpec` without a value constraint: if `{ofSpecT}` is not \
+            injective on \
             all of Int (e.g. it wraps, like `Int64.ofInt`), out-of-range inputs will be ACCEPTED \
-            and silently wrapped by the lifted parser. Add a range constraint matching the \
-            lift's faithful domain (e.g. `value ∈ [Int64.MIN, Int64.MAX]`) — with a `parser … \
-            projection` clause the emitted `lift_faithful` obligation is unprovable without it. \
-            If the lift is a total embedding, this warning can be ignored."
-      -- LIFT FAITHFULNESS (→ soundness file, generated section): with BOTH `lift σ` and a
-      -- `parser … projection π` clause, emit the obligation `lift_faithful : isValid s →
-      -- computeValue s = some v → π (σ v) = v` — faithfulness of the lift on ACCEPTED values,
-      -- the dual of `lift_section` (`σ ∘ π = id` everywhere; here `π ∘ σ = id` on the accepted
-      -- language, where alone it can hold for a wrapping σ). Its proof is exactly what the
+            and silently converted by the generated parser. Add a range constraint matching \
+            `ofSpec`'s faithful domain (e.g. `value ∈ [Int64.MIN, Int64.MAX]`) — with a \
+            `parser … toSpec` clause the emitted `toSpec_ofSpec` obligation is unprovable \
+            without it. If `ofSpec` is a total embedding, this warning can be ignored."
+      -- CONVERSION FAITHFULNESS (→ soundness file, generated section): with BOTH `ofSpec` and a
+      -- `parser … toSpec` clause, emit `toSpec_ofSpec : isValid s →
+      -- computeValue s = some v → toSpec (ofSpec v) = v` on accepted values. The companion
+      -- `ofSpec_toSpec` law is emitted with printer obligations below. This proof is what the
       -- value range constraint provides, so a missing/too-loose constraint makes it UNPROVABLE —
       -- the silent-wrap trap surfaces as a permanent `sorry` instead of wrong behavior. Payoff
-      -- (discharged): `parse_sound_proj`, the π-VIEW soundness of the generated lifted parser —
+      -- (discharged): `parse_sound_toSpec`, soundness of the generated domain-valued parser —
       -- the same contract shape as the external `extparse_sound`.
-      if let some σT := liftTerm? then
+      if let some ofSpecT := ofSpecTerm? then
         if let some prStx := pr then
-          if let `(fmtParser| parser $_:term projection $projT:term) := prStx then
-            let faithId     := mkIdentFrom name (name.getId ++ `lift_faithful)
-            let soundProjId := mkIdentFrom name (name.getId ++ `parse_sound_proj)
+          if let `(fmtParser| parser $_:term toSpec $toSpecT:term) := prStx then
+            let toSpecOfSpecId := mkIdentFrom name (name.getId ++ `toSpec_ofSpec)
+            let soundToSpecId := mkIdentFrom name (name.getId ++ `parse_sound_toSpec)
             let validEng    := mkIdentFrom name (name.getId ++ `isValid)
             let cvIdent     := mkIdentFrom name (name.getId ++ `computeValue)
             let parseId     := mkIdentFrom name (name.getId ++ `parse)
-            let (dTy, dNm) ← Triptych.liftCodomainBinder σT
+            let (dTy, dNm) ← Triptych.ofSpecCodomainBinder ofSpecT
             let dId := mkIdent dNm
-            emitContractGen (← `(theorem $faithId (s : String) (v : Int) :
-                $validEng s → $cvIdent s = some v → $projT ($σT v) = v := by sorry))
-            emitContractGen (← `(theorem $soundProjId (s : String) ($dId : $dTy) :
-                $parseId s = some $dId → $validEng s ∧ $cvIdent s = some ($projT $dId) :=
-              Triptych.gatedParseLift_sound_proj $validEng $cvIdent $σT $projT $faithId s $dId))
-      -- EXTERNAL-PARSER obligations (→ soundness file): with a `parser <p> projection <π>`
+            emitContractGen (← `(theorem $toSpecOfSpecId (s : String) (v : Int) :
+                $validEng s → $cvIdent s = some v →
+                  $toSpecT ($ofSpecT v) = v := by sorry))
+            emitContractGen (← `(theorem $soundToSpecId (s : String) ($dId : $dTy) :
+                $parseId s = some $dId →
+                  $validEng s ∧ $cvIdent s = some ($toSpecT $dId) :=
+              Triptych.gatedParseOfSpec_sound_toSpec
+                $validEng $cvIdent $ofSpecT $toSpecT $toSpecOfSpecId s $dId))
+      -- EXTERNAL-PARSER obligations (→ soundness file): with a `parser <p> toSpec <f>`
       -- clause naming an EXISTING external parser, emit `<Name>.sound`/`.complete`/`.reject` as
       -- `sorry`d theorems (design §16.1), stated over the SURFACE `<Name>.IsValid`/
       -- `computeValue` — the human-facing "the real parser accepts iff the readable spec is
       -- valid, with matching value". These are the ONLY obligations left to the human; they
       -- reference the external parser, so the soundness file re-imports the caller module.
       if let some prStx := pr then
-        if let `(fmtParser| parser $parseT:term projection $projT:term) := prStx then
+        if let `(fmtParser| parser $parseT:term toSpec $toSpecT:term) := prStx then
+          let cvIdent := mkIdentFrom name (name.getId ++ `computeValue)
+          let checkedExternalAvailable ←
+            if veIdent?.isSome || hasValueEsc then
+              Triptych.hasDecidableEqOptionPayload cvIdent
+            else
+              pure false
+          -- Universal soundness fallback: check each external success against the generated
+          -- parser. Unlike the static obligations below, this wrapper and all of its theorems
+          -- are discharged without inspecting or trusting the external implementation.
+          if veIdent?.isSome || hasValueEsc then
+            if checkedExternalAvailable then
+              for cmd in ←
+                  Triptych.checkedExternalParserProofs name.getId parseT toSpecT do
+                emitParser cmd
+            else
+              logWarningAt toSpecT m!"checked external-parser wrapper not emitted: the codomain \
+                of `{toSpecT}` has no `DecidableEq` instance. Static `extparse_*` obligations \
+                are still emitted. Add `DecidableEq` for the spec value type to enable \
+                runtime soundness-by-checking."
           -- Statements written OUT (not `RejectStmt`/`SoundStmt`/…), so the obligation reads as
-          -- the actual proposition to prove for the external parser `parseT` (projection `projT`).
+          -- the actual proposition to prove for the external parser `parseT`.
           let rejIdent := mkIdentFrom name (name.getId ++ `extparse_reject)
           emitContractExt (← `(theorem $rejIdent (s : String) :
               $parseT s = none ↔ ¬ $accSurf s := by sorry))
@@ -900,18 +947,27 @@ def elabTriptych : CommandElab := fun stx => do
           let compIdent  := mkIdentFrom name (name.getId ++ `extparse_complete)
           -- `sound`/`complete` need a value function — emitted whenever a `value` OR `value'`
           -- section is present (both produce `<Name>.computeValue`; the escape tier's value
-          -- type is arbitrary, matched by the `projection`'s codomain).
+          -- type is arbitrary, matched by the `toSpec` codomain).
           if veIdent?.isSome || hasValueEsc then
-            let cvIdent := mkIdentFrom name (name.getId ++ `computeValue)
             let soundIdent := mkIdentFrom name (name.getId ++ `extparse_sound)
             -- Both obligations parametrized over the external output `extId` (matching Cedar's
             -- target-parametrized `parse_sound`/`parse_complete`).
             emitContractExt (← `(theorem $soundIdent (s : String) ($extId : $extTy) :
-                $parseT s = some $extId → $accSurf s ∧ $cvIdent s = some ($projT $extId) := by sorry))
+                $parseT s = some $extId →
+                  $accSurf s ∧ $cvIdent s = some ($toSpecT $extId) := by sorry))
+            if checkedExternalAvailable then
+              let checkedId := mkIdentFrom name (name.getId ++ `checkedExtParse)
+              let checkedEqId :=
+                mkIdentFrom name (name.getId ++ `checkedExtParse_eq_extparse)
+              emitContractExt (← `(theorem $checkedEqId :
+                  $checkedId = $parseT :=
+                Triptych.checkedExternalParse_eq_of_sound
+                  $accSurf $cvIdent $parseT $toSpecT $soundIdent))
             emitContractExt (← `(theorem $compIdent (s : String) ($extId : $extTy) :
-                $accSurf s → $cvIdent s = some ($projT $extId) → $parseT s = some $extId := by sorry))
+                $accSurf s → $cvIdent s = some ($toSpecT $extId) →
+                  $parseT s = some $extId := by sorry))
             emitContractExt (←
-              Triptych.externalParseEqSomeIffViewProof name.getId parseT projT)
+              Triptych.externalParseEqSomeIffViewProof name.getId parseT toSpecT)
       -- PRINTER (→ soundness file): `printer <toStr>` names ONE canonical serializer
       -- `toStr : δ → String` over the DOMAIN type δ (the type BOTH parsers return). From `sorry`d
       -- encode obligations the three printer theorems Cedar proves are AUTO-DERIVED in the clean
@@ -920,23 +976,22 @@ def elabTriptych : CommandElab := fun stx => do
       -- `normalize_eq_iff_parse_eq`) — and, when a `parser` clause is present, the SAME trio
       -- (`extparse_*`) for the EXTERNAL parser. Needs a value section.
       --
-      -- With a `lift σ` (in `value`) + `parser … projection π`, the generated parser is LIFTED to
-      -- δ and closes its roundtrip π-VIEW (Cedar's own recipe): two shared obligations
+      -- With `ofSpec` + `parser … toSpec`, the generated parser returns δ and closes its
+      -- roundtrip using two shared obligations
       -- `encode_accepted d : isValid (toStr d)` and `encode_value d : computeValue (toStr d) =
-      -- some (π d)` (≙ Cedar's `toString_isWfStr` / `computeValue_toString`) plus a section fact
-      -- `lift_section d : σ (π d) = d` (≙ Cedar's `Int64.ofInt_toInt`). The SAME two obligations
-      -- serve the external parser (via its `complete`), so one pair drives both. Without a lift the
-      -- generated parser returns β (δ = β, π = id); without a parser clause the lifted generated
-      -- roundtrip closes σ-VIEW (`(computeValue (toStr d)).map σ = some d`), no π / no section.
+      -- some (toSpec d)` plus `ofSpec_toSpec d : ofSpec (toSpec d) = d`. The same encode
+      -- obligations serve the external parser. Without `ofSpec`, the generated parser returns β;
+      -- without a parser clause, its roundtrip is stated directly through `ofSpec`.
       if let some ppStx := pp then
         if let `(fmtPrinter| printer $toStrT:term) := ppStx then
           if veIdent?.isSome || hasValueEsc then
             let cvIdent  := mkIdentFrom name (name.getId ++ `computeValue)
             let encAccId := mkIdentFrom name (name.getId ++ `encode_accepted)
             let encValId := mkIdentFrom name (name.getId ++ `encode_value)
-            let secId    := mkIdentFrom name (name.getId ++ `lift_section)
+            let ofSpecToSpecId := mkIdentFrom name (name.getId ++ `ofSpec_toSpec)
             let validEng := mkIdentFrom name (name.getId ++ `isValid)
-            -- The serializer's DOMAIN is the value type BOTH printer sides key on: δ when lifted,
+            -- The serializer's domain is the value type both printer sides key on: δ with
+            -- `ofSpec`,
             -- β otherwise. One helper reads it (+ a one-letter binder) straight off `toStr`.
             let (dTy, dNm) ← Triptych.serializerDomainBinder toStrT
             let dId := mkIdent dNm; let dId' := mkIdent (dNm.appendAfter "'")
@@ -944,37 +999,39 @@ def elabTriptych : CommandElab := fun stx => do
             let rtId     := mkIdentFrom name (name.getId ++ `parse_toString_roundtrip)
             let injId    := mkIdentFrom name (name.getId ++ `toString_injective)
             let normId   := mkIdentFrom name (name.getId ++ `normalize_eq_iff_parse_eq)
-            -- The `parser … projection` clause supplies the projection π (: δ → β) that phrases
-            -- the shared π-view `encode_value` and the section fact `lift_section : σ (π d) = d`.
+            -- The `parser … toSpec` clause supplies the conversion used by `encode_value` and
+            -- the `ofSpec_toSpec` law.
             let extClause? : Option (TSyntax `term × TSyntax `term) := do
               let prStx ← pr
               match prStx with
-              | `(fmtParser| parser $parseT:term projection $projT:term) => some (parseT, projT)
+              | `(fmtParser| parser $parseT:term toSpec $toSpecT:term) =>
+                  some (parseT, toSpecT)
               | _ => none
             -- GENERATED section: the shared encode obligations live here (the external section
-            -- reuses them), so the whole `encode_*`/`lift_section` + generated-parser trio is one
-            -- self-contained block. `encode_accepted` (over ENGINE `isValid`) is shared by every branch.
+            -- reuses them), so the `encode_*`/conversion-law/generated-parser block is
+            -- self-contained. `encode_accepted` (over ENGINE `isValid`) is shared by every branch.
             emitContractGen (← `(theorem $encAccId ($dId : $dTy) : $validEng ($toStrT $dId) := by sorry))
             -- Emit the shared obligations' value part + the GENERATED roundtrip, per branch.
-            match liftTerm?, extClause? with
-            | some σT, some (_, projT) =>
-              -- LIFTED + PARSER: π-view (Cedar's recipe). `encode_value` through π, `lift_section`
-              -- the section `σ (π d) = d`; generated roundtrip via `gatedParseLift_toString_roundtrip`.
+            match ofSpecTerm?, extClause? with
+            | some ofSpecT, some (_, toSpecT) =>
+              -- `ofSpec` + external parser: encode through `toSpec`, then use the inverse law.
               emitContractGen (← `(theorem $encValId ($dId : $dTy) :
-                  $cvIdent ($toStrT $dId) = some ($projT $dId) := by sorry))
-              emitContractGen (← `(theorem $secId ($dId : $dTy) : $σT ($projT $dId) = $dId := by sorry))
+                  $cvIdent ($toStrT $dId) = some ($toSpecT $dId) := by sorry))
+              emitContractGen (← `(theorem $ofSpecToSpecId ($dId : $dTy) :
+                  $ofSpecT ($toSpecT $dId) = $dId := by sorry))
               emitContractGen (← `(theorem $rtId ($dId : $dTy) : $parseId ($toStrT $dId) = some $dId :=
-                Triptych.gatedParseLift_toString_roundtrip $encAccId $encValId $secId $dId))
-            | some σT, none =>
-              -- LIFTED, NO PARSER: no π available → σ-view `encode_value`; roundtrip closes straight
-              -- from `gatedParseLift_complete` (self-contained, no section fact needed).
+                Triptych.gatedParseOfSpec_toString_roundtrip
+                  $encAccId $encValId $ofSpecToSpecId $dId))
+            | some ofSpecT, none =>
+              -- `ofSpec`, no external parser: state the encode value directly in the domain.
               emitContractGen (← `(theorem $encValId ($dId : $dTy) :
-                  ($cvIdent ($toStrT $dId)).map $σT = some $dId := by sorry))
+                  ($cvIdent ($toStrT $dId)).map $ofSpecT = some $dId := by sorry))
               emitContractGen (← `(theorem $rtId ($dId : $dTy) : $parseId ($toStrT $dId) = some $dId :=
-                Triptych.gatedParseLift_complete $validEng $cvIdent $σT ($toStrT $dId) $dId
+                Triptych.gatedParseOfSpec_complete
+                  $validEng $cvIdent $ofSpecT ($toStrT $dId) $dId
                   ($encAccId $dId) ($encValId $dId)))
             | none, _ =>
-              -- UNLIFTED: generated parser returns β (δ = β, π = id). `encode_value` is the plain
+              -- Without `ofSpec`, the generated parser returns β. `encode_value` is the plain
               -- `computeValue (toStr d) = some d`; roundtrip via `gatedParse_toString_roundtrip`.
               emitContractGen (← `(theorem $encValId ($dId : $dTy) :
                   $cvIdent ($toStrT $dId) = some $dId := by sorry))
@@ -989,7 +1046,7 @@ def elabTriptych : CommandElab := fun stx => do
                 ($parseId s).map $toStrT = ($parseId s').map $toStrT ↔ $parseId s = $parseId s' :=
               Triptych.normalize_eq_iff_parse_eq $rtId s s'))
             -- EXTERNAL parser (δ-view), when a `parser` clause exists: reuses the SAME `toStr` +
-            -- `encode_accepted`/`encode_value` (π-view), closing roundtrip via the external
+            -- `encode_accepted`/`encode_value` (`toSpec` view), closing roundtrip via the external
             -- `complete` — exactly Cedar's `parse_toString_roundtrip = parse_complete …`.
             match extClause? with
             | some (parseT, _) =>
@@ -1019,7 +1076,7 @@ def elabTriptych : CommandElab := fun stx => do
       --                     decidability), and the generated verified `parse` + its contracts.
       --                     Imports `spec`. No `sorry`.
       --   `soundness.lean`— ONLY the external-parser obligations (`sorry`d), emitted ONLY when a
-      --                     `parser … projection …` clause names an existing external parser.
+      --                     `parser … toSpec …` clause names an existing external parser.
       --                     Imports `parser` + the caller module (the external parser lives there).
       --                     WRITE-ONCE: holds user proofs, never overwritten once it exists.
       -- Splitting by file (vs the old single module) gives each a crisp contract; the
@@ -1032,26 +1089,25 @@ def elabTriptych : CommandElab := fun stx => do
           let proofDecls ← bufP.get; let parserDecls ← bufR.get
           let genContractDecls ← bufCg.get; let extContractDecls ← bufCx.get
           let contractDecls := genContractDecls ++ extContractDecls
-          let callerImport := (← getMainModule).toString
-          let callerNamespace := (← getCurrNamespace).toString
           -- Module path prefix of the output dir (`Triptych/Examples/Decimal` →
           -- `Triptych.Examples.Decimal`), used to import sibling generated files.
           let dirMod := (dir.replace "/" ".").replace "\\" "."
+          let callerImport ← callerModuleForOutput dir dirMod
+          let callerNamespace := (← getCurrNamespace).toString
           let specMod   := dirMod ++ ".spec"
           let parserMod := dirMod ++ ".parser"
           -- The surface `value`/`Constraints` reference caller fns for the escape tiers
           -- (`toGraph`, `dayBound`, …); the engine bundle likewise. So both `spec` and
           -- `parser` import (and `open`) the caller when an escape is present.
           let needsCallerSurface := hasOpaque || hasValueEsc
-          -- `parser.lean` additionally embeds the `lift σ` term in the generated `parse`; when `σ`
-          -- is a CALLER-defined fn (e.g. `millisToDuration`, not a library one like `Int64.ofInt`)
-          -- it must import+open the caller too. Presence of a lift is the trigger (a library σ
+          -- `parser.lean` additionally embeds the `ofSpec` term in the generated `parse`; when it
+          -- is caller-defined (e.g. `millisToDuration`, not a library fn like `Int64.ofInt`)
+          -- it must import+open the caller too. Presence of `ofSpec` is the trigger (a library fn
           -- makes the extra import harmless — the caller module is acyclic w.r.t. the generated
           -- files, same as `soundness.lean`'s caller import).
-          let needsCallerParser := needsCallerSurface || liftTerm?.isSome
-          -- `unusedSimpArgs`/`unusedVariables` off — the uniform proof closer over-provisions
-          -- simp lemmas by design, and some defs keep a uniform signature with an unused
-          -- parameter (`SatisfiesConstraints (s) := True`); neither is a defect.
+          let needsCallerParser := needsCallerSurface || ofSpecTerm?.isSome
+          -- `unusedSimpArgs`/`unusedVariables` off — uniform generated proof closers
+          -- intentionally over-provision some simp lemmas and binders.
           let mkHeader (imports : List String) (openCaller : Bool) : String :=
             let importLines := String.join (imports.map (fun i => s!"import {i}\n"))
             s!"/- Generated by Triptych from `triptych {nm}`. -/\n\n\
@@ -1089,9 +1145,10 @@ def elabTriptych : CommandElab := fun stx => do
             The more readable specification. Each production of the input grammar becomes an\n\
             inlined well-formedness predicate `IsWf.*` written as a plain existential over the\n\
             named captures, so you can read it side-by-side with the grammar and check that it\n\
-            says the same thing. `WfConstraints` contains capture-derived format conditions;\n\
-            `Constraints` contains only conditions that explicitly mention the final `value`.\n\
-            `IsValid` combines both phases. This file is proof-free — it is what you cite. -/"
+            says the same thing. When present, `WfConstraints` contains capture-derived format\n\
+            conditions and `Constraints` contains conditions that explicitly mention the final\n\
+            `value`. Empty phases are omitted; `IsWf` and `IsValid` specialize accordingly.\n\
+            This file is proof-free — it is what you cite. -/"
           let specPath := dir ++ "/spec.lean"
           guardedWrite specPath
             (specHeader ++ "\n" ++ specBanner ++ "\n\n" ++ joinDecls specDecls ++ "\n")
@@ -1126,6 +1183,8 @@ def elabTriptych : CommandElab := fun stx => do
             decidable `isValid`) together with its guarantees — `parse_sound`, `parse_complete`,\n\
             `parse_reject`, `parse_view`, and typed `parse_eq_some_iff_view` /\n\
             `parse_eq_none_iff_view` normal forms — all AUTO-DISCHARGED here.\n\
+            When an external parser is declared, `checkedExtParse` additionally validates each\n\
+            external result against this parser and ships an AUTO-DISCHARGED soundness theorem.\n\
             A verified parser, no `sorry`. -/"
           let parserSections : List (String × Array String) :=
             [(engineBanner, engineDecls), (proofBanner, proofDecls), (parserBanner, parserDecls)]
@@ -1150,7 +1209,8 @@ def elabTriptych : CommandElab := fun stx => do
           -- it is deleted and re-scaffolded.
           let mut soundWritten := false
           if !contractDecls.isEmpty then
-            let soundHeader := mkHeader [parserMod, callerImport] true
+            let soundHeader :=
+              mkHeader [parserMod, callerImport, "Triptych.Automation.ExternalParser"] true
             let genBanner := "/- ══════════════════════ soundness · generated parser ══════════════════════\n\
               Obligations about the GENERATED parser `parse`. The `encode_*` obligations (a\n\
               serialized value is accepted, and evaluates back to itself) are left as `sorry` — a\n\
@@ -1162,7 +1222,10 @@ def elabTriptych : CommandElab := fun stx => do
               Obligations for validating YOUR OWN external parser against this specification:\n\
               `extparse_sound`, `extparse_complete`, and `extparse_reject`, stated over the readable\n\
               surface `IsValid`/`computeValue`. These are left as `sorry` — they are claims about\n\
-              your parser, so you have to prove them yourself. `extparse_eq_some_iff_view` and\n\
+              your unwrapped parser, so you have to prove them yourself. The generated\n\
+              `checkedExtParse` is already sound without these proofs when the spec value has\n\
+              decidable equality. `triptych_sound` can invert supported successful parser paths\n\
+              using the registered static proof rules. `extparse_eq_some_iff_view` and\n\
               `extparse_eq_none_iff_view` then package their success and rejection consequences as\n\
               typed-view relations. The external printer theorems (`extparse_toString_*`) are also\n\
               DISCHARGED, reusing the generated section's `encode_*`. -/"
@@ -1233,15 +1296,12 @@ from analysis and put correctness on you).
   a BARE capture name reads its sign — valid only when `X ::= sign`; the checker rejects a bare
   ref to a non-sign capture, and `nat/int/len/count` OF a sign capture.
   arithmetic:  a + b    a - b    a * b    a ^ b    ( … )    (prec: ^ > * > +/-)
-  lift <σ>   (optional trailing sub-clause)  σ : Int → δ lifts the GENERATED parser's output
-             to the domain type δ (so `parse : String → Option δ`); with a
-             `parser … projection π` clause, σ is π's section (`σ ∘ π = id`, the emitted
-             `lift_section` obligation) and π∘σ = id on accepted values (the emitted
-             `lift_faithful` obligation — provable exactly when the constraints pin the
-             accepted values inside σ's faithful domain, e.g. `value ∈ [Int64.MIN, Int64.MAX]`
-             for a wrapping σ like `Int64.ofInt`; a missing range constraint makes it
-             unprovable, surfacing the silent-wrap trap). A lint warns when `lift` appears
-             with no value constraint at all.
+  ofSpec <f>  (optional trailing sub-clause)  f : Int → δ converts the spec value to the
+              generated parser's domain type δ. With `parser … toSpec g`, the emitted laws are
+              `ofSpec_toSpec : f (g d) = d` and, on accepted values,
+              `toSpec_ofSpec : g (f v) = v`. The latter is provable for a lossy conversion only
+              when constraints pin values to its faithful domain. A lint warns when `ofSpec`
+              appears with no value constraint.
 
 ── value' ──  (optional ESCAPE, for values outside the DSL: structured output, calendar math)
   value' f X Y …   with  def f (x y … : String) : α := …    (`f` applied to capture STRINGS;
@@ -1271,8 +1331,8 @@ from analysis and put correctness on you).
   one per line:  f X Y …   with  def f (x y … : String) : Bool := …   (`f` applied to captures)
   these capture-only escapes fold into IsWf.
 
-── parser ──  (optional)  parser <parse> projection <π>   emits the external-parser obligations
-                          (π : δ → β reads the external parser's value into the spec value type).
+── parser ──  (optional)  parser <parse> toSpec <f>   emits a sound checked wrapper plus the
+                          static external-parser obligations (`f : δ → β`).
 ── printer ── (optional; needs value)  printer <toString>   names your canonical serializer over
                           the DOMAIN type δ (what the parsers return); emits the encode
                           obligations + auto-derives roundtrip/injective/normalize for the
@@ -1285,7 +1345,7 @@ from analysis and put correctness on you).
                           `/- Generated by Triptych` header) is never overwritten — hard error.
 
 Section order:  grammar · value · value' · constraints · constraints' · parser · printer · to
-(`lift` nests inside `value`, as `projection` nests inside `parser`).
+(`ofSpec` nests inside `value`, as `toSpec` nests inside `parser`).
 When a format needs something not listed here, that is a signal to either (a) use the
 matching escape section (`value'` / `constraints'`) for that one piece, or (b) request the
 vocabulary be extended — not to hand-write the whole spec in Lean."

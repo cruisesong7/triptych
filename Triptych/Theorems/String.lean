@@ -76,6 +76,25 @@ theorem splitToList_intercalate (parts : List String) (hne : parts ≠ [])
     obtain ⟨part, hpart, rfl⟩ := hchars
     exact hparts part hpart c hc
 
+/-- Reconstruct a string from the result of splitting it at a character. This is the inverse
+    direction used when a successful external parser exposes its list of components. -/
+theorem eq_intercalate_of_splitToList_eq {s : String} {parts : List String} (sep : Char)
+    (h : s.splitToList (fun c => decide (c = sep)) = parts) :
+    s = String.intercalate (String.singleton sep) parts := by
+  rw [String.splitToList_of_valid] at h
+  have hp : (fun c : Char => decide (c = sep)) = (fun c => c == sep) := by
+    funext c
+    apply Bool.eq_iff_iff.mpr
+    rw [decide_eq_true_eq, beq_iff_eq]
+  have hsplits : List.splitOn sep s.toList = parts.map String.toList := by
+    rw [List.splitOn_eq_splitOnP]
+    have h' := congrArg (List.map String.toList) h
+    simpa [Function.comp_def, hp] using h'
+  have hi := congrArg (List.intercalate [sep]) hsplits
+  rw [List.intercalate_splitOn] at hi
+  rw [← String.toList_inj]
+  simpa [String.toList_intercalate] using hi
+
 /-- Delimiter-separated rendering is injective on nonempty lists whose components do not
     contain the delimiter. -/
 theorem intercalate_injective {left right : List String}
