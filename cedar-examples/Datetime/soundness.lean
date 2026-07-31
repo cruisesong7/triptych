@@ -2,7 +2,7 @@
 
 import Datetime.parser
 import Datetime.grammar
-import Datetime.ComponentView
+import Datetime.RuleRegistrySoundness
 
 open Triptych
 open CedarExamples.Datetime
@@ -13,33 +13,22 @@ set_option linter.unusedVariables false
 /- ══════════════════════ soundness · external parser ══════════════════════
 Obligations for validating YOUR OWN external parser against this specification:
 `extparse_sound`, `extparse_complete`, and `extparse_reject`, stated over the readable
-surface `IsValid`/`computeValue`. This module still uses Cedar's Datetime parser theorems;
-the generated structural and component views isolate the remaining parser-specific work. -/
+surface `IsValid`/`computeValue`. This module uses the registered Cedar Datetime backend and
+generated component views, with no direct dependency on parser-correctness theorem names. -/
 
 theorem Datetime.extparse_reject (s : String) :
-    Cedar.Spec.Ext.Datetime.parse s = none ↔ ¬Datetime.IsValid s := by
-  rw [Cedar.Thm.Datetime.parse_eq_none_iff_not_wf,
-    Datetime.GrammarView.isValid_iff_cedarWf]
+    Cedar.Spec.Ext.Datetime.parse s = none ↔ ¬Datetime.IsValid s :=
+  Datetime.RuleRegistrySoundness.parser_rejects_iff s
 
 theorem Datetime.extparse_eq_none_iff_view (s : String) :
     Cedar.Spec.Ext.Datetime.parse s = none ↔
-      ¬∃ v : Datetime.View, Datetime.decodeView s = some v ∧ Datetime.View.Valid v := by
-  rw [Datetime.extparse_reject]
-  constructor
-  · intro hinvalid ⟨v, hview, hvalidView⟩
-    exact hinvalid ((Datetime.IsValid_view s).mpr ⟨v, hview, hvalidView⟩)
-  · intro hnoview hvalid
-    exact hnoview ((Datetime.IsValid_view s).mp hvalid)
+      ¬∃ v : Datetime.View, Datetime.decodeView s = some v ∧ Datetime.View.Valid v :=
+  Datetime.RuleRegistrySoundness.parser_eq_none_iff_view s
 
 theorem Datetime.extparse_sound (s : String) (d : Cedar.Spec.Ext.Datetime) :
     Cedar.Spec.Ext.Datetime.parse s = some d →
       Datetime.IsValid s ∧ Datetime.computeValue s = some (datetimeMillis d) :=
-  by
-  intro hparse
-  obtain ⟨hwf, hvalue⟩ := Cedar.Thm.Datetime.parse_sound s d hparse
-  refine ⟨(Datetime.GrammarView.isValid_iff_cedarWf s).mpr hwf, ?_⟩
-  rw [Datetime.GrammarView.computeValue_eq_cedar s hwf]
-  simpa [datetimeMillis] using hvalue
+  Datetime.RuleRegistrySoundness.parser_sound s d
 
 theorem Datetime.checkedExtParse_eq_extparse :
     Datetime.checkedExtParse = Cedar.Spec.Ext.Datetime.parse :=
@@ -50,28 +39,12 @@ theorem Datetime.checkedExtParse_eq_extparse :
 theorem Datetime.extparse_complete (s : String) (d : Cedar.Spec.Ext.Datetime) :
     Datetime.IsValid s → Datetime.computeValue s = some (datetimeMillis d) →
       Cedar.Spec.Ext.Datetime.parse s = some d :=
-  by
-  intro hvalid hvalue
-  have hwf := (Datetime.GrammarView.isValid_iff_cedarWf s).mp hvalid
-  rw [Datetime.GrammarView.computeValue_eq_cedar s hwf] at hvalue
-  exact Cedar.Thm.Datetime.parse_complete s d hwf (by
-    simpa [datetimeMillis] using hvalue)
+  Datetime.RuleRegistrySoundness.parser_complete s d
 
 theorem Datetime.extparse_eq_some_iff_view (s : String) (d : Cedar.Spec.Ext.Datetime) :
     Cedar.Spec.Ext.Datetime.parse s = some d ↔
       ∃ v : Datetime.View,
         Datetime.decodeView s = some v ∧
         Datetime.View.Valid v ∧
-        Datetime.View.denotation v = datetimeMillis d := by
-  constructor
-  · intro hparse
-    obtain ⟨hvalid, hvalue⟩ := Datetime.extparse_sound s d hparse
-    obtain ⟨v, hview, hvalidView⟩ := (Datetime.IsValid_view s).mp hvalid
-    refine ⟨v, hview, hvalidView, ?_⟩
-    rw [Datetime.computeValue_view, hview] at hvalue
-    exact Option.some.inj hvalue
-  · rintro ⟨v, hview, hvalidView, hvalue⟩
-    apply Datetime.extparse_complete s d
-    · exact (Datetime.IsValid_view s).mpr ⟨v, hview, hvalidView⟩
-    · rw [Datetime.computeValue_view, hview]
-      exact congrArg some hvalue
+        Datetime.View.denotation v = datetimeMillis d :=
+  Datetime.RuleRegistrySoundness.parser_eq_some_iff_view s d

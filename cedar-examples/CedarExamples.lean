@@ -11,6 +11,7 @@ import Datetime.grammar
 import Datetime.spec
 import Datetime.parser
 import Datetime.soundness
+import Datetime.RuleRegistrySoundness
 import IPv4.grammar
 import IPv4.spec
 import IPv4.parser
