@@ -19,16 +19,16 @@ the build with a nonzero count if any case diverges. No `native_decide`, no new
 axioms: this is plain evaluation, entirely outside the verified core.
 -/
 
-import Decimal.parser
-import Duration.parser
-import Datetime.parser
-import IPv4.parser
-import IPv6.parser
-import Decimal.grammar
-import Duration.grammar
-import Datetime.grammar
-import IPv4.grammar
-import IPv6.grammar
+import Generated.Decimal.parser
+import Generated.Duration.parser
+import Generated.Datetime.parser
+import Generated.IPv4.parser
+import Generated.IPv6.parser
+import Grammars.Decimal
+import Grammars.Duration
+import Grammars.Datetime
+import Grammars.IPv4
+import Grammars.IPv6
 import Cedar.Spec.Ext.Decimal
 import Cedar.Spec.Ext.Datetime
 import Cedar.Spec.Ext.IPAddr

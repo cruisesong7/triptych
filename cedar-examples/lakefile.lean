@@ -10,12 +10,10 @@ package cedarExamples
 lean_lib CedarExamples where
   globs := #[
     .one `CedarExamples,
-    .submodules `Decimal,
-    .submodules `Duration,
-    .submodules `Datetime,
-    .submodules `IPv4,
-    .submodules `IPv6,
-    .submodules `CedarSupport
+    .submodules `CedarSupport,
+    .submodules `Generated,
+    .submodules `Grammars,
+    .submodules `Proofs
   ]
   defaultFacets := #[LeanLib.staticFacet]
 

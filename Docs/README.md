@@ -135,7 +135,7 @@ triptych IPv6 where
     count H16L + count H16R < 8
     noLeadingZero CIDRPrefix
     nat CIDRPrefix ∈ [0, 128]
-  to "IPv6"
+  to "Generated/IPv6"
 ```
 
 produces `IPv6.IsWf.V6Net`, `IPv6.IsValid`, a `DecidablePred` validator, the automatically

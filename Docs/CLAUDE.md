@@ -108,9 +108,9 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
   generated files). Emits `gatedParse`/`parserContractsProof` (the verified parser) and
   splits output into `spec`/`parser`/`soundness` (see below).
 - `other-examples/Graph/` — the Cedar-free structured Graph example.
-- `cedar-examples/{Decimal,Duration,Datetime,IPv4,IPv6}/`
-  — each `grammar.lean` runs
-  `triptych` and writes up to THREE modules beside it: `spec.lean` (readable surface,
+- `cedar-examples/Grammars/<Format>.lean`
+  — each handwritten grammar runs
+  `triptych` and writes up to THREE modules under `Generated/<Format>/`: `spec.lean` (readable surface,
   proof-free), `parser.lean` (engine bundle + auto-discharged proofs `IsWf_equiv`/
   `computeValue_eq`/decidability + the generated correct-by-construction parser `parse` and its
   discharged `parse_sound`/`parse_complete`/`parse_reject`), and — ONLY when the `triptych`
@@ -144,8 +144,10 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
   30 IPv4 + 29 IPv6 = 207 cases, all passing. This is what caught the Duration sign bug (below).
 - **Package boundary:** the root `lakefile.lean` and manifest depend only on Batteries.
   `cedar-examples/lakefile.lean` owns the local cedar-lean dependency and imports Triptych
-  core as a path dependency. Its format modules live directly at `Decimal.*`, `Duration.*`,
-  `Datetime.*`, `IPv4.*`, and `IPv6.*`; shared bridge helpers live under `CedarSupport.*`.
+  core as a path dependency. Handwritten DSL sources live under `Grammars.*`; generated
+  `spec`/`parser`/optional `soundness` modules live under `Generated.<Format>.*`.
+  Format-specific proof machinery lives under `Proofs.<Format>.*`, while reusable backend
+  helpers live under `CedarSupport.*`.
   After a generator edit, build `CedarExamples` twice if regeneration leaves an olean one
   pass behind.
 
