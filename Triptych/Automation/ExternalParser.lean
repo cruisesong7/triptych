@@ -20,13 +20,18 @@ import Triptych.Automation.Registry
 /-!
 # Static external-parser proof automation
 
-This module supplies the backend-neutral successful-path rules. The rules turn a hypothesis such
-as `parser s = some a` into the witnesses, branch facts, and guards that made the result possible.
-Parser-library backends extend the same `triptych_parser` registry with rules for their primitives.
+This module supplies backend-neutral successful-path rules. They turn a hypothesis such as
+`parser s = some a` into the witnesses, branch facts, and guards that made the result possible.
+Parser-library backends extend `triptych_parser` with normalization rules and
+`triptych_parser_search` with rules suitable for bounded E-matching.
 
 `triptych_sound [parser, helper] at h` unfolds the named definitions and applies exactly the
 registered rules to `h`. Unsupported parser operations remain visible in the resulting hypothesis,
 which makes the next missing backend rule explicit.
+
+`triptych_auto [agreement, helper]` additionally makes the named facts available to bounded
+`grind` search. It closes routine logical composition around parser-agreement facts, but does not
+invent the format-specific fact relating an external parser primitive to the generated denotation.
 -/
 
 namespace Triptych.Automation
@@ -69,6 +74,14 @@ attribute [triptych_parser]
   exists_eq_right
   exists_eq_right'
 
+attribute [triptych_parser_search =]
+  Option.bind_eq_some_iff
+  Option.map_eq_some_iff
+  Option.filter_eq_some_iff
+  Option.guard_eq_some_iff
+  Option.or_eq_some_iff
+  Option.isSome_iff_exists
+
 end Triptych.Automation
 
 open Lean Parser Tactic
@@ -89,3 +102,37 @@ macro_rules
       `(tactic| simp only [$rules,*, triptych_parser])
   | `(tactic| triptych_sound [$rules,*] $loc) =>
       `(tactic| simp only [$rules,*, triptych_parser] $loc)
+
+/--
+Normalize parser equations with `triptych_parser`, then run bounded proof search over the
+kernel-checked `triptych_parser_search` rules. Named definitions and theorems in brackets have
+higher priority: simplification uses them before the global registry and search receives them
+explicitly.
+
+Unlike `triptych_sound`, this tactic works over the whole local context and attempts to close the
+goal. If it fails, Lean reports the normalized residual goal, which identifies the next missing
+backend rule or genuinely format-specific fact.
+-/
+syntax (name := triptychAuto)
+  "triptych_auto" (" [" ident,* "]")? : tactic
+
+macro_rules
+  | `(tactic| triptych_auto) => do
+      let searchAttr := mkIdent `triptych_parser_search
+      let searchParam ← `(Lean.Parser.Tactic.grindParam| $searchAttr:ident)
+      `(tactic|
+        (try simp_all only [triptych_parser]) <;>
+          grind (splits := 6) (ematch := 4) (instances := 256)
+            only [$searchParam])
+  | `(tactic| triptych_auto [$rules:ident,*]) => do
+      let simpRules ← rules.getElems.mapM fun rule =>
+        `(Lean.Parser.Tactic.simpLemma| $rule:ident)
+      let grindRules ← rules.getElems.mapM fun rule =>
+        `(Lean.Parser.Tactic.grindParam| $rule:ident)
+      let searchAttr := mkIdent `triptych_parser_search
+      let searchParam ← `(Lean.Parser.Tactic.grindParam| $searchAttr:ident)
+      `(tactic|
+        (try simp_all only [$simpRules,*]) <;>
+          (try simp_all only [triptych_parser]) <;>
+          grind (splits := 6) (ematch := 4) (instances := 256)
+            only [$grindRules,*, $searchParam])

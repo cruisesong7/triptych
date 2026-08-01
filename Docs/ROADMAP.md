@@ -58,10 +58,14 @@ Prioritize reductions in user-authored proof volume:
   named component specification instead of unfolding its implementation;
 - complete: build an extensible external-parser rule registry and `triptych_sound` tactic for
   successful `Option` paths, alternatives, maps, filters, guards, and conditionals;
+- complete: add a separate `triptych_parser_search` saturation registry and bounded
+  `triptych_auto` tactic; use it in Decimal, Duration, Datetime, and IPv4 to derive routine
+  external soundness, completeness, and typed-view consequences from semantic agreement facts;
 - generate stronger bridge lemmas for common external parser combinators;
 - generate exact capture-view inversion/construction theorems from the grammar, eliminating the
   remaining format-shaped `decode`/`matchProd` proofs currently demonstrated by Decimal;
-- automate routine soundness, completeness, rejection, `toSpec`, and printer obligations;
+- automate remaining format-specific rejection, `toSpec`, and printer obligations where the DSL
+  contains enough semantic information;
 - turn recurring decomposition arguments into reusable tactics or theorem families;
 - generate useful proof hints and source-located diagnostics when automation stops;
 - separate genuinely semantic obligations from bookkeeping that the compiler can discharge;

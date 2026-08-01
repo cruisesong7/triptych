@@ -15,6 +15,7 @@
 -/
 
 import Lean.Meta.Tactic.Simp.RegisterCommand
+import Lean.Meta.Tactic.Grind.RegisterCommand
 
 /-!
 # External-parser proof-rule registry
@@ -29,3 +30,11 @@ before declarations can be added to them.
 
 /-- Successful-path rewrite rules used by `triptych_sound`. -/
 register_simp_attr triptych_parser
+
+/--
+Parser facts available to the bounded saturation phase of `triptych_auto`.
+
+Keep this separate from `triptych_parser`: simplification rules need a terminating orientation,
+while saturation rules may be used in either direction by `grind`'s E-matching engine.
+-/
+register_grind_attr triptych_parser_search

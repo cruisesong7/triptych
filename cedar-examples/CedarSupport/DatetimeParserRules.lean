@@ -15,7 +15,7 @@ namespace CedarSupport.DatetimeParserRules
 
 /-- Cedar's Datetime parser succeeds exactly on well-formed canonical components with the
     returned epoch-millisecond value. -/
-@[triptych_parser]
+@[triptych_parser, triptych_parser_search =]
 theorem parse_eq_some_iff_components {s : String} {d : Datetime} :
     Datetime.parse s = some d ↔
       ∃ components : Cedar.Thm.Datetime.DatetimeComponents,
@@ -38,7 +38,7 @@ theorem parse_eq_some_iff_components {s : String} {d : Datetime} :
     · rw [hs, CedarSupport.Datetime.computeValue_asString hsyntax, hvalue]
 
 /-- Cedar rejects exactly strings outside its parser-independent Datetime grammar. -/
-@[triptych_parser]
+@[triptych_parser, triptych_parser_search =]
 theorem parse_eq_none_iff_not_wf (s : String) :
     Datetime.parse s = none ↔ ¬Cedar.Thm.Datetime.IsWfDatetime s :=
   Cedar.Thm.Datetime.parse_eq_none_iff_not_wf s

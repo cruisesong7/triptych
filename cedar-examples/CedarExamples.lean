@@ -11,7 +11,6 @@ import Grammars.Datetime
 import Generated.Datetime.spec
 import Generated.Datetime.parser
 import Generated.Datetime.soundness
-import Proofs.Datetime.RuleRegistrySoundness
 import Grammars.IPv4
 import Generated.IPv4.spec
 import Generated.IPv4.parser

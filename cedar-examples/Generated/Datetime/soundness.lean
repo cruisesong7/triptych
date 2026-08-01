@@ -2,7 +2,7 @@
 
 import Generated.Datetime.parser
 import Grammars.Datetime
-import Proofs.Datetime.RuleRegistrySoundness
+import Proofs.Datetime.RuleRegistryProof
 
 open Triptych
 open CedarExamples.Datetime
@@ -17,18 +17,18 @@ surface `IsValid`/`computeValue`. This module uses the registered Cedar Datetime
 generated component views, with no direct dependency on parser-correctness theorem names. -/
 
 theorem Datetime.extparse_reject (s : String) :
-    Cedar.Spec.Ext.Datetime.parse s = none ↔ ¬Datetime.IsValid s :=
-  Datetime.RuleRegistrySoundness.parser_rejects_iff s
+    Cedar.Spec.Ext.Datetime.parse s = none ↔ ¬Datetime.IsValid s := by
+  triptych_auto [Datetime.RuleRegistryProof.parser_rejects_iff]
 
 theorem Datetime.extparse_eq_none_iff_view (s : String) :
     Cedar.Spec.Ext.Datetime.parse s = none ↔
-      ¬∃ v : Datetime.View, Datetime.decodeView s = some v ∧ Datetime.View.Valid v :=
-  Datetime.RuleRegistrySoundness.parser_eq_none_iff_view s
+      ¬∃ v : Datetime.View, Datetime.decodeView s = some v ∧ Datetime.View.Valid v := by
+  triptych_auto [Datetime.extparse_reject, Datetime.IsValid_view]
 
 theorem Datetime.extparse_sound (s : String) (d : Cedar.Spec.Ext.Datetime) :
     Cedar.Spec.Ext.Datetime.parse s = some d →
-      Datetime.IsValid s ∧ Datetime.computeValue s = some (datetimeMillis d) :=
-  Datetime.RuleRegistrySoundness.parser_sound s d
+      Datetime.IsValid s ∧ Datetime.computeValue s = some (datetimeMillis d) := by
+  triptych_auto [Datetime.RuleRegistryProof.parser_agrees]
 
 theorem Datetime.checkedExtParse_eq_extparse :
     Datetime.checkedExtParse = Cedar.Spec.Ext.Datetime.parse :=
@@ -38,13 +38,14 @@ theorem Datetime.checkedExtParse_eq_extparse :
 
 theorem Datetime.extparse_complete (s : String) (d : Cedar.Spec.Ext.Datetime) :
     Datetime.IsValid s → Datetime.computeValue s = some (datetimeMillis d) →
-      Cedar.Spec.Ext.Datetime.parse s = some d :=
-  Datetime.RuleRegistrySoundness.parser_complete s d
+      Cedar.Spec.Ext.Datetime.parse s = some d := by
+  triptych_auto [Datetime.RuleRegistryProof.parser_agrees]
 
 theorem Datetime.extparse_eq_some_iff_view (s : String) (d : Cedar.Spec.Ext.Datetime) :
     Cedar.Spec.Ext.Datetime.parse s = some d ↔
       ∃ v : Datetime.View,
         Datetime.decodeView s = some v ∧
         Datetime.View.Valid v ∧
-        Datetime.View.denotation v = datetimeMillis d :=
-  Datetime.RuleRegistrySoundness.parser_eq_some_iff_view s d
+        Datetime.View.denotation v = datetimeMillis d := by
+  triptych_auto [Datetime.RuleRegistryProof.parser_agrees, Datetime.IsValid_view,
+    Datetime.computeValue_view]

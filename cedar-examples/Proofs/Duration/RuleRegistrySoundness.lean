@@ -127,19 +127,6 @@ theorem parser_agrees (s : String) (duration : Duration) :
     rw [parse_of_parts s sgn components hsign hs hwf hnonempty hbounds]
     exact (duration?_eq_some_iff _ _).mpr hvalueEq
 
-theorem parser_sound (s : String) (duration : Duration) :
-    Cedar.Spec.Ext.Datetime.Duration.parse s = some duration →
-      _root_.Duration.IsValid s ∧
-        _root_.Duration.computeValue s = some (durationMillis duration) :=
-  (parser_agrees s duration).mp
-
-theorem parser_complete (s : String) (duration : Duration) :
-    _root_.Duration.IsValid s →
-      _root_.Duration.computeValue s = some (durationMillis duration) →
-        Cedar.Spec.Ext.Datetime.Duration.parse s = some duration := by
-  intro hvalid hvalue
-  exact (parser_agrees s duration).mpr ⟨hvalid, hvalue⟩
-
 theorem parser_rejects_iff (s : String) :
     Cedar.Spec.Ext.Datetime.Duration.parse s = none ↔
       ¬_root_.Duration.IsValid s := by
@@ -171,33 +158,5 @@ theorem parser_rejects_iff (s : String) :
     | none => rfl
     | some duration =>
         exact (hinvalid ((parser_agrees s duration).mp hparse).1).elim
-
-theorem parser_eq_some_iff_view (s : String) (duration : Duration) :
-    Cedar.Spec.Ext.Datetime.Duration.parse s = some duration ↔
-      ∃ view : _root_.Duration.View,
-        _root_.Duration.decodeView s = some view ∧
-        _root_.Duration.View.Valid view ∧
-        _root_.Duration.View.denotation view = durationMillis duration := by
-  rw [parser_agrees]
-  constructor
-  · rintro ⟨hvalid, hvalue⟩
-    obtain ⟨view, hview, hvalidView⟩ :=
-      (_root_.Duration.IsValid_view s).mp hvalid
-    refine ⟨view, hview, hvalidView, ?_⟩
-    rw [_root_.Duration.computeValue_view, hview] at hvalue
-    exact Option.some.inj hvalue
-  · rintro ⟨view, hview, hvalidView, hvalue⟩
-    refine ⟨(_root_.Duration.IsValid_view s).mpr
-      ⟨view, hview, hvalidView⟩, ?_⟩
-    rw [_root_.Duration.computeValue_view, hview]
-    exact congrArg some hvalue
-
-theorem parser_eq_none_iff_view (s : String) :
-    Cedar.Spec.Ext.Datetime.Duration.parse s = none ↔
-      ¬∃ view : _root_.Duration.View,
-        _root_.Duration.decodeView s = some view ∧
-          _root_.Duration.View.Valid view := by
-  rw [parser_rejects_iff]
-  exact not_congr (_root_.Duration.IsValid_view s)
 
 end Duration.RuleRegistrySoundness

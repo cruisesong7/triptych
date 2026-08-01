@@ -27,7 +27,7 @@ def OctetValid (s : String) : Prop :=
     (s.startsWith "0" → s = "0") ∧ readNat s ≤ 255
 
 /-- Cedar's octet parser implements `OctetValid` and returns the denoted byte. -/
-@[triptych_parser]
+@[triptych_parser, triptych_parser_search =]
 theorem parseNumV4_eq_some_iff {s : String} {a : BitVec 8} :
     parseNumV4 s = some a ↔
       OctetValid s ∧ a = BitVec.ofNat 8 (readNat s) := by
@@ -46,7 +46,7 @@ def PrefixValid (digits size : Nat) (s : String) : Prop :=
     (s.startsWith "0" → s = "0") ∧ readNat s ≤ size
 
 /-- Cedar's bounded-natural parser implements `PrefixValid` and returns its denotation. -/
-@[triptych_parser]
+@[triptych_parser, triptych_parser_search =]
 theorem parsePrefixNat_eq_some_iff {s : String} {digits size : Nat}
     {pre : Fin (size + 1)} :
     parsePrefixNat s digits size = some pre ↔
@@ -81,7 +81,7 @@ private theorem noDotOfDigitsBetween {lo hi : Nat} {s : String}
   simp [TokClass.mem] at hdigit
 
 /-- Successful dotted-quad parsing exposes exactly four valid octets and their denotation. -/
-@[triptych_parser]
+@[triptych_parser, triptych_parser_search =]
 theorem parseSegsV4_eq_some_iff {s : String} {addr : IPv4Addr} :
     parseSegsV4 s = some addr ↔
       ∃ o₁ o₂ o₃ o₄,
@@ -181,7 +181,7 @@ private theorem noSlashOfAddr {o₁ o₂ o₃ o₄ : String}
               (noSlashAppend noSlashDot (noSlashOfDigitsBetween h₄.1))))))
 
 /-- Successful IPv4/CIDR parsing exposes its complete proof-facing component view. -/
-@[triptych_parser]
+@[triptych_parser, triptych_parser_search =]
 theorem parseIPv4Net_eq_some_iff {s : String} {net : IPNet} :
     parseIPv4Net s = some net ↔
       ∃ o₁ o₂ o₃ o₄ pre,

@@ -69,38 +69,6 @@ theorem parser_agrees (s : String) (d : Cedar.Spec.Ext.Decimal) :
     rw [parse_of_parts s sgn natural fraction hs hsgn hnatural hfraction, hvalue]
     exact Int64.ofInt?_toInt d
 
-/-- Successful parsing is sound for the readable generated specification. -/
-theorem parser_sound (s : String) (d : Cedar.Spec.Ext.Decimal) :
-    Cedar.Spec.Ext.Decimal.parse s = some d →
-      Decimal.IsValid s ∧ Decimal.computeValue s = some (Int64.toInt d) :=
-  (parser_agrees s d).mp
-
-/-- Every accepted generated specification value is returned by Cedar's parser. -/
-theorem parser_complete (s : String) (d : Cedar.Spec.Ext.Decimal) :
-    Decimal.IsValid s → Decimal.computeValue s = some (Int64.toInt d) →
-      Cedar.Spec.Ext.Decimal.parse s = some d := by
-  intro hvalid hvalue
-  exact (parser_agrees s d).mpr ⟨hvalid, hvalue⟩
-
-/-- Proof-facing typed-view normal form of Cedar's executable parser. -/
-theorem parser_eq_some_iff_view (s : String) (d : Cedar.Spec.Ext.Decimal) :
-    Cedar.Spec.Ext.Decimal.parse s = some d ↔
-      ∃ v : Decimal.View,
-        Decimal.decodeView s = some v ∧
-        Decimal.View.Valid v ∧
-        Decimal.View.denotation v = Int64.toInt d := by
-  rw [parser_agrees]
-  constructor
-  · rintro ⟨hvalid, hvalue⟩
-    obtain ⟨v, hview, hvalidView⟩ := (Decimal.IsValid_view s).mp hvalid
-    refine ⟨v, hview, hvalidView, ?_⟩
-    rw [Decimal.computeValue_view, hview] at hvalue
-    exact Option.some.inj hvalue
-  · rintro ⟨v, hview, hvalidView, hvalue⟩
-    refine ⟨(Decimal.IsValid_view s).mpr ⟨v, hview, hvalidView⟩, ?_⟩
-    rw [Decimal.computeValue_view, hview]
-    exact congrArg some hvalue
-
 /-- Cedar rejects exactly the strings rejected by the readable generated specification. -/
 theorem parser_rejects_iff (s : String) :
     Cedar.Spec.Ext.Decimal.parse s = none ↔ ¬Decimal.IsValid s := by
@@ -131,12 +99,5 @@ theorem parser_rejects_iff (s : String) :
     cases hparse : Cedar.Spec.Ext.Decimal.parse s with
     | none => rfl
     | some d => exact (hinvalid ((parser_agrees s d).mp hparse).1).elim
-
-/-- Proof-facing typed-view normal form of Cedar's rejection behavior. -/
-theorem parser_eq_none_iff_view (s : String) :
-    Cedar.Spec.Ext.Decimal.parse s = none ↔
-      ¬∃ v : Decimal.View, Decimal.decodeView s = some v ∧ Decimal.View.Valid v := by
-  rw [parser_rejects_iff]
-  exact not_congr (Decimal.IsValid_view s)
 
 end Decimal.RuleRegistrySoundness

@@ -23,8 +23,7 @@ theorem parts_of_parse_eq_some {s : String} {d : Cedar.Spec.Ext.Datetime}
       components.constraintsWf ∧
       s = components.asString ∧
       components.toMillis = datetimeMillis d := by
-  triptych_sound at h
-  simpa [datetimeMillis] using h
+  triptych_auto [datetimeMillis]
 
 /-- Cedar's executable parser returns exactly Triptych-valid Datetime denotations. -/
 theorem parser_agrees (s : String) (d : Cedar.Spec.Ext.Datetime) :
@@ -49,5 +48,10 @@ theorem parser_agrees (s : String) (d : Cedar.Spec.Ext.Datetime) :
       ⟨components, hsyntax, hconstraints, hs⟩] at hcompute
     rw [hs, CedarSupport.Datetime.computeValue_asString hsyntax] at hcompute
     exact Option.some.inj hcompute
+
+/-- Cedar rejects exactly the strings rejected by the generated specification. -/
+theorem parser_rejects_iff (s : String) :
+    Cedar.Spec.Ext.Datetime.parse s = none ↔ ¬Datetime.IsValid s := by
+  triptych_auto [Datetime.GrammarView.isValid_iff_cedarWf]
 
 end Datetime.RuleRegistryProof

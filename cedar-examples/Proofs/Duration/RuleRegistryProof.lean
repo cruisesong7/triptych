@@ -536,7 +536,7 @@ private theorem parseUnit_value (isNegative : Bool) (s suffix : String)
     simp [hendsFalse, unitValue, hparse.1]
 
 /-- A successful unit peel exposes its optional digits, reconstruction, and contribution. -/
-@[triptych_parser]
+@[triptych_parser, triptych_parser_search .]
 theorem parseUnit_result_of_eq_some {isNegative : Bool} {s suffix : String}
     {v : Int} {rest : String}
     (hsuffix :
@@ -710,7 +710,7 @@ private theorem component_bounds_of_total (isNegative : Bool)
     omega
 
 /-- A successful body parse yields ordered grammar components and their exact result value. -/
-@[triptych_parser]
+@[triptych_parser, triptych_parser_search .]
 theorem parts_of_parseDuration_eq_some {isNegative : Bool} {body : String}
     {duration : Cedar.Spec.Ext.Datetime.Duration}
     (hparse : parseDuration? isNegative body = some duration) :
@@ -823,7 +823,7 @@ private theorem sign_split (s : String) :
     · rfl
 
 /-- A successful Cedar Duration parse exposes grammar-shaped components and denotation. -/
-@[triptych_parser]
+@[triptych_parser, triptych_parser_search .]
 theorem parts_of_parse_eq_some {s : String}
     {duration : Cedar.Spec.Ext.Datetime.Duration}
     (hparse : Cedar.Spec.Ext.Datetime.Duration.parse s = some duration) :

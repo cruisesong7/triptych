@@ -17,7 +17,7 @@ open Triptych
 namespace CedarSupport.ParserRules
 
 /-- Successful unsigned decimal conversion is exactly nonempty decimal syntax and its value. -/
-@[triptych_parser]
+@[triptych_parser, triptych_parser_search =]
 theorem toNat?_eq_some_iff {s : String} {n : Nat} :
     toNat?' s = some n ↔ Triptych.IsDigits s ∧ n = readNat s := by
   constructor
@@ -56,7 +56,7 @@ theorem toInt?_of_parts (sign natural : String) (hsign : sign = "-" ∨ sign = "
     simp [signOf, natOf]
 
 /-- Successful signed conversion exposes an optional minus sign, decimal digits, and value. -/
-@[triptych_parser]
+@[triptych_parser, triptych_parser_search =]
 theorem toInt?_eq_some_iff {s : String} {i : Int} :
     toInt?' s = some i ↔
       ∃ sign natural,

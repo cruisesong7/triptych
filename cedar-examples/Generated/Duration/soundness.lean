@@ -51,8 +51,9 @@ theorem Duration.encode_accepted (d : Cedar.Spec.Ext.Datetime.Duration) :
     change Cedar.Spec.Ext.Datetime.Duration.parse
       (Cedar.Spec.Ext.Datetime.Duration.toString d) = some d
     exact Cedar.Thm.Duration.parse_toString_roundtrip d
-  exact (Duration.IsValid_equiv _).mp
-    ((Duration.RuleRegistrySoundness.parser_agrees _ _).mp hparse).1
+  have hvalid : Duration.IsValid (durationToStr d) := by
+    triptych_auto [Duration.RuleRegistrySoundness.parser_agrees]
+  exact (Duration.IsValid_equiv _).mp hvalid
 
 theorem Duration.encode_value (d : Cedar.Spec.Ext.Datetime.Duration) :
     Duration.computeValue (durationToStr d) = some (durationMillis d) := by
@@ -60,7 +61,7 @@ theorem Duration.encode_value (d : Cedar.Spec.Ext.Datetime.Duration) :
     change Cedar.Spec.Ext.Datetime.Duration.parse
       (Cedar.Spec.Ext.Datetime.Duration.toString d) = some d
     exact Cedar.Thm.Duration.parse_toString_roundtrip d
-  exact ((Duration.RuleRegistrySoundness.parser_agrees _ _).mp hparse).2
+  triptych_auto [Duration.RuleRegistrySoundness.parser_agrees]
 
 theorem Duration.ofSpec_toSpec (d : Cedar.Spec.Ext.Datetime.Duration) :
     millisToDuration (durationMillis d) = d := by
@@ -91,27 +92,23 @@ section's `encode_*`. -/
 
 theorem Duration.extparse_reject (s : String) :
     Cedar.Spec.Ext.Datetime.Duration.parse s = none ↔ ¬Duration.IsValid s := by
-  exact Duration.RuleRegistrySoundness.parser_rejects_iff s
+  triptych_auto [Duration.RuleRegistrySoundness.parser_rejects_iff]
 
 theorem Duration.extparse_eq_none_iff_view (s : String) :
     Cedar.Spec.Ext.Datetime.Duration.parse s = none ↔
       ¬∃ v : Duration.View, Duration.decodeView s = some v ∧ Duration.View.Valid v := by
-  rw [Duration.extparse_reject]
-  constructor
-  · intro hinvalid ⟨v, hview, hvalidView⟩
-    exact hinvalid ((Duration.IsValid_view s).mpr ⟨v, hview, hvalidView⟩)
-  · intro hnoview hvalid
-    exact hnoview ((Duration.IsValid_view s).mp hvalid)
+  triptych_auto [Duration.extparse_reject, Duration.IsValid_view]
 
 theorem Duration.extparse_sound (s : String) (d : Cedar.Spec.Ext.Datetime.Duration) :
     Cedar.Spec.Ext.Datetime.Duration.parse s = some d →
-      Duration.IsValid s ∧ Duration.computeValue s = some (durationMillis d) :=
-  Duration.RuleRegistrySoundness.parser_sound s d
+      Duration.IsValid s ∧ Duration.computeValue s = some (durationMillis d) := by
+  triptych_auto [Duration.RuleRegistrySoundness.parser_agrees]
 
 theorem Duration.extparse_complete (s : String) (d : Cedar.Spec.Ext.Datetime.Duration) :
     Duration.IsValid s →
-      Duration.computeValue s = some (durationMillis d) → Cedar.Spec.Ext.Datetime.Duration.parse s = some d :=
-  Duration.RuleRegistrySoundness.parser_complete s d
+      Duration.computeValue s = some (durationMillis d) →
+        Cedar.Spec.Ext.Datetime.Duration.parse s = some d := by
+  triptych_auto [Duration.RuleRegistrySoundness.parser_agrees]
 
 theorem Duration.extparse_eq_some_iff_view (s : String)
     (d : Cedar.Spec.Ext.Datetime.Duration) :
@@ -120,18 +117,8 @@ theorem Duration.extparse_eq_some_iff_view (s : String)
         Duration.decodeView s = some v ∧
         Duration.View.Valid v ∧
         Duration.View.denotation v = durationMillis d := by
-  constructor
-  · intro hparse
-    obtain ⟨hvalid, hvalue⟩ := Duration.extparse_sound s d hparse
-    obtain ⟨v, hview, hvalidView⟩ := (Duration.IsValid_view s).mp hvalid
-    refine ⟨v, hview, hvalidView, ?_⟩
-    rw [Duration.computeValue_view, hview] at hvalue
-    exact Option.some.inj hvalue
-  · rintro ⟨v, hview, hvalidView, hvalue⟩
-    apply Duration.extparse_complete s d
-    · exact (Duration.IsValid_view s).mpr ⟨v, hview, hvalidView⟩
-    · rw [Duration.computeValue_view, hview]
-      exact congrArg some hvalue
+  triptych_auto [Duration.RuleRegistrySoundness.parser_agrees, Duration.IsValid_view,
+    Duration.computeValue_view]
 
 theorem Duration.extparse_toString_roundtrip (d : Cedar.Spec.Ext.Datetime.Duration) :
     Cedar.Spec.Ext.Datetime.Duration.parse (durationToStr d) = some d :=

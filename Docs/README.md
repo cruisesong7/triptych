@@ -43,9 +43,11 @@ it generates up to three files, split by audience:
   `checkedExternalParse_eq_of_sound` shows that checking does not change its behavior. The
   wrapper is emitted when the spec value type has `DecidableEq`; otherwise Triptych leaves the
   static integration unchanged and reports a source-located warning. The
-  extensible `triptych_parser` registry and `triptych_sound` tactic provide the first static
-  automation layer: independently proved backend rules invert successful `Option` binds, maps,
-  alternatives, guards, filters, and conditionals while leaving unsupported primitives explicit.
+  static automation layer uses two extensible registries: `triptych_parser` for terminating
+  normalization and `triptych_parser_search` for bounded E-matching. `triptych_sound` exposes
+  successful `Option` paths; `triptych_auto [rules...]` combines user agreement facts with those
+  registries and `grind` to discharge routine soundness, completeness, and typed-view
+  consequences. Unsupported primitives and missing format semantics remain explicit.
   The discharged `extparse_eq_some_iff_view` and `extparse_eq_none_iff_view` package the
   stronger static external obligations in the same form. No `sorry` (what you *run + trust*);
 * **`soundness.lean` — the obligation surface** — emitted *only* when a `parser … toSpec …`

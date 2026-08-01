@@ -43,13 +43,14 @@ theorem Decimal.parse_sound_toSpec (s : String) (i : Int64) :
 
 theorem Decimal.encode_accepted (i : Int64) : Decimal.isValid (decimalToStr i) := by
   have hparse := Cedar.Thm.Decimal.parse_toString_roundtrip i
-  exact (Decimal.IsValid_equiv _).mp
-    (Decimal.RuleRegistrySoundness.parser_sound (decimalToStr i) i hparse).1
+  have hvalid : Decimal.IsValid (decimalToStr i) := by
+    triptych_auto [Decimal.RuleRegistrySoundness.parser_agrees, decimalToStr]
+  exact (Decimal.IsValid_equiv _).mp hvalid
 
 theorem Decimal.encode_value (i : Int64) :
     Decimal.computeValue (decimalToStr i) = some (Int64.toInt i) := by
   have hparse := Cedar.Thm.Decimal.parse_toString_roundtrip i
-  exact (Decimal.RuleRegistrySoundness.parser_sound (decimalToStr i) i hparse).2
+  triptych_auto [Decimal.RuleRegistrySoundness.parser_agrees, decimalToStr]
 
 theorem Decimal.ofSpec_toSpec (i : Int64) : Int64.ofInt (Int64.toInt i) = i :=
   Int64.ofInt_toInt i
@@ -74,28 +75,23 @@ The external printer theorems (`extparse_toString_*`) then follow, reusing the g
 section's `encode_*`. -/
 
 theorem Decimal.extparse_reject (s : String) :
-    Cedar.Spec.Ext.Decimal.parse s = none ↔ ¬Decimal.IsValid s :=
-  Decimal.RuleRegistrySoundness.parser_rejects_iff s
+    Cedar.Spec.Ext.Decimal.parse s = none ↔ ¬Decimal.IsValid s := by
+  triptych_auto [Decimal.RuleRegistrySoundness.parser_rejects_iff]
 
 theorem Decimal.extparse_eq_none_iff_view (s : String) :
     Cedar.Spec.Ext.Decimal.parse s = none ↔
       ¬∃ v : Decimal.View, Decimal.decodeView s = some v ∧ Decimal.View.Valid v := by
-  rw [Decimal.extparse_reject]
-  constructor
-  · intro hinvalid ⟨v, hview, hvalidView⟩
-    exact hinvalid ((Decimal.IsValid_view s).mpr ⟨v, hview, hvalidView⟩)
-  · intro hnoview hvalid
-    exact hnoview ((Decimal.IsValid_view s).mp hvalid)
+  triptych_auto [Decimal.extparse_reject, Decimal.IsValid_view]
 
 theorem Decimal.extparse_sound (s : String) (d : Cedar.Spec.Ext.Decimal) :
     Cedar.Spec.Ext.Decimal.parse s = some d →
-      Decimal.IsValid s ∧ Decimal.computeValue s = some (Int64.toInt d) :=
-  Decimal.RuleRegistrySoundness.parser_sound s d
+      Decimal.IsValid s ∧ Decimal.computeValue s = some (Int64.toInt d) := by
+  triptych_auto [Decimal.RuleRegistrySoundness.parser_agrees]
 
 theorem Decimal.extparse_complete (s : String) (d : Cedar.Spec.Ext.Decimal) :
     Decimal.IsValid s → Decimal.computeValue s = some (Int64.toInt d) →
-      Cedar.Spec.Ext.Decimal.parse s = some d :=
-  Decimal.RuleRegistrySoundness.parser_complete s d
+      Cedar.Spec.Ext.Decimal.parse s = some d := by
+  triptych_auto [Decimal.RuleRegistrySoundness.parser_agrees]
 
 theorem Decimal.extparse_eq_some_iff_view (s : String) (d : Cedar.Spec.Ext.Decimal) :
     Cedar.Spec.Ext.Decimal.parse s = some d ↔
@@ -103,18 +99,8 @@ theorem Decimal.extparse_eq_some_iff_view (s : String) (d : Cedar.Spec.Ext.Decim
         Decimal.decodeView s = some v ∧
         Decimal.View.Valid v ∧
         Decimal.View.denotation v = Int64.toInt d := by
-  constructor
-  · intro hparse
-    obtain ⟨hvalid, hvalue⟩ := Decimal.extparse_sound s d hparse
-    obtain ⟨v, hview, hvalidView⟩ := (Decimal.IsValid_view s).mp hvalid
-    refine ⟨v, hview, hvalidView, ?_⟩
-    rw [Decimal.computeValue_view, hview] at hvalue
-    exact Option.some.inj hvalue
-  · rintro ⟨v, hview, hvalidView, hvalue⟩
-    apply Decimal.extparse_complete s d
-    · exact (Decimal.IsValid_view s).mpr ⟨v, hview, hvalidView⟩
-    · rw [Decimal.computeValue_view, hview]
-      exact congrArg some hvalue
+  triptych_auto [Decimal.RuleRegistrySoundness.parser_agrees, Decimal.IsValid_view,
+    Decimal.computeValue_view]
 
 theorem Decimal.extparse_toString_roundtrip (i : Int64) : Cedar.Spec.Ext.Decimal.parse (decimalToStr i) = some i :=
   Triptych.parse_toString_roundtrip Decimal.extparse_complete

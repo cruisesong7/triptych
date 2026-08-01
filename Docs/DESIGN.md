@@ -206,11 +206,15 @@ Because the layout combinators are a closed, pre-verified library:
   `checkedExtParse_eq_some_iff`, `checkedExtParse_sound`, and
   `checkedExtParse_sound_view` are discharged without any theorem about the external
   implementation. This provides immediate soundness at the cost of running the reference parser.
-  Static proof automation uses the extensible `triptych_parser` rule registry. The
-  `triptych_sound` tactic symbolically inverts successful `Option` paths using registered,
-  independently proved equivalences for binds, maps, alternatives, filters, guards, and
-  conditionals. A parser backend extends the tactic by tagging its primitive theorems with
-  `@[triptych_parser]`; unsupported operations remain visible instead of being trusted.
+  Static proof automation has two extensible, kernel-checked registries. `triptych_parser`
+  contains oriented normalization rules, and `triptych_parser_search` contains facts suitable
+  for E-matching and saturation. `triptych_sound` exposes supported successful `Option` paths;
+  `triptych_auto [rules...]` gives format-specific facts priority, normalizes the context, then
+  runs bounded `grind` search. Backend rules cover binds, maps, alternatives, filters, guards,
+  and conditionals. Unsupported operations or missing semantic correspondences remain visible
+  in the residual goal instead of being trusted. In the Cedar examples this automatically
+  derives external soundness, completeness, and typed-view forms from the substantive
+  parser-agreement and rejection facts.
   Once the external obligations are proved, matching `extparse_eq_some_iff_view` and
   `extparse_eq_none_iff_view` theorems derive the same relations for the external parser. These
   normal forms remove the need to unfold `component`, `envOf`, constraint AST evaluation, value

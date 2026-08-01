@@ -113,7 +113,7 @@ theorem parse_of_parts (s sgn natural fraction : String)
   rfl
 
 /-- A successful Cedar parse exposes grammar-shaped Decimal components. -/
-@[triptych_parser]
+@[triptych_parser, triptych_parser_search =]
 theorem parse_eq_some_iff_parts {s : String} {d : Cedar.Spec.Ext.Decimal} :
     Cedar.Spec.Ext.Decimal.parse s = some d ↔
       ∃ sgn natural fraction,

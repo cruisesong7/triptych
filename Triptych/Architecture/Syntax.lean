@@ -1224,8 +1224,9 @@ def elabTriptych : CommandElab := fun stx => do
               surface `IsValid`/`computeValue`. These are left as `sorry` — they are claims about\n\
               your unwrapped parser, so you have to prove them yourself. The generated\n\
               `checkedExtParse` is already sound without these proofs when the spec value has\n\
-              decidable equality. `triptych_sound` can invert supported successful parser paths\n\
-              using the registered static proof rules. `extparse_eq_some_iff_view` and\n\
+              decidable equality. `triptych_sound` inverts supported successful parser paths;\n\
+              `triptych_auto` then combines registered normalization and bounded search rules\n\
+              with your format-specific agreement facts. `extparse_eq_some_iff_view` and\n\
               `extparse_eq_none_iff_view` then package their success and rejection consequences as\n\
               typed-view relations. The external printer theorems (`extparse_toString_*`) are also\n\
               DISCHARGED, reusing the generated section's `encode_*`. -/"
