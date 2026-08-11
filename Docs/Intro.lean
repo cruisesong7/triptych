@@ -17,7 +17,7 @@ shortTitle := "Introduction"
 file := "intro"
 %%%
 
-Triptych compiles a flat string grammar -- decimals, durations, timestamps, or IP addresses --
+Triptych compiles a flat string grammar -- decimal, duration, datetime, or IP address --
 into a readable specification, a specialized executable parser, and the Lean theorems that
 connect them. The generated parser is ordinary code with a small public signature such as
 {lean}`String → Option Int64`. The proof layer establishes that it recognizes exactly the
@@ -47,18 +47,6 @@ character-class predicates, numeric range constraints, and a value function over
 fields. The shape was dictated by the grammar; only the grammar itself carried information.
 
 Anything mechanical should be generated. That is Triptych.
-
-# The drift problem
-
-The deeper motivation is older than any particular proof. Hand-written parsers drift from
-their documentation. Someone tweaks the parser to fix a bug; the grammar in the comment above
-it no longer holds; nothing catches it. The RFC says one thing, the regex says another, the
-code says a third.
-
-The usual fix is discipline. Triptych's fix is structural: the specification and parser are
-generated from the same grammar, and their reconciliation theorem is kernel-checked. A grammar
-change regenerates the proof-free specification and executable parser together. If a generated
-theorem no longer elaborates, the build fails.
 
 # One block in, up to three files out
 
