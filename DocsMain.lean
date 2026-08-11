@@ -1,8 +1,9 @@
 /-
 Triptych documentation site — entry point (Verso manual/book genre).
 
+From cedar-examples/:
 Build:   lake build docs
-Render:  lake exe docs --output _site
+Render:  lake exe docs --output ../_site
 -/
 import VersoManual
 import Docs

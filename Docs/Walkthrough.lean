@@ -2,10 +2,12 @@
 Triptych documentation — Chapter 2: the Decimal walkthrough (live generated declarations).
 -/
 import VersoManual
-import Triptych.Examples.Decimal.soundness
+import Outputs.Decimal.soundness
+import Proofs.Decimal.StructuralDerivation
 
 open Verso.Genre Manual
 open Verso.Genre.Manual.InlineLean
+open Verso.Code.External
 
 set_option pp.rawOnError true
 
@@ -17,22 +19,20 @@ shortTitle := "Decimal walkthrough"
 file := "walkthrough"
 %%%
 
-This chapter follows one format — Cedar's `decimal` extension type — from its `triptych`
-block to every artifact the compiler generates from it. Everything shown in a Lean code block
-below is *live*: it is elaborated against the actual Triptych library when this book is
-built, so the outputs and theorem statements you see are the real ones.
+This chapter follows Cedar Decimal from its {lit}`triptych` input to the generated surface,
+typed view, parser, and integration theorems. Every Lean block is elaborated against the
+current generated files when this book builds.
 
 ```lean -show
 open Triptych
-open Triptych.Examples.Decimal
+open CedarExamples.Decimal
 ```
 
 # The format
 
-A Cedar decimal is a signed fixed-point number with up to four fraction digits: `"1.5"`,
-`"-12.34"`, `"922337203685477.5807"`. Cedar stores it as an `Int64` holding the value times
-10⁴, so `"1.5"` denotes `15000` and the extreme representable values are
-`±922337203685477.580x`.
+A Cedar decimal is a signed fixed-point number with up to four fraction digits:
+{lit}`"1.5"`, {lit}`"-12.34"`, or {lit}`"922337203685477.5807"`. Cedar stores the
+value times 10^4 in an {name}`Int64`, so {lit}`"1.5"` denotes {lit}`15000`.
 
 Three concerns, one per DSL clause:
 
@@ -42,49 +42,42 @@ Three concerns, one per DSL clause:
   places). This is the value clause.
 - *Bounds* — the value must fit in `Int64`. This is the constraint clause.
 
-The block from `Triptych/Examples/Decimal/grammar.lean`:
+The authored block is in {lit}`cedar-examples/Inputs/Decimal.lean`:
 
 ```
 triptych Decimal where
   grammar
-    Decimal  ::= Sign Integer "." Fraction
+    Decimal  ::= Sign Natural "." Fraction
     Sign     ::= sign
-    Integer  ::= digit+
+    Natural  ::= digit+
     Fraction ::= digit{1,4}
   value
-    Sign * (nat Integer * 10 ^ 4 + nat Fraction * 10 ^ (4 - len Fraction))
-    lift Int64.ofInt
+    Sign * (nat Natural * 10 ^ 4 + nat Fraction * 10 ^ (4 - len Fraction))
+    ofSpec Int64.ofInt
+    toSpec Int64.toInt
   constraints
     value ∈ [Int64.MIN, Int64.MAX]
-  parser Cedar.Spec.Ext.Decimal.parse projection Int64.toInt
+  parser Cedar.Spec.Ext.Decimal.parse
   printer decimalToStr
-  to "Triptych/Examples/Decimal"
+  to "Outputs/Decimal"
 ```
 
 Two details worth pausing on before we look at the output:
 
-*The dedicated sign production.* `Sign ::= sign` gives the optional minus sign its own named
-production. This is not decoration — the decoder records captured substrings under
-production names, so a bare optional `"-"` inline in the `Decimal` production would match but
-be captured *nowhere*, and the value function could never read it. (An earlier version of the
-Duration example had exactly this bug; conformance testing against Cedar's parser caught it,
-and the `sign` terminal now enforces the safe shape by construction.) In the value clause, a
-bare capture name like `Sign` denotes its ±1 sign; `nat`/`len` read magnitudes and lengths of
-ordinary captures.
+*The dedicated sign production.* {lit}`Sign ::= sign` gives the optional minus sign its own
+capture. The decoder records named productions, so an anonymous optional literal would not be
+available to the value expression. The DSL rejects the unsafe sign shape.
 
-*The `lift`/`projection` pair.* The spec's value DSL computes an `Int`. Cedar's parser returns
-`Decimal` (an `Int64` wrapper). The two clauses bridge the types in opposite directions:
-`lift Int64.ofInt` upgrades the *generated* parser's output from `Int` to `Decimal`, and
-`projection Int64.toInt` reads the *external* parser's output back down to `Int` so its
-contract can be stated against the spec. The constraint `value ∈ [Int64.MIN, Int64.MAX]` is
-what makes this honest — more on that in the next chapter.
+*The conversion pair.* The surface value is an {name}`Int`. {lit}`ofSpec Int64.ofInt`
+converts that value to the generated parser's domain type, while
+{lit}`toSpec Int64.toInt` maps a domain value back to the specification. These conversions
+belong to the value boundary; the {lit}`parser` clause only names the external parser. The
+range constraint makes {name}`Int64.ofInt` faithful on every accepted value.
 
 # Artifact one: the readable spec
 
-Elaborating the block writes `spec.lean` beside it. Each production becomes a plain predicate
-over strings, written as an existential decomposition you can compare with the grammar line
-by line. The leaf predicates say exactly what you would write by hand — here is the actual
-generated `Sign` predicate:
+Elaboration writes {lit}`Outputs/Decimal/spec.lean`. Each production becomes a plain
+predicate over strings. Here is the generated sign predicate:
 
 ```lean (name := isWfSign)
 #print Decimal.IsWf.Sign
@@ -102,31 +95,41 @@ quantified variable per named capture, one conjunct per production:
 #print Decimal.IsWf.Decimal
 ```
 
-and `IsValid` conjoins the well-formedness predicate with the constraints:
+The root predicate composes the productions, and {name}`Decimal.IsValid` conjoins shape with
+the final-value range:
 
 ```lean (name := isValidCheck)
 #check (Decimal.IsValid : String → Prop)
 ```
 
-This file is deliberately proof-free. It is the *specification* — the thing a human audits by
-reading, and the thing every theorem below is stated against.
+The same proof-free file also contains typed structures. {name}`Decimal.View` has
+{lit}`input`, {lit}`sign`, {lit}`natural`, and {lit}`fraction` fields. The root
+derivation mirrors grammar structure: alternatives become constructors and the optional sign
+becomes an {name}`Option`.
+
+```lean (name := typedSurface)
+#check Decimal.View
+#check Decimal.Derivation.Decimal
+#check @Decimal.Derivation.Decimal.render
+#check @Decimal.Derivation.Decimal.Valid
+```
 
 # Artifact two: the engine and the verified parser
 
-The second file, `parser.lean`, contains the executable side. `decode` walks the grammar over
-an input and extracts the named captures:
+The second generated file contains the executable side. {name}`decode` walks the grammar
+and extracts named captures:
 
 ```lean (name := decodeEval)
 #eval decode Decimal.grammar "1.5"
 ```
 
 ```leanOutput decodeEval
-some [("Sign", ""), ("Integer", "1"), ("Fraction", "5")]
+some [("Sign", ""), ("Natural", "1"), ("Fraction", "5")]
 ```
 
-`computeValue` evaluates the value clause over those captures, and `parse` — the generated,
-correct-by-construction parser — gates it on the decidable validity check and lifts the
-result to `Decimal` via `Int64.ofInt`:
+{name}`Decimal.computeValue` evaluates the specification value. The specialized
+{name}`Decimal.parse` gates that computation on validity and maps the result through
+{name}`Int64.ofInt`:
 
 ```lean (name := parseEvals)
 #eval Decimal.computeValue "1.5"  -- spec value: ×10⁴
@@ -134,34 +137,56 @@ result to `Decimal` via `Int64.ofInt`:
 #eval Decimal.parse "-0.15"       -- sign corner case
 ```
 
-Rejections come in two flavors — a string can fail the *grammar* or fail the *constraint* —
-but the parser is a single total function; there is no separate validation pass to forget:
+Grammar and constraint failures both appear as {name}`Option.none`:
 
 ```lean (name := rejectEvals)
 #eval Decimal.parse "1.x"    -- not the grammar
 #eval Decimal.parse "922337203685477.5808"  -- overflows
 ```
 
-# Artifact three: the reconciliation proofs
+# The typed executable view
+
+The generated view theorems remove capture-map bookkeeping. Surface validity is equivalent to
+the existence of a valid decoded view, and denotation factors through that same view:
+
+```lean (name := viewChecks)
+#check @Decimal.decodeView_input
+#check @Decimal.IsValid_view
+#check @Decimal.computeValue_view
+#check @Decimal.parse_eq_some_iff_view
+#check @Decimal.parse_eq_none_iff_view
+```
+
+A structural derivation can be rendered and decoded back exactly. The Decimal grammar passes
+the conservative all-input uniqueness checker, so its roundtrip theorem needs no ambiguity
+premise:
+
+```lean (name := derivationChecks)
+#check @Decimal.Derivation.Decimal.decode_render
+#check @Decimal.Derivation.Decimal.decodeView_render
+#eval
+  CedarExamples.Decimal.Decimal.Derivation.Decimal.render
+    CedarExamples.Decimal.decimalDerivation
+```
+
+# Reconciliation and parser contracts
 
 So far this looks like any parser generator. The difference is that `parser.lean` also
 contains machine-checked proofs that the two artifacts above agree — emitted and discharged
 automatically, with no human in the loop.
 
-Recognition agrees — the engine's deep-embedded grammar denotation accepts exactly the
-strings the readable predicate describes:
+Recognition agrees between the surface predicate and executable engine:
 
 ```lean (name := equivCheck)
 #check @Decimal.IsWf_equiv
 ```
 
 ```leanOutput equivCheck
-Decimal.IsWf_equiv : ∀ (s : String), IsWf Decimal.grammar s ↔ Decimal.IsWf.Decimal s
+Decimal.IsWf_equiv : ∀ (s : String), Decimal.IsWf s ↔ Decimal.isWf s
 ```
 
-The parser satisfies its three-part contract — everything it accepts is valid and correctly
-valued (*sound*), it accepts everything valid (*complete*), and it returns `none` exactly on
-invalid input (*reject*):
+The parser contract says every success is valid and correctly valued, every valid matching
+value succeeds, and rejection is exactly invalidity:
 
 ```lean (name := contractChecks)
 #check @Decimal.parse_sound
@@ -169,8 +194,7 @@ invalid input (*reject*):
 #check @Decimal.parse_reject
 ```
 
-And the readable predicates are decidable, so `IsValid` — a `Prop` built from existentials —
-can nevertheless be *evaluated*:
+The readable predicates are decidable:
 
 ```lean (name := decideEval)
 #eval decide (Decimal.IsValid "3.14")
@@ -181,16 +205,21 @@ can nevertheless be *evaluated*:
 true
 ```
 
-All of this is axiom-clean: every proof in `spec.lean` and `parser.lean` depends only on
-`propext`, `Classical.choice`, and `Quot.sound`.
+Compiler-generated theorems use only {name}`propext`, {name}`Classical.choice`, and
+{name}`Quot.sound`.
 
 # The bridge to Cedar's real parser
 
-The `parser Cedar.Spec.Ext.Decimal.parse projection Int64.toInt` clause declares that an
-*external*, hand-written parser — the one actually shipped in cedar-lean — conforms to this
-spec. That claim cannot be auto-discharged (the generator did not produce Cedar's parser), so
-it is emitted into the third file, `soundness.lean`, as explicit obligations. For Decimal
-they have been proven, by bridging to Cedar's own parser-correctness theorems:
+Before any static Cedar proof, Triptych emits a checked wrapper. It preserves an external
+result only when the generated specification validates the same input and denotation:
+
+```lean (name := checkedExternal)
+#check @Decimal.checkedExtParse
+#check @Decimal.checkedExtParse_eq_some_iff
+#check @Decimal.checkedExtParse_sound_view
+```
+
+The unwrapped Cedar parser needs semantic agreement proofs. Decimal discharges all of them:
 
 ```lean (name := extChecks)
 #check @Decimal.extparse_sound
@@ -203,8 +232,8 @@ Decimal.extparse_sound : ∀ (s : String) (d : Cedar.Spec.Ext.Decimal),
   Cedar.Spec.Ext.Decimal.parse s = some d → Decimal.IsValid s ∧ Decimal.computeValue s = some (Int64.toInt d)
 ```
 
-Read `extparse_sound` carefully: it relates *Cedar's* parser to *Triptych's* generated
-`IsValid` and `computeValue`. Together with the generated parser's own contract, the two
-parsers are provably extensionally equal — they accept the same strings and produce the same
-values. The next chapter examines these obligations, and the printer theorems that come with
-them, in detail.
+{name}`Decimal.extparse_sound` relates Cedar's parser to Triptych's generated
+{name}`Decimal.IsValid`, {name}`Decimal.computeValue`, and
+{name}`Decimal.View`. Its proof uses the parser-rule registry and the bounded
+{lit}`triptych_auto` tactic. The next chapter explains that automation before the book
+returns to the remaining semantic boundary.
