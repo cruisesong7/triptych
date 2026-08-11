@@ -57,21 +57,6 @@ repetitions still require stronger analysis.
 
 namespace Triptych
 
-/-- A capture assignment: nonterminal name ↦ matched substring. -/
-abbrev CaptureMap := List (String × String)
-
-/-- View a `CaptureMap` as the `Env` the value/constraint DSLs evaluate against. -/
-def CaptureMap.toEnv (m : CaptureMap) : Env := fun k => (m.find? (·.1 == k)).map (·.2)
-
-/-- Every substring recorded under key `k`, in match order — the list counterpart of `toEnv`
-    (which keeps only the FIRST via `find?`). A `rep`-repeated nonterminal records one entry per
-    iteration, so this recovers ALL of them (e.g. the eight `H16` groups of an IPv6 address);
-    a uniquely-used capture yields a singleton, an absent one the empty list. This is the reader
-    that lets a `value'` escape consume a repeated capture as a `List String` — the individual
-    repeated elements the scalar `toEnv` collapses. -/
-def CaptureMap.toEnvList (m : CaptureMap) (k : String) : List String :=
-  (m.filter (·.1 == k)).map (·.2)
-
 /-- Does the length-`k` prefix of `cs` satisfy the terminal `tok`/`ls`? Routes through the
     single `matchesTerm` predicate (shared with the recognizer/spec), so the token semantics
     is defined once; the `k ≤ cs.length` guard keeps the prefix a genuine prefix. -/
@@ -194,5 +179,36 @@ def computeValueF {α : Type} (g : Grammar) (valFn : Env → α) (s : String) : 
     scalar escape stays on `computeValueF` (`Env`-based); this is the list-capable sibling. -/
 def computeValueMap {α : Type} (g : Grammar) (valFn : CaptureMap → α) (s : String) : Option α :=
   (decode g s).map valFn
+
+/-! ## Structural decoder budgets
+
+These values expose the exact recursion/enumeration budgets selected at the decoder entry
+points. They are useful for diagnostics and benchmarks, but deliberately do not claim a
+polynomial total runtime bound: ambiguous splits can still create exponentially many branches. -/
+
+/-- Input-dependent structural limits used by the reference decoder. -/
+structure DecodeBudget where
+  /-- Reference-recursion fuel supplied by `decode`. -/
+  referenceDepth : Nat
+  /-- Maximum separated-repetition tail iterations at an input position. -/
+  repetitionDepth : Nat
+  /-- Prefix lengths considered by a terminal at the start of the input. -/
+  terminalPrefixCandidates : Nat
+  deriving Repr, Inhabited, DecidableEq
+
+/-- The structural decoder budget for grammar `g` and input `s`. -/
+def decodeBudget (g : Grammar) (s : String) : DecodeBudget where
+  referenceDepth := g.prods.length
+  repetitionDepth := s.length
+  terminalPrefixCandidates := s.length + 1
+
+@[simp] theorem decodeBudget_referenceDepth (g : Grammar) (s : String) :
+    (decodeBudget g s).referenceDepth = g.prods.length := rfl
+
+@[simp] theorem decodeBudget_repetitionDepth (g : Grammar) (s : String) :
+    (decodeBudget g s).repetitionDepth = s.length := rfl
+
+@[simp] theorem decodeBudget_terminalPrefixCandidates (g : Grammar) (s : String) :
+    (decodeBudget g s).terminalPrefixCandidates = s.length + 1 := rfl
 
 end Triptych

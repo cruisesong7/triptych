@@ -20,15 +20,18 @@ import Triptych.Architecture.Denote
 import Triptych.Architecture.Value
 import Triptych.Architecture.Constraint
 import Triptych.Architecture.Decode
+import Triptych.Architecture.Derivation
 import Triptych.Architecture.Unambiguity
 import Triptych.Architecture.Assemble
 import Triptych.Theorems.Roundtrip
 import Triptych.Theorems.Coherence
+import Triptych.Theorems.Derivation
 import Triptych.Theorems.RelationalParser
 import Triptych.Theorems.Unambiguity
 import Triptych.Theorems.Reconcile
 import Triptych.Theorems.DecodeLemmas
 import Triptych.Theorems.String
+import Triptych.Theorems.Value
 import Triptych.Automation.ExternalParser
 import Triptych.Architecture.Syntax
 

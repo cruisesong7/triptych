@@ -132,13 +132,15 @@ inductive ConstraintPhase where
   | value
   deriving Repr, Inhabited, DecidableEq
 
-/-- A constraint entry with its phase preserved. Opaque `constraints'` entries receive only
-    capture strings, so the elaborator assigns them to `.wellFormed`. -/
+/-- A constraint entry with its phase preserved. Opaque `constraints'` entries are assigned to
+    `.wellFormed`; the map form additionally supports repeated-capture list arguments. -/
 inductive ConstraintEntry where
   /-- A structured DSL constraint. -/
   | dsl (phase : ConstraintPhase) (c : Constraint)
-  /-- An arbitrary decidable predicate supplied through `constraints'`. -/
+  /-- An arbitrary scalar-capture predicate supplied through `constraints'`. -/
   | opaque (phase : ConstraintPhase) (check : Env → Bool)
+  /-- An arbitrary predicate over the complete capture map. -/
+  | opaqueMap (phase : ConstraintPhase) (check : CaptureMap → Bool)
 
 /-- Whether an entry explicitly constrains the final computed value. -/
 def ConstraintEntry.isValueDependent : ConstraintEntry → Bool
@@ -146,28 +148,36 @@ def ConstraintEntry.isValueDependent : ConstraintEntry → Bool
   | .dsl .value _         => true
   | .opaque .wellFormed _ => false
   | .opaque .value _      => true
+  | .opaqueMap .wellFormed _ => false
+  | .opaqueMap .value _      => true
 
 /-- `IsWf`-side contribution of an entry. -/
-def ConstraintEntry.wfPart (env : Env) : ConstraintEntry → Prop
-  | .dsl .wellFormed c    => c.eval env
+def ConstraintEntry.wfPart (m : CaptureMap) : ConstraintEntry → Prop
+  | .dsl .wellFormed c    => c.eval m.toEnv
   | .dsl .value _         => True
-  | .opaque .wellFormed p => p env = true
+  | .opaque .wellFormed p => p m.toEnv = true
   | .opaque .value _      => True
+  | .opaqueMap .wellFormed p => p m = true
+  | .opaqueMap .value _      => True
 
 /-- `SatisfiesConstraints`-side contribution of an entry. -/
-def ConstraintEntry.valPart (env : Env) : ConstraintEntry → Prop
+def ConstraintEntry.valPart (m : CaptureMap) : ConstraintEntry → Prop
   | .dsl .wellFormed _    => True
-  | .dsl .value c         => c.eval env
+  | .dsl .value c         => c.eval m.toEnv
   | .opaque .wellFormed _ => True
-  | .opaque .value p      => p env = true
+  | .opaque .value p      => p m.toEnv = true
+  | .opaqueMap .wellFormed _ => True
+  | .opaqueMap .value p      => p m = true
 
-instance (env : Env) : (e : ConstraintEntry) → Decidable (e.wfPart env)
+instance (m : CaptureMap) : (e : ConstraintEntry) → Decidable (e.wfPart m)
   | .dsl phase c   => by cases phase <;> unfold ConstraintEntry.wfPart <;> infer_instance
   | .opaque phase p => by cases phase <;> unfold ConstraintEntry.wfPart <;> infer_instance
+  | .opaqueMap phase p => by cases phase <;> unfold ConstraintEntry.wfPart <;> infer_instance
 
-instance (env : Env) : (e : ConstraintEntry) → Decidable (e.valPart env)
+instance (m : CaptureMap) : (e : ConstraintEntry) → Decidable (e.valPart m)
   | .dsl phase c   => by cases phase <;> unfold ConstraintEntry.valPart <;> infer_instance
   | .opaque phase p => by cases phase <;> unfold ConstraintEntry.valPart <;> infer_instance
+  | .opaqueMap phase p => by cases phase <;> unfold ConstraintEntry.valPart <;> infer_instance
 
 /-! ## Surface syntax → `Constraint`
 
@@ -177,14 +187,14 @@ A `constraintExpr` category reusing the `valExpr` category
 open Lean
 
 declare_syntax_cat constraintExpr
-syntax "noLeadingZero " ident            : constraintExpr
+syntax "noLeadingZero " rawIdent         : constraintExpr
 -- Cardinality over presence (SAT-style): how many of a SET of captures are present. Braces
 -- `{X, Y, …}` signal it is a set (not an argument list). `nonempty X` = sugar `atLeast 1 {X}`.
-syntax "nonempty " ident                 : constraintExpr
-syntax "atLeast " num " {" ident,+ "}"   : constraintExpr
-syntax "atMost "  num " {" ident,+ "}"   : constraintExpr
-syntax "exactly " num " {" ident,+ "}"   : constraintExpr
-syntax ident " = " str                   : constraintExpr   -- string equality
+syntax "nonempty " rawIdent              : constraintExpr
+syntax "atLeast " num " {" rawIdent,+ "}" : constraintExpr
+syntax "atMost "  num " {" rawIdent,+ "}" : constraintExpr
+syntax "exactly " num " {" rawIdent,+ "}" : constraintExpr
+syntax rawIdent " = " str                : constraintExpr   -- string equality
 syntax valExpr " ≤ " valExpr             : constraintExpr
 syntax valExpr " < " valExpr             : constraintExpr
 syntax valExpr " == " valExpr            : constraintExpr   -- value equality (`==` to avoid clash)

@@ -225,6 +225,20 @@ theorem GrammarValueCoherent.of_unique {α : Type} (g : Grammar) (valFn : Captur
   GrammarValueCoherent.of_captureFunctional g valFn
     (GrammarCaptureFunctional.of_unique g h)
 
+/-- A capture-functional grammar decodes to the capture map of any full parse. This is the
+    generic roundtrip bridge consumed by generated structural derivation trees. -/
+theorem decode_eq_of_mem_fullParses {g : Grammar} {s : String} {m : CaptureMap}
+    (hfunctional : GrammarCaptureFunctional g)
+    (hm : m ∈ fullParses g s) :
+    decode g s = some m := by
+  have hne : fullParses g s ≠ [] := List.ne_nil_of_mem hm
+  have hsome : (decode g s).isSome = true := (decode_isSome_iff g s).mpr hne
+  obtain ⟨selected, hselected⟩ := Option.isSome_iff_exists.mp hsome
+  have hselectedMem : selected ∈ fullParses g s :=
+    decode_mem_fullParses g s hselected
+  rw [hfunctional s selected hselectedMem m hm] at hselected
+  exact hselected
+
 /-! A grammar may have duplicate derivations while still defining one capture map. This
 regression example separates the public functionality contract from the stronger uniqueness
 certificate used by the first static checker. -/

@@ -12,12 +12,14 @@ lean_lib Triptych where
     .submodules `Triptych.Architecture,
     .submodules `Triptych.Automation,
     .one `Triptych.Theorems.Coherence,
+    .one `Triptych.Theorems.Derivation,
     .one `Triptych.Theorems.DecodeLemmas,
     .one `Triptych.Theorems.Reconcile,
     .one `Triptych.Theorems.RelationalParser,
     .one `Triptych.Theorems.Roundtrip,
     .one `Triptych.Theorems.String,
-    .one `Triptych.Theorems.Unambiguity
+    .one `Triptych.Theorems.Unambiguity,
+    .one `Triptych.Theorems.Value
   ]
   defaultFacets := #[LeanLib.staticFacet]
 

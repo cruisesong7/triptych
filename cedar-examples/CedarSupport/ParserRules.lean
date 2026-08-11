@@ -1,4 +1,5 @@
 import CedarSupport.String
+import CedarSupport.IPAddrInternals
 import Triptych.Automation.ExternalParser
 
 /-!
@@ -12,6 +13,7 @@ format-specific parser correctness theorem.
 open Cedar.Spec.Ext
 open CedarSupport.String
 open CedarSupport.StringInternals
+open CedarSupport.IPAddrInternals
 open Triptych
 
 namespace CedarSupport.ParserRules
@@ -30,6 +32,26 @@ theorem toNat?_eq_some_iff {s : String} {n : Nat} :
     exact ⟨hdigits, Option.some.inj hvalue⟩
   · rintro ⟨hdigits, rfl⟩
     exact readNat_eq s ((digits_iff s).mp hdigits)
+
+/-- Parser-independent meaning of a bounded canonical decimal CIDR prefix. -/
+def PrefixValid (digits size : Nat) (s : String) : Prop :=
+  IsDigitsBetween 1 digits s ∧
+    (s.startsWith "0" → s = "0") ∧ readNat s ≤ size
+
+/-- Cedar's bounded-natural parser implements `PrefixValid` and returns its denotation. -/
+@[triptych_parser, triptych_parser_search =]
+theorem parsePrefixNat_eq_some_iff {s : String} {digits size : Nat}
+    {pre : Fin (size + 1)} :
+    parsePrefixNat s digits size = some pre ↔
+      PrefixValid digits size s ∧ pre = Fin.ofNat (size + 1) (readNat s) := by
+  unfold PrefixValid
+  triptych_sound [parsePrefixNat]
+  constructor
+  · rintro ⟨hlen, hmax, hcanonical, hdigits, hbound, hprefix⟩
+    refine ⟨⟨hdigits.1, by omega, hmax⟩, hcanonical, hbound, ?_⟩
+    simpa using hprefix.symm
+  · rintro ⟨⟨hdigits, hmin, hmax⟩, hcanonical, hbound, rfl⟩
+    exact ⟨by omega, hmax, hcanonical, ⟨hdigits, hmin⟩, hbound, rfl⟩
 
 /-- Cedar's signed decimal conversion on an explicit optional sign and digit run. -/
 theorem toInt?_of_parts (sign natural : String) (hsign : sign = "-" ∨ sign = "")

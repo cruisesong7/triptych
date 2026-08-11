@@ -1,4 +1,4 @@
-import Generated.Datetime.parser
+import Outputs.Datetime.parser
 import CedarSupport.String
 import Cedar.Thm.Ext.Datetime.Grammar
 

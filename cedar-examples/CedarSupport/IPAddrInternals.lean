@@ -70,7 +70,7 @@ def parseNumSegsV6 (str : String) : Option (List (BitVec 16)) :=
 
 def parseSegsV6 (str : String) : Option IPv6Addr := do
   let segs ←
-    match str.splitOn "::" with
+    match Cedar.Spec.Ext.IPAddr.splitDoubleColon str with
     | [s₁] => parseNumSegsV6 s₁
     | [s₁, s₂] => do
       let ns₁ ← parseNumSegsV6 s₁

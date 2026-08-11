@@ -19,16 +19,16 @@ the build with a nonzero count if any case diverges. No `native_decide`, no new
 axioms: this is plain evaluation, entirely outside the verified core.
 -/
 
-import Generated.Decimal.parser
-import Generated.Duration.parser
-import Generated.Datetime.parser
-import Generated.IPv4.parser
-import Generated.IPv6.parser
-import Grammars.Decimal
-import Grammars.Duration
-import Grammars.Datetime
-import Grammars.IPv4
-import Grammars.IPv6
+import Outputs.Decimal.parser
+import Outputs.Duration.parser
+import Outputs.Datetime.parser
+import Outputs.IPv4.parser
+import Outputs.IPv6.parser
+import Inputs.Decimal
+import Inputs.Duration
+import Inputs.Datetime
+import Inputs.IPv4
+import Inputs.IPv6
 import Cedar.Spec.Ext.Decimal
 import Cedar.Spec.Ext.Datetime
 import Cedar.Spec.Ext.IPAddr
@@ -165,55 +165,90 @@ def datetimeCheckedExternalChecks : List (Option String) :=
   datetimeStrings.map (fun s =>
     check s (Datetime.checkedExtParse s) (Cedar.Spec.Ext.Datetime.parse s))
 
-/-! ## IPv4 — its structured spec value already has the domain type, so our parse yields
-    `Option IPv4Net`. Oracle is
-    Cedar's real `ip` through the example's `ipv4Only` family projection. Direct equality checks
-    acceptance AND the reconstructed IPv4 CIDR value (address + prefix) in
-    one shot: a V6 or invalid string makes both sides `none`. Strings from `cedar-lean/UnitTest/
-    IPAddr.lean` (V4 valid + invalid + prefix cases), plus V6 strings that our V4 spec must reject. -/
+/-! ## IP addresses
 
-def ipv4Strings : List String :=
-  [ -- valid V4 (bare + CIDR), from Cedar's own valid/inRange/equality suites
-    "127.0.0.1", "127.3.4.1/2", "192.168.0.1/32", "0.0.0.0/1", "8.8.8.8/24",
+This corpus contains every address string parsed by Cedar's `UnitTest/IPAddr.lean`, the additional
+parser literals in `SymTest/IPAddr.lean`, and focused grammar boundaries. Both family-specific
+Triptych specifications run over the whole corpus: an IPv6 string is therefore also a rejection
+test for IPv4, and conversely.
+-/
+
+def ipAddrStrings : List String :=
+  [ -- Valid IPv4 from Cedar's parse, rendering, loopback, range, and equality tests.
+    "192.168.0.1/32", "0.0.0.0/1", "8.8.8.8/24",
+    "127.0.0.1", "127.3.4.1/2",
     "238.238.238.238", "238.238.238.41/12", "10.0.0.0", "10.0.0.0/24", "10.0.0.0/32",
-    "10.0.0.1/24", "10.0.0.0/29", "0.0.0.1/31", "0.0.0.0/31",
-    -- invalid V4 (from Cedar's invalid-strings suite): dots, ranges, prefix bounds, leading zeros
+    "10.0.0.1", "10.0.0.1/24", "10.0.0.1/29", "10.0.0.1/32", "10.0.0.0/29",
+    "0.0.0.0", "0.0.0.1/31", "0.0.0.0/31",
+    "224.0.0.0", "225.1.0.0", "223.0.0.0", "1.0.0.1",
+    -- Invalid IPv4 from Cedar's parser tests.
     "127.0.0.1.", ".127.0.0.1", "127.0..0.1", "256.0.0.1", "127.0.a.1", "127.3.4.1/33",
     "127.0.0.1/01", "1.2.3", "01.0.0.1", "1.2.3.4.5", "1.2.3.4/",
-    -- V6 strings: Cedar's `ip` parses these, but our V4-only spec (and `ipv4Only`) reject them
-    "F:AE::F:5:F:F:0", "::1", "::", "::ffff", "a::f/120" ]
+    -- Valid IPv6 from Cedar's parse, rendering, loopback, range, and symbolic tests.
+    "1:2:3:4:a:b:c:d/128", "1:22:333:4444:a:bb:ccc:dddd/128",
+    "7:70:700:7000::a00/128", "::ffff/128", "ffff::/4", "::", "::/5", "a::", "::f",
+    "F:AE::F:5:F:F:0", "F:AE::F:5:F:F:1", "F:AE::F:5:F:F:2",
+    "F:AE::F:5:F:F:0/127", "a::f/120", "::1", "::B", "::ffff:ff00:0001",
+    "FF00::", "EF00::",
+    -- Invalid IPv6 from Cedar's parser tests.
+    "::::", "::f::", "F:AE::F:5:F:F:0:0", "F:A:F:5:F:F:0:0:1", "F:A", "::ffff1",
+    "F:AE::F:5:F:F:0/129", "::ffff:127.0.0.1", "::/00", "::/01", "::/001",
+    "F:AE::F:5:F:F:0/01",
+    -- Focused language boundaries not explicitly present in Cedar's parser unit suite.
+    "", "0.0.0.0/0", "255.255.255.255/32", "1.02.3.4", "1.2.3.256", "1.2.3.4//1",
+    "1:2:3:4:5:6:7:8", "1:2:3:4:5:6:7::", "::1:2:3:4:5:6:7",
+    "1:2:3:4::5:6:7", "1:2:3:4:5:6:7::8", "1:2:3:4:5:6:7",
+    "1:2:3:4:5:6:7:8:9", "1::2::3", ":", "1:", ":1", "::0000", "::00000",
+    "::/0", "::/128", "::/129", "::/", ":://1", "::g" ]
+
+/-! IPv4's structured spec value already has the domain type, so direct equality checks both
+acceptance and the reconstructed address and prefix. The readable-spec check separately
+evaluates `IPv4.IsValid`, making the specification itself part of the conformance test rather than
+only its generated executable counterpart. -/
+
+def ipv4Strings : List String :=
+  ipAddrStrings
 
 def ipv4Checks : List (Option String) :=
   ipv4Strings.map (fun s =>
     check s (IPv4.parse s) (ipv4Only s))
 
+def ipv4ReadableSpecChecks : List (Option String) :=
+  ipv4Strings.map (fun s =>
+    check s (decide (IPv4.IsValid s)) (ipv4Only s).isSome)
+
 def ipv4CheckedExternalChecks : List (Option String) :=
   ipv4Strings.map (fun s =>
     check s (IPv4.checkedExtParse s) (ipv4Only s))
 
-/-! ## IPv6 — direct equality against Cedar's `ip`, restricted to V6 results. This covers
-    full and compressed addresses, omitted groups on either side, CIDR prefixes, malformed
-    separators, group-count bounds, group width, embedded IPv4 rejection, and canonical prefix
-    spelling. Strings are taken from Cedar's `UnitTest/IPAddr.lean`. -/
+/-! IPv6 uses the same checks against Cedar's V6 family projection, unwrapped to the underlying
+`CIDR V6_WIDTH`. This covers full and compressed addresses, either omitted side, optional CIDR
+prefixes, malformed separators, group-count bounds, hextet width, embedded-IPv4 rejection, and
+canonical prefix spelling. -/
 
 def ipv6Strings : List String :=
-  [ -- full and compressed valid forms
-    "1:2:3:4:a:b:c:d/128", "1:22:333:4444:a:bb:ccc:dddd/128",
-    "7:70:700:7000::a00/128", "::ffff/128", "ffff::/4", "::", "::/5", "a::", "::f",
-    "F:AE::F:5:F:F:0", "a::f/120", "::1", "::B", "::ffff:ff00:0001",
-    -- malformed compression, group counts and widths
-    "::::", "::f::", "F:AE::F:5:F:F:0:0", "F:A:F:5:F:F:0:0:1", "F:A", "::ffff1",
-    -- invalid prefixes and unsupported embedded IPv4
-    "F:AE::F:5:F:F:0/129", "::ffff:127.0.0.1", "::/00", "::/01", "::/001",
-    "F:AE::F:5:F:F:0/01",
-    -- V4 strings must be rejected by the V6-only generated parser
-    "127.0.0.1", "127.3.4.1/2", "0.0.0.0/31" ]
+  ipAddrStrings
 
 def ipv6Checks : List (Option String) :=
   ipv6Strings.map (fun s =>
-    check s (IPv6.parse s) ((Cedar.Spec.Ext.IPAddr.ip s).filter (·.isV6)))
+    check s (IPv6.parse s) (ipv6Only s))
 
-/-- Run all five suites; print totals; return the total failure count. -/
+def ipv6ReadableSpecChecks : List (Option String) :=
+  ipv6Strings.map (fun s =>
+    check s (decide (IPv6.IsValid s))
+      ((Cedar.Spec.Ext.IPAddr.ip s).filter (·.isV6)).isSome)
+
+def ipv6CheckedExternalChecks : List (Option String) :=
+  ipv6Strings.map (fun s =>
+    check s (IPv6.checkedExtParse s) (ipv6Only s))
+
+def ipv6PrinterChecks : List (Option String) :=
+  (ipv6Strings.filterMap ipv6Only).flatMap (fun cidr =>
+    let rendered := CedarExamples.IPv6.ipNetToStr cidr
+    [check s!"generated {rendered}" (IPv6.parse rendered) (some cidr),
+      check s!"external {rendered}" (ipv6Only rendered) (some cidr)])
+
+/-- Run every conformance suite, print totals, and return the total failure count. -/
 def runAll : IO Nat := do
   IO.println "════════ Triptych ↔ Cedar parser conformance ════════"
   let d ← runChecks "Decimal"  decimalChecks
@@ -221,11 +256,15 @@ def runAll : IO Nat := do
   let t ← runChecks "Datetime" datetimeChecks
   let p ← runChecks "IPv4"     ipv4Checks
   let p6 ← runChecks "IPv6"     ipv6Checks
+  let ps ← runChecks "IPv4 readable spec" ipv4ReadableSpecChecks
+  let p6s ← runChecks "IPv6 readable spec" ipv6ReadableSpecChecks
   let dc ← runChecks "Decimal checked external" decimalCheckedExternalChecks
   let uc ← runChecks "Duration checked external" durationCheckedExternalChecks
   let tc ← runChecks "Datetime checked external" datetimeCheckedExternalChecks
   let pc ← runChecks "IPv4 checked external" ipv4CheckedExternalChecks
-  let total := d + u + t + p + p6 + dc + uc + tc + pc
+  let p6c ← runChecks "IPv6 checked external" ipv6CheckedExternalChecks
+  let p6p ← runChecks "IPv6 printer roundtrip" ipv6PrinterChecks
+  let total := d + u + t + p + p6 + ps + p6s + dc + uc + tc + pc + p6c + p6p
   IO.println s!"════════ total failures: {total} ════════"
   pure total
 

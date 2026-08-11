@@ -1,4 +1,4 @@
-import Generated.Decimal.parser
+import Outputs.Decimal.parser
 import CedarSupport.ParserRules
 import Triptych.Automation.ExternalParser
 

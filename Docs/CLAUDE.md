@@ -32,29 +32,30 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
 - **Axioms:** every generated equivalence/decidability result must depend ONLY on
   `propext, Classical.choice, Quot.sound`. NEVER introduce `sorry`, `native_decide`,
   `ofReduceBool`, or new axioms. The only intentional source-level `sorry`s are the
-  user-obligations in the `soundness.lean` of examples with a `parser`/`printer` clause:
-  the 3
-  external-parser obligations (`extparse_sound`/`_complete`/`_reject` vs the REAL Cedar parser)
-  per example with a `parser` clause — Decimal, Duration, Datetime, IPv4 — plus, for examples that also
-  have a `printer` clause (Decimal, Duration), 3 obligations: 2 encode
-  (`encode_accepted`/`encode_value`, the latter phrased as
-  `computeValue (toStr d) = some (toSpec d)`) + 1 conversion law
-  (`ofSpec_toSpec : ofSpec (toSpec d) = d`; Cedar's `Int64.ofInt_toInt` for Decimal) — plus, for
-  examples with BOTH `ofSpec` and `parser … toSpec` (Decimal, Duration), 1 faithfulness
+  generated user-obligation scaffolds for a declared parser/printer. A printer emits one
+  `encode_view` obligation: serialization decodes to a valid typed view whose converted
+  denotation is the original domain value. `encode_accepted`, `encode_value`,
+  `ofSpec_toSpec`, generated-parser roundtrip, injectivity, and normalization are derived.
+  `triptych_encode` composes a known serializer roundtrip and parser-agreement theorem with the
+  generated view facts; an `ofSpec` conversion still requires its explicit inverse fact.
+  `triptych_encode_direct` instead starts from generated-spec acceptance and value proofs and
+  therefore has no external-parser dependency.
+  `triptych_encode_derivation` starts from a generated root derivation and
+  `decodeView_render`, removing decoder/capture-map bookkeeping. `DerivationPrinter` packages
+  `toDerivation` with structural, view, and denotation proofs and derives `toString`.
+  `printer auto` currently synthesizes this certificate only for the total signed-decimal
+  `value` pattern, accepting either multiplication order; do not claim that arbitrary,
+  constrained, `ofSpec`, or `value'` functions can be inverted.
+  A declared external parser emits `extparse_sound`/`_complete`/`_reject`. Values with BOTH
+  `ofSpec` and `toSpec` also receive the faithfulness
   obligation `toSpec_ofSpec : isValid s → computeValue s = some v →
   toSpec (ofSpec v) = v` on accepted values. It is provable exactly when the range constraint
   pins accepted values inside `ofSpec`'s faithful domain and unprovable when a wrapping
   conversion is left unguarded. Its payoff `parse_sound_toSpec` is discharged via
   `gatedParseOfSpec_sound_toSpec`. A lint additionally warns at elaboration when `ofSpec` appears
-  with no value constraint at all. Decimal's and Duration's obligations are discharged, as are
-  all Datetime and IPv4 external-parser obligations. The only remaining source-level `sorry`s
-  are IPv4's 2 encode obligations. The printer
-  theorems derived from those obligations
-  (`parse_toString_roundtrip`/`toString_injective`/`normalize_eq_iff_parse_eq`, plus the
-  `extparse_*` trio) are NOT `sorry`d — they carry `sorryAx` only transitively. Both parsers'
-  printer theorems are stated in the clean δ-VIEW `parse (toStr d) = some d` (matching Cedar
-  exactly). The generated `parse_sound`/`_complete`/`_reject` are fully axiom-clean. (Datetime has
-  no `printer`: Cedar has no canonical `ToString Datetime`.) A `parser` clause also emits the
+  with no value constraint at all. Shipped examples discharge every scaffold obligation.
+  Printer theorems use the clean δ-view `parse (toStr d) = some d`. The generated
+  `parse_sound`/`_complete`/`_reject` are fully axiom-clean. A `parser` clause also emits the
   axiom-clean `checkedExtParse` fallback and its soundness/view theorems whenever the spec value
   has `DecidableEq`; these introduce no additional obligation.
 - Verify axiom-cleanliness with a temp `#print axioms <name>` file, then delete it.
@@ -74,7 +75,7 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
   (`natOf`/`intOf`/`lenOf`/`signOf`), `surfaceBinder`.
 - `Constraint.lean` — `Constraint`/`ConstraintEntry` AST, explicit
   `.wellFormed`/`.value` phase classification, `card`/`presentCount`, and the `opaque`
-  escape (`opaqueEnvClosure`).
+  internal node used by the surface `constraints'` escape (`opaqueEnvClosure`).
 - `Decode.lean` — executable capture extractor `decode`/`matchSym`/`matchStar`/`matchRep`;
   `computeValue : … → Option Int` and `computeValueF : … → (Env → α) → Option α` (arbitrary
   value type). `CaptureMap`/`Env`.
@@ -108,21 +109,21 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
   generated files). Emits `gatedParse`/`parserContractsProof` (the verified parser) and
   splits output into `spec`/`parser`/`soundness` (see below).
 - `other-examples/Graph/` — the Cedar-free structured Graph example.
-- `cedar-examples/Grammars/<Format>.lean`
+- `cedar-examples/Inputs/<Format>.lean`
   — each handwritten grammar runs
-  `triptych` and writes up to THREE modules under `Generated/<Format>/`: `spec.lean` (readable surface,
+  `triptych` and writes up to THREE modules under `Outputs/<Format>/`: `spec.lean` (readable surface,
   proof-free), `parser.lean` (engine bundle + auto-discharged proofs `IsWf_equiv`/
   `computeValue_eq`/decidability + the generated correct-by-construction parser `parse` and its
   discharged `parse_sound`/`parse_complete`/`parse_reject`), and — ONLY when the `triptych`
-  has a `parser <p> toSpec <f>` clause OR a `printer` clause — `soundness.lean` (the `sorry`d
-  obligations, PARTITIONED into two banner-delimited sections: "· generated parser" — the shared
-  `encode_*`/`ofSpec_toSpec` obligations (plus, with `ofSpec` + `toSpec`, `toSpec_ofSpec` and its
-  discharged payoff `parse_sound_toSpec`) + the discharged `parse_toString_*` printer theorems about
-  `<Name>.parse`; then "· external parser" — the `extparse_*` obligations + discharged external
-  printer theorems about the real Cedar `parse`. Generated-first, since the external printer
-  theorems reuse the generated section's `encode_*`. A `printer`-only spec has just the generated
-  section; a `parser`-only spec just the external one). File chain: spec ← parser ← soundness.
-  Importing `grammar` regenerates spec/parser (guarded: a pre-existing file WITHOUT the
+  has a `parser <p>` clause OR a `printer` clause — `soundness.lean` (proof-obligation
+  placeholders, partitioned into two banner-delimited sections: "· generated parser" — one
+  `encode_view` obligation, derived encode/conversion projections, and discharged
+  `parse_toString_*` theorems; then "· external parser" — the `extparse_*` obligations and
+  discharged external printer theorems. With `ofSpec` + `toSpec`, `toSpec_ofSpec` and its
+  discharged payoff `parse_sound_toSpec` are also in the generated section. A `printer`-only
+  spec has just the generated section; a `parser`-only spec just the external one. File chain:
+  spec ← parser ← soundness.
+  Importing the handwritten input module regenerates spec/parser (guarded: a pre-existing file WITHOUT the
   `/- Generated by Triptych` sentinel header is never overwritten — hard error);
   `soundness.lean` is WRITE-ONCE (it holds the
   user's proofs — never overwritten once it exists; delete it to re-scaffold). Staleness stays
@@ -140,12 +141,15 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
   return the SAME type as Cedar's, the check is direct equality `ourParse s = cedarParse s` (Cedar
   is the oracle — checks accept-set AND value at once); Datetime (no `ofSpec`) compares
   `ourParse s = (cedarParse s).map datetimeMillis`. Plain `#eval` (no `native_decide`, no axioms);
-  a nonzero failure count aborts the build. Currently 32 Decimal + 42 Duration + 74 Datetime +
-  30 IPv4 + 29 IPv6 = 207 cases, all passing. This is what caught the Duration sign bug (below).
+  a nonzero failure count aborts the build. Current generated-parser suites pass 32/32 Decimal,
+  42/42 Duration, and 74/74 Datetime cases; checked-external suites repeat those corpus sizes.
+  On the shared IPAddr corpus, IPv4 and IPv6 each pass 89/89 generated-parser, 89/89 readable-spec,
+  and 89/89 checked-external cases. IPv6 printer roundtrip passes 52/52. Total failures: 0.
+  This suite caught the Duration sign bug (below).
 - **Package boundary:** the root `lakefile.lean` and manifest depend only on Batteries.
   `cedar-examples/lakefile.lean` owns the local cedar-lean dependency and imports Triptych
-  core as a path dependency. Handwritten DSL sources live under `Grammars.*`; generated
-  `spec`/`parser`/optional `soundness` modules live under `Generated.<Format>.*`.
+  core as a path dependency. Handwritten DSL sources live under `Inputs.*`; generated
+  `spec`/`parser`/optional `soundness` modules live under `Outputs.<Format>.*`.
   Format-specific proof machinery lives under `Proofs.<Format>.*`, while reusable backend
   helpers live under `CedarSupport.*`.
   After a generator edit, build `CedarExamples` twice if regeneration leaves an olean one
@@ -170,12 +174,15 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
   capture (the old silent-`+1` trap) and `nat/int/len` of a sign capture. `sign` lowers to the
   same `Sym` as `["-"]` (optional lit), so it's pure grammar sugar — the engine/denotation/proofs
   never see a new constructor; detection of sign productions is SYNTACTIC (in `elabTriptych`).
-- Clause nesting: `ofSpec <f>` is a sub-clause of scalar `value` (not `value'`, which already
-  chooses its output type), and `toSpec <g>` is a sub-clause of `parser`. The maps have opposite
-  directions: `ofSpec : β → δ` converts a spec value to the generated parser's domain type;
-  `toSpec : δ → β` converts an external parser's result to the spec value used in its contract.
-  When both are present, the emitted laws are `ofSpec_toSpec : ofSpec (toSpec d) = d` and
-  `toSpec_ofSpec : toSpec (ofSpec v) = v` on accepted values. `ofSpec` works standalone.
+- Clause nesting: `ofSpec <f>` and `toSpec <g>` are semantic sub-clauses of scalar `value`;
+  `value'` may also carry `toSpec` when an external parser returns a different type. The maps
+  have opposite directions: `ofSpec : β → δ` converts a spec value to the generated parser's
+  domain type; `toSpec : δ → β` converts a domain/external-parser result to the spec value.
+  An omitted `toSpec` defaults to `id`; write it only when the two value types differ.
+  When both are present, `toSpec_ofSpec : toSpec (ofSpec v) = v` on accepted values is the
+  conversion obligation. With a printer, `encode_view` derives
+  `ofSpec_toSpec : ofSpec (toSpec d) = d`. Both conversions are independent of the optional
+  `parser <p>` clause, which now only names an implementation.
   CONVERSION GUARD: `ofSpec` with no value constraint draws an elaboration-time warning because
   a wrapping conversion such as `Int64.ofInt` can silently convert out-of-range accepted inputs.
 - `rep` well-formedness (enforced at parse time + carried in `repOk`, required by the
@@ -203,24 +210,42 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
   the closure; `computeValueEqProof` reads a list cap via `componentList`, a scalar via
   `component`. The scalar DSL also supports `count X`, backed by the generated `X#count`
   capture; this is enough for bounds such as IPv6's `count H16L + count H16R < 8`.
-  General `sum X`/`forall X` reductions still require collection-aware semantics.
-  List args are `value'`-only; `constraints'` rejects `[X]` explicitly.
+  General analyzable `sum X`/`forall X` reductions still require collection-aware AST semantics.
+  Both `value'` and `constraints'` accept `[X]`; the latter supports mixed scalar/list predicates,
+  evaluates against the full `CaptureMap`, and exposes list arguments in generated views.
 
 ## Open next steps
 
 `ROADMAP.md` is authoritative. Work in this order:
 
-1. Finish IPAddr's external-parser and printer proofs now that full IPv6 grammar, values,
-   generated proofs, and conformance are working.
-2. Generalize repeated captures beyond `count X` and `value' [X]`: analyzable sums and
-   per-element constraints, plus list-aware `constraints'`.
-3. Improve compiler utility: generated layout printers, source-located ambiguity/coherence
-   diagnostics, deterministic execution paths, cost bounds, and package-level CI.
-4. Only after Cedar is complete, add UUIDv4/v7 and then DIMACS CNF. Full JSON and SQL require a
-   separate recursive-grammar project and are not near-term examples.
+1. Specify reusable DSL components and strengthen external-parser bridge automation, proof hints,
+   and source-located diagnostics.
+2. Extend printer synthesis beyond the total signed-decimal pattern to constrained values,
+   conversions, and named canonicalization policies.
+3. Generalize repeated captures beyond `count X` and list-aware escapes: analyzable sums and
+   per-element constraints.
+4. Broaden static capture-functionality certificates and improve deterministic execution.
+   `DecodeBudget`, the Graph benchmark smoke executable, and three-package CI are now present;
+   they do not yet constitute a total-runtime complexity proof.
+5. Package each generated `<Name>.parse` behind a standalone executable and then a narrow C ABI.
+   Keep the trust statement explicit: reverse FFI does not verify Lean's runtime, ABI, or Rust.
+6. Add UUIDv4/v7 and then DIMACS CNF after those utility improvements. Full JSON and SQL require
+   a separate recursive-grammar project and are not near-term examples.
 
 Deferred housekeeping: consider Mathlib for the Graph representation as a separate toolchain
-upgrade; document the layered scope boundary; review or prune legacy `HACKATHON.md`.
+upgrade and keep the concise `HACKATHON.md` pitch aligned with the main overview.
+
+## Generated structural derivations
+
+Every production now has `<Name>.Derivation.<Production>`. Alternatives become constructors,
+optional symbols become `Option`, repetitions become `List`, and references contain child
+derivations. `render` and `Valid` are emitted in `spec.lean`; executable validity instances,
+`capturesWith`, exact `ProdMatch`, start-production `mem_fullParses`, and
+`decode_render_of_captureFunctional` are emitted in `parser.lean`. A statically
+capture-functional grammar also gets `decode_render`. The root gets `toView`,
+`decodeView_render_of_captureFunctional`, and, under the same certificate,
+`decodeView_render`. Decimal, IPv4, and IPv6 have standalone construction fixtures under
+`Proofs/*/StructuralDerivation.lean`.
 
 ## Context on the SAT-graph thread (why the Graph example exists)
 

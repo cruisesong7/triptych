@@ -1,4 +1,4 @@
-import Generated.Duration.parser
+import Outputs.Duration.parser
 import CedarSupport.String
 import Triptych.Theorems.DecodeLemmas
 import Cedar.Thm.Ext.Duration.Grammar
@@ -491,7 +491,7 @@ theorem constraints_of_decode (s sgn : String)
       (-9223372036854775808 : Int) ≤ formatValue sgn components ∧
         formatValue sgn components ≤ (9223372036854775807 : Int) := by
   unfold Duration.SatisfiesConstraints Duration.Constraints
-  unfold Triptych.component Triptych.envOf
+  unfold Triptych.component Triptych.envOf Triptych.captureMapOf
   rw [h]
   rcases components with ⟨days, hours, minutes, seconds, milliseconds⟩
   rcases days with _ | days <;> rcases hours with _ | hours <;>
@@ -511,7 +511,7 @@ theorem wf_constraints_of_decode (s sgn : String)
             componentsCaptures components)) :
     Duration.SatisfiesWfConstraints s ↔ components.asString ≠ "" := by
   unfold Duration.SatisfiesWfConstraints Duration.WfConstraints
-  unfold Triptych.component Triptych.envOf
+  unfold Triptych.component Triptych.envOf Triptych.captureMapOf
   rw [h]
   simp [CaptureMap.toEnv]
 

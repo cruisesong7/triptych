@@ -34,7 +34,7 @@ namespace Triptych
 /-- Every format constraint accepts one capture map. Each entry contributes in exactly one
     phase; its contribution in the other phase is `True`. -/
 def CaptureAccepts (cs : List ConstraintEntry) (m : CaptureMap) : Prop :=
-  ∀ c ∈ cs, c.wfPart m.toEnv ∧ c.valPart m.toEnv
+  ∀ c ∈ cs, c.wfPart m ∧ c.valPart m
 
 instance (cs : List ConstraintEntry) : DecidablePred (CaptureAccepts cs) := by
   intro m
@@ -46,7 +46,7 @@ private theorem gatedParseMap_eq_decodeGatedMap {α : Type}
     gatedParse (fun s => isWf g cs s ∧ satisfiesConstraints g cs s)
         (computeValueMap g valFn) s =
       decodeGatedMap g (CaptureAccepts cs) valFn s := by
-  unfold gatedParse isWf satisfiesConstraints envOf computeValueMap decodeGatedMap
+  unfold gatedParse isWf satisfiesConstraints captureMapOf computeValueMap decodeGatedMap
     CaptureAccepts
   cases hd : decode g s with
   | none => simp [hd]

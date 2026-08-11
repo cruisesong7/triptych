@@ -33,10 +33,10 @@ design-note contract (§16.1):
 The generated spec bundles these two as `isValid := isWf ∧ satisfiesConstraints` (⟺ the
 parser accepts the string); see `Emit.lean`.
 
-Both are phrased against the capture environment produced by `decode`. Constraints
-of a not-well-formed string are vacuously satisfied (`decode` fails ⟹ no env ⟹ the
-constraint list is checked against the empty environment, matching "constraints only
-constrain well-formed strings").
+Both are phrased against the complete capture map produced by `decode`; scalar entries project
+its `Env` view and collection entries retain repeated spans. Constraints of a not-well-formed
+string are vacuously satisfied (`decode` fails ⟹ the constraint list is checked against the
+empty map, matching "constraints only constrain well-formed strings").
 
 Note: these use `decode` (executable, `partial`) for the environment, so they are
 definitions for *running*/bundling. The grammar-only `Triptych.IsWf` lives in `Denote`;
@@ -46,11 +46,13 @@ full format-level `<Name>.IsWf`.
 
 namespace Triptych
 
-/-- The capture environment `decode` assigns to `s` (empty if not well-formed). -/
+/-- The complete capture map `decode` assigns to `s` (empty if not well-formed). -/
+def captureMapOf (g : Grammar) (s : String) : CaptureMap :=
+  (decode g s).getD []
+
+/-- The scalar capture environment `decode` assigns to `s` (empty if not well-formed). -/
 def envOf (g : Grammar) (s : String) : Env :=
-  match decode g s with
-  | some m => m.toEnv
-  | none   => fun _ => none
+  (captureMapOf g s).toEnv
 
 /-- The matched substring of capture `c` in `s`, as a plain `String` — `""` if the capture
     is absent (an omitted optional) or `s` is not well-formed. This is the READABLE
@@ -65,18 +67,16 @@ def component (g : Grammar) (s : String) (c : String) : String := (envOf g s c).
     singleton. This is the READABLE list reader a `value'` escape uses when it consumes a
     repeated capture as `List String`, so the spec never mentions the internal `CaptureMap`. -/
 def componentList (g : Grammar) (s : String) (c : String) : List String :=
-  match decode g s with
-  | some m => CaptureMap.toEnvList m c
-  | none   => []
+  (captureMapOf g s).toEnvList c
 
 /-- Well-formedness: the grammar recognizes `s` AND every constraint that does not explicitly
     reference the final computed value holds on its capture environment. -/
 def isWf (g : Grammar) (cs : List ConstraintEntry) (s : String) : Prop :=
-  (decode g s).isSome = true ∧ ∀ c ∈ cs, c.wfPart (envOf g s)
+  (decode g s).isSome = true ∧ ∀ c ∈ cs, c.wfPart (captureMapOf g s)
 
 /-- The constraints explicitly assigned to the final-value phase hold. -/
 def satisfiesConstraints (g : Grammar) (cs : List ConstraintEntry) (s : String) : Prop :=
-  ∀ c ∈ cs, c.valPart (envOf g s)
+  ∀ c ∈ cs, c.valPart (captureMapOf g s)
 
 instance (g : Grammar) (cs : List ConstraintEntry) (s : String) :
     Decidable (isWf g cs s) := by unfold isWf; infer_instance
@@ -307,16 +307,189 @@ theorem gatedParseOfSpec_sound_toSpec (accepted : String → Prop) [DecidablePre
   subst hvd
   exact ⟨hacc, by rw [hv, hToSpecOfSpec s v hacc hv]⟩
 
-/-! ## The printer side: `toString` roundtrip / injectivity / normalization (δ-view)
+/-! ## The printer side: view encoding / roundtrip / injectivity / normalization (δ-view)
 
 The user supplies ONE canonical serializer `toStr : δ → String` over the DOMAIN type `δ` (e.g.
-Cedar's `ToString Decimal`); a serializer can't be synthesized — the canonical form is a choice.
-BOTH parsers return `Option δ`, so this single serializer drives the printer theorems for both,
-stated in the clean δ-VIEW `parse (toStr d) = some d` (matching Cedar's `parse_toString_roundtrip`
-exactly). Roundtrip is derived from the parser's `complete` (as Cedar does), given two encode
-obligations phrased through `toSpec` (`accepted (toStr d)` and
-`val (toStr d) = some (toSpec d)`); injectivity and normalization then follow generically from the
-roundtrip alone. -/
+Cedar's `ToString Decimal`), or a `DerivationPrinter` certificate from which Triptych defines the
+serializer as `render ∘ toDerivation`. Multiple certificates may expose different canonical
+presentations of the same value. Such a certificate cannot be synthesized for every value
+function: an arbitrary denotation need not have a right inverse. BOTH parsers return `Option δ`,
+so a selected serializer drives the printer theorems for both, stated in the clean δ-VIEW
+`parse (toStr d) = some d` (matching Cedar's `parse_toString_roundtrip` exactly).
+
+For the generated parser, one proof-facing obligation says that serializing a domain value decodes
+to a valid typed view with that value as its denotation. The generated parser's typed-view success
+theorem turns this directly into roundtrip. Acceptance and value equations are projections of the
+same witness, rather than independent printer obligations. External parsers retain the older
+acceptance/value interface because their completeness contracts are stated at that boundary.
+Injectivity and normalization follow generically from either parser's roundtrip. -/
+
+variable {τ ν : Type}
+
+/-- A serializer builds a valid typed parse view whose denotation is its input domain value.
+    `denotation` may include a declared `ofSpec` conversion. -/
+def EncodeViewStmt (decodeView : String → Option ν) (valid : ν → Prop)
+    (denotation : ν → δ) (toStr : δ → String) : Prop :=
+  ∀ d, ∃ v, decodeView (toStr d) = some v ∧ valid v ∧ denotation v = d
+
+/-- A serializer is explained by a valid structural derivation whose rendered text is the
+    serializer output and whose projected view denotes the original domain value. -/
+def EncodeDerivationStmt (render : τ → String) (structuralValid : τ → Prop)
+    (toView : τ → ν) (viewValid : ν → Prop) (denotation : ν → δ)
+    (toStr : δ → String) : Prop :=
+  ∀ d, ∃ tree, structuralValid tree ∧ render tree = toStr d ∧
+    viewValid (toView tree) ∧ denotation (toView tree) = d
+
+/-- A certified presentation policy for semantic values. Two values of this structure may choose
+    different derivations (and therefore different strings) while independently proving the same
+    parser roundtrip. Automatic printer synthesis is exactly the construction of this certificate. -/
+structure DerivationPrinter
+    (render : τ → String) (structuralValid : τ → Prop)
+    (toView : τ → ν) (viewValid : ν → Prop) (denotation : ν → δ) where
+  toDerivation : δ → τ
+  structural : ∀ d, structuralValid (toDerivation d)
+  valid : ∀ d, viewValid (toView (toDerivation d))
+  rightInverse : ∀ d, denotation (toView (toDerivation d)) = d
+
+namespace DerivationPrinter
+
+/-- Render a semantic value according to this certified presentation policy. -/
+def toString
+    {render : τ → String} {structuralValid : τ → Prop}
+    {toView : τ → ν} {viewValid : ν → Prop} {denotation : ν → δ}
+    (printer : DerivationPrinter render structuralValid toView viewValid denotation)
+    (d : δ) : String :=
+  render (printer.toDerivation d)
+
+/-- Every certified presentation policy supplies the structural encoding statement. -/
+theorem encodeDerivation
+    {render : τ → String} {structuralValid : τ → Prop}
+    {toView : τ → ν} {viewValid : ν → Prop} {denotation : ν → δ}
+    (printer : DerivationPrinter render structuralValid toView viewValid denotation) :
+    EncodeDerivationStmt render structuralValid toView viewValid denotation
+      printer.toString := by
+  intro d
+  exact ⟨printer.toDerivation d, printer.structural d, rfl,
+    printer.valid d, printer.rightInverse d⟩
+
+end DerivationPrinter
+
+/-- Turn a structural serializer witness into the flat typed-view witness consumed by generated
+    parser roundtrip. The generated `decodeView_render` theorem discharges `decodeRender`. -/
+theorem encodeView_of_derivation
+    {render : τ → String} {structuralValid : τ → Prop}
+    {decodeView : String → Option ν} {toView : τ → ν}
+    {viewValid : ν → Prop} {denotation : ν → δ} {toStr : δ → String}
+    (decodeRender : ∀ tree, structuralValid tree →
+      decodeView (render tree) = some (toView tree))
+    (encodeDerivation :
+      EncodeDerivationStmt render structuralValid toView viewValid denotation toStr) :
+    EncodeViewStmt decodeView viewValid denotation toStr := by
+  intro d
+  obtain ⟨tree, hstructural, hrender, hvalid, hdenotation⟩ := encodeDerivation d
+  refine ⟨toView tree, ?_, hvalid, hdenotation⟩
+  rw [← hrender]
+  exact decodeRender tree hstructural
+
+/-- Project a certified presentation policy through the generated derivation roundtrip to obtain
+    the typed-view witness consumed by parser roundtrip. -/
+theorem DerivationPrinter.encodeView
+    {render : τ → String} {structuralValid : τ → Prop}
+    {decodeView : String → Option ν} {toView : τ → ν}
+    {viewValid : ν → Prop} {denotation : ν → δ}
+    (printer : DerivationPrinter render structuralValid toView viewValid denotation)
+    (decodeRender : ∀ tree, structuralValid tree →
+      decodeView (render tree) = some (toView tree)) :
+    EncodeViewStmt decodeView viewValid denotation printer.toString :=
+  encodeView_of_derivation decodeRender printer.encodeDerivation
+
+/-- Directly turn generated-spec acceptance and value facts for a serialized domain value into
+    the converted typed-view witness required by `EncodeViewStmt`. This route has no external
+    parser premise. -/
+theorem encodeView_of_validValue
+    {accepted : String → Prop} {val : String → Option β}
+    {toSpec : δ → β} {ofSpec : β → δ}
+    {decodeView : String → Option ν} {valid : ν → Prop}
+    {denotation : ν → β} {toStr : δ → String} {d : δ}
+    (haccepted : accepted (toStr d))
+    (hvalue : val (toStr d) = some (toSpec d))
+    (acceptedView :
+      ∀ s, accepted s ↔ ∃ v, decodeView s = some v ∧ valid v)
+    (valueView : ∀ s, val s = (decodeView s).map denotation)
+    (conversion : ofSpec (toSpec d) = d) :
+    ∃ v, decodeView (toStr d) = some v ∧ valid v ∧ ofSpec (denotation v) = d := by
+  obtain ⟨v, hview, hvalid⟩ := (acceptedView (toStr d)).mp haccepted
+  refine ⟨v, hview, hvalid, ?_⟩
+  have hdenotation : denotation v = toSpec d := by
+    rw [valueView (toStr d), hview] at hvalue
+    exact Option.some.inj hvalue
+  rw [hdenotation, conversion]
+
+/-- Identity-denotation specialization of `encodeView_of_validValue`. -/
+theorem encodeView_of_validValue_id
+    {accepted : String → Prop} {val : String → Option δ}
+    {decodeView : String → Option ν} {valid : ν → Prop}
+    {denotation : ν → δ} {toStr : δ → String} {d : δ}
+    (haccepted : accepted (toStr d))
+    (hvalue : val (toStr d) = some d)
+    (acceptedView :
+      ∀ s, accepted s ↔ ∃ v, decodeView s = some v ∧ valid v)
+    (valueView : ∀ s, val s = (decodeView s).map denotation) :
+    ∃ v, decodeView (toStr d) = some v ∧ valid v ∧ denotation v = d := by
+  obtain ⟨v, hview, hvalid⟩ := (acceptedView (toStr d)).mp haccepted
+  refine ⟨v, hview, hvalid, ?_⟩
+  rw [valueView (toStr d), hview] at hvalue
+  exact Option.some.inj hvalue
+
+/-- Compose a printer roundtrip, parser/spec agreement, and the generated view theorems into
+    the converted typed-view witness required by `EncodeViewStmt`. The conversion inverse is
+    explicit because it is semantic information that cannot be inferred from either parser. -/
+theorem encodeView_of_parserAgreement
+    {parser : String → Option δ} {accepted : String → Prop}
+    {val : String → Option β} {toSpec : δ → β} {ofSpec : β → δ}
+    {decodeView : String → Option ν} {valid : ν → Prop}
+    {denotation : ν → β} {toStr : δ → String} {d : δ}
+    (printerRoundtrip : ∀ d, parser (toStr d) = some d)
+    (parserAgrees :
+      ∀ s d, parser s = some d ↔ accepted s ∧ val s = some (toSpec d))
+    (acceptedView :
+      ∀ s, accepted s ↔ ∃ v, decodeView s = some v ∧ valid v)
+    (valueView : ∀ s, val s = (decodeView s).map denotation)
+    (conversion : ofSpec (toSpec d) = d) :
+    ∃ v, decodeView (toStr d) = some v ∧ valid v ∧ ofSpec (denotation v) = d := by
+  obtain ⟨haccepted, hvalue⟩ :=
+    (parserAgrees (toStr d) d).mp (printerRoundtrip d)
+  exact
+    encodeView_of_validValue
+      haccepted hvalue acceptedView valueView conversion
+
+/-- Identity-denotation specialization of `encodeView_of_parserAgreement`. -/
+theorem encodeView_of_parserAgreement_id
+    {parser : String → Option δ} {accepted : String → Prop}
+    {val : String → Option δ} {decodeView : String → Option ν}
+    {valid : ν → Prop} {denotation : ν → δ} {toStr : δ → String} {d : δ}
+    (printerRoundtrip : ∀ d, parser (toStr d) = some d)
+    (parserAgrees :
+      ∀ s d, parser s = some d ↔ accepted s ∧ val s = some d)
+    (acceptedView :
+      ∀ s, accepted s ↔ ∃ v, decodeView s = some v ∧ valid v)
+    (valueView : ∀ s, val s = (decodeView s).map denotation) :
+    ∃ v, decodeView (toStr d) = some v ∧ valid v ∧ denotation v = d := by
+  obtain ⟨haccepted, hvalue⟩ :=
+    (parserAgrees (toStr d) d).mp (printerRoundtrip d)
+  exact encodeView_of_validValue_id haccepted hvalue acceptedView valueView
+
+/-- A typed-view success characterization and one `EncodeViewStmt` prove generated-parser
+    roundtrip directly. -/
+theorem parse_toString_roundtrip_of_encodeView
+    {parse : String → Option δ} {decodeView : String → Option ν}
+    {valid : ν → Prop} {denotation : ν → δ} {toStr : δ → String}
+    (parseView :
+      ∀ s d, parse s = some d ↔
+        ∃ v, decodeView s = some v ∧ valid v ∧ denotation v = d)
+    (encodeView : EncodeViewStmt decodeView valid denotation toStr) (d : δ) :
+    parse (toStr d) = some d :=
+  (parseView (toStr d) d).2 (encodeView d)
 
 /-- Obligation 1: the serialized form of any domain value is accepted by the spec. -/
 def EncodeAcceptedStmt (accepted : String → Prop) (toStr : δ → String) : Prop :=

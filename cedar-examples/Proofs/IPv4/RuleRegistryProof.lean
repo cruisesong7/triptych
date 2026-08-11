@@ -1,4 +1,4 @@
-import Generated.IPv4.parser
+import Outputs.IPv4.parser
 import CedarSupport.IPAddrInternals
 import CedarSupport.ParserRules
 import Triptych.Automation.ExternalParser
@@ -37,26 +37,6 @@ theorem parseNumV4_eq_some_iff {s : String} {a : BitVec 8} :
   · rintro ⟨hlen, hmax, hcanonical, hdigits, hbound, ha⟩
     refine ⟨⟨hdigits.1, by omega, hmax⟩, hcanonical, hbound, ?_⟩
     simpa using ha.symm
-  · rintro ⟨⟨hdigits, hmin, hmax⟩, hcanonical, hbound, rfl⟩
-    exact ⟨by omega, hmax, hcanonical, ⟨hdigits, hmin⟩, hbound, rfl⟩
-
-/-- Parser-independent meaning of a bounded canonical decimal prefix. -/
-def PrefixValid (digits size : Nat) (s : String) : Prop :=
-  IsDigitsBetween 1 digits s ∧
-    (s.startsWith "0" → s = "0") ∧ readNat s ≤ size
-
-/-- Cedar's bounded-natural parser implements `PrefixValid` and returns its denotation. -/
-@[triptych_parser, triptych_parser_search =]
-theorem parsePrefixNat_eq_some_iff {s : String} {digits size : Nat}
-    {pre : Fin (size + 1)} :
-    parsePrefixNat s digits size = some pre ↔
-      PrefixValid digits size s ∧ pre = Fin.ofNat (size + 1) (readNat s) := by
-  unfold PrefixValid
-  triptych_sound [parsePrefixNat]
-  constructor
-  · rintro ⟨hlen, hmax, hcanonical, hdigits, hbound, hprefix⟩
-    refine ⟨⟨hdigits.1, by omega, hmax⟩, hcanonical, hbound, ?_⟩
-    simpa using hprefix.symm
   · rintro ⟨⟨hdigits, hmin, hmax⟩, hcanonical, hbound, rfl⟩
     exact ⟨by omega, hmax, hcanonical, ⟨hdigits, hmin⟩, hbound, rfl⟩
 

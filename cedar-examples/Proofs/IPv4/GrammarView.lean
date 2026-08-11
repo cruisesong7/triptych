@@ -1,4 +1,4 @@
-import Generated.IPv4.parser
+import Outputs.IPv4.parser
 import CedarSupport.IPAddrInternals
 import CedarSupport.String
 import CedarSupport.StringInternals
@@ -76,27 +76,27 @@ structure View where
   oct2 : String
   oct3 : String
   oct4 : String
-  cidrPrefix : Option String
+  «prefix» : Option String
 
 namespace View
 
 def render (v : View) : String :=
-  renderV4 v.oct1 v.oct2 v.oct3 v.oct4 v.cidrPrefix
+  renderV4 v.oct1 v.oct2 v.oct3 v.oct4 v.«prefix»
 
 def captures (v : View) : CaptureMap :=
-  v4NetCaptures v.oct1 v.oct2 v.oct3 v.oct4 v.cidrPrefix
+  v4NetCaptures v.oct1 v.oct2 v.oct3 v.oct4 v.«prefix»
 
 def SyntaxValid (v : View) : Prop :=
-  IsDigitsBetween 1 3 v.oct1 ∧ IsDigitsBetween 1 3 v.oct2 ∧
+    IsDigitsBetween 1 3 v.oct1 ∧ IsDigitsBetween 1 3 v.oct2 ∧
     IsDigitsBetween 1 3 v.oct3 ∧ IsDigitsBetween 1 3 v.oct4 ∧
-    OptionalPrefixSyntax v.cidrPrefix
+    OptionalPrefixSyntax v.«prefix»
 
 def Valid (v : View) : Prop :=
   OctetWf v.oct1 ∧ OctetWf v.oct2 ∧ OctetWf v.oct3 ∧ OctetWf v.oct4 ∧
-    OptionalPrefixWf v.cidrPrefix
+    OptionalPrefixWf v.«prefix»
 
 def denotation (v : View) : CedarExamples.IPv4.IPv4Net :=
-  CedarExamples.IPv4.toIPv4Net v.oct1 v.oct2 v.oct3 v.oct4 (v.cidrPrefix.getD "")
+  CedarExamples.IPv4.toIPv4Net v.oct1 v.oct2 v.oct3 v.oct4 (v.«prefix».getD "")
 
 end View
 

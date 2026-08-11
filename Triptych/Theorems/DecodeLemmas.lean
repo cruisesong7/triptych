@@ -22,13 +22,13 @@ theorem consumed_eq_of_append {cs piece r : List Char} (h : cs = piece ++ r) :
 theorem component_eq_of_decode {g : Grammar} {s : String} {m : CaptureMap}
     (h : decode g s = some m) (name : String) :
     component g s name = (m.toEnv name).getD "" := by
-  simp [component, envOf, h]
+  simp [component, envOf, captureMapOf, h]
 
 /-- Rewrite a repeated surface component once the selected decoder result is known. -/
 theorem componentList_eq_of_decode {g : Grammar} {s : String} {m : CaptureMap}
     (h : decode g s = some m) (name : String) :
     componentList g s name = m.toEnvList name := by
-  simp [componentList, h]
+  simp [componentList, captureMapOf, h]
 
 /-- Eliminate `computeValue` after identifying the selected decoder result. -/
 theorem computeValue_eq_of_decode {g : Grammar} {ve : ValExpr} {s : String}
@@ -53,15 +53,15 @@ theorem computeValueMap_eq_of_decode {α : Type} {g : Grammar}
     constraints evaluated on that capture map. -/
 theorem isWf_iff_of_decode {g : Grammar} {cs : List ConstraintEntry} {s : String}
     {m : CaptureMap} (h : decode g s = some m) :
-    isWf g cs s ↔ ∀ c ∈ cs, c.wfPart m.toEnv := by
-  simp [isWf, envOf, h]
+    isWf g cs s ↔ ∀ c ∈ cs, c.wfPart m := by
+  simp [isWf, captureMapOf, h]
 
 /-- With a known successful decode, final-value constraints are exactly their evaluations on
     that capture map. -/
 theorem satisfiesConstraints_iff_of_decode {g : Grammar} {cs : List ConstraintEntry}
     {s : String} {m : CaptureMap} (h : decode g s = some m) :
-    satisfiesConstraints g cs s ↔ ∀ c ∈ cs, c.valPart m.toEnv := by
-  simp [satisfiesConstraints, envOf, h]
+    satisfiesConstraints g cs s ↔ ∀ c ∈ cs, c.valPart m := by
+  simp [satisfiesConstraints, captureMapOf, h]
 
 theorem mem_matchSym_term_iff (g : Grammar) (q : String) (fuel : Nat)
     (tok : TokClass) (ls : LenSpec) (cs r : List Char) (m : CaptureMap) :

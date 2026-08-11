@@ -15,6 +15,8 @@
 -/
 
 import Lean.Elab.Tactic
+import Batteries.Data.List.Basic
+import Triptych.Architecture.Assemble
 import Triptych.Automation.Registry
 
 /-!
@@ -32,9 +34,49 @@ which makes the next missing backend rule explicit.
 `triptych_auto [agreement, helper]` additionally makes the named facts available to bounded
 `grind` search. It closes routine logical composition around parser-agreement facts, but does not
 invent the format-specific fact relating an external parser primitive to the generated denotation.
+
+`triptych_encode [roundtrip, agreement, acceptedView, valueView]` deterministically composes the
+four facts into an identity-denotation `encode_view` witness. Its five-argument form adds the
+explicit `ofSpec (toSpec d) = d` conversion fact required for converted denotations.
+
+`triptych_encode_direct [accepted, value, acceptedView, valueView]` provides the corresponding
+external-parser-free route when the serializer has been proved directly against the generated
+specification.
+
+`triptych_encode_derivation [decodeViewRender, encodeDerivation]` projects a structural
+derivation witness to the flat `encode_view` obligation. The generated theorem
+`<Root>.decodeView_render` supplies its first argument when static capture functionality holds.
 -/
 
 namespace Triptych.Automation
+
+/-- Successful optional traversal relates each input to the corresponding output. -/
+@[triptych_parser, triptych_parser_search =]
+theorem list_mapM_option_eq_some_iff {α β : Type} {f : α → Option β}
+    {xs : List α} {ys : List β} :
+    xs.mapM f = some ys ↔ List.Forall₂ (fun x y => f x = some y) xs ys := by
+  constructor
+  · intro hmap
+    induction xs generalizing ys with
+    | nil =>
+        simp at hmap
+        subst ys
+        exact .nil
+    | cons x xs ih =>
+        simp only [List.mapM_cons] at hmap
+        cases hfx : f x with
+        | none => simp [hfx] at hmap
+        | some y =>
+            cases htail : xs.mapM f with
+            | none => simp [hfx, htail] at hmap
+            | some zs =>
+                simp [hfx, htail] at hmap
+                subst ys
+                exact .cons hfx (ih htail)
+  · intro hrel
+    induction hrel with
+    | nil => rfl
+    | cons hxy _ ih => simp [List.mapM_cons, hxy, ih]
 
 /-- Successful inversion of a conditional returning an optional value. -/
 @[triptych_parser]
@@ -136,3 +178,71 @@ macro_rules
           (try simp_all only [triptych_parser]) <;>
           grind (splits := 6) (ematch := 4) (instances := 256)
             only [$grindRules,*, $searchParam])
+
+/--
+Prove a printer's typed `encode_view` obligation by deterministic composition.
+
+The four-argument form is for identity denotations:
+`triptych_encode [printerRoundtrip, parserAgreement, acceptedView, valueView]`.
+The five-argument form additionally requires the pointwise conversion inverse
+`ofSpec (toSpec d) = d`. Arbitrary printer behavior remains an explicit premise through
+`printerRoundtrip`; this tactic only removes the existential-view bookkeeping.
+-/
+syntax (name := triptychEncodeId)
+  "triptych_encode" "[" term ", " term ", " term ", " term "]" : tactic
+
+/-- Converted-denotation form of `triptych_encode`. -/
+syntax (name := triptychEncode)
+  "triptych_encode" "[" term ", " term ", " term ", " term ", " term "]" : tactic
+
+macro_rules
+  | `(tactic| triptych_encode [$roundtrip, $agreement, $acceptedView, $valueView]) =>
+      `(tactic| exact
+        Triptych.encodeView_of_parserAgreement_id
+          $roundtrip $agreement $acceptedView $valueView)
+  | `(tactic|
+      triptych_encode [$roundtrip, $agreement, $acceptedView, $valueView, $conversion]) =>
+      `(tactic| exact
+        Triptych.encodeView_of_parserAgreement
+          $roundtrip $agreement $acceptedView $valueView $conversion)
+
+/--
+Prove a printer's typed `encode_view` obligation directly from generated-spec acceptance and
+value facts. The four-argument form is for identity denotations; the five-argument form adds the
+pointwise `ofSpec (toSpec d) = d` conversion inverse.
+-/
+syntax (name := triptychEncodeDirectId)
+  "triptych_encode_direct" "[" term ", " term ", " term ", " term "]" : tactic
+
+/-- Converted-denotation form of `triptych_encode_direct`. -/
+syntax (name := triptychEncodeDirect)
+  "triptych_encode_direct" "[" term ", " term ", " term ", " term ", " term "]" : tactic
+
+macro_rules
+  | `(tactic|
+      triptych_encode_direct [$accepted, $hvalue, $acceptedView, $valueView]) =>
+      `(tactic| exact
+        Triptych.encodeView_of_validValue_id
+          $accepted $hvalue $acceptedView $valueView)
+  | `(tactic|
+      triptych_encode_direct [$accepted, $hvalue, $acceptedView, $valueView, $conversion]) =>
+      `(tactic| exact
+        Triptych.encodeView_of_validValue
+          $accepted $hvalue $acceptedView $valueView $conversion)
+
+/--
+Prove a printer's flat `encode_view` obligation from a structural derivation witness.
+
+`decodeViewRender` is normally the generated root theorem
+`<Name>.Derivation.<Root>.decodeView_render`. `encodeDerivation` supplies, for each domain value,
+a structurally valid root tree whose rendering is the declared serializer output and whose
+projected view is valid and has the required denotation.
+-/
+syntax (name := triptychEncodeDerivation)
+  "triptych_encode_derivation" "[" term ", " term "]" : tactic
+
+macro_rules
+  | `(tactic|
+      triptych_encode_derivation [$decodeViewRender, $encodeDerivation]) =>
+      `(tactic| exact
+        (Triptych.encodeView_of_derivation $decodeViewRender $encodeDerivation) _)

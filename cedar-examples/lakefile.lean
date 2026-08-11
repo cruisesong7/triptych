@@ -11,8 +11,8 @@ lean_lib CedarExamples where
   globs := #[
     .one `CedarExamples,
     .submodules `CedarSupport,
-    .submodules `Generated,
-    .submodules `Grammars,
+    .submodules `Outputs,
+    .submodules `Inputs,
     .submodules `Proofs
   ]
   defaultFacets := #[LeanLib.staticFacet]

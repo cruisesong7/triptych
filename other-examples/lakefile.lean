@@ -12,3 +12,6 @@ lean_lib Graph where
     .submodules `Graph
   ]
   defaultFacets := #[LeanLib.staticFacet]
+
+lean_exe parser_benchmark where
+  root := `ParserBenchmark

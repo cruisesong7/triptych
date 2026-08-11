@@ -10,6 +10,7 @@ not use Cedar's unfinished `Cedar.Thm.Ext.IPAddr` theorem layer.
 -/
 
 open Cedar.Spec.Ext.IPAddr
+open CedarSupport.ParserRules
 open Triptych
 
 namespace IPv4.RuleRegistrySoundness

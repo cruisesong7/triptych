@@ -92,6 +92,20 @@ def readInt (s : String) : Int :=
     In the full pipeline this comes from `decode`; here it is supplied directly. -/
 abbrev Env := String → Option String
 
+/-- A complete capture assignment: nonterminal name ↦ matched substring. Unlike `Env`, this
+    representation preserves every occurrence of a repeated capture. It lives with the value
+    readers rather than the decoder so both values and constraints can consume collections
+    without introducing an architecture import cycle. -/
+abbrev CaptureMap := List (String × String)
+
+/-- Collapse a `CaptureMap` to its legacy scalar view, keeping the first span for each name. -/
+def CaptureMap.toEnv (m : CaptureMap) : Env :=
+  fun k => (m.find? (·.1 == k)).map (·.2)
+
+/-- Read every span recorded under `k`, in match order. -/
+def CaptureMap.toEnvList (m : CaptureMap) (k : String) : List String :=
+  (m.filter (·.1 == k)).map (·.2)
+
 /-! ## Readable field readers
 
 These are the per-field-reference cases of `ValExpr.eval`, named to read like the doc's
@@ -154,15 +168,15 @@ open Lean
 declare_syntax_cat valExpr
 
 syntax:max num             : valExpr
-syntax:max "nat " ident    : valExpr
-syntax:max "int " ident    : valExpr
-syntax:max "len " ident    : valExpr
-syntax:max "count " ident  : valExpr
+syntax:max "nat " rawIdent    : valExpr
+syntax:max "int " rawIdent    : valExpr
+syntax:max "len " rawIdent    : valExpr
+syntax:max "count " rawIdent  : valExpr
 -- A BARE capture name denotes its SIGN (±1): `Sign` ⟺ the old `sign Sign`. Reserved for
 -- productions declared `Sign ::= sign` (a dedicated sign capture); the `"nat "`/`"int "`/`"len "`
 -- atoms above are keywords, so a bare ident never collides with them. See `elabTriptych`,
 -- which validates that every bare-ident ref names an actual sign capture.
-syntax:max ident           : valExpr
+syntax:max rawIdent        : valExpr
 -- Named integer constants (desugar to `ValExpr.lit`, staying fully analyzable).
 syntax:max "Int64.MAX"     : valExpr
 syntax:max "Int64.MIN"     : valExpr
