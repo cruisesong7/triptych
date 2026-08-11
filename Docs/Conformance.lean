@@ -1,13 +1,15 @@
 /-
-Triptych documentation — Chapter 5: conformance testing against Cedar's parsers.
+Triptych documentation -- Chapter 7: differential evidence and CI.
 -/
 import VersoManual
 
 open Verso.Genre Manual
+open Verso.Genre.Manual.InlineLean
+open Verso.Code.External
 
 set_option pp.rawOnError true
 
-#doc (Manual) "Conformance: testing against the real thing" =>
+#doc (Manual) "Conformance: proof, differential evidence, and CI" =>
 
 %%%
 tag := "conformance"
@@ -15,85 +17,82 @@ shortTitle := "Conformance"
 file := "conformance"
 %%%
 
-The proofs in this book relate generated artifacts to each other and — through the
-obligations of chapter 3 — to external parsers. But proofs are only as good as the
-statements they prove, and every statement is ultimately anchored in a human transcription:
-someone read Cedar's documentation and wrote the `triptych` block. What if the
-*transcription* is wrong? A grammar that faithfully generates a spec, a parser, and a
-reconciliation proof for the *wrong format* passes every check the previous chapters
-described.
+Generated reconciliation proves that Triptych's specification and executable agree with each
+other. External-parser theorems prove that Cedar agrees with that specification. Differential
+testing adds a third check: did the human-authored grammar capture the intended real-world
+format on the project's known cases?
 
-Triptych's answer is old-fashioned and effective: run the generated parsers against the
-real ones, on the real project's own test corpus.
+# The 13-suite matrix
 
-# The setup
+{lit}`cedar-examples/ConformanceTests.lean` evaluates generated parsers, readable
+specifications, checked external wrappers, and printer roundtrips against Cedar's own parser
+corpus.
 
-`Triptych/Examples/ConformanceTests.lean` runs the *generated executable parsers* —
-`Decimal.parse`, `Duration.parse`, `Datetime.parse`, the actual decode-based engines from
-chapter 2, not the readable `Prop`s — against Cedar's real parsers, over every string that
-cedar-lean's own unit tests exercise: 32 Decimal strings, 42 Duration, and 70 Datetime,
-valid and invalid cases alike.
+| Surface | Checks |
+|---|---:|
+| Decimal generated / checked external | 32 + 32 |
+| Duration generated / checked external | 42 + 42 |
+| Datetime generated / checked external | 74 + 74 |
+| IPv4 generated / readable spec / checked external | 89 + 89 + 89 |
+| IPv6 generated / readable spec / checked external | 89 + 89 + 89 |
+| IPv6 generated and external printer roundtrip | 52 |
 
-Cedar is the oracle. For Decimal and Duration, `lift` makes the generated parser return the
-*same type* as Cedar's (`Option Decimal`, `Option Duration`), so each check is a direct
-equality with no hard-coded expectations:
+The current result is 882 of 882 checks across 13 suites, with zero failures.
 
-```
-check s (Decimal.parse s) (Cedar.Spec.Ext.Decimal.parse s)
-```
+For Decimal and Duration, {lit}`ofSpec` makes the generated parser return the same domain type
+as Cedar, so each generated check is direct {name}`Option` equality. Datetime compares its
+generated epoch-millisecond value with Cedar's parsed datetime mapped through
+{lit}`datetimeMillis`.
 
-Any divergence — in *acceptance* or in *value* — shows up. Datetime has no `lift` (Cedar
-defines no canonical `ToString Datetime`, so there is no printer clause to serve), so its
-generated parser returns epoch milliseconds as `Option Int` and the check compares through
-the projection: `Datetime.parse s = (Cedar.…parse s).map datetimeMillis`.
+IPv4 and IPv6 run the same mixed-family corpus. Every IPv6 string is also an IPv4 rejection
+case and conversely. Their readable-spec suites separately evaluate
+{lit}`decide (IPv4.IsValid s)` and {lit}`decide (IPv6.IsValid s)` against Cedar's family
+acceptance.
 
-Two implementation choices matter:
+# Prefix-length boundaries
 
-- *It gates the build.* The suite runs in `#eval` at elaboration time and throws on a
-  nonzero failure count, so a diverging spec does not just print a warning — it fails
-  `lake build`. (It lives in its own library target, out of the default build, so the core
-  library stays fast.)
-- *It is plain evaluation.* No `native_decide`, no axioms — the same kernel-visible
-  reduction as everything else in the project. The conformance suite adds no trust
-  assumptions.
+The IP corpus covers bare addresses, CIDR prefix lengths, address bounds, canonical spelling,
+compression, hextet counts, and family dispatch. Names consistently follow the semantic Cedar
+API: {lit}`Prefix`, {lit}`IPv4Prefix`, and {lit}`IPv6Prefix` mean the number of leading
+network bits. The text {lit}`/24` is appended to an IPv4 address syntactically, but it still
+denotes a prefix length, not a suffix concept.
 
-# What it caught: the Duration sign bug
+# Checked external behavior
 
-The suite is not hypothetical insurance; it caught a real bug during development.
+Every format also compares {lit}`checkedExtParse` with the real Cedar parser. Two focused
+guards feed a deliberately dishonest Decimal parser to
+{lit}`Triptych.checkedExternalParse` and confirm that it rejects both a wrong value and an
+invalid string without assuming any theorem about that parser.
 
-An early version of the Duration grammar wrote the optional leading minus sign inline, as a
-bare optional literal in the top production — the natural transcription of
-`Duration ::= ['-'] Components`. The grammar was correct as a *recognizer*: negative
-durations parsed fine. But the decoder records captured substrings under *production names*,
-and a bare literal belongs to no named production — so the minus sign was matched and then
-captured nowhere. The value function, reading captures by name, never saw it:
-`"-1d"` quietly computed the same positive value as `"1d"`.
+# A bug the suite found
 
-Every proof in `parser.lean` held throughout. The spec and the engine agreed perfectly —
-*both* dropped the sign, because both were generated from the same (subtly wrong) grammar.
-This is precisely the failure mode reconciliation proofs cannot catch: a faithful
-implementation of an unfaithful transcription. The conformance run flagged it immediately, as
-a value mismatch against Cedar's parser on the negative-duration test strings.
+An early Duration grammar placed the optional minus sign inline. Recognition was correct, but
+anonymous literals are not captured, so the value function computed a negative duration as
+positive. The generated specification and parser agreed perfectly on that wrong transcription.
 
-The fix became a design rule rather than a bug fix: the DSL now provides a dedicated `sign`
-terminal that must be a production's sole right-hand side (`Sign ::= sign`), so a sign always
-owns a named capture, and the value DSL reads it by bare production name. The elaborator
-rejects the shapes that made the bug expressible. Chapter 2's aside about the sign production
-is this story in its brief form.
+Differential testing found the value mismatch. The fix became a DSL rule:
+{lit}`Sign ::= sign` gives the sign a named capture, and the elaborator rejects unsafe sign
+shapes.
 
-# The moral: proofs and tests are complements
+This is the exact complementarity:
 
-It is tempting to read verification as making tests obsolete. The Duration bug shows why
-that is wrong in a precise way. The proof stack guarantees *internal* coherence: spec,
-engine, and parser cannot drift from each other. The conformance suite anchors the stack
-*externally*: the whole coherent tower actually describes Cedar's format, on the evidence of
-Cedar's own test corpus. Each covers the other's blind spot —
+- generated proofs cover every input, relative to the authored grammar;
+- static external-parser proofs cover every input, after format semantics are established;
+- differential tests exercise the actual integration on a finite, independently authored
+  corpus.
 
-- proofs quantify over *all* strings, but only relative to the transcribed grammar;
-- tests check the *real* parser, but only on finitely many strings.
+# Build gates
 
-The obligations of chapter 3 close the loop fully — `extparse_sound` and friends turn the
-finite test evidence into a universally quantified theorem — but they take real proof work
-(Decimal's are done; Duration's and Datetime's remain open). The conformance suite is the
-cheap, immediate check that keeps the transcription honest while that work proceeds, and a
-regression net thereafter: it reruns on every build of its target.
+The conformance runner uses ordinary evaluation and throws on any failure, so
+{lit}`lake build ConformanceTests` is a hard gate. It uses no
+{lit}`native_decide` and introduces no axiom.
+
+The CI workflow has three independent jobs:
+
+1. build the Cedar-free core;
+2. build the Cedar-free Graph package and run {lit}`parser_benchmark`;
+3. check out a pinned Cedar parser revision, build every Cedar proof module, and run all
+   conformance suites.
+
+Together, the proof checks, differential matrix, and package-separated CI keep compiler
+coherence, format semantics, and real integration visible as distinct claims.

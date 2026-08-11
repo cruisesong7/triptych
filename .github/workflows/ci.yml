@@ -44,4 +44,4 @@ jobs:
       - uses: leanprover/lean-action@v1
         with:
           lake-package-directory: triptych/cedar-examples
-          build-args: CedarExamples ConformanceTests
+          build-args: CedarExamples ConformanceTests docs

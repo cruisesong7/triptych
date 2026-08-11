@@ -1,16 +1,16 @@
 /-
-Triptych documentation — Chapter 4: the scope gradient (what the DSL can and cannot say).
+Triptych documentation -- Chapter 5: the scope gradient.
 -/
 import VersoManual
-import Triptych.Examples.Graph.parser
-import Triptych.Examples.IPv6.parser
+import Outputs.IPv6.parser
 
 open Verso.Genre Manual
 open Verso.Genre.Manual.InlineLean
+open Verso.Code.External
 
 set_option pp.rawOnError true
 
-#doc (Manual) "Scope: three tiers and a graceful exit" =>
+#doc (Manual) "Scope: three tiers and an explicit boundary" =>
 
 %%%
 tag := "scope"
@@ -20,123 +20,126 @@ file := "scope"
 
 ```lean -show
 open Triptych
-open Triptych.Examples.Graph
+open CedarExamples.IPv6
 ```
 
-Triptych's expressiveness is layered on purpose. The grammar tier is kept small enough
-that everything about it can be proven automatically; two further tiers let the *accepted
-language* and the *parsed value* escape that class without giving up the automation where it
-still applies. This chapter maps the ceiling of each tier and what degrades — gracefully —
-when you cross it.
+Triptych's expressiveness is layered. The grammar tier remains small enough for generated
+reconciliation proofs; constraints can narrow its language; value escapes can return arbitrary
+types. This chapter marks both the useful boundary and the current missing features.
 
-# Tier one: the grammar
+# Tier one: flat grammar
 
 The grammar language is a strict subclass of the regular languages:
 
-- concatenation and finite alternation (`|`),
-- optional items (`[x]`) and the `sign` terminal,
-- character-class token runs — `digit`, `hexDigit`, `bit` — with length specs
-  (`{n}`, `{lo,hi}`, `+`),
-- separated group repetition: `rep <item> sepBy "<sep>" <len>`.
+- concatenation and finite alternatives;
+- optional items and the dedicated {lit}`sign` terminal;
+- built-in {lit}`digit`, {lit}`hexDigit`, and {lit}`bit` runs with
+  {lit}`{n}`, {lit}`{lo,hi}`, or {lit}`+` lengths;
+- separated repetition such as {lit}`rep H16 sepBy ":" {8}`.
 
-No recursion — the nonterminal dependency graph must be a DAG, so the language is not even
-context-free — and no data-dependent lengths. The payoff for this austerity: the denotation
-of any such grammar collapses to a finite first-order formula with bounded quantifiers, which
-is why the generator can emit the readable existential predicates of chapter 2 *and* prove
-them equivalent to the executable decoder, mechanically, for every grammar in the class.
+The nonterminal graph must be acyclic, and field boundaries cannot depend on values parsed
+earlier. This restriction lets Triptych emit readable predicates, executable decoding, and
+their equivalence mechanically.
 
-IPv6 shows the repetition form — eight hex groups joined by colons is one line:
+IPv6 uses the repetition form:
 
 ```
-V6Addr ::= rep H16 sepBy ":" {8}
-H16    ::= hexDigit{1,4}
+Full ::= rep H16 sepBy ":" {8}
+H16  ::= hexDigit{1,4}
 ```
 
 ```lean (name := ipv6Check)
 #check @IPv6.IsWf_equiv
 ```
 
-# Tier two: constraints — the accepted language escapes
+The complete IPv6 input also supports {lit}`::` compression and an optional CIDR prefix
+length. In {lit}`2001:db8::/64`, {lit}`/64` is lexically appended to the address, but the
+semantic term is *prefix length*: it says how many leading address bits identify the network.
+The Cedar API accordingly uses names such as {name}`Cedar.Spec.Ext.IPAddr.IPv6Prefix`.
 
-Constraints conjoin extra conditions onto the grammar. The DSL forms cover arithmetic
-comparisons over captures and cardinality; beyond that, the `constraints'` escape accepts
-*any decidable Lean predicate* over the captures. Since the final accepted language is
-grammar ∩ constraint, this tier lifts the accepted language out of the regular class
-entirely — while the grammar-level reconciliation from tier one still holds and is still
-auto-proven.
+# Tier two: accepted-language constraints
 
-The Graph example leans on this. The SAT community encodes a simple graph as the upper
-triangle of its adjacency matrix, flattened to a bit string. One grammar covers graphs of
-*every* order:
+Constraints conjoin conditions with the grammar. The analyzable DSL covers arithmetic
+comparisons, lengths, numeric values, canonical decimal spelling, and {lit}`count X`.
+The {lit}`constraints'` escape accepts any Boolean Lean predicate over scalar captures and
+repeated-capture {lean}`List String` arguments.
+
+Because the final language is grammar intersection constraint, this tier can describe
+non-regular subsets while preserving the grammar-level reconciliation theorem.
+
+The Cedar-free Graph example accepts a nonempty bit string at the grammar tier:
 
 ```
 Adj   ::= Cells
 Cells ::= bit+
 ```
 
-The grammar over-approximates: any non-empty bit string. A `constraints'` escape carves out
-the valid ones — the length must be a triangular number `n(n-1)/2` (else the bits are not a
-complete upper triangle of any order). "The set of strings whose length is triangular" is
-not a regular language; no grammar in tier one could express it. The constraint tier does
-not care.
+Its {lit}`constraints'` predicate requires the length to be triangular,
+{lit}`n(n-1)/2`. The set of triangular-length strings is not regular, but the grammar can
+over-approximate and the constraint can carve out the intended language.
 
-# Tier three: values — the output type escapes
+# Tier three: arbitrary values
 
-The scalar `value` DSL computes an `Int` from sign, magnitude, and length readers. The
-`value'` escape replaces it with any Lean function of the captures, returning *any type*.
-Graph uses it to produce an actual structure — vertex count plus edge list — recovering the
-order from the string length:
+The analyzable {lit}`value` DSL computes an {name}`Int` from sign, magnitude, length, and
+count readers. The {lit}`value'` escape accepts an ordinary Lean function and can return any
+type. Graph uses it to return a structure containing a vertex count and edge list.
+For example, {lit}`"101"` denotes a path on three vertices, while {lit}`"11"` is rejected
+because length two is not triangular.
 
-```lean (name := graphEvals)
-#eval Graph.computeValue "101"     -- path on 3 vertices
-#eval Graph.computeValue "111111"  -- K₄
-#eval Graph.computeValue "11"      -- 2 not triangular
-```
+In one example, the grammar over-approximates, the constraint validates a complete upper
+triangle, and the value function interprets its bits as edges.
 
-The three tiers compose into a clean division of labor, visible in this one example: the
-*grammar over-approximates* (any bit string), the *constraints carve* (triangular length),
-and the *value interprets* (bits → graph). Asking "don't we need a separate grammar for each
-graph order?" gets the answer *no* — the order is data, checked by a constraint and recovered
-by the value function, which is exactly what those layers are for.
+With {lit}`value'` or {lit}`constraints'`, Triptych still proves grammar reconciliation,
+decidability, typed-view equations, and generated-parser contracts. It treats the escaped
+function's internal semantics as a named user fact.
 
-# What escapes cost
+# Ambiguity and static certificates
 
-The degradation is deliberate and partial. With a `value'` or `constraints'` escape:
+The grammar class permits ambiguous alternatives and token splits. The reference decoder
+enumerates full parses and chooses the first, so recognition alone does not imply that captures
+or values are grammar-determined.
 
-- *still auto-proven*: the grammar reconciliation (`IsWf_equiv`), decidability of the
-  surface predicates, and the parser's contract theorems — tier one does not know or care
-  what sits in the escape;
-- *no longer auto-proven*: anything about the escape's *content*. The generator treats the
-  escaped function as opaque; if you want theorems about `toGraph` itself, you write them.
+{name}`Triptych.GrammarCaptureFunctional` states the needed semantic property. A conservative
+{name}`Triptych.Grammar.staticUnique` checker proves it for deterministic fragments such as
+Graph and Decimal. When certification succeeds, Triptych emits premise-free decode/render,
+view/render, value-coherence, and relational-parser theorems.
 
-This is the same philosophy as chapter 3's obligation surface: automation up to exactly the
-point where the claim stops being the generator's to make.
+General shared-prefix alternatives, nullable sequences, and repetition functionality remain
+future certificate work. Structural derivation membership is still generated for grammars that
+do not pass the conservative checker; only exact first-decode roundtrip retains an explicit
+capture-functionality premise.
 
-# Out of scope, honestly
+# Current boundary: Base64
 
-Some formats fall outside all three tiers, and the right answer is a hand-written decoder —
-not a DSL contortion. The canonical example is graph6, the dense on-disk graph format: its
-header encodes the vertex count, and the *length of the rest of the input* depends on that
-value. Data-dependent length is precisely what tier one's regular skeleton cannot express,
-and no constraint can rescue it, because constraints only restrict what the grammar already
-parses — they cannot change how the string is *split*.
+General Base64 is not currently a direct Triptych grammar. Its alphabet needs either a
+user-defined character class or unseparated repetition of a 64-way symbol, and its last quartet
+has padding rules. Triptych currently has three built-in token classes, while {lit}`rep`
+requires a nonempty separator.
 
-Similarly out of scope: anything recursive (JSON, s-expressions, Cedar's own policy
-language), length-prefixed binary payloads, and formats whose field boundaries require
-lookahead beyond the grammar class. For these, Triptych's honest contribution is the
-*specification vocabulary* — you can still write the spec-side predicates by hand in the
-same style, but the reconciliation proof is yours.
+A useful extension would add user-defined finite character classes, unseparated bounded
+repetition, and analyzable quartet/padding constraints. The value tier can already host a Base64
+decoder once the grammar can split and validate the text.
 
-# The gradient, summarized
+# Dependent layouts and recursion
 
-1. *Flat-regular grammar + arithmetic value + comparison constraints* — everything
-   generated, everything proven, zero obligations. (Decimal, IPv4, IPv6.)
-2. *Escapes* — grammar reconciliation and decidability still free; the escaped
-   value/constraint content is opaque and yours to reason about. (Graph, Datetime's
-   day-of-month bound.)
-3. *External parser / printer clauses* — the conformance claims of chapter 3, stated
-   precisely and left as the only `sorry`s in the system. (Decimal, Duration, Datetime.)
-4. *Out of scope* — hand-written decode, spec vocabulary reusable, proofs manual. (graph6.)
+Constraints can reject a fully decoded string, but they cannot change how it was split. Formats
+whose later field length depends on an earlier value therefore remain out of scope. The same is
+true for recursive formats such as JSON, s-expressions, and Cedar policies.
 
-Each step down the gradient trades automation for expressiveness in a controlled way, and —
-the design's central promise — nothing you got for free at a higher tier is taken away.
+Graph6 is a representative boundary case: its header determines the length of the following
+payload. A hand-written decoder is the right implementation until Triptych has dependent
+boundaries.
+
+# The gradient
+
+1. *Flat grammar, analyzable value, analyzable constraints* -- generated and proved with no
+   semantic obligations.
+2. *Value or constraint escapes* -- parser coherence remains generated; escaped semantics are
+   supplied by users.
+3. *External parser or explicit printer* -- Triptych states the semantic contract and derives
+   its consequences. All shipped Cedar contracts are complete.
+4. *Recursive or dependent layout* -- use a hand-written parser and a separately proved
+   specification.
+
+Each step trades automation for expressiveness without weakening the theorems already obtained
+at an earlier tier.
