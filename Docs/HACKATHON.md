@@ -20,17 +20,19 @@ A small grammar DSL in Lean, built with Lean's metaprogramming, so that
 > **input = the grammar. output = the formal spec.**
 
 You write the grammar once, in notation that looks like the docs, and the tool generates the
-formal spec for you. We keep it to the simple class these formats actually live in — no
-recursion, fixed shape — which is exactly what makes the whole thing automatable.
+formal spec, executable reference parser, and reconciliation proofs. We keep it to a strict
+regular subclass — no recursive productions or data-dependent lengths, but with optional
+symbols, token runs, and separated repetition — which is exactly what makes generation total.
 
 ```
 triptych Decimal where
   grammar
-    Decimal  ::= Integer "." Fraction
-    Integer  ::= ["-"] digit+
+    Decimal  ::= Sign Natural "." Fraction
+    Sign     ::= sign
+    Natural  ::= digit+
     Fraction ::= digit{1,4}
   value
-    int Integer * 10^4 + sign Integer * nat Fraction * 10^(4 - len Fraction)
+    Sign * (nat Natural * 10^4 + nat Fraction * 10^(4 - len Fraction))
   constraints
     value ∈ [Int64.MIN, Int64.MAX]
 ```
@@ -47,13 +49,28 @@ useful in three ways:
 3. A generated proof that the readable spec and a runnable version are the same thing — so
    you get something both a person and a machine can check, guaranteed to agree.
 
+It also emits a correct-by-construction reference parser, typed derivation trees, and a small
+obligation surface for an independent external parser or canonical serializer.
+
+## Where it stands
+
+- Decimal, Duration, Datetime, IPv4, and IPv6 target Cedar's real extension parsers.
+- Every shipped parser/printer scaffold obligation is discharged.
+- Cedar conformance covers generated parsers, readable specs, checked external parsers, and
+  printer roundtrip with zero failures.
+- The Cedar-free Graph example demonstrates arbitrary structured `value'` output and an
+  independent decidable `constraints'` predicate. Collection escapes can consume every repeated
+  capture through `[X]`, with generated reconciliation and typed views.
+
 ## Where it could go
 
-- Point the generated soundness/completeness obligations at a *real* parser (e.g. the
-  Cedar-Lean extension parsers) and discharge them.
-- Grow past the simple class into dependent / length-prefixed formats — IPv6 `::`, TLV,
-  protobuf, count-prefixed arrays, SAT-style graph encodings — where a value read from the
-  input decides how much to parse next.
+- Reuse common semantic components and external-parser bridge lemmas.
+- Extend automatic printer synthesis beyond the proved signed-decimal patterns and add analyzable
+  collection reductions beyond `count X` and list-aware escapes.
+- Improve static capture-functionality coverage and deterministic execution; CI, structural
+  decoder budgets, and a benchmark smoke target now provide regression evidence.
+- Add UUID and DIMACS CNF examples. Recursive and data-dependent formats such as JSON, TLV, and
+  protobuf remain outside the current grammar class.
 
 ## One-liner
 

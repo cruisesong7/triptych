@@ -30,18 +30,32 @@ tries every way to split the string across a sequence's items, records each matc
 nonterminal's substring, and keeps assignments that consume the whole string. It is the
 *reference* decoder (simple, obviously-correct-by-inspection), NOT a production parser.
 
-Status: `partial` and executable (drives `#eval`/demos and, later, differential testing
-against the hand-written parser). Its roundtrip lemma vs `IsWf` — `decode (asString env)
-= some env` on well-formed inputs — is the next proof milestone; not yet proved.
+Status: a total `def` — fuel-bounded (fuel = #productions, a DAG-depth backstop), so it
+needs no `partial`. It is executable (drives `#eval`/demos and the differential
+conformance suite against the real Cedar parsers). Its recognition roundtrip vs `IsWf` —
+`decodeSome_iff_IsWf` (`(decode g s).isSome = IsWf g s`, under `g.repOk`) — is PROVED in
+`Triptych.Theorems.Roundtrip` and is what every emitted `IsWf_equiv` is built on.
+
+Caveat (decoder-selected values): `decode` returns the FIRST full-consumption assignment
+(`head?`), and the scalar `Env` view (`toEnv`) keeps the FIRST span per name. Recognition
+(`IsWf`) forgets captures, so an *ambiguous* grammar's several full parses need not agree on
+the capture map — in general the computed value is decoder-selected, not grammar-determined.
+`Triptych.Theorems.Coherence` makes this precise and supplies the theorems that erase it when
+it can be erased: `computeValueF_coherent` covers scalar `Env` readers, while
+`computeValueMap_coherent` covers repeated-capture readers over the full map. `DecodeUnique`
+(≤ 1 full parse) is a decidable sufficient condition, with `#eval decide` as a per-string
+runtime diagnostic. `GrammarCaptureFunctional` is the weaker all-input semantic property that
+all full parses produce the same map. Representative inputs from the shipped examples evaluate
+as unique; a conservative static analysis now proves the stronger `GrammarDecodeUnique`
+certificate for unary paths, required sequences with deterministic prefix boundaries, and
+pairwise-distinct literal-leading alternatives, from which capture functionality follows.
+The checker now also covers a leading optional-literal reference separated from the remainder
+by FIRST-character exclusion and unary variable token paths bounded by an out-of-class literal
+delimiter. Recursive FIRST sets, shared-prefix alternatives, general nullable sequences, and
+repetitions still require stronger analysis.
 -/
 
 namespace Triptych
-
-/-- A capture assignment: nonterminal name ↦ matched substring. -/
-abbrev CaptureMap := List (String × String)
-
-/-- View a `CaptureMap` as the `Env` the value/constraint DSLs evaluate against. -/
-def CaptureMap.toEnv (m : CaptureMap) : Env := fun k => (m.find? (·.1 == k)).map (·.2)
 
 /-- Does the length-`k` prefix of `cs` satisfy the terminal `tok`/`ls`? Routes through the
     single `matchesTerm` predicate (shared with the recognizer/spec), so the token semantics
@@ -77,7 +91,7 @@ mutual
 
 /-- All ways symbol `sym` matches a prefix of `cs`: each result is (captures, remaining).
     `fuel` bounds ref-recursion (= #productions, the DAG depth), mirroring `Denote`; this
-    makes the function TOTAL and kernel-reducible (so `decide`, not `native_decide`).
+    makes the function total and executable.
 
     `qual` is the IMMEDIATE-PARENT production name (`""` at the start production). A matched
     nonterminal `name` is recorded under BOTH its bare key `name` AND — when `qual` is
@@ -157,5 +171,44 @@ def computeValue (g : Grammar) (ve : ValExpr) (s : String) : Option Int :=
     `computeValue g ve = computeValueF g (ve.eval ·)` (the DSL tier is the `α := Int` case). -/
 def computeValueF {α : Type} (g : Grammar) (valFn : Env → α) (s : String) : Option α :=
   (decode g s).map (fun m => valFn m.toEnv)
+
+/-- Like `computeValueF`, but the value reader sees the FULL `CaptureMap`, not the collapsed
+    `Env`. Used by a `value'` escape that consumes a repeated capture as a `List String` (via
+    `CaptureMap.toEnvList`): the `Env` view keeps only the first span per name, so a reader that
+    needs every repeated element (IPv6's eight `H16` groups) must read the map directly. The
+    scalar escape stays on `computeValueF` (`Env`-based); this is the list-capable sibling. -/
+def computeValueMap {α : Type} (g : Grammar) (valFn : CaptureMap → α) (s : String) : Option α :=
+  (decode g s).map valFn
+
+/-! ## Structural decoder budgets
+
+These values expose the exact recursion/enumeration budgets selected at the decoder entry
+points. They are useful for diagnostics and benchmarks, but deliberately do not claim a
+polynomial total runtime bound: ambiguous splits can still create exponentially many branches. -/
+
+/-- Input-dependent structural limits used by the reference decoder. -/
+structure DecodeBudget where
+  /-- Reference-recursion fuel supplied by `decode`. -/
+  referenceDepth : Nat
+  /-- Maximum separated-repetition tail iterations at an input position. -/
+  repetitionDepth : Nat
+  /-- Prefix lengths considered by a terminal at the start of the input. -/
+  terminalPrefixCandidates : Nat
+  deriving Repr, Inhabited, DecidableEq
+
+/-- The structural decoder budget for grammar `g` and input `s`. -/
+def decodeBudget (g : Grammar) (s : String) : DecodeBudget where
+  referenceDepth := g.prods.length
+  repetitionDepth := s.length
+  terminalPrefixCandidates := s.length + 1
+
+@[simp] theorem decodeBudget_referenceDepth (g : Grammar) (s : String) :
+    (decodeBudget g s).referenceDepth = g.prods.length := rfl
+
+@[simp] theorem decodeBudget_repetitionDepth (g : Grammar) (s : String) :
+    (decodeBudget g s).repetitionDepth = s.length := rfl
+
+@[simp] theorem decodeBudget_terminalPrefixCandidates (g : Grammar) (s : String) :
+    (decodeBudget g s).terminalPrefixCandidates = s.length + 1 := rfl
 
 end Triptych

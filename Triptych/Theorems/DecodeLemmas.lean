@@ -1,4 +1,4 @@
-import Triptych.Architecture.Decode
+import Triptych.Architecture.Assemble
 
 /-!
 # Exact decoder membership lemmas
@@ -10,6 +10,58 @@ components selected by `decode`.
 -/
 
 namespace Triptych
+
+/-- If `r` is the unconsumed suffix of `cs`, the decoder's length-based consumed span is
+    exactly the prefix `piece`. -/
+theorem consumed_eq_of_append {cs piece r : List Char} (h : cs = piece ++ r) :
+    String.ofList (cs.take (cs.length - r.length)) = String.ofList piece := by
+  subst cs
+  simp
+
+/-- Rewrite a scalar surface component once the selected decoder result is known. -/
+theorem component_eq_of_decode {g : Grammar} {s : String} {m : CaptureMap}
+    (h : decode g s = some m) (name : String) :
+    component g s name = (m.toEnv name).getD "" := by
+  simp [component, envOf, captureMapOf, h]
+
+/-- Rewrite a repeated surface component once the selected decoder result is known. -/
+theorem componentList_eq_of_decode {g : Grammar} {s : String} {m : CaptureMap}
+    (h : decode g s = some m) (name : String) :
+    componentList g s name = m.toEnvList name := by
+  simp [componentList, captureMapOf, h]
+
+/-- Eliminate `computeValue` after identifying the selected decoder result. -/
+theorem computeValue_eq_of_decode {g : Grammar} {ve : ValExpr} {s : String}
+    {m : CaptureMap} (h : decode g s = some m) :
+    computeValue g ve s = some (ve.eval m.toEnv) := by
+  simp [computeValue, h]
+
+/-- Eliminate an environment-valued computation after identifying the selected decoder result. -/
+theorem computeValueF_eq_of_decode {α : Type} {g : Grammar} {valFn : Env → α}
+    {s : String} {m : CaptureMap} (h : decode g s = some m) :
+    computeValueF g valFn s = some (valFn m.toEnv) := by
+  simp [computeValueF, h]
+
+/-- Eliminate a capture-map-valued computation after identifying the selected decoder result. -/
+theorem computeValueMap_eq_of_decode {α : Type} {g : Grammar}
+    {valFn : CaptureMap → α} {s : String} {m : CaptureMap}
+    (h : decode g s = some m) :
+    computeValueMap g valFn s = some (valFn m) := by
+  simp [computeValueMap, h]
+
+/-- With a known successful decode, format well-formedness is exactly the well-formedness
+    constraints evaluated on that capture map. -/
+theorem isWf_iff_of_decode {g : Grammar} {cs : List ConstraintEntry} {s : String}
+    {m : CaptureMap} (h : decode g s = some m) :
+    isWf g cs s ↔ ∀ c ∈ cs, c.wfPart m := by
+  simp [isWf, captureMapOf, h]
+
+/-- With a known successful decode, final-value constraints are exactly their evaluations on
+    that capture map. -/
+theorem satisfiesConstraints_iff_of_decode {g : Grammar} {cs : List ConstraintEntry}
+    {s : String} {m : CaptureMap} (h : decode g s = some m) :
+    satisfiesConstraints g cs s ↔ ∀ c ∈ cs, c.valPart m := by
+  simp [satisfiesConstraints, captureMapOf, h]
 
 theorem mem_matchSym_term_iff (g : Grammar) (q : String) (fuel : Nat)
     (tok : TokClass) (ls : LenSpec) (cs r : List Char) (m : CaptureMap) :
@@ -114,6 +166,34 @@ theorem mem_matchSeq_cons_optional_iff (g : Grammar) (q : String) (fuel : Nat)
       rw [List.mem_flatMap]
       exact ⟨(m₁, mid), hm₁, List.mem_map.mpr ⟨(m₂, r), hm₂, rfl⟩⟩
     · exact Or.inr hrest
+
+/-- Simplifier-friendly required-item specialization: the optionality proof is encoded in the
+    `SymItem.mk sym false` constructor instead of exposed as a side condition. -/
+theorem mem_matchSeq_cons_mk_required_iff (g : Grammar) (q : String) (fuel : Nat)
+    (sym : Sym) (rest : Seq) (cs r : List Char) (m : CaptureMap) :
+    (m, r) ∈ matchSeq g q fuel (SymItem.mk sym false :: rest) cs ↔
+      ∃ m₁ mid m₂,
+        (m₁, mid) ∈ matchSym g q fuel sym cs ∧
+        (m₂, r) ∈ matchSeq g q fuel rest mid ∧
+        m = m₁ ++ m₂ := by
+  exact mem_matchSeq_cons_required_iff g q fuel ⟨sym, false⟩ rest rfl cs r m
+
+/-- Simplifier-friendly optional-item specialization. -/
+theorem mem_matchSeq_cons_mk_optional_iff (g : Grammar) (q : String) (fuel : Nat)
+    (sym : Sym) (rest : Seq) (cs r : List Char) (m : CaptureMap) :
+    (m, r) ∈ matchSeq g q fuel (SymItem.mk sym true :: rest) cs ↔
+      (∃ m₁ mid m₂,
+        (m₁, mid) ∈ matchSym g q fuel sym cs ∧
+        (m₂, r) ∈ matchSeq g q fuel rest mid ∧
+        m = m₁ ++ m₂) ∨
+      (m, r) ∈ matchSeq g q fuel rest cs := by
+  exact mem_matchSeq_cons_optional_iff g q fuel ⟨sym, true⟩ rest rfl cs r m
+
+/-- Exact capture/remainder shape of an empty sequence. -/
+theorem mem_matchSeq_nil_iff (g : Grammar) (q : String) (fuel : Nat)
+    (cs r : List Char) (m : CaptureMap) :
+    (m, r) ∈ matchSeq g q fuel [] cs ↔ m = [] ∧ r = cs := by
+  simp [matchSeq, and_comm]
 
 theorem mem_matchSym_ref_iff (g : Grammar) (q : String) (fuel : Nat)
     (name : String) (p : Production) (hprod : g.prod? name = some p)

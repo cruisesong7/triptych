@@ -45,8 +45,7 @@ def Production.directRefs (p : Production) : List String :=
   p.alts.flatMap (fun seq => seq.flatMap (fun item => item.sym.allRefs))
 
 /-- Depth-first check that the reference graph reachable from `name` is acyclic.
-    `fuel` bounds recursion by the number of productions (a DAG cannot have a path
-    longer than that). `stack` is the current DFS path for cycle detection. -/
+    `stack` is the current DFS path for cycle detection. -/
 partial def Grammar.acyclicFrom (g : Grammar) (name : String) (stack : List String) : Bool :=
   if stack.contains name then
     false  -- back-edge to a node on the current path ⟹ cycle
@@ -54,9 +53,25 @@ partial def Grammar.acyclicFrom (g : Grammar) (name : String) (stack : List Stri
     | none   => true  -- reference to an undefined production: not a cycle (a separate error)
     | some p => p.directRefs.all (fun r => g.acyclicFrom r (name :: stack))
 
-/-- The grammar's production graph is acyclic starting from the start symbol. -/
+/-- Return the first reference cycle reachable from `name`, including the repeated node at both
+    ends (for example, `["A", "B", "A"]`). `path` runs from the DFS root to `name`'s parent. -/
+partial def Grammar.cycleFrom? (g : Grammar) (name : String)
+    (path : List String) : Option (List String) :=
+  if path.contains name then
+    some (path.dropWhile (· != name) ++ [name])
+  else
+    match g.prod? name with
+    | none => none
+    | some p => p.directRefs.findSome? (fun r => g.cycleFrom? r (path ++ [name]))
+
+/-- Return the first reference cycle anywhere in the production graph. Checking every production
+    matters because the generator emits declarations for productions unreachable from `start`. -/
+def Grammar.cycle? (g : Grammar) : Option (List String) :=
+  g.prods.findSome? (fun p => g.cycleFrom? p.name [])
+
+/-- The complete production graph is acyclic, including productions unreachable from `start`. -/
 def Grammar.isAcyclic (g : Grammar) : Bool :=
-  g.acyclicFrom g.start []
+  g.cycle?.isNone
 
 /-- Every referenced nonterminal is defined in the grammar. -/
 def Grammar.refsResolve (g : Grammar) : Bool :=

@@ -20,38 +20,20 @@ import Triptych.Architecture.Denote
 import Triptych.Architecture.Value
 import Triptych.Architecture.Constraint
 import Triptych.Architecture.Decode
+import Triptych.Architecture.Derivation
+import Triptych.Architecture.Unambiguity
 import Triptych.Architecture.Assemble
 import Triptych.Theorems.Roundtrip
+import Triptych.Theorems.Coherence
+import Triptych.Theorems.Derivation
+import Triptych.Theorems.RelationalParser
+import Triptych.Theorems.Unambiguity
 import Triptych.Theorems.Reconcile
+import Triptych.Theorems.DecodeLemmas
+import Triptych.Theorems.String
+import Triptych.Theorems.Value
+import Triptych.Automation.ExternalParser
 import Triptych.Architecture.Syntax
-import Triptych.Examples
--- Worked examples: each `grammar.lean` inputs a `triptych` and writes the generated
--- modules beside it — `spec.lean` (readable surface), `parser.lean` (engine + auto-discharged
--- proofs + the generated verified parser), and, when the `triptych` has a `parser` clause,
--- `soundness.lean` (the `sorry`d external-parser obligations). Importing the `grammar` files
--- (re)generates; importing the generated modules builds them standalone (so they can't
--- silently drift from the generator).
-import Triptych.Examples.Decimal.grammar
-import Triptych.Examples.Decimal.spec
-import Triptych.Examples.Decimal.parser
-import Triptych.Examples.Decimal.soundness
-import Triptych.Examples.Duration.grammar
-import Triptych.Examples.Duration.spec
-import Triptych.Examples.Duration.parser
-import Triptych.Examples.Duration.soundness
-import Triptych.Examples.Datetime.grammar
-import Triptych.Examples.Datetime.spec
-import Triptych.Examples.Datetime.parser
-import Triptych.Examples.Datetime.soundness
-import Triptych.Examples.IPv4.grammar
-import Triptych.Examples.IPv4.spec
-import Triptych.Examples.IPv4.parser
-import Triptych.Examples.IPv6.grammar
-import Triptych.Examples.IPv6.spec
-import Triptych.Examples.IPv6.parser
-import Triptych.Examples.Graph.grammar
-import Triptych.Examples.Graph.spec
-import Triptych.Examples.Graph.parser
 
 /-!
 # Triptych
@@ -69,10 +51,10 @@ See `Docs/DESIGN.md` for the full design.
 Module layout:
 * `Triptych.Architecture.*` — grammar, classifier, denotation, decoder, value/constraint
                                 DSLs, assembly, emission, and `triptych` syntax
-* `Triptych.Theorems.*`     — reusable decoder, roundtrip, reconciliation, and external
-                                parser bridge theorems
-* `Triptych.Examples`   — hand-written `Grammar` values (Decimal, IPv4) for validation
-* `Triptych.Examples.<Name>.grammar` — worked example: a `triptych` input that writes
-                            the single generated module `spec.lean` (spec / engine /
-                            soundness / contracts banner sections) beside it
+* `Triptych.Theorems.*`     — reusable decoder, roundtrip, coherence, unambiguity, and
+                                reconciliation theorems
+* `Triptych.Automation.*`   — extensible static external-parser proof rules and tactics
+
+The Cedar-free Graph example lives in the separate `other-examples` package. Cedar-backed examples
+and validation proofs live in `cedar-examples`. The core library has no dependency on either.
 -/

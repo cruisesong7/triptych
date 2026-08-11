@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  core:
+    name: Cedar-free core
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: leanprover/lean-action@v1
+
+  other-examples:
+    name: Cedar-free examples
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: leanprover/lean-action@v1
+        with:
+          lake-package-directory: other-examples
+      - name: Parser benchmark smoke test
+        working-directory: other-examples
+        run: lake exe parser_benchmark
+
+  cedar:
+    name: Cedar integration and conformance
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Triptych
+        uses: actions/checkout@v4
+        with:
+          path: triptych
+      - name: Check out pinned Cedar parser API
+        uses: actions/checkout@v4
+        with:
+          repository: cruisesong7/cedar-spec
+          ref: b759caae4eed73a9580ba3f5fbb66025abddbe54
+          path: cedar-spec
+      - uses: leanprover/lean-action@v1
+        with:
+          lake-package-directory: triptych/cedar-examples
+          build-args: CedarExamples ConformanceTests
