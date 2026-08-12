@@ -554,9 +554,9 @@ computeValue          s : Option β
 
 Empty phases are omitted. Without capture constraints, `IsWf` aliases the start-production
 predicate. Without final-value constraints, `IsValid` aliases `IsWf`. The generated parser is
-the executable `isValid` guard applied to `computeValue`, with an optional `ofSpec` conversion.
-`IsValid_equiv`, `computeValue_eq`, and the parser contracts connect the readable and engine
-layers.
+the executable `IsValid` guard applied to `computeValue`, with an optional `ofSpec` conversion.
+`IsValid_equiv` connects that public predicate directly to the generic interpreter expression;
+`computeValue_eq` and the parser contracts connect the remaining readable and engine layers.
 
 `Denotes g accept valFn s v` is the value/string relation: some full parse of `s` has capture
 map `m`, `accept m` holds, and `valFn m = v`. When static capture functionality succeeds, the

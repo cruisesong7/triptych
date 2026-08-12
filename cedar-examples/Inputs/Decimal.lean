@@ -39,6 +39,7 @@ open Triptych
     reuses Cedar's own `ToString Decimal`. -/
 def decimalToStr (d : Cedar.Spec.Ext.Decimal) : String := toString d
 
+-- ANCHOR: decimalTriptychSource
 triptych Decimal where
   grammar
     Decimal  ::= Sign Natural "." Fraction
@@ -47,8 +48,6 @@ triptych Decimal where
     Fraction ::= digit{1,4}
   value
     Sign * (nat Natural * 10 ^ 4 + nat Fraction * 10 ^ (4 - len Fraction))
-    -- Convert the generated parser's spec value (`Int`, ×10⁴ fixed point) to the domain type
-    -- `Decimal` (= `Int64`).
     ofSpec Int64.ofInt
     toSpec Int64.toInt
   constraints
@@ -56,6 +55,7 @@ triptych Decimal where
   parser Cedar.Spec.Ext.Decimal.parse
   printer decimalToStr
   to "Outputs/Decimal"
+-- ANCHOR_END: decimalTriptychSource
 
 -- The generated verified parser (returning `Option Decimal` via `ofSpec Int64.ofInt`), run on
 -- sample strings:

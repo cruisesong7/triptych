@@ -78,13 +78,13 @@ namespace Triptych
 
 open Lean Elab Command
 
-/-- Length suffix on a terminal: `+`, `{n}`, `{lo,hi}`. -/
+/-- Length bound for a terminal or repetition: `+`, `{n}`, or `{lo,hi}`. -/
 declare_syntax_cat fmtLen
 syntax "+"                : fmtLen
 syntax "{" num "}"        : fmtLen
 syntax "{" num "," num "}" : fmtLen
 
-/-- A right-hand-side item: literal, nonterminal ref, terminal, or optional. -/
+/-- A grammar item: literal, production reference, terminal, optional item, sign, or repetition. -/
 declare_syntax_cat fmtItem
 syntax str                : fmtItem  -- literal
 syntax "digit" fmtLen     : fmtItem  -- decimal terminal
@@ -101,143 +101,63 @@ syntax "sign"             : fmtItem  -- optional '-' sign token (see CAPTURE RUL
 -- (`item (sep item)*`, item-count per the `fmtLen`: `{8}`→exactly, `{1,8}`→range, `+`→≥1).
 syntax "rep" fmtItem "sepBy" str fmtLen : fmtItem
 
-/-- One alternative: a sequence of items. -/
+/-- One production alternative: a sequence of grammar items. -/
 declare_syntax_cat fmtSeq
 syntax (colGt fmtItem)+ : fmtSeq
 
-/-- A production: `Name ::= seq | seq | …` — one or more `|`-separated alternatives.
-    `withPosition`/`colGt` pins the RHS strictly right of the LHS column, so the greedy
-    parse stops at the next production's LHS instead of consuming it. -/
+/-- A grammar production with one or more alternatives: `Name ::= seq | seq`. -/
 declare_syntax_cat fmtProd
 syntax withPosition(atomic(rawIdent " ::= ") sepBy1(fmtSeq, " | ")) : fmtProd
 
-/-- The optional `constraints` section: predicates in the constraint-DSL (`constraintExpr`),
-    one per line (`colGt`, like the `grammar` productions — no commas). A predicate is assigned
-    to `SatisfiesConstraints` only when it explicitly mentions the final `value`; every
-    capture-only predicate is assigned to `IsWf`. -/
+/-- Optional constraints. Capture-only predicates refine `IsWf`; predicates that mention
+    `value` refine `SatisfiesConstraints`. -/
 syntax fmtConstraints := withPosition("constraints" (colGt constraintExpr)+)
 
-/-- One ESCAPE-entry ARGUMENT: a bare capture name `X` (its matched string), or `[X]` —
-    the LIST of every substring capture `X` matched, in order. `[X]` is meaningful for a
-    `rep`-repeated nonterminal (the eight `H16` groups of an IPv6 address); it lets a value or
-    constraint escape consume the individual repeated elements the scalar reader collapses. -/
+/-- An escape argument: `X` passes its first capture; `[X]` passes every repeated capture. -/
 declare_syntax_cat fmtEscArg
 syntax rawIdent         : fmtEscArg
 syntax "[" rawIdent "]" : fmtEscArg
 
-/-- One ESCAPE entry: an ordinary Lean function applied to capture arguments, `f X [Y] …`
-    (head ident + one-or-more `fmtEscArg`s). Its own syntax category so it destructures
-    cleanly (vs. raw `Syntax` archaeology). Shared by the `constraints'` / `value'` sections
-    (both support list args `[X]` for repeated captures). -/
+/-- A Lean function applied to capture arguments in `value'` or `constraints'`. -/
 declare_syntax_cat fmtEscEntry
 syntax withPosition(ident (ppSpace colGt fmtEscArg)+) : fmtEscEntry
 
-/-- The optional `constraints'` ESCAPE section (design note §16.7): constraints outside the
-    DSL vocabulary, each an `f X [Y] …` call returning `Bool`, one line each (`colGt`).
-    A scalar argument receives its first decoded string; `[Y]` receives every repeated `Y`
-    span as `List String`. The prime marks "the raw-Lean escape of the `constraints` section". -/
+/-- Escape section for Boolean constraints that are not expressible in the constraint DSL. -/
 syntax fmtConstraintsEsc := withPosition("constraints'" (colGt fmtEscEntry)+)
 
-/-- The `ofSpec <f>` sub-clause of `value` converts spec values to domain values.
-
-**Why it exists.** The value DSL computes in a *spec* value type `β` chosen for analyzability,
-not for use: `Decimal` is really a `×10⁴` fixed-point `Int`, `Duration` is a millisecond `Int`.
-That is the right type for the affine formula and the overflow constraint, but a real parser
-should hand back the *domain* type `δ` — an actual `Decimal`/`Duration`. `ofSpec` bridges the
-gap: `ofSpec : β → δ` converts the spec value to the domain type, and the generated parser
-returns `Option δ` (`(gatedParse …).map ofSpec`), type-identical to a hand-written parser.
-Its contracts are stated with `(computeValue s).map ofSpec`.
-
-**How to use it.** Write it as a trailing sub-clause of `value`, next to its optional inverse:
-`value <formula> ofSpec <f> toSpec <g>`, where `f` is any
-`<spec type> → <domain type>` function (e.g. `ofSpec Int64.ofInt`) and `g` maps domain values
-back to the spec value. `ofSpec` works **standalone** — no `parser`/`printer` needed — since it
-only changes the output type. Two cautions:
-* If `ofSpec` is lossy (e.g. `Int64.ofInt` wraps mod 2⁶⁴), pair it with a range constraint that
-  keeps accepted values inside its faithful window (`value ∈ [Int64.MIN, Int64.MAX]`);
-  otherwise out-of-range values silently wrap. A lint warns when `ofSpec` appears
-  with no such constraint.
-* When `toSpec g` is present, Triptych emits the accepted-value obligation
-  `toSpec (ofSpec v) = v`. When a printer is also present, its `encode_view` witness lets
-  Triptych derive the reverse law `ofSpec (toSpec d) = d` for serialized domain values.
-
-Both directions belong to the semantic value/domain boundary rather than to an optional external
-parser. A `value'` escape may also carry `toSpec` when its generated value and an external
-parser's result need comparison. -/
+/-- `ofSpec f` maps the specification value to the domain value returned by the generated parser.
+    Constrain lossy conversions to a range where they are faithful. -/
 syntax fmtOfSpec := "ofSpec" term
 
-/-- The `toSpec <f>` sub-clause maps a parser/printer domain value back to the value denoted by
-    the readable specification. It sits with `ofSpec`, independently of any external parser. -/
+/-- `toSpec f` maps a parser or printer domain value back to the specification value. -/
 syntax fmtToSpec := "toSpec" term
 
-/-- The optional `value` section: the value-DSL formula (`valExpr`); analyzable, `value(X)=…`.
-    May carry trailing `ofSpec <f>` and `toSpec <g>` conversion sub-clauses. -/
+/-- Optional value formula, followed by optional `ofSpec` and `toSpec` conversions. -/
 syntax fmtValue :=
   withPosition("value" colGt valExpr (colGt fmtOfSpec)? (colGt fmtToSpec)?)
 
-/-- The optional `value'` ESCAPE section (design note §16.4/§16.7): a value outside the DSL
-    vocabulary, an `f X Y …` call with `f : String → … → Int`. Same shape/contract as
-    `constraints'` (no `Env`); the prime marks "the raw-Lean escape of the `value` section".
-    It may carry a trailing `toSpec <g>` sub-clause for comparison with an external parser. -/
+/-- Escape value section for Lean computations that are not expressible in the value DSL. -/
 syntax fmtValueEsc := withPosition("value'" fmtEscEntry (colGt fmtToSpec)?)
 
-/-- The optional `parser` clause — *validate an existing external parser against this spec*.
-
-Shape: `parser <parse>`. Names a hand-written parser `parse : String → Option δ`
-you already have and want to trust. An explicit `toSpec : δ → β` in the value section supplies
-the semantic comparison when the parser result and readable specification use different types;
-otherwise the comparison defaults to `id`.
-When present, the command emits the three external-parser contract *obligations* as `sorry`d
-theorems in `soundness.lean`, relating `parse` to the generated spec:
-* `extparse_sound` — everything `parse` accepts is `IsValid`, and its value converts to the
-  spec value (`parse s = some d → IsValid s ∧ computeValue s = some (toSpec d)`);
-* `extparse_complete` — the converse: every valid string with a matching value is accepted;
-* `extparse_reject` — `parse` rejects exactly the non-valid strings.
-
-When a value section is present, it also emits `checkedExtParse`, an immediately usable sound
-wrapper that retains an external result only when the generated parser accepts the same input
-with the same denotation.
-`checkedExtParse_sound` and `checkedExtParse_sound_view` are discharged automatically without
-trusting or inspecting the external parser. Proving `extparse_sound` later shows that this runtime
-check is observationally redundant via `Triptych.checkedExternalParse_eq_of_sound`. Runtime
-checking requires `DecidableEq` for the spec value type; without it, Triptych reports a warning
-and retains the static obligations.
-
-Discharging them (against the parser's own metatheory) is the translation-validation payoff:
-no rewrite, just a proof that the parser you ship agrees with the readable spec.
-
-When `toSpec` is omitted, it defaults to `id`; write an explicit conversion only when the
-external parser's result type differs from the specification value type. Keeping an explicit
-conversion in the value section makes it available to generated printers and parsers even when
-no external implementation is named. -/
+/-- `parser p` names an existing parser to validate against the generated specification.
+    It emits agreement obligations and a checked wrapper. -/
 syntax fmtParser := "parser" term
 
-/-- The optional `printer` clause either requests synthesis (`printer auto`) or names a user's
-    serializer (`printer <term>`). Automatic synthesis is restricted to analyzable `value`
-    definitions for which Triptych can construct a total `DerivationPrinter` certificate.
-    An explicit serializer still emits one typed `encode_view` obligation. Both routes derive
-    generated-parser roundtrip, injectivity, and normalization. -/
+/-- Printer configuration for a Triptych format. -/
 declare_syntax_cat fmtPrinter
+
+/-- Synthesizes a certified printer for a supported grammar and value formula. -/
 syntax "printer " "auto" : fmtPrinter
+
+/-- `printer f` names a serializer to verify and use for derived roundtrip results. -/
 syntax "printer" term : fmtPrinter
 
-/-- Optional trailing clause: `to "<dir>"` writes the generated modules
-    `<dir>/{spec,parser,soundness}.lean` (the directory must already exist; `soundness.lean`
-    only when there is at least one obligation). Overwrite discipline, by file:
-    `spec.lean`/`parser.lean` are REGENERATED every elaboration, but only over files carrying
-    the "Generated by Triptych" sentinel header comment — a pre-existing file without it is
-    someone else's, so the write is a hard error (see `guardedWrite`). `soundness.lean` is a
-    WRITE-ONCE scaffold (it holds the user's proofs): never overwritten once it exists;
-    delete it to re-scaffold. -/
+/-- `to "dir"` writes `spec.lean` and `parser.lean`, and creates `soundness.lean` once when
+    semantic obligations are required. -/
 syntax fmtTo := "to " str
 
-/-- The `triptych` command, sections in order: `grammar` (required), `value`
-    (optional, with trailing conversion clauses), `constraints` (optional), `parser`
-    (optional), `printer` (optional), `to` (optional).
-    `value` precedes `constraints` so a constraint can refer to `value`.
-    An explicit `parser`/`printer` clause emits its obligations; `printer auto` is discharged
-    entirely in the generated parser. The `to "<dir>"` clause writes the generated modules.
-    `#show` logs each declaration. -/
+/-- Defines a Triptych format. `grammar` is required; optional sections must follow the order
+    `value`, `value'`, `constraints`, `constraints'`, `parser`, `printer`, then `to`. -/
 syntax (name := triptychCmd)
   ("#show ")? "triptych " ident " where "
     "grammar" (colGt fmtProd)+
@@ -609,11 +529,10 @@ private def callerModuleForOutput : CommandElabM String := do
     * **spec** (`emitSpec`) — the reader-facing spec: `grammar`, readable per-production
       `IsWf.*` predicates, `value`, present constraint phases, and `IsValid`.
     * **engine** (`emitEngine`) — the analyzable/executable machinery: deep `valueExpr`/
-      `valueFn`/`constraints` ASTs + the decode-backed interpreter bundle (`isWf`/
-      `isValid`/`computeValue`).
+      `valueFn`/`constraints` ASTs, `computeValue`, and typed decoding support.
     * **soundness** (`emitSound`) — the guarantees tying the two together: the surface⟺engine
-      `Internal.matchesRef.*` lemmas + `IsWf_equiv`, and the derived `DecidablePred
-      IsWf.<start>` instance (transported across the equiv — the payoff of the interpreter).
+      `Internal.matchesRef.*` lemmas + equivalence theorems, and the derived `DecidablePred`
+      instances transported from the generic interpreter.
     * **contracts** (`emitContract`, only with a `parser` clause) — the sorried obligations
       against the external parser, stated over the SURFACE `IsValid`/`computeValue`
       (discharged later by bridging to `decode` via `IsWf_equiv`). -/
@@ -713,9 +632,8 @@ def elabTriptych : CommandElab := fun stx => do
         emitEngine (← Triptych.derivationCaptureCommand name.getId prod)
       -- Per-production well-formedness (SPEC): `<Name>.IsWf.<Prod>` for each production as
       -- an INLINED structural predicate (∃ named captures, s = … ∧ …) — the readable form,
-      -- reading like the hand specs (`IsWfDatetime`, `IsWfV4`). Capital-`I` `IsWf` = the Prop
-      -- you read/prove; lowercase `isWf` (the engine bundle, below) = the decidable checker.
-      -- These are reader-facing, so SPEC section. Emitted in topological (leaf-first) order.
+      -- reading like the hand specs (`IsWfDatetime`, `IsWfV4`). These are reader-facing, so
+      -- SPEC section. Emitted in topological (leaf-first) order.
       let rec repeatedRefNames : Sym → List String
         | .rep _ item _ _ => item.refName?.toList ++ repeatedRefNames item
         | _ => []
@@ -751,7 +669,8 @@ def elabTriptych : CommandElab := fun stx => do
         emitSpec (← `(def $pIdent (s : String) : Prop := $body))
       -- Reconcile grammar layout, full well-formedness, and final-value validity independently.
       -- `IsWf.<start>` is grammar-only; top-level `IsWf` additionally contains every constraint
-      -- that does not mention the final `value`, and is proved equivalent to engine `isWf`.
+      -- that does not mention the final `value`, and is proved equivalent to the generic
+      -- interpreter expression `Triptych.isWf grammar constraints`.
       let emitReconcile (hasWfConstraints hasValueConstraints hasValue : Bool) :
           CommandElabM Unit := do
         let fuelBound := gval.prods.length
@@ -987,15 +906,11 @@ def elabTriptych : CommandElab := fun stx => do
           valueConstrCaps := some valCaps
       else
         emitEngine (← `(def $cIdent : List ConstraintEntry := []))
-      -- ENGINE bundle (lowercase): the decode-backed interpreter predicates. The readable
-      -- top-level `IsWf` is PROVEN equal to `Triptych.isWf` by `<Name>.IsWf_equiv`;
-      -- `<Name>.IsWfGrammar_equiv` separately handles grammar-only `IsWf.<start>`.
-      let wfIdent  := mkIdentFrom name (name.getId ++ `isWf)
-      let scIdent  := mkIdentFrom name (name.getId ++ `satisfiesConstraints)
-      let accIdent := mkIdentFrom name (name.getId ++ `isValid)
-      emitEngine (← `(abbrev $wfIdent  (s : String) : Prop := Triptych.isWf $grammarIdent $cIdent s))
-      emitEngine (← `(abbrev $scIdent  (s : String) : Prop := Triptych.satisfiesConstraints $grammarIdent $cIdent s))
-      emitEngine (← `(abbrev $accIdent (s : String) : Prop := $wfIdent s ∧ $scIdent s))
+      -- The engine predicates remain the generic applications
+      -- `Triptych.isWf grammar constraints` and `Triptych.satisfiesConstraints grammar
+      -- constraints`; no format-specific lowercase aliases are added to the public API.
+      -- The capitalized readable predicates are proved equivalent to these interpreter
+      -- expressions below.
       if let some veIdent := veIdent? then
         -- DSL tier: `computeValue` via the analyzable `ValExpr` (Int-valued).
         let cvIdent := mkIdentFrom name (name.getId ++ `computeValue)
@@ -1093,11 +1008,12 @@ def elabTriptych : CommandElab := fun stx => do
         emitSound (← Triptych.computeValueViewProof name.getId grammarIdent)
       -- GENERATED VERIFIED PARSER (→ parser file): whenever a value section exists, emit the
       -- tool's own `<Name>.parse` and its three AUTO-DISCHARGED contracts (`parse_sound`/
-      -- `parse_complete`/`parse_reject`). Gated on the engine `isValid` (structurally decidable),
-      -- so the parser is self-contained relative to the engine — no `sorry`. This is the
-      -- correct-by-construction parser; the external obligations below are the SEPARATE
-      -- translation-validation surface. An `ofSpec <f>` clause converts the output to the
-      -- domain type `δ` (so `parse : String → Option δ`); otherwise it returns `β`.
+      -- `parse_complete`/`parse_reject`). Its public gate is the readable `<Name>.IsValid`;
+      -- the generated `DecidablePred` instance executes that predicate through the independently
+      -- proved interpreter equivalence. This is the correct-by-construction parser; the external
+      -- obligations below are the SEPARATE translation-validation surface. An `ofSpec <f>`
+      -- clause converts the output to the domain type `δ` (so `parse : String → Option δ`);
+      -- otherwise it returns `β`.
       let (ofSpecTerm?, valueToSpecTerm?) :
           Option (TSyntax `term) × Option (TSyntax `term) ←
         match v with
@@ -1151,7 +1067,7 @@ def elabTriptych : CommandElab := fun stx => do
             companion `toSpec` clause the emitted `toSpec_ofSpec` obligation is unprovable \
             without it. If `ofSpec` is a total embedding, this warning can be ignored."
       -- CONVERSION FAITHFULNESS (→ soundness file, generated section): with BOTH `ofSpec` and a
-      -- `toSpec` clause, emit `toSpec_ofSpec : isValid s →
+      -- `toSpec` clause, emit `toSpec_ofSpec : IsValid s →
       -- computeValue s = some v → toSpec (ofSpec v) = v` on accepted values. The companion
       -- When a printer is present, its `encode_view` witness derives the companion
       -- `ofSpec_toSpec` law below. This proof is what the value range constraint provides, so a
@@ -1163,19 +1079,19 @@ def elabTriptych : CommandElab := fun stx => do
         if let some toSpecT := toSpecTerm? then
           let toSpecOfSpecId := mkIdentFrom name (name.getId ++ `toSpec_ofSpec)
           let soundToSpecId := mkIdentFrom name (name.getId ++ `parse_sound_toSpec)
-          let validEng    := mkIdentFrom name (name.getId ++ `isValid)
+          let validSurf   := mkIdentFrom name (name.getId ++ `IsValid)
           let cvIdent     := mkIdentFrom name (name.getId ++ `computeValue)
           let parseId     := mkIdentFrom name (name.getId ++ `parse)
           let (dTy, dNm) ← Triptych.ofSpecCodomainBinder ofSpecT
           let dId := mkIdent dNm
           emitContractGen (← `(theorem $toSpecOfSpecId (s : String) (v : Int) :
-              $validEng s → $cvIdent s = some v →
+              $validSurf s → $cvIdent s = some v →
                 $toSpecT ($ofSpecT v) = v := by sorry))
           emitContractGen (← `(theorem $soundToSpecId (s : String) ($dId : $dTy) :
               $parseId s = some $dId →
-                $validEng s ∧ $cvIdent s = some ($toSpecT $dId) :=
+                $validSurf s ∧ $cvIdent s = some ($toSpecT $dId) :=
             Triptych.gatedParseOfSpec_sound_toSpec
-              $validEng $cvIdent $ofSpecT $toSpecT $toSpecOfSpecId s $dId))
+              $validSurf $cvIdent $ofSpecT $toSpecT $toSpecOfSpecId s $dId))
       -- EXTERNAL-PARSER obligations (→ soundness file): with a `parser <p>`
       -- clause naming an EXISTING external parser, emit `<Name>.sound`/`.complete`/`.reject` as
       -- `sorry`d theorems (design §16.1), stated over the SURFACE `<Name>.IsValid`/
@@ -1299,8 +1215,7 @@ def elabTriptych : CommandElab := fun stx => do
             let encAccId := mkIdentFrom name (name.getId ++ `encode_accepted)
             let encValId := mkIdentFrom name (name.getId ++ `encode_value)
             let ofSpecToSpecId := mkIdentFrom name (name.getId ++ `ofSpec_toSpec)
-            let validEng := mkIdentFrom name (name.getId ++ `isValid)
-            let validEquivId := mkIdentFrom name (name.getId ++ `IsValid_equiv)
+            let validSurf := mkIdentFrom name (name.getId ++ `IsValid)
             let validViewId := mkIdentFrom name (name.getId ++ `IsValid_view)
             let viewId := mkIdentFrom name (name.getId ++ `View)
             let viewValidId := mkIdentFrom name (name.getId ++ `View ++ `Valid)
@@ -1345,11 +1260,9 @@ def elabTriptych : CommandElab := fun stx => do
                       $denotationId v = $dId := by sorry))
             -- Acceptance is a projection of the valid-view witness, retained under its old name.
             emitGeneratedPrinter (← `(theorem $encAccId ($dId : $dTy) :
-                $validEng ($toStrT $dId) := by
+                $validSurf ($toStrT $dId) := by
               obtain ⟨v, hview, hvalidView, _⟩ := $encodeViewId $dId
-              exact
-                ($validEquivId ($toStrT $dId)).mp
-                  (($validViewId ($toStrT $dId)).mpr ⟨v, hview, hvalidView⟩)))
+              exact ($validViewId ($toStrT $dId)).mpr ⟨v, hview, hvalidView⟩))
             -- Derive the old value/conversion names from the same view, then expose roundtrip.
             match ofSpecTerm?, toSpecTerm? with
             | some ofSpecT, some toSpecT =>
@@ -1414,14 +1327,10 @@ def elabTriptych : CommandElab := fun stx => do
               let xInjId   := mkIdentFrom name (name.getId ++ `extparse_toString_injective)
               let xNormId :=
                 mkIdentFrom name (name.getId ++ `extparse_normalize_eq_iff_parse_eq)
-              -- `encode_accepted` is over the ENGINE `isValid`, but the external `complete` speaks
-              -- the SURFACE `IsValid`; bridge via `IsValid_equiv` (`.mpr : isValid → IsValid`).
-              let equivId  := mkIdentFrom name (name.getId ++ `IsValid_equiv)
-              let encAccSurf ← `(fun d => ($equivId ($toStrT d)).mpr ($encAccId d))
               emitContractExt (←
                 `(theorem $xRtId ($dId : $dTy) :
                     $parseT ($toStrT $dId) = some $dId :=
-                Triptych.parse_toString_roundtrip $xCompId $encAccSurf $encValId $dId))
+                Triptych.parse_toString_roundtrip $xCompId $encAccId $encValId $dId))
               emitContractExt (←
                 `(theorem $xInjId ($dId $dId' : $dTy)
                     (h : $toStrT $dId = $toStrT $dId') :
@@ -1529,13 +1438,13 @@ def elabTriptych : CommandElab := fun stx => do
           let engineBanner := "/- ══════════════════════════════ engine ══════════════════════════════\n\
             The executable counterpart of the spec. `decode` walks the grammar over an input\n\
             string and returns its captured components; `computeValue` then evaluates the value\n\
-            function on those captures, and `isWf`/`isValid` decide well-formedness/acceptance.\n\
+            function on those captures. Generated `DecidablePred` instances make the readable\n\
+            `IsWf` and `IsValid` predicates directly executable.\n\
             `decodeView` packages the exact input and value/constraint captures as a typed `View`.\n\
             \n\
-            Naming convention: CAPITALIZED `IsWf.*`/`IsValid` are the surface `Prop`s you READ\n\
-            and reason about; lowercase `isWf`/`isValid` are the engine's executable deciders you\n\
-            RUN (`#eval isValid s`, `#eval computeValue s`). The `equivalence` section below\n\
-            proves the two describe the same language and value. -/"
+            The public format API stays capitalized: use `#eval decide (IsValid s)` and\n\
+            `#eval computeValue s`. The equivalence section below proves that these readable\n\
+            predicates execute through the generic Triptych interpreter. -/"
           let proofBanner := "/- ════════════════════════════ equivalence ════════════════════════════\n\
             The auto-discharged guarantees relating the readable surface to the executable\n\
             engine: `IsWfGrammar_equiv` proves grammar-layout agreement and `IsWf_equiv`\n\
@@ -1545,7 +1454,7 @@ def elabTriptych : CommandElab := fun stx => do
             via the engine. No `sorry`. -/"
           let parserBanner := "/- ═══════════════════════════════ parser ══════════════════════════════\n\
             The generated correct-by-construction parser `parse` (= `computeValue` gated on the\n\
-            decidable `isValid`) together with its guarantees — `parse_sound`, `parse_complete`,\n\
+            decidable `IsValid`) together with its guarantees — `parse_sound`, `parse_complete`,\n\
             `parse_reject`, `parse_view`, and typed `parse_eq_some_iff_view` /\n\
             `parse_eq_none_iff_view` normal forms — all AUTO-DISCHARGED here.\n\
             When an external parser is declared, `checkedExtParse` additionally validates each\n\

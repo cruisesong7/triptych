@@ -18,7 +18,7 @@ file := "intro"
 %%%
 
 Triptych compiles a flat string grammar -- decimal, duration, datetime, or IP address --
-into a readable specification, a specialized executable parser, and the Lean theorems that
+into a readable specification, a *specialized executable parser*, and the Lean theorems that
 connect them. The generated parser is ordinary code with a small public signature such as
 {lean}`String → Option Int64`. The proof layer establishes that it recognizes exactly the
 specified language and returns exactly the specified denotation.
@@ -53,7 +53,7 @@ Anything mechanical should be generated. That is Triptych.
 A {lit}`triptych` block has a required grammar and optional value, constraint,
 external-parser, and printer clauses. Here is the Cedar Decimal input:
 
-```
+```anchor decimalTriptychSource (module := Inputs.Decimal) (project := ".")
 triptych Decimal where
   grammar
     Decimal  ::= Sign Natural "." Fraction
@@ -117,8 +117,7 @@ contract. A later chapter maps the gradient in detail.
 
 # Reading this book
 
-This book is built with [Verso](https://github.com/leanprover/verso). Its Lean snippets import
-the actual generated Decimal and IPv6 modules. If a declaration is renamed or a theorem changes
-type, {lit}`lake build docs` from {lit}`cedar-examples/` fails.
-
-Next: Decimal end to end, including the generated typed view and the checked external parser.
+This book is built with [Verso](https://github.com/leanprover/verso). Its Lean code blocks are
+elaborated and type-checked as part of the book build, and displayed command output is checked
+against Lean's actual output. *Hover over a highlighted name to see its type and declaration
+information.*

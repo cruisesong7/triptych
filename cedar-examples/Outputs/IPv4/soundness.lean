@@ -24,11 +24,9 @@ theorem IPv4.encode_view (i : IPv4Net) :
     IPv4.RuleRegistrySoundness.parser_agrees, IPv4.IsValid_view,
     IPv4.computeValue_view]
 
-theorem IPv4.encode_accepted (i : IPv4Net) : IPv4.isValid (ipNetToStr i) := by
+theorem IPv4.encode_accepted (i : IPv4Net) : IPv4.IsValid (ipNetToStr i) := by
   obtain ⟨v, hview, hvalidView, _⟩ := IPv4.encode_view i
-  exact
-    (IPv4.IsValid_equiv (ipNetToStr i)).mp
-      ((IPv4.IsValid_view (ipNetToStr i)).mpr ⟨v, hview, hvalidView⟩)
+  exact (IPv4.IsValid_view (ipNetToStr i)).mpr ⟨v, hview, hvalidView⟩
 
 theorem IPv4.encode_value (i : IPv4Net) :
     IPv4.computeValue (ipNetToStr i) = some i := by
@@ -83,8 +81,7 @@ theorem IPv4.extparse_eq_some_iff_view (s : String) (i : IPv4Net) :
     IPv4.computeValue_view, id]
 
 theorem IPv4.extparse_toString_roundtrip (i : IPv4Net) : ipv4Only (ipNetToStr i) = some i :=
-  Triptych.parse_toString_roundtrip IPv4.extparse_complete
-    (fun d => (IPv4.IsValid_equiv (ipNetToStr d)).mpr (IPv4.encode_accepted d))
+  Triptych.parse_toString_roundtrip IPv4.extparse_complete IPv4.encode_accepted
     IPv4.encode_value i
 
 theorem IPv4.extparse_toString_injective (i i' : IPv4Net)

@@ -21,13 +21,13 @@ set_option linter.unusedVariables false
 /- ══════════════════════════════ engine ══════════════════════════════
 The executable counterpart of the spec. `decode` walks the grammar over an input
 string and returns its captured components; `computeValue` then evaluates the value
-function on those captures, and `isWf`/`isValid` decide well-formedness/acceptance.
+function on those captures. Generated `DecidablePred` instances make the readable
+`IsWf` and `IsValid` predicates directly executable.
 `decodeView` packages the exact input and value/constraint captures as a typed `View`.
 
-Naming convention: CAPITALIZED `IsWf.*`/`IsValid` are the surface `Prop`s you READ
-and reason about; lowercase `isWf`/`isValid` are the engine's executable deciders you
-RUN (`#eval isValid s`, `#eval computeValue s`). The `equivalence` section below
-proves the two describe the same language and value. -/
+The public format API stays capitalized: use `#eval decide (IsValid s)` and
+`#eval computeValue s`. The equivalence section below proves that these readable
+predicates execute through the generic Triptych interpreter. -/
 
 instance Duration.Derivation.Sign.instDecidableValid : DecidablePred Duration.Derivation.Sign.Valid := fun d => by
   cases d <;> simp only [Duration.Derivation.Sign.Valid] <;> infer_instance
@@ -172,15 +172,6 @@ def Duration.constraints : List ConstraintEntry :=
     ConstraintEntry.dsl ConstraintPhase.value
       (Constraint.and (Constraint.le (ValExpr.lit (-9223372036854775808)) Duration.valueExpr)
         (Constraint.le Duration.valueExpr (ValExpr.lit 9223372036854775807)))]
-
-abbrev Duration.isWf (s : String) : Prop :=
-  Triptych.isWf Duration.grammar Duration.constraints s
-
-abbrev Duration.satisfiesConstraints (s : String) : Prop :=
-  Triptych.satisfiesConstraints Duration.grammar Duration.constraints s
-
-abbrev Duration.isValid (s : String) : Prop :=
-  Duration.isWf s ∧ Duration.satisfiesConstraints s
 
 def Duration.computeValue (s : String) : Option Int :=
   Triptych.computeValue Duration.grammar Duration.valueExpr s
@@ -956,9 +947,9 @@ theorem Duration.IsWfGrammar_equiv (s : String) : Triptych.IsWf Duration.grammar
   rw [hstart]
   exact Duration.Internal.matchesRef.Duration _ s
 
-theorem Duration.IsWf_equiv (s : String) : Duration.IsWf s ↔ Duration.isWf s :=
+theorem Duration.IsWf_equiv (s : String) : Duration.IsWf s ↔ Triptych.isWf Duration.grammar Duration.constraints s :=
   by
-  unfold Duration.IsWf Duration.isWf Triptych.isWf
+  unfold Duration.IsWf Triptych.isWf
   rw [← Duration.IsWfGrammar_equiv, ← decodeSome_iff_IsWf Duration.grammar (by decide)]
   unfold Duration.SatisfiesWfConstraints Duration.WfConstraints Duration.constraints
   simp only [Triptych.component, Triptych.componentList, Triptych.envOf, Triptych.captureMapOf, List.forall_mem_cons,
@@ -968,9 +959,9 @@ theorem Duration.IsWf_equiv (s : String) : Duration.IsWf s ↔ Duration.isWf s :
   try grind
 
 theorem Duration.SatisfiesConstraints_equiv (s : String) :
-    Duration.SatisfiesConstraints s ↔ Duration.satisfiesConstraints s :=
+    Duration.SatisfiesConstraints s ↔ Triptych.satisfiesConstraints Duration.grammar Duration.constraints s :=
   by
-  unfold Duration.satisfiesConstraints Triptych.satisfiesConstraints
+  unfold Triptych.satisfiesConstraints
   unfold Duration.SatisfiesConstraints Duration.Constraints Duration.constraints Duration.value Duration.valueExpr
   simp only [Triptych.component, Triptych.envOf, Triptych.captureMapOf, List.forall_mem_cons, List.forall_mem_singleton,
     List.not_mem_nil, forall_const, ConstraintEntry.valPart, Constraint.eval, ValExpr.eval, presentCount, natOf_getD,
@@ -978,9 +969,12 @@ theorem Duration.SatisfiesConstraints_equiv (s : String) :
     Bool.false_eq_true]
   try grind
 
-theorem Duration.IsValid_equiv (s : String) : Duration.IsValid s ↔ Duration.isValid s :=
+theorem Duration.IsValid_equiv (s : String) :
+    Duration.IsValid s ↔
+      Triptych.isWf Duration.grammar Duration.constraints s ∧
+        Triptych.satisfiesConstraints Duration.grammar Duration.constraints s :=
   by
-  unfold Duration.IsValid Duration.isValid
+  unfold Duration.IsValid
   rw [(Duration.IsWf_equiv s), (Duration.SatisfiesConstraints_equiv s)]
 
 instance Duration.instDecidableGrammar : DecidablePred Duration.IsWf.Duration := fun s =>
@@ -1013,7 +1007,7 @@ theorem Duration.IsValid_view (s : String) :
   by
   constructor
   · intro hvalid
-    have hengine : Duration.isValid s := (Duration.IsValid_equiv s).mp hvalid
+    have hengine := (Duration.IsValid_equiv s).mp hvalid
     have hsome : (decode Duration.grammar s).isSome = true := by exact hengine.1.1
     obtain ⟨m, hm⟩ := Option.isSome_iff_exists.mp hsome
     refine ⟨Duration.View.ofMap s m, ?_, ?_⟩
@@ -1079,43 +1073,44 @@ theorem Duration.computeValue_view (s : String) :
 
 /- ═══════════════════════════════ parser ══════════════════════════════
 The generated correct-by-construction parser `parse` (= `computeValue` gated on the
-decidable `isValid`) together with its guarantees — `parse_sound`, `parse_complete`,
+decidable `IsValid`) together with its guarantees — `parse_sound`, `parse_complete`,
 `parse_reject`, `parse_view`, and typed `parse_eq_some_iff_view` /
 `parse_eq_none_iff_view` normal forms — all AUTO-DISCHARGED here.
 When an external parser is declared, `checkedExtParse` additionally validates each
 external result against this parser and ships an AUTO-DISCHARGED soundness theorem.
 A verified parser, no `sorry`. -/
 
-theorem Duration.computeValue_isSome (s : String) : Duration.isValid s → (Duration.computeValue s).isSome :=
+theorem Duration.computeValue_isSome (s : String) : Duration.IsValid s → (Duration.computeValue s).isSome :=
   by
   intro h
-  unfold Duration.isValid Duration.isWf Triptych.isWf at h
+  have hengine := (Duration.IsValid_equiv s).mp h
+  unfold Triptych.isWf at hengine
   unfold Duration.computeValue Triptych.computeValue
   rw [Option.isSome_map]
-  exact h.1.1
+  exact hengine.1.1
 
 def Duration.parse (s : String) :=
-  Triptych.gatedParseOfSpec Duration.isValid Duration.computeValue millisToDuration s
+  Triptych.gatedParseOfSpec Duration.IsValid Duration.computeValue millisToDuration s
 
 theorem Duration.parse_sound (s : String) (d : Cedar.Spec.Ext.Datetime.Duration) :
-    Duration.parse s = some d → Duration.isValid s ∧ (Duration.computeValue s).map millisToDuration = some d :=
+    Duration.parse s = some d → Duration.IsValid s ∧ (Duration.computeValue s).map millisToDuration = some d :=
   Triptych.gatedParseOfSpec_sound _ _ _ s d
 
 theorem Duration.parse_complete (s : String) (d : Cedar.Spec.Ext.Datetime.Duration) :
-    Duration.isValid s → (Duration.computeValue s).map millisToDuration = some d → Duration.parse s = some d :=
+    Duration.IsValid s → (Duration.computeValue s).map millisToDuration = some d → Duration.parse s = some d :=
   Triptych.gatedParseOfSpec_complete _ _ _ s d
 
-theorem Duration.parse_reject (s : String) : Duration.parse s = none ↔ ¬Duration.isValid s :=
+theorem Duration.parse_reject (s : String) : Duration.parse s = none ↔ ¬Duration.IsValid s :=
   Triptych.gatedParseOfSpec_reject _ _ _ Duration.computeValue_isSome s
 
 theorem Duration.parse_view (s : String) :
     Duration.parse s =
-      if decide (Duration.isValid s) then (Duration.decodeView s).map (millisToDuration ∘ Duration.View.denotation)
+      if decide (Duration.IsValid s) then (Duration.decodeView s).map (millisToDuration ∘ Duration.View.denotation)
       else none :=
   by
   unfold Duration.parse Triptych.gatedParseOfSpec Triptych.gatedParse
   rw [Duration.computeValue_view]
-  by_cases h : Duration.isValid s <;> simp [h, Option.map_map]
+  split <;> simp [Option.map_map]
 
 theorem Duration.parse_eq_some_iff_view (s : String) (d : Cedar.Spec.Ext.Datetime.Duration) :
     Duration.parse s = some d ↔
@@ -1124,15 +1119,14 @@ theorem Duration.parse_eq_some_iff_view (s : String) (d : Cedar.Spec.Ext.Datetim
   by
   constructor
   · intro hparse
-    obtain ⟨hvalidEngine, hvalue⟩ := Duration.parse_sound s d hparse
-    have hvalidSurface := (Duration.IsValid_equiv s).mpr hvalidEngine
-    obtain ⟨v, hview, hvalidView⟩ := (Duration.IsValid_view s).mp hvalidSurface
+    obtain ⟨hvalid, hvalue⟩ := Duration.parse_sound s d hparse
+    obtain ⟨v, hview, hvalidView⟩ := (Duration.IsValid_view s).mp hvalid
     refine ⟨v, hview, hvalidView, ?_⟩
     rw [Duration.computeValue_view, hview] at hvalue
     simpa using Option.some.inj hvalue
   · rintro ⟨v, hview, hvalidView, hvalue⟩
     apply Duration.parse_complete s d
-    · exact (Duration.IsValid_equiv s).mp ((Duration.IsValid_view s).mpr ⟨v, hview, hvalidView⟩)
+    · exact (Duration.IsValid_view s).mpr ⟨v, hview, hvalidView⟩
     · rw [Duration.computeValue_view, hview]
       simpa using congrArg some hvalue
 
@@ -1142,10 +1136,9 @@ theorem Duration.parse_eq_none_iff_view (s : String) :
   rw [Duration.parse_reject]
   constructor
   · intro hinvalid ⟨v, hview, hvalidView⟩
-    exact hinvalid ((Duration.IsValid_equiv s).mp ((Duration.IsValid_view s).mpr ⟨v, hview, hvalidView⟩))
-  · intro hnoview hvalidEngine
-    have hvalidSurface := (Duration.IsValid_equiv s).mpr hvalidEngine
-    exact hnoview ((Duration.IsValid_view s).mp hvalidSurface)
+    exact hinvalid ((Duration.IsValid_view s).mpr ⟨v, hview, hvalidView⟩)
+  · intro hnoview hvalid
+    exact hnoview ((Duration.IsValid_view s).mp hvalid)
 
 def Duration.checkedExtParse (s : String) : Option Cedar.Spec.Ext.Datetime.Duration :=
   Triptych.checkedExternalParse Duration.IsValid Duration.computeValue Cedar.Spec.Ext.Datetime.Duration.parse

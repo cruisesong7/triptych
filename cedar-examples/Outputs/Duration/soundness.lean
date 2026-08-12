@@ -18,12 +18,11 @@ Acceptance, value/conversion agreement, generated-parser roundtrip, injectivity,
 normalization are derived from that witness. -/
 
 theorem Duration.toSpec_ofSpec (s : String) (v : Int) :
-    Duration.isValid s → Duration.computeValue s = some v →
+    Duration.IsValid s → Duration.computeValue s = some v →
       durationMillis (millisToDuration v) = v := by
   intro hvalid hvalue
-  have hsurface : Duration.IsValid s := (Duration.IsValid_equiv s).mpr hvalid
   obtain ⟨view, hview, hvalidView⟩ :=
-    (Duration.IsValid_view s).mp hsurface
+    (Duration.IsValid_view s).mp hvalid
   have hdenotation : Duration.View.denotation view = v := by
     rw [Duration.computeValue_view, hview] at hvalue
     exact Option.some.inj hvalue
@@ -39,9 +38,9 @@ theorem Duration.toSpec_ofSpec (s : String) (v : Int) :
 
 theorem Duration.parse_sound_toSpec (s : String) (d : Cedar.Spec.Ext.Datetime.Duration) :
     Duration.parse s = some d →
-      Duration.isValid s ∧ Duration.computeValue s = some (durationMillis d) :=
+      Duration.IsValid s ∧ Duration.computeValue s = some (durationMillis d) :=
   Triptych.gatedParseOfSpec_sound_toSpec
-    Duration.isValid Duration.computeValue millisToDuration durationMillis
+    Duration.IsValid Duration.computeValue millisToDuration durationMillis
       Duration.toSpec_ofSpec s d
 
 theorem Duration.encode_view (d : Cedar.Spec.Ext.Datetime.Duration) :
@@ -58,11 +57,9 @@ theorem Duration.encode_view (d : Cedar.Spec.Ext.Datetime.Duration) :
     Duration.computeValue_view, hinverse]
 
 theorem Duration.encode_accepted (d : Cedar.Spec.Ext.Datetime.Duration) :
-    Duration.isValid (durationToStr d) := by
+    Duration.IsValid (durationToStr d) := by
   obtain ⟨v, hview, hvalidView, _⟩ := Duration.encode_view d
-  exact
-    (Duration.IsValid_equiv (durationToStr d)).mp
-      ((Duration.IsValid_view (durationToStr d)).mpr ⟨v, hview, hvalidView⟩)
+  exact (Duration.IsValid_view (durationToStr d)).mpr ⟨v, hview, hvalidView⟩
 
 theorem Duration.encode_value (d : Cedar.Spec.Ext.Datetime.Duration) :
     Duration.computeValue (durationToStr d) = some (durationMillis d) := by
@@ -145,8 +142,7 @@ theorem Duration.extparse_eq_some_iff_view (s : String)
 
 theorem Duration.extparse_toString_roundtrip (d : Cedar.Spec.Ext.Datetime.Duration) :
     Cedar.Spec.Ext.Datetime.Duration.parse (durationToStr d) = some d :=
-  Triptych.parse_toString_roundtrip Duration.extparse_complete
-    (fun d => (Duration.IsValid_equiv (durationToStr d)).mpr (Duration.encode_accepted d))
+  Triptych.parse_toString_roundtrip Duration.extparse_complete Duration.encode_accepted
     Duration.encode_value d
 
 theorem Duration.extparse_toString_injective (d d' : Cedar.Spec.Ext.Datetime.Duration)

@@ -36,15 +36,15 @@ value times 10^4 in an {name}`Int64`, so {lit}`"1.5"` denotes {lit}`15000`.
 
 Three concerns, one per DSL clause:
 
-- *Shape* — an optional minus sign, one or more integer digits, a dot, one to four fraction
+- *Shape* — an optional minus sign, one or more natural digits, a dot, one to four fraction
   digits. This is the grammar.
-- *Meaning* — sign times (integer part scaled by 10⁴ plus fraction part scaled to fill four
+- *Meaning* — sign times (natural part scaled by 10⁴ plus fraction part scaled to fill four
   places). This is the value clause.
 - *Bounds* — the value must fit in `Int64`. This is the constraint clause.
 
 The authored block is in {lit}`cedar-examples/Inputs/Decimal.lean`:
 
-```
+```anchor decimalTriptychSource (module := Inputs.Decimal) (project := ".")
 triptych Decimal where
   grammar
     Decimal  ::= Sign Natural "." Fraction
@@ -64,9 +64,8 @@ triptych Decimal where
 
 Two details worth pausing on before we look at the output:
 
-*The dedicated sign production.* {lit}`Sign ::= sign` gives the optional minus sign its own
-capture. The decoder records named productions, so an anonymous optional literal would not be
-available to the value expression. The DSL rejects the unsafe sign shape.
+*Named sign capture.* Triptych does not allow {lit}`sign` anonymously inside another production.
+It must have its own named rule, such as {lit}`Sign ::= sign`, so the value expression can read it.
 
 *The conversion pair.* The surface value is an {name}`Int`. {lit}`ofSpec Int64.ofInt`
 converts that value to the generated parser's domain type, while
@@ -95,29 +94,158 @@ quantified variable per named capture, one conjunct per production:
 #print Decimal.IsWf.Decimal
 ```
 
+```leanOutput isWfDecimal
+def Decimal.IsWf.Decimal : String → Prop :=
+fun s =>
+  ∃ «sign» natural fraction,
+    ((s = «sign» ++ natural ++ "." ++ fraction ∧ Decimal.IsWf.Sign «sign») ∧ Decimal.IsWf.Natural natural) ∧
+      Decimal.IsWf.Fraction fraction
+```
+
 The root predicate composes the productions, and {name}`Decimal.IsValid` conjoins shape with
 the final-value range:
 
 ```lean (name := isValidCheck)
-#check (Decimal.IsValid : String → Prop)
+#print Decimal.IsValid
 ```
 
-The same proof-free file also contains typed structures. {name}`Decimal.View` has
-{lit}`input`, {lit}`sign`, {lit}`natural`, and {lit}`fraction` fields. The root
-derivation mirrors grammar structure: alternatives become constructors and the optional sign
-becomes an {name}`Option`.
-
-```lean (name := typedSurface)
-#check Decimal.View
-#check Decimal.Derivation.Decimal
-#check @Decimal.Derivation.Decimal.render
-#check @Decimal.Derivation.Decimal.Valid
+```leanOutput isValidCheck
+@[reducible] def Decimal.IsValid : String → Prop :=
+fun s => Decimal.IsWf s ∧ Decimal.SatisfiesConstraints s
 ```
+
+## A typed field view
+
+After parsing {lit}`"-12.34"`, most code wants the useful pieces: the sign {lit}`"-"`, the
+natural digits {lit}`"12"`, and the fraction digits {lit}`"34"`. It should not need to understand
+how the parser stores captures or records grammar choices.
+
+The generated {name}`Decimal.View` packages those pieces as named fields. Its {lit}`input` field
+keeps the original string, while the other fields contain the text matched by the grammar's
+named productions:
+
+```lean
+example : Decimal.View :=
+  {
+    input := "-12.34"
+    «sign» := "-"
+    natural := "12"
+    fraction := "34"
+  }
+
+example (view : Decimal.View) : String :=
+  view.natural ++ "." ++ view.fraction
+```
+
+Code using a view can simply write {lit}`view.natural` or {lit}`view.fraction`. Without this
+record, each caller would have to inspect the parser's generic capture map and know how the
+grammar match was represented internally.
+
+## A structural derivation
+
+A view deliberately forgets how the grammar matched. That keeps ordinary field access simple,
+but printer and roundtrip proofs need the missing structure: which alternative was selected,
+which optional pieces were present, and how repeated or referenced productions were built.
+
+A derivation preserves that evidence as a tree. This gives a printer a grammar-shaped target:
+construct a valid derivation for a domain value, then turn the derivation into text. Its
+constructor records the chosen alternative, while its children record how each referenced
+production matched. For Decimal, the root constructor has children for {lit}`Sign`,
+{lit}`Natural`, and {lit}`Fraction`. The dot is a fixed literal, so it does not need its own
+field:
+
+```lean
+example
+    (signTree : Decimal.Derivation.Sign)
+    (natural : Decimal.Derivation.Natural)
+    (fraction : Decimal.Derivation.Fraction) :
+    Decimal.Derivation.Decimal :=
+  .alt0 signTree natural fraction
+```
+
+## Rendering for verified printers
+
+Parsing moves from text to a derivation and its fields.
+{name}`Decimal.Derivation.Decimal.render` performs the tree-to-text direction: it concatenates
+the terminal strings stored in a derivation and inserts the grammar's fixed literals.
+
+```lean
+example :
+    decimalDerivation =
+      .alt0
+        (.alt0 (some ()))
+        (.alt0 "12")
+        (.alt0 "34") := by
+  rfl
+```
+
+Evaluating rendering and validity together makes their separate roles visible:
+
+```lean (name := renderDerivation)
+#eval
+  (decimalDerivation.render,
+    decide decimalDerivation.Valid)
+```
+
+```leanOutput renderDerivation
+("-12.34", true)
+```
+
+Crucially, {name}`Decimal.Derivation.Decimal.render` does not validate the tree. Terminal nodes
+store ordinary strings, so rendering also serializes a Natural node whose text violates the
+grammar:
+
+```lean (name := invalidNatural)
+#eval
+  let tree := Decimal.Derivation.Natural.alt0 "abc"
+  (tree.render, decide tree.Valid)
+```
+
+```leanOutput invalidNatural
+("abc", false)
+```
+
+The text {lit}`"abc"` is still rendered; the separate {name}`Decimal.Derivation.Natural.Valid`
+predicate rejects it.
+
+Therefore {name}`Decimal.Derivation.Decimal.render` is not itself a verified Decimal printer. A
+printer certificate chooses a derivation for each domain value and proves that the tree is valid
+and denotes that value; {name}`Decimal.Derivation.Decimal.render` performs only the final
+tree-to-string step. For valid derivations, later engine theorems prove that decoding the rendered
+text recovers the tree's captures and typed view.
+
+*Note:* {name}`Decimal.Derivation.Decimal.Valid` checks only that the derivation is well-formed
+according to the grammar, corresponding to the string-level {name}`Decimal.IsWf`.
+{name}`Decimal.IsValid` checks both {name}`Decimal.IsWf` and
+{name}`Decimal.SatisfiesConstraints`; for Decimal, the semantic constraint requires the computed
+value to fit in {name}`Int64`.
 
 # Artifact two: the engine and the verified parser
 
-The second generated file contains the executable side. {name}`decode` walks the grammar
-and extracts named captures:
+The second generated file turns the readable specification into executable operations. Three
+predicates describe whether an input may be parsed:
+
+- {name}`Decimal.IsWf` checks the grammar shape and any capture-only constraints.
+- {name}`Decimal.SatisfiesConstraints` checks semantic constraints on the final value. For
+  Decimal, this is the {name}`Int64` range check.
+- {name}`Decimal.IsValid` requires both.
+
+These uppercase names are both the readable interface and the public executable interface.
+Generated decision procedures connect them to the generic Triptych interpreter internally, so
+there is no separate format-specific lowercase predicate. They can be executed through
+{name}`decide`:
+
+```lean (name := validityEvals)
+#eval
+  (decide (Decimal.IsValid "3.14"),
+    decide (Decimal.IsValid "3.14159"))
+```
+
+```leanOutput validityEvals
+(true, false)
+```
+
+The engine begins by decoding the grammar. {name}`decode` returns the named captures:
 
 ```lean (name := decodeEval)
 #eval decode Decimal.grammar "1.5"
@@ -127,21 +255,79 @@ and extracts named captures:
 some [("Sign", ""), ("Natural", "1"), ("Fraction", "5")]
 ```
 
-{name}`Decimal.computeValue` evaluates the specification value. The specialized
-{name}`Decimal.parse` gates that computation on validity and maps the result through
-{name}`Int64.ofInt`:
+## Computing the specification value
+
+{name}`Decimal.computeValue` evaluates the value expression and returns its specification-level
+{name}`Int`. It does not apply the semantic constraint or convert the result to {name}`Int64`:
+
+```lean (name := computeValueDefinition)
+#print Decimal.computeValue
+```
+
+```leanOutput computeValueDefinition
+def Decimal.computeValue : String → Option Int :=
+fun s => computeValue Decimal.grammar Decimal.valueExpr s
+```
+
+For {lit}`"1.5"`, the fixed-point specification value is {lit}`15000`:
+
+```lean (name := computeValueEval)
+#eval Decimal.computeValue "1.5"
+```
+
+```leanOutput computeValueEval
+some 15000
+```
+
+An out-of-range value can still be computed because range checking belongs to
+{name}`Decimal.IsValid`, not to {name}`Decimal.computeValue`:
+
+```lean (name := outOfRangeValueEval)
+#eval Decimal.computeValue "922337203685477.5808"
+```
+
+```leanOutput outOfRangeValueEval
+some 9223372036854775808
+```
+
+## The generated parser
+
+{name}`Decimal.parse` combines validity, value computation, and the declared {lit}`ofSpec`
+conversion:
+
+```lean (name := parseDefinition)
+#print Decimal.parse
+```
+
+```leanOutput parseDefinition
+def Decimal.parse : String → Option Int64 :=
+fun s => gatedParseOfSpec Decimal.IsValid Decimal.computeValue Int64.ofInt s
+```
+
+Here {name}`Decimal.IsValid` gates acceptance, {name}`Decimal.computeValue` produces the
+specification {name}`Int`, and {name}`Int64.ofInt` converts it to the parser's result type.
+Only after seeing that definition do the examples become meaningful:
 
 ```lean (name := parseEvals)
-#eval Decimal.computeValue "1.5"  -- spec value: ×10⁴
-#eval Decimal.parse "1.5"         -- as a Decimal
-#eval Decimal.parse "-0.15"       -- sign corner case
+#eval
+  (Decimal.parse "1.5",
+    Decimal.parse "-0.15")
+```
+
+```leanOutput parseEvals
+(some 15000, some (-1500))
 ```
 
 Grammar and constraint failures both appear as {name}`Option.none`:
 
 ```lean (name := rejectEvals)
-#eval Decimal.parse "1.x"    -- not the grammar
-#eval Decimal.parse "922337203685477.5808"  -- overflows
+#eval
+  (Decimal.parse "1.x",
+    Decimal.parse "922337203685477.5808")
+```
+
+```leanOutput rejectEvals
+(none, none)
 ```
 
 # The typed executable view
@@ -157,11 +343,18 @@ the existence of a valid decoded view, and denotation factors through that same 
 #check @Decimal.parse_eq_none_iff_view
 ```
 
-A structural derivation can be rendered and decoded back exactly. The Decimal grammar passes
-the conservative all-input uniqueness checker, so its roundtrip theorem needs no ambiguity
-premise:
+The generated engine also connects structural derivations to executable decoding.
+{name}`Decimal.Derivation.Decimal.matches` proves that a valid derivation matches the root
+production, and {name}`Decimal.Derivation.Decimal.mem_fullParses` records its captures as a
+complete parse of the grammar. The Decimal grammar passes the conservative all-input uniqueness
+checker, so {name}`Decimal.Derivation.Decimal.decode_render` proves that the decoder recovers
+those captures without an ambiguity premise. Finally,
+{name}`Decimal.Derivation.Decimal.decodeView_render` proves that decoding recovers the same typed
+view:
 
 ```lean (name := derivationChecks)
+#check @Decimal.Derivation.Decimal.matches
+#check @Decimal.Derivation.Decimal.mem_fullParses
 #check @Decimal.Derivation.Decimal.decode_render
 #check @Decimal.Derivation.Decimal.decodeView_render
 #eval
@@ -182,7 +375,7 @@ Recognition agrees between the surface predicate and executable engine:
 ```
 
 ```leanOutput equivCheck
-Decimal.IsWf_equiv : ∀ (s : String), Decimal.IsWf s ↔ Decimal.isWf s
+Decimal.IsWf_equiv : ∀ (s : String), Decimal.IsWf s ↔ isWf Decimal.grammar Decimal.constraints s
 ```
 
 The parser contract says every success is valid and correctly valued, every valid matching
@@ -192,17 +385,6 @@ value succeeds, and rejection is exactly invalidity:
 #check @Decimal.parse_sound
 #check @Decimal.parse_complete
 #check @Decimal.parse_reject
-```
-
-The readable predicates are decidable:
-
-```lean (name := decideEval)
-#eval decide (Decimal.IsValid "3.14")
-#eval decide (Decimal.IsValid "3.14159")
-```
-
-```leanOutput decideEval
-true
 ```
 
 Compiler-generated theorems use only {name}`propext`, {name}`Classical.choice`, and

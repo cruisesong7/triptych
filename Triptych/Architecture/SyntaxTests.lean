@@ -109,6 +109,17 @@ triptych SignedInteger where
 #guard SignedInteger.toString (-42) = "-42"
 #guard SignedInteger.parse (SignedInteger.toString (-42)) = some (-42)
 
+example (s : String) :
+    SignedInteger.parse s =
+      Triptych.gatedParse SignedInteger.IsValid SignedInteger.computeValue s := by
+  rfl
+
+/--
+error: Unknown identifier `SignedInteger.isValid`
+-/
+#guard_msgs in
+#check SignedInteger.isValid
+
 example (i : Int) :
     SignedInteger.parse (SignedInteger.toString i) = some i :=
   SignedInteger.parse_toString_roundtrip i
@@ -155,6 +166,26 @@ triptych ConstrainedAutoPrinter where
   printer auto
 
 end AutoPrinterExample
+
+namespace OfSpecParserExample
+
+private def asDomainInt (i : Int) : Int := i
+
+triptych BoundedInteger where
+  grammar
+    Root   ::= Digits
+    Digits ::= digit+
+  value
+    nat Digits
+    ofSpec asDomainInt
+  constraints
+    nonempty Digits
+    value ∈ [0, 100]
+
+#guard BoundedInteger.parse "42" = some 42
+#guard BoundedInteger.parse "101" = none
+
+end OfSpecParserExample
 
 namespace CollectionConstraintExample
 
