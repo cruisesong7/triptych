@@ -35,8 +35,7 @@ import Cedar.Spec.Ext.IPAddr
 
 open Triptych
 -- Bring the generated example decls into scope so we write `Decimal.parse` (the EXECUTABLE parser
--- — `gatedParseOfSpec isValid computeValue …`, i.e. the decode-based engine, NOT the readable
--- surface `IsValid` Prop) rather than a caller-namespace declaration.
+-- — `gatedParseOfSpec IsValid computeValue …`) rather than a caller-namespace declaration.
 -- Cedar's parsers stay fully qualified (they live under `Cedar.Spec.Ext.*`, no clash).
 open CedarExamples.Decimal
 open CedarExamples.Duration

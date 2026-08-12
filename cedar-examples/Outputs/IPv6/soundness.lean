@@ -25,11 +25,9 @@ theorem IPv6.encode_view (i : IPv6Net) :
     IPv6.RuleRegistrySoundness.parser_agrees, IPv6.IsValid_view,
     IPv6.computeValue_view]
 
-theorem IPv6.encode_accepted (i : IPv6Net) : IPv6.isValid (ipNetToStr i) := by
+theorem IPv6.encode_accepted (i : IPv6Net) : IPv6.IsValid (ipNetToStr i) := by
   obtain ⟨v, hview, hvalidView, _⟩ := IPv6.encode_view i
-  exact
-    (IPv6.IsValid_equiv (ipNetToStr i)).mp
-      ((IPv6.IsValid_view (ipNetToStr i)).mpr ⟨v, hview, hvalidView⟩)
+  exact (IPv6.IsValid_view (ipNetToStr i)).mpr ⟨v, hview, hvalidView⟩
 
 theorem IPv6.encode_value (i : IPv6Net) :
     IPv6.computeValue (ipNetToStr i) = some i := by
@@ -112,8 +110,7 @@ theorem IPv6.extparse_eq_some_iff_view (s : String) (i : IPv6Net) :
 
 theorem IPv6.extparse_toString_roundtrip (i : IPv6Net) :
     ipv6Only (ipNetToStr i) = some i :=
-  Triptych.parse_toString_roundtrip IPv6.extparse_complete
-    (fun d => (IPv6.IsValid_equiv (ipNetToStr d)).mpr (IPv6.encode_accepted d))
+  Triptych.parse_toString_roundtrip IPv6.extparse_complete IPv6.encode_accepted
     IPv6.encode_value i
 
 theorem IPv6.extparse_toString_injective (i i' : IPv6Net)

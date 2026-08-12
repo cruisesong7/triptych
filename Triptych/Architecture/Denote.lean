@@ -157,7 +157,7 @@ def IsWf (g : Grammar) (s : String) : Prop :=
 
 /-- Per-production well-formedness: `s` matches production named `name` in `g`. `False`
     if the name is undefined. This is the *named handle* the command emits one of per
-    production (as `<Name>.<Production>.isWf`), so contract-theorem proofs can decompose
+    production (as `<Name>.IsWf.<Production>`), so contract-theorem proofs can decompose
     along productions (mirroring the hand specs' `DateComponents.syntaxWf`,
     `IsWfV4`, …). Fuel = #productions, the same DAG-depth backstop as `IsWf`; since the
     reference graph is acyclic this never runs out on well-formed grammars. -/

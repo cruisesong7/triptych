@@ -39,7 +39,7 @@ The generated definition is intentionally short:
 
 ```
 def Decimal.parse (s : String) :=
-  Triptych.gatedParseOfSpec Decimal.isValid Decimal.computeValue Int64.ofInt s
+  Triptych.gatedParseOfSpec Decimal.IsValid Decimal.computeValue Int64.ofInt s
 ```
 
 That is a specialized API, but not a single-file implementation. Its compiled dependency

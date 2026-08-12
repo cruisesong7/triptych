@@ -34,8 +34,9 @@ source-located diagnostic rather than silently renamed.
   constructors, optional symbols are `Option`, and repetitions are `List`. Proof-free
   (what you *cite*);
 * **`parser.lean` — the runnable, verified artifact** — the analyzable deep-embedded engine
-  (total capture-extracting `decode`, decidable `isValid`, `computeValue`); the **generated
-  correct-by-construction parser** `parse` (= `computeValue` gated on the decidable `isValid`)
+  (total capture-extracting `decode`, `computeValue`, and generic interpreter support); the
+  **generated correct-by-construction parser** `parse` (= `computeValue` gated on the decidable
+  public `IsValid`)
   with its **auto-discharged** contracts `parse_sound`/`parse_complete`/`parse_reject`; and the
   machine-checked, axiom-clean surface⟺engine reconciliation on **both recognition and value**
   — `IsWf_equiv` (via the `decode ↔ IsWf` roundtrip) and `computeValue_eq`. It also emits a

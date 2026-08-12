@@ -24,14 +24,14 @@ import Triptych.Architecture.Value
 # Assembling the bundled spec
 
 The `triptych` command emits the *ingredients* — the grammar, the constraint list,
-and the value expression. This module bundles them into the named predicates of the
-design-note contract (§16.1):
+and the value expression. This module defines the generic interpreter predicates:
 
 * `isWf`                 — grammar well-formedness ∧ the `.wellFormed` constraints
 * `satisfiesConstraints` — the final-value (`.value`) constraints
 
-The generated spec bundles these two as `isValid := isWf ∧ satisfiesConstraints` (⟺ the
-parser accepts the string); see `Emit.lean`.
+Generated formats expose readable capitalized predicates such as `<Name>.IsWf` and
+`<Name>.IsValid`. Their reconciliation theorems connect them directly to these generic
+interpreter applications; no format-specific lowercase aliases are generated.
 
 Both are phrased against the complete capture map produced by `decode`; scalar entries project
 its `Env` view and collection entries retain repeated spans. Constraints of a not-well-formed

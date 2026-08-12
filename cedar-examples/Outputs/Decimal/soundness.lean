@@ -17,10 +17,9 @@ Acceptance, value/conversion agreement, generated-parser roundtrip, injectivity,
 normalization are derived from that witness. -/
 
 theorem Decimal.toSpec_ofSpec (s : String) (v : Int) :
-    Decimal.isValid s → Decimal.computeValue s = some v → Int64.toInt (Int64.ofInt v) = v := by
+    Decimal.IsValid s → Decimal.computeValue s = some v → Int64.toInt (Int64.ofInt v) = v := by
   intro hvalid hvalue
-  have hsurface : Decimal.IsValid s := (Decimal.IsValid_equiv s).mpr hvalid
-  obtain ⟨view, hview, hvalidView⟩ := (Decimal.IsValid_view s).mp hsurface
+  obtain ⟨view, hview, hvalidView⟩ := (Decimal.IsValid_view s).mp hvalid
   have hdenotation : Decimal.View.denotation view = v := by
     rw [Decimal.computeValue_view, hview] at hvalue
     exact Option.some.inj hvalue
@@ -36,9 +35,9 @@ theorem Decimal.toSpec_ofSpec (s : String) (v : Int) :
 
 theorem Decimal.parse_sound_toSpec (s : String) (i : Int64) :
     Decimal.parse s = some i →
-      Decimal.isValid s ∧ Decimal.computeValue s = some (Int64.toInt i) :=
+      Decimal.IsValid s ∧ Decimal.computeValue s = some (Int64.toInt i) :=
   Triptych.gatedParseOfSpec_sound_toSpec
-    Decimal.isValid Decimal.computeValue Int64.ofInt Int64.toInt Decimal.toSpec_ofSpec s i
+    Decimal.IsValid Decimal.computeValue Int64.ofInt Int64.toInt Decimal.toSpec_ofSpec s i
 
 theorem Decimal.encode_view (i : Int64) :
     ∃ v : Decimal.View,
@@ -49,11 +48,9 @@ theorem Decimal.encode_view (i : Int64) :
     Decimal.RuleRegistrySoundness.parser_agrees, Decimal.IsValid_view,
     Decimal.computeValue_view, Int64.ofInt_toInt i]
 
-theorem Decimal.encode_accepted (i : Int64) : Decimal.isValid (decimalToStr i) := by
+theorem Decimal.encode_accepted (i : Int64) : Decimal.IsValid (decimalToStr i) := by
   obtain ⟨v, hview, hvalidView, _⟩ := Decimal.encode_view i
-  exact
-    (Decimal.IsValid_equiv (decimalToStr i)).mp
-      ((Decimal.IsValid_view (decimalToStr i)).mpr ⟨v, hview, hvalidView⟩)
+  exact (Decimal.IsValid_view (decimalToStr i)).mpr ⟨v, hview, hvalidView⟩
 
 theorem Decimal.encode_value (i : Int64) :
     Decimal.computeValue (decimalToStr i) = some (Int64.toInt i) := by
@@ -133,8 +130,7 @@ theorem Decimal.extparse_eq_some_iff_view (s : String) (d : Cedar.Spec.Ext.Decim
 
 theorem Decimal.extparse_toString_roundtrip (i : Int64) :
     Cedar.Spec.Ext.Decimal.parse (decimalToStr i) = some i :=
-  Triptych.parse_toString_roundtrip Decimal.extparse_complete
-    (fun d => (Decimal.IsValid_equiv (decimalToStr d)).mpr (Decimal.encode_accepted d))
+  Triptych.parse_toString_roundtrip Decimal.extparse_complete Decimal.encode_accepted
     Decimal.encode_value i
 
 theorem Decimal.extparse_toString_injective (i i' : Int64)

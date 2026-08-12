@@ -48,7 +48,7 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
   constrained, `ofSpec`, or `value'` functions can be inverted.
   A declared external parser emits `extparse_sound`/`_complete`/`_reject`. Values with BOTH
   `ofSpec` and `toSpec` also receive the faithfulness
-  obligation `toSpec_ofSpec : isValid s → computeValue s = some v →
+  obligation `toSpec_ofSpec : IsValid s → computeValue s = some v →
   toSpec (ofSpec v) = v` on accepted values. It is provable exactly when the range constraint
   pins accepted values inside `ofSpec`'s faithful domain and unprovable when a wrapping
   conversion is left unguarded. Its payoff `parse_sound_toSpec` is discharged via
@@ -100,7 +100,7 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
   static all-input certificates. Other example `#eval`s remain representative.
 - `Reconcile.lean` — reusable lemmas for emitted grammar/full-WF equivalences (leaf
   `_matchesTerm`, `matchesSym_rep_iff`, reader-agreement `natOf_getD` etc.).
-- `Assemble.lean` — bundles `isWf`/`satisfiesConstraints`/`isValid`; `component`;
+- `Assemble.lean` — defines the generic `isWf`/`satisfiesConstraints` interpreters; `component`;
   contract statements `SoundStmt`/`CompleteStmt`/`RejectStmt`
   (over value type `β`, `toSpec : α → β`).
 - `Emit.lean` — renders surface predicates (`symPred`/`termPred`), grammar literals,
@@ -135,8 +135,8 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
 - `cedar-examples/ConformanceTests.lean` — a one-time confidence
   check (its own `ConformanceTests` lib
   target, out of `default_target`): runs the GENERATED EXECUTABLE parsers (`<Name>.parse` =
-  `gatedParse[OfSpec] isValid computeValue …`, the decode-based engine — NOT the readable surface
-  `IsValid` Prop) against Cedar's REAL parsers over Cedar's OWN unit-test corpus
+  `gatedParse[OfSpec] IsValid computeValue …`, with `IsValid` executed through its generated
+  decision procedure) against Cedar's REAL parsers over Cedar's OWN unit-test corpus
   (`cedar-lean/UnitTest/{Decimal,Datetime}.lean`). Because `ofSpec` makes Decimal/Duration `parse`
   return the SAME type as Cedar's, the check is direct equality `ourParse s = cedarParse s` (Cedar
   is the oracle — checks accept-set AND value at once); Datetime (no `ofSpec`) compares
