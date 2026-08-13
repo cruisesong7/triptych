@@ -18,7 +18,7 @@ file := "intro"
 %%%
 
 Triptych compiles a flat string grammar -- decimal, duration, datetime, or IP address --
-into a readable specification, a *specialized executable parser*, and the Lean theorems that
+into a readable specification, a *verified parser*, and the Lean theorems that
 connect them. The generated parser is ordinary code with a small public signature such as
 {lean}`String → Option Int64`. The proof layer establishes that it recognizes exactly the
 specified language and returns exactly the specified denotation.
