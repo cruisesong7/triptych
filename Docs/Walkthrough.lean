@@ -295,7 +295,7 @@ some [("Sign", ""), ("Natural", "1"), ("Fraction", "5")]
 ```
 
 This capture map is an engine representation. Ordinary clients use the typed
-{name}`Decimal.View` introduced in the next section instead of looking up these string keys.
+{name}`Decimal.View` introduced in §2.2 instead of looking up these string keys.
 
 ## Computing the specification value
 
