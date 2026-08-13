@@ -5,6 +5,9 @@ From cedar-examples/:
 Build:   lake build docs
 Render:  lake exe docs --output ../_site
 -/
+-- The book elaborates `triptych` blocks through `Syntax`; keep its code generator in the
+-- executable's direct link closure as well.
+import Triptych.Architecture.Emit
 import VersoManual
 import Docs
 

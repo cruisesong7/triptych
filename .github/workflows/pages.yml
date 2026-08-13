@@ -36,7 +36,7 @@ jobs:
         uses: leanprover/lean-action@v1
         with:
           lake-package-directory: triptych/cedar-examples
-          build-args: docs
+          build-args: CedarExamples ConformanceTests docs
 
       - name: Render Verso site
         working-directory: triptych/cedar-examples
