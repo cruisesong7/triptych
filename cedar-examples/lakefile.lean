@@ -22,15 +22,24 @@ lean_lib CedarExamples where
 lean_lib ConformanceTests where
   globs := #[.one `ConformanceTests]
 
+def docsAnchorNeeds : Array PartialBuildKey := #[
+  .packageModuleFacet `cedarExamples `Inputs.Decimal `highlighted,
+  .packageModuleFacet `cedarExamples `Outputs.Decimal.soundness `highlighted,
+  .packageModuleFacet `triptych `Triptych.Automation.ExternalParserTests `highlighted,
+  .packageModuleFacet `triptych `Triptych.Architecture.SyntaxTests `highlighted
+]
+
 -- The Verso book is an integration target: it checks the generated Cedar modules while its
 -- source remains at the repository root.
 lean_lib Docs where
   srcDir := ".."
   globs := #[.andSubmodules `Docs]
+  needs := docsAnchorNeeds
 
 lean_exe docs where
   srcDir := ".."
   root := `DocsMain
+  needs := docsAnchorNeeds
 
 lean_exe playground where
   root := `PlaygroundMain
