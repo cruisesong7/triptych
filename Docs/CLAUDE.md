@@ -7,7 +7,7 @@ This file captures the project state a fresh coding session needs to continue th
 A Lean 4 library: a **grammar-to-specification compiler** for flat, non-recursive
 string-format parsers. A `triptych` DSL block (grammar + optional value/constraints)
 generates a readable surface spec, an analyzable/executable engine, and an auto-emitted,
-machine-checked reconciliation proof between them. See `README.md` (overview) and
+machine-checked reconciliation proof between them. See `../README.md` (overview) and
 `DESIGN.md` (full design).
 
 **Provenance:** extracted from `~/Documents/cedar-spec` (branch `cruise-grammar-to-spec`,
