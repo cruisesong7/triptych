@@ -31,3 +31,6 @@ lean_lib Docs where
 lean_exe docs where
   srcDir := ".."
   root := `DocsMain
+
+lean_exe playground where
+  root := `PlaygroundMain

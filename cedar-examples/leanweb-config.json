@@ -1,0 +1,23 @@
+{
+  "name": "Triptych Cedar examples",
+  "default": true,
+  "hidden": false,
+  "examples": [
+    { "file": "Outputs/Decimal/spec.lean", "name": "Decimal - readable spec" },
+    { "file": "Outputs/Decimal/parser.lean", "name": "Decimal - parser" },
+    { "file": "Outputs/Decimal/soundness.lean", "name": "Decimal - proofs" },
+    { "file": "Outputs/Duration/spec.lean", "name": "Duration - readable spec" },
+    { "file": "Outputs/Duration/parser.lean", "name": "Duration - parser" },
+    { "file": "Outputs/Duration/soundness.lean", "name": "Duration - proofs" },
+    { "file": "Outputs/Datetime/spec.lean", "name": "Datetime - readable spec" },
+    { "file": "Outputs/Datetime/parser.lean", "name": "Datetime - parser" },
+    { "file": "Outputs/Datetime/soundness.lean", "name": "Datetime - proofs" },
+    { "file": "Outputs/IPv4/spec.lean", "name": "IPv4 - readable spec" },
+    { "file": "Outputs/IPv4/parser.lean", "name": "IPv4 - parser" },
+    { "file": "Outputs/IPv4/soundness.lean", "name": "IPv4 - proofs" },
+    { "file": "Outputs/IPv6/spec.lean", "name": "IPv6 - readable spec" },
+    { "file": "Outputs/IPv6/parser.lean", "name": "IPv6 - parser" },
+    { "file": "Outputs/IPv6/soundness.lean", "name": "IPv6 - proofs" },
+    { "file": "LeanWeb/Starter.lean", "name": "New grammar" }
+  ]
+}

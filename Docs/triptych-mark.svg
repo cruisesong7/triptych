@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="114" viewBox="0 0 300 114">
+  <title>Triptych</title>
+  <style>
+    text {
+      fill: #172033;
+      font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+  </style>
+  <text x="15" y="16" xml:space="preserve">
+    <tspan x="15" dy="0">+--------+  +--------+  +--------+</tspan>
+    <tspan x="15" dy="16">|        |  |  /##\  |  |        |</tspan>
+    <tspan x="15" dy="16">| # # #  |  | ###### |  | # # #  |</tspan>
+    <tspan x="15" dy="16">|  # # # |  | ###### |  |  # # # |</tspan>
+    <tspan x="15" dy="16">| # # #  |  | ###### |  | # # #  |</tspan>
+    <tspan x="15" dy="16">|        |  |  \##/  |  |        |</tspan>
+    <tspan x="15" dy="16">+--------+  +--------+  +--------+</tspan>
+  </text>
+</svg>

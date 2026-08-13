@@ -16,6 +16,7 @@ The one serializer obligation gives the exact valid typed view produced by `deci
 Acceptance, value/conversion agreement, generated-parser roundtrip, injectivity, and
 normalization are derived from that witness. -/
 
+-- ANCHOR: decimalToSpecOfSpecProof
 theorem Decimal.toSpec_ofSpec (s : String) (v : Int) :
     Decimal.IsValid s → Decimal.computeValue s = some v → Int64.toInt (Int64.ofInt v) = v := by
   intro hvalid hvalue
@@ -32,6 +33,7 @@ theorem Decimal.toSpec_ofSpec (s : String) (v : Int) :
     rw [hdenotation] at hvalidView
     exact hvalidView
   exact Int64.toInt_ofInt_of_le (by omega) (by omega)
+-- ANCHOR_END: decimalToSpecOfSpecProof
 
 theorem Decimal.parse_sound_toSpec (s : String) (i : Int64) :
     Decimal.parse s = some i →
@@ -39,6 +41,7 @@ theorem Decimal.parse_sound_toSpec (s : String) (i : Int64) :
   Triptych.gatedParseOfSpec_sound_toSpec
     Decimal.IsValid Decimal.computeValue Int64.ofInt Int64.toInt Decimal.toSpec_ofSpec s i
 
+-- ANCHOR: decimalEncodeViewProof
 theorem Decimal.encode_view (i : Int64) :
     ∃ v : Decimal.View,
       Decimal.decodeView (decimalToStr i) = some v ∧
@@ -47,6 +50,7 @@ theorem Decimal.encode_view (i : Int64) :
   triptych_encode [Cedar.Thm.Decimal.parse_toString_roundtrip,
     Decimal.RuleRegistrySoundness.parser_agrees, Decimal.IsValid_view,
     Decimal.computeValue_view, Int64.ofInt_toInt i]
+-- ANCHOR_END: decimalEncodeViewProof
 
 theorem Decimal.encode_accepted (i : Int64) : Decimal.IsValid (decimalToStr i) := by
   obtain ⟨v, hview, hvalidView, _⟩ := Decimal.encode_view i
@@ -78,10 +82,12 @@ theorem Decimal.ofSpec_toSpec (i : Int64) : Int64.ofInt (Int64.toInt i) = i := b
   rw [hresult] at hinverse
   rw [hinverse, hresult]
 
+-- ANCHOR: decimalParseRoundtripProof
 theorem Decimal.parse_toString_roundtrip (i : Int64) :
     Decimal.parse (decimalToStr i) = some i :=
   Triptych.parse_toString_roundtrip_of_encodeView
     Decimal.parse_eq_some_iff_view Decimal.encode_view i
+-- ANCHOR_END: decimalParseRoundtripProof
 
 theorem Decimal.toString_injective (i i' : Int64)
     (h : decimalToStr i = decimalToStr i') : i = i' :=
@@ -95,29 +101,33 @@ theorem Decimal.normalize_eq_iff_parse_eq (s s' : String) :
 /- soundness · external parser
 Obligations for validating YOUR OWN external parser against this specification:
 `extparse_sound`, `extparse_complete`, and `extparse_reject`, stated over the readable
-surface `IsValid`/`computeValue`. Registered successful-path rules proved directly from
-Cedar's executable parser discharge them below; no Cedar Decimal correctness theorem is used.
+surface `IsValid`/`computeValue`. Format-specific agreement and rejection theorems are proved
+separately using reusable parser rules. The wrappers below apply those theorems directly; the
+format-specific facts are not registered as global automation rules.
 The external printer theorems (`extparse_toString_*`) then follow, reusing the generated
 section's derived encode projections. -/
 
 theorem Decimal.extparse_reject (s : String) :
     Cedar.Spec.Ext.Decimal.parse s = none ↔ ¬Decimal.IsValid s := by
-  triptych_auto [Decimal.RuleRegistrySoundness.parser_rejects_iff]
+  simpa only using Decimal.RuleRegistrySoundness.parser_rejects_iff s
 
 theorem Decimal.extparse_eq_none_iff_view (s : String) :
     Cedar.Spec.Ext.Decimal.parse s = none ↔
       ¬∃ v : Decimal.View, Decimal.decodeView s = some v ∧ Decimal.View.Valid v := by
-  triptych_auto [Decimal.extparse_reject, Decimal.IsValid_view]
+  simp only [Decimal.extparse_reject, Decimal.IsValid_view]
 
+-- ANCHOR: decimalExtparseSoundProof
 theorem Decimal.extparse_sound (s : String) (d : Cedar.Spec.Ext.Decimal) :
     Cedar.Spec.Ext.Decimal.parse s = some d →
       Decimal.IsValid s ∧ Decimal.computeValue s = some (Int64.toInt d) := by
-  triptych_auto [Decimal.RuleRegistrySoundness.parser_agrees]
+  simpa only using (Decimal.RuleRegistrySoundness.parser_agrees s d).mp
+-- ANCHOR_END: decimalExtparseSoundProof
 
 theorem Decimal.extparse_complete (s : String) (d : Cedar.Spec.Ext.Decimal) :
     Decimal.IsValid s → Decimal.computeValue s = some (Int64.toInt d) →
       Cedar.Spec.Ext.Decimal.parse s = some d := by
-  triptych_auto [Decimal.RuleRegistrySoundness.parser_agrees]
+  intro hvalid hvalue
+  exact (Decimal.RuleRegistrySoundness.parser_agrees s d).mpr ⟨hvalid, hvalue⟩
 
 theorem Decimal.extparse_eq_some_iff_view (s : String) (d : Cedar.Spec.Ext.Decimal) :
     Cedar.Spec.Ext.Decimal.parse s = some d ↔
@@ -125,13 +135,15 @@ theorem Decimal.extparse_eq_some_iff_view (s : String) (d : Cedar.Spec.Ext.Decim
         Decimal.decodeView s = some v ∧
         Decimal.View.Valid v ∧
         Decimal.View.denotation v = Int64.toInt d := by
-  triptych_auto [Decimal.RuleRegistrySoundness.parser_agrees, Decimal.IsValid_view,
-    Decimal.computeValue_view]
+  simp only [Decimal.RuleRegistrySoundness.parser_agrees, Decimal.IsValid_view,
+    Decimal.computeValue_view, Triptych.Automation.exists_valid_and_map_eq_some_iff]
 
+-- ANCHOR: decimalExtparseRoundtripProof
 theorem Decimal.extparse_toString_roundtrip (i : Int64) :
     Cedar.Spec.Ext.Decimal.parse (decimalToStr i) = some i :=
   Triptych.parse_toString_roundtrip Decimal.extparse_complete Decimal.encode_accepted
     Decimal.encode_value i
+-- ANCHOR_END: decimalExtparseRoundtripProof
 
 theorem Decimal.extparse_toString_injective (i i' : Int64)
     (h : decimalToStr i = decimalToStr i') : i = i' :=

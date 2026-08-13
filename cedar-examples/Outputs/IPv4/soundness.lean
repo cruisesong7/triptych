@@ -50,26 +50,27 @@ theorem IPv4.normalize_eq_iff_parse_eq (s s' : String) :
 /- soundness · external parser
 Obligations for validating YOUR OWN external parser against this specification:
 `extparse_sound`, `extparse_complete`, and `extparse_reject`, stated over the readable
-surface `IsValid`/`computeValue`. The scaffold marks them as user obligations because they are
-claims about your parser; they are discharged below. Given them, the external printer
-theorems (`extparse_toString_*`) are DISCHARGED, reusing the generated section's
-derived encode projections. -/
+surface `IsValid`/`computeValue`. Format-specific agreement and rejection theorems are proved
+separately using reusable parser rules, then applied directly below. Given them, the external
+printer theorems (`extparse_toString_*`) are DISCHARGED, reusing the generated section's derived
+encode projections. -/
 
 theorem IPv4.extparse_reject (s : String) : ipv4Only s = none ↔ ¬IPv4.IsValid s := by
-  triptych_auto [IPv4.RuleRegistrySoundness.parser_rejects_iff]
+  simpa only using IPv4.RuleRegistrySoundness.parser_rejects_iff s
 
 theorem IPv4.extparse_eq_none_iff_view (s : String) :
     ipv4Only s = none ↔
       ¬∃ v : IPv4.View, IPv4.decodeView s = some v ∧ IPv4.View.Valid v := by
-  triptych_auto [IPv4.extparse_reject, IPv4.IsValid_view]
+  simp only [IPv4.extparse_reject, IPv4.IsValid_view]
 
 theorem IPv4.extparse_sound (s : String) (i : IPv4Net) :
     ipv4Only s = some i → IPv4.IsValid s ∧ IPv4.computeValue s = some (id i) := by
-  triptych_auto [IPv4.RuleRegistrySoundness.parser_agrees, id]
+  simpa only [id] using (IPv4.RuleRegistrySoundness.parser_agrees s i).mp
 
 theorem IPv4.extparse_complete (s : String) (i : IPv4Net) :
     IPv4.IsValid s → IPv4.computeValue s = some (id i) → ipv4Only s = some i := by
-  triptych_auto [IPv4.RuleRegistrySoundness.parser_agrees, id]
+  intro hvalid hvalue
+  exact (IPv4.RuleRegistrySoundness.parser_agrees s i).mpr ⟨hvalid, hvalue⟩
 
 theorem IPv4.extparse_eq_some_iff_view (s : String) (i : IPv4Net) :
     ipv4Only s = some i ↔
@@ -77,8 +78,8 @@ theorem IPv4.extparse_eq_some_iff_view (s : String) (i : IPv4Net) :
         IPv4.decodeView s = some v ∧
         IPv4.View.Valid v ∧
         IPv4.View.denotation v = id i := by
-  triptych_auto [IPv4.RuleRegistrySoundness.parser_agrees, IPv4.IsValid_view,
-    IPv4.computeValue_view, id]
+  simp only [IPv4.RuleRegistrySoundness.parser_agrees, IPv4.IsValid_view,
+    IPv4.computeValue_view, Triptych.Automation.exists_valid_and_map_eq_some_iff, id]
 
 theorem IPv4.extparse_toString_roundtrip (i : IPv4Net) : ipv4Only (ipNetToStr i) = some i :=
   Triptych.parse_toString_roundtrip IPv4.extparse_complete IPv4.encode_accepted
