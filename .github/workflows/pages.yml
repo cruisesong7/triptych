@@ -1,0 +1,66 @@
+name: Deploy documentation
+
+on:
+  push:
+    branches:
+      - docs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build Verso site
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Triptych
+        uses: actions/checkout@v4
+        with:
+          path: triptych
+
+      - name: Check out pinned Cedar parser API
+        uses: actions/checkout@v4
+        with:
+          repository: cruisesong7/cedar-spec
+          ref: b759caae4eed73a9580ba3f5fbb66025abddbe54
+          path: cedar-spec
+
+      - name: Build documentation
+        uses: leanprover/lean-action@v1
+        with:
+          lake-package-directory: triptych/cedar-examples
+          build-args: docs
+
+      - name: Render Verso site
+        working-directory: triptych/cedar-examples
+        run: lake exe docs --output ../_site
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: triptych/_site/html-multi
+
+  deploy:
+    name: Deploy GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
