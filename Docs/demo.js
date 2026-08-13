@@ -11,12 +11,16 @@ document.addEventListener("DOMContentLoaded", () => {
   ];
   const params = new URLSearchParams(window.location.search);
   const base = new URL(
-    params.get("lean4web") || "http://127.0.0.1:3000/",
+    params.get("lean4web") || "https://live.lean-lang.org/",
     window.location.href,
   );
   if (!base.pathname.endsWith("/")) base.pathname += "/";
-  const project = params.get("lean4webProject") || "cedar-examples";
-  const inlineSources = window.TRIPTYCH_DEMO_SOURCES || {};
+  const project = params.get("lean4webProject") || "lean-v4.31.0";
+  const sources = new URL(
+    params.get("sourceBase") ||
+      "https://raw.githubusercontent.com/cruisesong7/triptych/main/cedar-examples/",
+    window.location.href,
+  );
 
   root.innerHTML = `
     <div class="tp-demo">
@@ -39,7 +43,7 @@ document.addEventListener("DOMContentLoaded", () => {
         ></iframe>
       </div>
       <p class="tp-demo-note">
-        Lean checks the selected file in the same Lake project used by the book.
+        Source is loaded from Triptych's main branch. CI checks it in the complete Lake project.
       </p>
     </div>`;
 
@@ -52,17 +56,10 @@ document.addEventListener("DOMContentLoaded", () => {
   let format = formats[0];
 
   function editorUrl(file) {
-    const args = { project };
-    if (inlineSources[file] !== undefined) {
-      args.code = inlineSources[file].replace(
-        /^(\s*)(to\s+"Outputs\/[^"]+")\s*$/m,
-        (_, indent, clause) =>
-          `${indent}-- Disabled in the web Demo to protect the repository:\n` +
-          `${indent}-- ${clause}`,
-      );
-    } else {
-      args.url = new URL(`api/example/${project}/${file}`, base).href;
-    }
+    const args = {
+      project,
+      url: new URL(file, sources).href,
+    };
     const hash = Object.entries(args)
       .map(([key, value]) => `${key}=${encodeURIComponent(value).replace(/[()]/g, (char) =>
         `%${char.charCodeAt(0).toString(16)}`)}`)

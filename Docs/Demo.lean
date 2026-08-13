@@ -31,16 +31,16 @@ shortTitle := "Demo"
 file := "demo"
 %%%
 
-This is a real {lit}`lean4web` editor backed by the {lit}`cedar-examples` Lake project.
-Select a Cedar format, then open its grammar source, generated readable specification,
-generated parser, or completed soundness proofs.
+The Demo opens the Cedar examples in the public {lit}`lean4web` editor. Select a format, then
+open its grammar source, generated readable specification, generated parser, or completed
+soundness proofs.
 
 :::demo
 :::
 
-The editable web copy comments out {lit}`to "Outputs/..."`. Lean4web checks every snippet as
-its virtual root module, so allowing that clause there would generate files with the wrong
-caller-module import.
+Lean4web loads the exact source from Triptych's {lit}`main` branch. The public server does not
+install Triptych's custom Lake dependencies, so this Demo is for browsing and editing source.
+The repository's CI checks the files in the complete {lit}`cedar-examples` project.
 
 To generate files, edit the real grammar module locally and run
 {lit}`lake env lean Inputs/Decimal.lean` from {lit}`cedar-examples`.
@@ -49,5 +49,4 @@ The active {lit}`to "Outputs/Decimal"` clause rewrites generated {lit}`spec.lean
 {lit}`parser.lean`. It creates {lit}`soundness.lean` once and then preserves that file because it
 contains user proofs.
 
-Use *New grammar* to open a separate editor with a small signed-natural grammar. It omits the
-{lit}`to` clause so it is safe to edit directly in the web Demo.
+Use *New grammar* to open a separate editor with a small signed-natural starting point.

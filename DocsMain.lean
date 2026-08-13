@@ -13,20 +13,10 @@ import Docs
 
 open Verso.Genre.Manual
 
-def demoSources : Lean.Json := Lean.Json.mkObj [
-  ("Inputs/Decimal.lean", Lean.Json.str (include_str "cedar-examples/Inputs/Decimal.lean")),
-  ("Inputs/Duration.lean", Lean.Json.str (include_str "cedar-examples/Inputs/Duration.lean")),
-  ("Inputs/Datetime.lean", Lean.Json.str (include_str "cedar-examples/Inputs/Datetime.lean")),
-  ("Inputs/IPv4.lean", Lean.Json.str (include_str "cedar-examples/Inputs/IPv4.lean")),
-  ("Inputs/IPv6.lean", Lean.Json.str (include_str "cedar-examples/Inputs/IPv6.lean")),
-  ("LeanWeb/Starter.lean", Lean.Json.str (include_str "cedar-examples/LeanWeb/Starter.lean"))
-]
-
--- The docs executable embeds the Demo client and its editable grammar sources.
+-- The docs executable embeds the Demo client.
 def demoJs : JsFile := {
   filename := "demo.js"
-  contents := JS.mk s!"window.TRIPTYCH_DEMO_SOURCES = {Lean.Json.compress demoSources};\n\
-    {include_str "Docs/demo.js"}"
+  contents := JS.mk (include_str "Docs/demo.js")
   sourceMap? := none
   defer := true
 }
