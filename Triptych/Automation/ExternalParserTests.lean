@@ -132,6 +132,7 @@ private theorem encodePrinter_accepted (n : Nat) :
     (encodeParser (encodePrinter n)).isSome := by
   simp [encodePrinter_roundtrip]
 
+-- ANCHOR: triptychEncodeDirectUse
 private theorem triptychEncodeDirect_identity (n : Nat) :
     ∃ view,
       encodeDecodeView (encodePrinter n) = some view ∧
@@ -139,6 +140,7 @@ private theorem triptychEncodeDirect_identity (n : Nat) :
       view.denotation = n := by
   triptych_encode_direct [encodePrinter_accepted n, encodePrinter_roundtrip n,
     encodeAccepted_view, encodeValue_view]
+-- ANCHOR_END: triptychEncodeDirectUse
 
 private structure EncodeTree where
   result : Nat
@@ -180,12 +182,14 @@ private theorem encodeDerivationFromToDerivation :
       encodeDerivationPrinter.toString :=
   encodeDerivationPrinter.encodeDerivation
 
+-- ANCHOR: triptychEncodeDerivationUse
 private theorem triptychEncodeDerivation_identity (n : Nat) :
     ∃ view,
       encodeDecodeView (encodePrinter n) = some view ∧
       encodeValid view ∧
       view.denotation = n := by
   triptych_encode_derivation [EncodeTree.decodeView_render, encodeDerivation]
+-- ANCHOR_END: triptychEncodeDerivationUse
 
 private def encodeOfSpec (n : Nat) : Nat := n
 

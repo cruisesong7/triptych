@@ -3,3 +3,5 @@
 /cedar-examples/.lake
 /_site
 /verso-sources.json
+/.DS_Store
+/.worktrees

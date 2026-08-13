@@ -220,80 +220,12 @@ according to the grammar, corresponding to the string-level {name}`Decimal.IsWf`
 {name}`Decimal.SatisfiesConstraints`; for Decimal, the semantic constraint requires the computed
 value to fit in {name}`Int64`.
 
-# Artifact two: the engine and the verified parser
+# Artifact two: the executable parser
 
-The second generated file turns the readable specification into executable operations. Three
-predicates describe whether an input may be parsed:
-
-- {name}`Decimal.IsWf` checks the grammar shape and any capture-only constraints.
-- {name}`Decimal.SatisfiesConstraints` checks semantic constraints on the final value. For
-  Decimal, this is the {name}`Int64` range check.
-- {name}`Decimal.IsValid` requires both.
-
-These uppercase names are both the readable interface and the public executable interface.
-Generated decision procedures connect them to the generic Triptych interpreter internally, so
-there is no separate format-specific lowercase predicate. They can be executed through
-{name}`decide`:
-
-```lean (name := validityEvals)
-#eval
-  (decide (Decimal.IsValid "3.14"),
-    decide (Decimal.IsValid "3.14159"))
-```
-
-```leanOutput validityEvals
-(true, false)
-```
-
-The engine begins by decoding the grammar. {name}`decode` returns the named captures:
-
-```lean (name := decodeEval)
-#eval decode Decimal.grammar "1.5"
-```
-
-```leanOutput decodeEval
-some [("Sign", ""), ("Natural", "1"), ("Fraction", "5")]
-```
-
-## Computing the specification value
-
-{name}`Decimal.computeValue` evaluates the value expression and returns its specification-level
-{name}`Int`. It does not apply the semantic constraint or convert the result to {name}`Int64`:
-
-```lean (name := computeValueDefinition)
-#print Decimal.computeValue
-```
-
-```leanOutput computeValueDefinition
-def Decimal.computeValue : String → Option Int :=
-fun s => computeValue Decimal.grammar Decimal.valueExpr s
-```
-
-For {lit}`"1.5"`, the fixed-point specification value is {lit}`15000`:
-
-```lean (name := computeValueEval)
-#eval Decimal.computeValue "1.5"
-```
-
-```leanOutput computeValueEval
-some 15000
-```
-
-An out-of-range value can still be computed because range checking belongs to
-{name}`Decimal.IsValid`, not to {name}`Decimal.computeValue`:
-
-```lean (name := outOfRangeValueEval)
-#eval Decimal.computeValue "922337203685477.5808"
-```
-
-```leanOutput outOfRangeValueEval
-some 9223372036854775808
-```
+The readable specification says which strings are valid and what they mean. The generated
+{lit}`parser.lean` turns that interface into a function that returns a domain value.
 
 ## The generated parser
-
-{name}`Decimal.parse` combines validity, value computation, and the declared {lit}`ofSpec`
-conversion:
 
 ```lean (name := parseDefinition)
 #print Decimal.parse
@@ -304,36 +236,107 @@ def Decimal.parse : String → Option Int64 :=
 fun s => gatedParseOfSpec Decimal.IsValid Decimal.computeValue Int64.ofInt s
 ```
 
-Here {name}`Decimal.IsValid` gates acceptance, {name}`Decimal.computeValue` produces the
-specification {name}`Int`, and {name}`Int64.ofInt` converts it to the parser's result type.
-Only after seeing that definition do the examples become meaningful:
+Read this definition as a pipeline:
+
+1. {name}`gatedParseOfSpec` uses the generated decision procedure for
+   {name}`Decimal.IsValid` to check both the grammar and its semantic constraints.
+2. An invalid input returns {name}`Option.none`.
+3. For a valid input, {name}`Decimal.computeValue` computes the specification-level {name}`Int`.
+4. {name}`Int64.ofInt` converts that value to the parser's {name}`Int64` result.
+
+The first two inputs below succeed. The third violates the grammar, while the fourth has the
+right shape but denotes a value outside the {name}`Int64` range:
 
 ```lean (name := parseEvals)
 #eval
   (Decimal.parse "1.5",
-    Decimal.parse "-0.15")
-```
-
-```leanOutput parseEvals
-(some 15000, some (-1500))
-```
-
-Grammar and constraint failures both appear as {name}`Option.none`:
-
-```lean (name := rejectEvals)
-#eval
-  (Decimal.parse "1.x",
+    Decimal.parse "-0.15",
+    Decimal.parse "1.x",
     Decimal.parse "922337203685477.5808")
 ```
 
-```leanOutput rejectEvals
-(none, none)
+```leanOutput parseEvals
+(some 15000, some (-1500), none, none)
 ```
 
-# The typed executable view
+## Executing validity
 
-The generated view theorems remove capture-map bookkeeping. Surface validity is equivalent to
-the existence of a valid decoded view, and denotation factors through that same view:
+The generated decision procedure makes the readable predicates directly executable with
+{name}`decide`. This separates a grammar failure from a semantic-constraint failure:
+
+```lean (name := validityEvals)
+#eval
+  let tooLarge := "922337203685477.5808"
+  (decide (Decimal.IsWf "3.14159"),
+    decide (Decimal.IsWf tooLarge),
+    decide (Decimal.SatisfiesConstraints tooLarge),
+    decide (Decimal.IsValid tooLarge))
+```
+
+```leanOutput validityEvals
+(false, true, false, false)
+```
+
+The first string fails {name}`Decimal.IsWf` because it has five fraction digits. The second
+string is well-formed, but it fails {name}`Decimal.SatisfiesConstraints`, so
+{name}`Decimal.IsValid` also returns false.
+
+## Decoding the grammar
+
+Before a value can be computed, the generated engine decodes the input into the grammar's named
+captures:
+
+```lean (name := decodeEval)
+#eval decode Decimal.grammar "1.5"
+```
+
+```leanOutput decodeEval
+some [("Sign", ""), ("Natural", "1"), ("Fraction", "5")]
+```
+
+This capture map is an engine representation. Ordinary clients use the typed
+{name}`Decimal.View` introduced in the next section instead of looking up these string keys.
+
+## Computing the specification value
+
+{name}`Decimal.computeValue` decodes the input and evaluates the DSL's {lit}`value` expression.
+Its result is still the specification-level {name}`Int`; it neither applies the semantic
+constraint nor converts the result to {name}`Int64`:
+
+```lean (name := computeValueDefinition)
+#print Decimal.computeValue
+```
+
+```leanOutput computeValueDefinition
+def Decimal.computeValue : String → Option Int :=
+fun s => computeValue Decimal.grammar Decimal.valueExpr s
+```
+
+The distinction is visible in these three results. A valid decimal computes normally, the
+well-formed but out-of-range decimal still computes an {name}`Int`, and malformed text cannot be
+decoded:
+
+```lean (name := computeValueEvals)
+#eval
+  (Decimal.computeValue "1.5",
+    Decimal.computeValue "922337203685477.5808",
+    Decimal.computeValue "1.x")
+```
+
+```leanOutput computeValueEvals
+(some 15000, some 9223372036854775808, none)
+```
+
+## The typed executable view
+
+The engine stores captures in a generic string-keyed map. Without a typed view, every client
+proof would have to unfold that representation and reason about lookups such as
+{lit}`"Natural" ↦ "12"` and {lit}`"Fraction" ↦ "34"`. The view theorems perform that translation
+once: client code obtains a {name}`Decimal.View` and works directly with fields such as
+{lit}`v.natural`, {lit}`v.fraction`, and {lit}`v.denotation`.
+
+Surface validity is then equivalent to the existence of a valid decoded view, and value
+computation and parser results factor through that same record:
 
 ```lean (name := viewChecks)
 #check @Decimal.decodeView_input
@@ -362,24 +365,11 @@ view:
     CedarExamples.Decimal.decimalDerivation
 ```
 
-# Reconciliation and parser contracts
+## Generated parser contracts
 
-So far this looks like any parser generator. The difference is that `parser.lean` also
-contains machine-checked proofs that the two artifacts above agree — emitted and discharged
-automatically, with no human in the loop.
-
-Recognition agrees between the surface predicate and executable engine:
-
-```lean (name := equivCheck)
-#check @Decimal.IsWf_equiv
-```
-
-```leanOutput equivCheck
-Decimal.IsWf_equiv : ∀ (s : String), Decimal.IsWf s ↔ isWf Decimal.grammar Decimal.constraints s
-```
-
-The parser contract says every success is valid and correctly valued, every valid matching
-value succeeds, and rejection is exactly invalidity:
+Beyond the executable function, {lit}`parser.lean` contains machine-checked contracts emitted
+and proved automatically. Every success is valid and correctly valued, every valid input with a
+matching value succeeds, and rejection is exactly invalidity:
 
 ```lean (name := contractChecks)
 #check @Decimal.parse_sound
@@ -390,10 +380,40 @@ value succeeds, and rejection is exactly invalidity:
 Compiler-generated theorems use only {name}`propext`, {name}`Classical.choice`, and
 {name}`Quot.sound`.
 
-# The bridge to Cedar's real parser
+## Why the parser is correct by construction
 
-Before any static Cedar proof, Triptych emits a checked wrapper. It preserves an external
-result only when the generated specification validates the same input and denotation:
+Triptych does not generate a format-specific parsing algorithm and then ask the user to prove it
+correct. It generates {name}`Decimal.IsValid` and {name}`Decimal.computeValue` from the same DSL
+description, then instantiates the already-proved {name}`Triptych.gatedParseOfSpec` combinator
+with those two definitions.
+
+The generated contracts are direct applications of generic theorems about that combinator. For
+example, the complete proof of the generated parser's soundness has this form:
+
+```lean
+example (s : String) (i : Int64) :
+    Decimal.parse s = some i →
+      Decimal.IsValid s ∧
+        (Decimal.computeValue s).map Int64.ofInt = some i :=
+  Triptych.gatedParseOfSpec_sound _ _ _ s i
+```
+
+The same construction supplies completeness and rejection. When the generated file builds,
+Lean checks the parser definition and each proof term together. If the emitted parser no longer
+has the behavior required by a generic theorem, the proof does not typecheck.
+
+Here, *correct by construction* has a precise boundary: for every input, the generated parser
+implements the authored Triptych validity and value specification. It does not by itself prove
+that the human-authored grammar is an accurate transcription of Cedar's intended format. The
+independent corpus check at the end of this chapter addresses that separate question.
+
+## The runtime-checked Cedar parser
+
+Before any format-specific proof about Cedar's implementation, {lit}`parser.lean` generates
+{name}`Decimal.checkedExtParse`. It first runs Cedar's parser. If Cedar returns a value, the
+checked parser keeps that result only when {name}`Decimal.IsValid` accepts the same input and
+{name}`Decimal.computeValue` computes the same value after conversion; otherwise it returns
+{name}`Option.none`:
 
 ```lean (name := checkedExternal)
 #check @Decimal.checkedExtParse
@@ -401,21 +421,141 @@ result only when the generated specification validates the same input and denota
 #check @Decimal.checkedExtParse_sound_view
 ```
 
-The unwrapped Cedar parser needs semantic agreement proofs. Decimal discharges all of them:
+This provides runtime soundness without first proving Cedar's parser correct. It does not repair
+a false rejection: if Cedar returns {name}`Option.none`, the checked parser also returns
+{name}`Option.none`.
 
-```lean (name := extChecks)
-#check @Decimal.extparse_sound
-#check @Decimal.extparse_complete
-#check @Decimal.extparse_reject
+# Artifact three: proof obligations
+
+{lit}`Outputs/Decimal/soundness.lean` is the write-once third artifact. It contains the
+format-specific facts that Triptych cannot infer from the grammar alone. These fall into two
+separate groups.
+
+## Generated parser and serializer
+
+The generated {name}`Decimal.parse` needs no parser-correctness proof from the user:
+{name}`Decimal.parse_sound`, {name}`Decimal.parse_complete`, and
+{name}`Decimal.parse_reject` were already generated and proved in Artifact 2.
+
+Two surrounding choices still require evidence. First, the declared {lit}`ofSpec` and
+{lit}`toSpec` functions must be inverse on accepted specification values. For Decimal, the
+range constraint makes the potentially lossy {name}`Int64.ofInt` conversion faithful:
+
+```anchor decimalToSpecOfSpecProof (module := Outputs.Decimal.soundness) (project := ".")
+theorem Decimal.toSpec_ofSpec (s : String) (v : Int) :
+    Decimal.IsValid s → Decimal.computeValue s = some v → Int64.toInt (Int64.ofInt v) = v := by
+  intro hvalid hvalue
+  obtain ⟨view, hview, hvalidView⟩ := (Decimal.IsValid_view s).mp hvalid
+  have hdenotation : Decimal.View.denotation view = v := by
+    rw [Decimal.computeValue_view, hview] at hvalue
+    exact Option.some.inj hvalue
+  have hbounds :
+      (-9223372036854775808 : Int) ≤ v ∧ v ≤ (9223372036854775807 : Int) := by
+    unfold Decimal.View.Valid Decimal.View.Constraints Decimal.Constraints at hvalidView
+    change
+      (-9223372036854775808 : Int) ≤ Decimal.View.denotation view ∧
+        Decimal.View.denotation view ≤ (9223372036854775807 : Int) at hvalidView
+    rw [hdenotation] at hvalidView
+    exact hvalidView
+  exact Int64.toInt_ofInt_of_le (by omega) (by omega)
 ```
 
-```leanOutput extChecks
-Decimal.extparse_sound : ∀ (s : String) (d : Cedar.Spec.Ext.Decimal),
-  Cedar.Spec.Ext.Decimal.parse s = some d → Decimal.IsValid s ∧ Decimal.computeValue s = some (Int64.toInt d)
+Second, the declared serializer {name}`decimalToStr` requires one proof obligation,
+{name}`Decimal.encode_view`. It says that serializing any {name}`Int64` produces text whose
+decoded view is valid and whose specification value, converted with {name}`Int64.ofInt`, equals
+the original value:
+
+```anchor decimalEncodeViewProof (module := Outputs.Decimal.soundness) (project := ".")
+theorem Decimal.encode_view (i : Int64) :
+    ∃ v : Decimal.View,
+      Decimal.decodeView (decimalToStr i) = some v ∧
+      Decimal.View.Valid v ∧
+      Int64.ofInt (Decimal.View.denotation v) = i := by
+  triptych_encode [Cedar.Thm.Decimal.parse_toString_roundtrip,
+    Decimal.RuleRegistrySoundness.parser_agrees, Decimal.IsValid_view,
+    Decimal.computeValue_view, Int64.ofInt_toInt i]
 ```
 
-{name}`Decimal.extparse_sound` relates Cedar's parser to Triptych's generated
-{name}`Decimal.IsValid`, {name}`Decimal.computeValue`, and
-{name}`Decimal.View`. Its proof uses the parser-rule registry and the bounded
-{lit}`triptych_auto` tactic. The next chapter explains that automation before the book
-returns to the remaining semantic boundary.
+This is the single {lit}`toString` obligation. From it, Triptych derives acceptance, value
+preservation, generated-parser roundtrip, serializer injectivity, and normalization. For
+example:
+
+```anchor decimalParseRoundtripProof (module := Outputs.Decimal.soundness) (project := ".")
+theorem Decimal.parse_toString_roundtrip (i : Int64) :
+    Decimal.parse (decimalToStr i) = some i :=
+  Triptych.parse_toString_roundtrip_of_encodeView
+    Decimal.parse_eq_some_iff_view Decimal.encode_view i
+```
+
+## External parser
+
+The {lit}`parser Cedar.Spec.Ext.Decimal.parse` clause names an implementation that Triptych did
+not generate. Using it directly therefore requires three separate agreement proofs:
+
+- {name}`Decimal.extparse_sound`: every external success is valid and has the specified value.
+- {name}`Decimal.extparse_complete`: every valid input with that value is accepted externally.
+- {name}`Decimal.extparse_reject`: the external parser returns {name}`Option.none` exactly for
+  invalid inputs.
+
+The stronger {name}`Decimal.RuleRegistrySoundness.parser_agrees` theorem is proved separately by
+decomposing Cedar's executable parser with reusable parser rules. The generated soundness
+obligation is then a direct projection:
+
+```anchor decimalExtparseSoundProof (module := Outputs.Decimal.soundness) (project := ".")
+theorem Decimal.extparse_sound (s : String) (d : Cedar.Spec.Ext.Decimal) :
+    Cedar.Spec.Ext.Decimal.parse s = some d →
+      Decimal.IsValid s ∧ Decimal.computeValue s = some (Int64.toInt d) := by
+  simpa only using (Decimal.RuleRegistrySoundness.parser_agrees s d).mp
+```
+
+Once those parser obligations and the shared {name}`Decimal.encode_view` serializer certificate
+are available, the external parser receives its own roundtrip theorem:
+
+```anchor decimalExtparseRoundtripProof (module := Outputs.Decimal.soundness) (project := ".")
+theorem Decimal.extparse_toString_roundtrip (i : Int64) :
+    Cedar.Spec.Ext.Decimal.parse (decimalToStr i) = some i :=
+  Triptych.parse_toString_roundtrip Decimal.extparse_complete Decimal.encode_accepted
+    Decimal.encode_value i
+```
+
+This external roundtrip is derived, not a fourth external-parser obligation. It reuses the same
+serializer certificate that proves the generated-parser roundtrip. Reusable registry rules help
+prove the substantive {name}`Decimal.RuleRegistrySoundness.parser_agrees` theorem, but that
+format-specific theorem is not itself registered. Soundness and completeness apply its two
+directions directly; the view theorem uses {lit}`simp` with the reusable optional-witness rule
+to compose it with generated view facts.
+
+# Independent check against Cedar's test corpus
+
+The generated proof covers every string relative to the Triptych specification. A finite test
+suite answers a different question: does that authored specification agree with Cedar on the
+cases Cedar's developers chose to test?
+
+{lit}`cedar-examples/ConformanceTests.lean` carries over every valid and invalid parser case from
+Cedar's relevant Decimal, Duration, Datetime, and IP address unit-test suites. It also includes
+IP strings used by Cedar's rendering, loopback, range, equality, and symbolic tests, plus focused
+grammar-boundary cases.
+
+The suite compares:
+
+- the generated parser with Cedar's parser for Decimal, Duration, Datetime, IPv4, and IPv6;
+- the readable {lit}`IsValid` specifications with Cedar for IPv4 and IPv6;
+- each runtime-checked Cedar parser with Cedar's original parser, confirming that the runtime
+  check retains every Cedar result in the corpus; and
+- generated and Cedar IPv6 printer roundtrips.
+
+This is 13 suites and 882 checks. All currently pass, and
+{lit}`lake build ConformanceTests` fails if any comparison diverges.
+
+The corpus has already exposed a distinction that the construction proof cannot. An early
+Duration grammar put the optional minus sign in an anonymous position. The generated parser was
+proved correct relative to that grammar, but the grammar computed a negative duration as
+positive. Cedar's independently authored cases found the value mismatch. The fix made the sign
+a named production and taught the DSL to reject that unsafe shape.
+
+The two layers therefore support different claims:
+
+- the Lean proof establishes parser correctness for all inputs relative to the authored
+  specification;
+- the Cedar corpus increases confidence that the authored specification matches Cedar, but it
+  remains finite test evidence rather than a universal proof.

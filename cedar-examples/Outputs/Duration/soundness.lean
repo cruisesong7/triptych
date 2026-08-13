@@ -106,29 +106,31 @@ theorem Duration.normalize_eq_iff_parse_eq (s s' : String) :
 /- soundness · external parser
 Obligations for validating YOUR OWN external parser against this specification:
 `extparse_sound`, `extparse_complete`, and `extparse_reject`, stated over the readable
-surface `IsValid`/`computeValue`. Cedar's Duration parser theorems discharge them below.
+surface `IsValid`/`computeValue`. Format-specific agreement and rejection theorems are proved
+separately using reusable parser rules, then applied directly below.
 The external printer theorems (`extparse_toString_*`) then follow, reusing the generated
 section's derived encode projections. -/
 
 theorem Duration.extparse_reject (s : String) :
     Cedar.Spec.Ext.Datetime.Duration.parse s = none ↔ ¬Duration.IsValid s := by
-  triptych_auto [Duration.RuleRegistrySoundness.parser_rejects_iff]
+  simpa only using Duration.RuleRegistrySoundness.parser_rejects_iff s
 
 theorem Duration.extparse_eq_none_iff_view (s : String) :
     Cedar.Spec.Ext.Datetime.Duration.parse s = none ↔
       ¬∃ v : Duration.View, Duration.decodeView s = some v ∧ Duration.View.Valid v := by
-  triptych_auto [Duration.extparse_reject, Duration.IsValid_view]
+  simp only [Duration.extparse_reject, Duration.IsValid_view]
 
 theorem Duration.extparse_sound (s : String) (d : Cedar.Spec.Ext.Datetime.Duration) :
     Cedar.Spec.Ext.Datetime.Duration.parse s = some d →
       Duration.IsValid s ∧ Duration.computeValue s = some (durationMillis d) := by
-  triptych_auto [Duration.RuleRegistrySoundness.parser_agrees]
+  simpa only using (Duration.RuleRegistrySoundness.parser_agrees s d).mp
 
 theorem Duration.extparse_complete (s : String) (d : Cedar.Spec.Ext.Datetime.Duration) :
     Duration.IsValid s →
       Duration.computeValue s = some (durationMillis d) →
         Cedar.Spec.Ext.Datetime.Duration.parse s = some d := by
-  triptych_auto [Duration.RuleRegistrySoundness.parser_agrees]
+  intro hvalid hvalue
+  exact (Duration.RuleRegistrySoundness.parser_agrees s d).mpr ⟨hvalid, hvalue⟩
 
 theorem Duration.extparse_eq_some_iff_view (s : String)
     (d : Cedar.Spec.Ext.Datetime.Duration) :
@@ -137,8 +139,8 @@ theorem Duration.extparse_eq_some_iff_view (s : String)
         Duration.decodeView s = some v ∧
         Duration.View.Valid v ∧
         Duration.View.denotation v = durationMillis d := by
-  triptych_auto [Duration.RuleRegistrySoundness.parser_agrees, Duration.IsValid_view,
-    Duration.computeValue_view]
+  simp only [Duration.RuleRegistrySoundness.parser_agrees, Duration.IsValid_view,
+    Duration.computeValue_view, Triptych.Automation.exists_valid_and_map_eq_some_iff]
 
 theorem Duration.extparse_toString_roundtrip (d : Cedar.Spec.Ext.Datetime.Duration) :
     Cedar.Spec.Ext.Datetime.Duration.parse (durationToStr d) = some d :=

@@ -1,11 +1,8 @@
 /-
-Triptych documentation -- Chapter 3: generated proof interfaces and bridge automation.
+Triptych documentation -- Chapter 3: discharging proof obligations.
 -/
 import VersoManual
 import Outputs.Decimal.soundness
-import Outputs.IPv6.soundness
-import Proofs.Decimal.StructuralDerivation
-import Proofs.IPv6.StructuralDerivation
 
 open Verso.Genre Manual
 open Verso.Genre.Manual.InlineLean
@@ -13,7 +10,7 @@ open Verso.Code.External
 
 set_option pp.rawOnError true
 
-#doc (Manual) "Automation: from parser plumbing to semantic facts" =>
+#doc (Manual) "Automation: discharging proof obligations" =>
 
 %%%
 tag := "automation"
@@ -24,7 +21,6 @@ file := "automation"
 ```lean -show
 open Triptych
 open CedarExamples.Decimal
-open CedarExamples.IPv6
 ```
 
 Triptych separates three kinds of proof work:
@@ -33,136 +29,187 @@ Triptych separates three kinds of proof work:
 2. Repeated parser plumbing is handled by typed views, rule registries, and bounded tactics.
 3. Format-specific semantic facts remain named premises.
 
-This boundary matters. Automation should remove decomposition and bookkeeping without pretending
-to discover what an external primitive means.
+Triptych discharges the first two categories; users supply the third because external code and
+domain semantics cannot be determined from the DSL.
 
-# Typed views are the proof interface
+# Generated proof interfaces
 
-The raw decoder returns a {name}`Triptych.CaptureMap`. Generated
-{name}`Decimal.View` and {name}`IPv6.View` structures expose only the fields used by values
-and constraints. Their field types follow the grammar:
+The previous chapter introduced the two interfaces used by the automation. A typed view hides
+the string-keyed capture map and exposes the fields used by values and constraints. Its generated
+normal forms connect that record to acceptance, denotation, parser success, and rejection.
 
-- a required scalar capture is {name}`String`;
-- an optional scalar capture is {lean}`Option String`;
-- a repeated capture requested as {lit}`[H16]` is {lean}`List String`.
-
-The generated normal forms connect those views to acceptance, denotation, success, and rejection:
-
-```lean (name := generatedViewApi)
-#check @Decimal.IsValid_view
-#check @Decimal.computeValue_view
-#check @Decimal.parse_eq_some_iff_view
-#check @Decimal.parse_eq_none_iff_view
-#check @IPv6.extparse_eq_some_iff_view
-```
-
-The external-parser theorem at the end has the shape users usually need: a Cedar success is
-equivalent to a decoded, valid view with the expected denotation. Proofs downstream do not need
-to unfold the generic decoder.
+A structural derivation retains the grammar choices that a view deliberately forgets. Valid
+derivations can be rendered and connected back to decoding, which makes them useful inputs to
+printer and roundtrip proofs. Automation works through these generated interfaces rather than
+unfolding the generic decoder.
 
 # Two parser registries
 
 External parser libraries are normalized through two extensible attributes:
 
 - {lit}`@[triptych_parser]` contains terminating successful-path simplification rules;
-- {lit}`@[triptych_parser_search]` contains facts suitable for bounded E-matching.
+- {lit}`@[triptych_parser_search =]` contains equality or equivalence facts suitable for
+  bounded E-matching.
 
-{lit}`triptych_sound [defs] at h` unfolds named parser definitions and inverts a successful
-{name}`Option` path. The built-in rules cover bind, map, filter, guards, alternatives,
-conditionals, and list traversal. Backends add facts for their own primitives.
+Decimal registers its successful-parser characterization in both:
 
-{lit}`triptych_auto [facts]` first normalizes with the terminating registry and then runs
-bounded {lit}`grind` search with the second registry. Its limits are explicit: six case
-splits, E-matching depth four, and 256 instances. Failure leaves a normalized residual goal
-instead of launching unbounded search.
+Its source declaration begins with
+{lit}`@[triptych_parser, triptych_parser_search =] theorem parse_eq_some_iff_parts`.
 
-Here is the live proof pattern used for Decimal external-parser soundness:
+The first attribute gives {lit}`simp` a directed rewrite from parser success to the component
+facts. The {lit}`=` in {lit}`triptych_parser_search =` is not assignment syntax: it registers
+the theorem as an equality or equivalence rule for {lit}`grind`'s E-matching, which may use it
+in either direction.
 
-```lean (name := automationExample)
-example (s : String) (d : Cedar.Spec.Ext.Decimal) :
-    Cedar.Spec.Ext.Decimal.parse s = some d ->
-      Decimal.IsValid s ∧
-        Decimal.computeValue s = some (Int64.toInt d) := by
-  triptych_auto [
-    Decimal.RuleRegistrySoundness.parser_agrees]
+{lit}`triptych_sound [defs] at h` uses the first registry. In Decimal's
+{name}`Decimal.RuleRegistrySoundness.parser_agrees` proof, this one line replaces a raw Cedar
+parser equation with the sign, natural-part, fraction-part, and range witnesses proved by
+{name}`Decimal.RuleRegistryProof.parse_eq_some_iff_parts`:
+
+```lean (name := decimalParserRegistryUse)
+example {s : String} {d : Cedar.Spec.Ext.Decimal}
+    (hparse : Cedar.Spec.Ext.Decimal.parse s = some d) :
+    ∃ sgn natural fraction,
+      (sgn = "-" ∨ sgn = "") ∧
+      s = sgn ++ natural ++ "." ++ fraction ∧
+      Triptych.IsDigits natural ∧
+      Triptych.IsDigitsBetween 1 4 fraction ∧
+      Int64.ofInt?
+          (Decimal.value sgn natural fraction) =
+        some d := by
+  triptych_sound at hparse
+  obtain
+      ⟨sgn, hsign, natural, fraction,
+        hs, hnatural, hfraction, hvalue⟩ :=
+    hparse
+  exact
+    ⟨sgn, natural, fraction, hsign, hs,
+      hnatural, hfraction, hvalue⟩
 ```
 
-The tactic did not invent decimal semantics. The named
-{name}`Decimal.RuleRegistrySoundness.parser_agrees` theorem is the format-specific fact; the
-registry composes it with the generated specification.
+Without the registration, that proof would have to invoke the long
+{name}`Decimal.RuleRegistryProof.parse_eq_some_iff_parts` theorem explicitly at every use
+site. The theorem's parser analysis is proved once in {lit}`RuleRegistryProof.lean`; later
+proofs consume only its grammar-shaped result.
 
-# Structural derivations
+The second registration matters when proof search needs the equivalence in the other direction.
+Here the component facts are enough for {lit}`grind` to recover parser success:
 
-Every production also receives a typed derivation tree. Alternatives become constructors,
-optionals become {name}`Option`, and separated repetitions become {name}`List`. Generated
-{lit}`render`, {lit}`Valid`, and {lit}`capturesWith` functions preserve syntax and exact
-captures.
-
-```lean (name := derivationApi)
-#check @Decimal.Derivation.Decimal.mem_fullParses
-#check @Decimal.Derivation.Decimal.decodeView_render
-#check @IPv6.Derivation.V6Net.mem_fullParses
-#eval CedarExamples.IPv6.IPv6.Derivation.V6Net.render
-  CedarExamples.IPv6.ipv6CompressedDerivation
+```lean (name := decimalParserSearchUse)
+example {s : String} {d : Cedar.Spec.Ext.Decimal}
+    (hparts :
+      ∃ sgn natural fraction,
+        (sgn = "-" ∨ sgn = "") ∧
+        s = sgn ++ natural ++ "." ++ fraction ∧
+        Triptych.IsDigits natural ∧
+        Triptych.IsDigitsBetween 1 4 fraction ∧
+        Int64.ofInt?
+            (Decimal.value sgn natural fraction) =
+          some d) :
+    Cedar.Spec.Ext.Decimal.parse s = some d := by
+  grind only [triptych_parser_search]
 ```
 
-The last evaluation renders {lit}`"2001:db8::1/64"` from a tree whose two compressed sides
-are lists. This is useful for printer proofs: construct syntax directly, prove its structural
-validity, and project it to the flat view.
+{lit}`triptych_auto [local]` first uses the explicitly supplied definitions or facts, normalizes
+with the terminating registry, and then runs bounded {lit}`grind` search with the second
+registry. The bracketed list is local to that invocation; it does not register its contents.
+When a supplied theorem already rewrites the goal, ordinary {lit}`simp` is the clearer proof.
+
+For example, Datetime's
+{lit}`Datetime.RuleRegistryProof.parts_of_parse_eq_some` is closed by
+{lit}`triptych_auto [datetimeMillis]`: the local definition connects the returned Cedar value to
+epoch milliseconds, while the registries supply the reusable parser decomposition and bounded
+search. The tactic combines registered facts; it does not invent Datetime semantics.
 
 # Printer automation
 
 An explicit serializer has one central obligation, {lit}`encode_view`: its output decodes to
 a valid typed view whose converted denotation is the original domain value.
 
-```lean (name := printerApi)
-#check @Decimal.encode_view
-#check @Decimal.parse_toString_roundtrip
-#check @Decimal.toString_injective
-#check @Decimal.normalize_eq_iff_parse_eq
+The automation does not prove arbitrary serializer behavior. Each route starts from evidence
+that matches how the serializer was developed, then removes the repeated work of constructing
+the existential view witness.
+
+## Existing external parser: {lit}`triptych_encode`
+
+Use {lit}`triptych_encode` when an existing serializer already roundtrips through an external
+parser and that parser has an agreement theorem. Decimal supplies exactly those facts:
+
+```anchor decimalEncodeViewProof (module := Outputs.Decimal.soundness) (project := ".")
+theorem Decimal.encode_view (i : Int64) :
+    ∃ v : Decimal.View,
+      Decimal.decodeView (decimalToStr i) = some v ∧
+      Decimal.View.Valid v ∧
+      Int64.ofInt (Decimal.View.denotation v) = i := by
+  triptych_encode [Cedar.Thm.Decimal.parse_toString_roundtrip,
+    Decimal.RuleRegistrySoundness.parser_agrees, Decimal.IsValid_view,
+    Decimal.computeValue_view, Int64.ofInt_toInt i]
 ```
 
-Three deterministic tactics build that witness from different evidence:
+The tactic combines Cedar's serializer roundtrip, Decimal parser agreement, the generated view
+normal forms, and the {name}`Int64` conversion inverse. From this one witness, Triptych derives
+{name}`Decimal.parse_toString_roundtrip`, serializer injectivity, and normalization results.
 
-- {lit}`triptych_encode` combines a serializer roundtrip, parser agreement, and generated
-  view facts;
-- {lit}`triptych_encode_direct` starts from direct generated-spec acceptance and value facts;
-- {lit}`triptych_encode_derivation` starts from a valid root derivation.
+## Direct generated-spec facts: {lit}`triptych_encode_direct`
 
-These tactics compose named theorems; they do not search for serializer semantics. Decimal's
-completed witness is a one-command composition:
+Use {lit}`triptych_encode_direct` when there is no external parser to reconcile. Its inputs say
+directly that the serializer output is accepted by the generated specification and computes the
+intended value:
 
-```
-triptych_encode [Cedar.Thm.Decimal.parse_toString_roundtrip,
-  Decimal.RuleRegistrySoundness.parser_agrees,
-  Decimal.IsValid_view, Decimal.computeValue_view,
-  Int64.ofInt_toInt i]
-```
-
-{lit}`printer auto` goes one step further and synthesizes a
-{name}`Triptych.DerivationPrinter` certificate. Its current proved rule covers total signed
-decimal integers with no constraints or domain conversion. Unsupported constrained,
-{lit}`ofSpec`, and opaque {lit}`value'` cases fail with source-located diagnostics instead
-of emitting an unjustified theorem.
-
-```lean (name := derivationPrinterApi)
-#check @Triptych.DerivationPrinter
-#check @Triptych.DerivationPrinter.encodeView
-#check @Triptych.encodeView_of_derivation
+```anchor triptychEncodeDirectUse (module := Triptych.Automation.ExternalParserTests) (project := ".")
+private theorem triptychEncodeDirect_identity (n : Nat) :
+    ∃ view,
+      encodeDecodeView (encodePrinter n) = some view ∧
+      encodeValid view ∧
+      view.denotation = n := by
+  triptych_encode_direct [encodePrinter_accepted n, encodePrinter_roundtrip n,
+    encodeAccepted_view, encodeValue_view]
 ```
 
-# Evidence and next generalizations
+This regression test has a serializer and generated-spec-style parser but no parser-agreement
+theorem. The tactic turns the direct acceptance and value facts into the same {lit}`encode_view`
+obligation expected by downstream roundtrip theorems.
 
-The automation is exercised at three levels:
+## Structural printer: {lit}`triptych_encode_derivation`
 
-- unit tests cover successful paths through {name}`Option.bind`, map, filter, guards,
-  alternatives, list traversal, converted denotations, direct printer proofs, and structural
-  derivations;
-- Decimal, Duration, Datetime, IPv4, and IPv6 use the registries in their checked proof modules;
-- every shipped Cedar {lit}`soundness.lean` file is placeholder-free and builds with the
-  standard accepted axioms only.
+Use {lit}`triptych_encode_derivation` when the serializer naturally constructs a grammar
+derivation. The proof supplies a valid root tree for each domain value; the generated
+{lit}`decodeView_render` theorem projects that tree to the flat view:
 
-The next useful generalizations are stronger rules for common parser combinators, diagnostics
-that identify a missing registry fact, automatic obligation counts, and reusable semantic
-components for bounded integers and separators. Those extensions preserve the same rule:
-automation may compose semantic facts, but it must never manufacture them.
+```anchor triptychEncodeDerivationUse (module := Triptych.Automation.ExternalParserTests) (project := ".")
+private theorem triptychEncodeDerivation_identity (n : Nat) :
+    ∃ view,
+      encodeDecodeView (encodePrinter n) = some view ∧
+      encodeValid view ∧
+      view.denotation = n := by
+  triptych_encode_derivation [EncodeTree.decodeView_render, encodeDerivation]
+```
+
+This route avoids separately proving string-level acceptance and value equations, because those
+facts follow from the valid derivation and its rendering theorem.
+
+## Fully synthesized printer: {lit}`printer auto`
+
+{lit}`printer auto` goes one step further: for supported value expressions, Triptych synthesizes
+the serializer and its {name}`Triptych.DerivationPrinter` certificate together. The signed-integer
+syntax test checks both the emitted spelling and the generated roundtrip theorem:
+
+```anchor printerAutoUse (module := Triptych.Architecture.SyntaxTests) (project := ".")
+triptych SignedInteger where
+  grammar
+    Root   ::= Sign Digits
+    Sign   ::= sign
+    Digits ::= digit+
+  value
+    Sign * nat Digits
+  printer auto
+
+#guard SignedInteger.toString 0 = "0"
+#guard SignedInteger.toString 42 = "42"
+#guard SignedInteger.toString (-42) = "-42"
+#guard SignedInteger.parse (SignedInteger.toString (-42)) = some (-42)
+```
+
+Its current proved rule covers total signed decimal integers with no constraints or domain
+conversion. Unsupported constrained, {lit}`ofSpec`, and opaque {lit}`value'` cases fail with
+source-located diagnostics instead of emitting an unjustified theorem.

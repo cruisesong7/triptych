@@ -52,32 +52,23 @@ theorem IPv6.normalize_eq_iff_parse_eq (s s' : String) :
 /- soundness · external parser
 Obligations for validating YOUR OWN external parser against this specification:
 `extparse_sound`, `extparse_complete`, and `extparse_reject`, stated over the readable
-surface `IsValid`/`computeValue`. These claims about the unwrapped parser are discharged
-below using independent registered-parser and grammar-view proofs. The generated
-`checkedExtParse` is already sound without these proofs when the spec value has
-decidable equality. `triptych_sound` inverts supported successful parser paths;
-`triptych_auto` then combines registered normalization and bounded search rules
-with your format-specific agreement facts. `extparse_eq_some_iff_view` and
-`extparse_eq_none_iff_view` then package their success and rejection consequences as
-typed-view relations. The external printer theorems (`extparse_toString_*`) are also
-DISCHARGED, reusing the generated section's derived encode projections. -/
+surface `IsValid`/`computeValue`. Format-specific agreement and rejection theorems are proved
+separately using reusable parser rules and grammar-view proofs, then applied directly below.
+The generated `checkedExtParse` is already sound without these proofs when the spec value has
+decidable equality. The external printer theorems (`extparse_toString_*`) are also DISCHARGED,
+reusing the generated section's derived encode projections. -/
 
 theorem IPv6.extparse_reject (s : String) : ipv6Only s = none ↔ ¬IPv6.IsValid s := by
-  exact IPv6.RuleRegistrySoundness.parser_rejects_iff s
+  simpa only using IPv6.RuleRegistrySoundness.parser_rejects_iff s
 
 theorem IPv6.extparse_eq_none_iff_view (s : String) :
-    ipv6Only s = none ↔ ¬∃ v : IPv6.View, IPv6.decodeView s = some v ∧ IPv6.View.Valid v :=
-  by
-  rw [IPv6.extparse_reject]
-  constructor
-  · intro hinvalid ⟨v, hview, hvalidView⟩
-    exact hinvalid ((IPv6.IsValid_view s).mpr ⟨v, hview, hvalidView⟩)
-  · intro hnoview hvalid
-    exact hnoview ((IPv6.IsValid_view s).mp hvalid)
+    ipv6Only s = none ↔
+      ¬∃ v : IPv6.View, IPv6.decodeView s = some v ∧ IPv6.View.Valid v := by
+  simp only [IPv6.extparse_reject, IPv6.IsValid_view]
 
 theorem IPv6.extparse_sound (s : String) (i : IPv6Net) :
     ipv6Only s = some i → IPv6.IsValid s ∧ IPv6.computeValue s = some (id i) := by
-  exact (IPv6.RuleRegistrySoundness.parser_agrees s i).mp
+  simpa only [id] using (IPv6.RuleRegistrySoundness.parser_agrees s i).mp
 
 theorem IPv6.checkedExtParse_eq_extparse : IPv6.checkedExtParse = ipv6Only :=
   Triptych.checkedExternalParse_eq_of_sound
@@ -85,28 +76,17 @@ theorem IPv6.checkedExtParse_eq_extparse : IPv6.checkedExtParse = ipv6Only :=
 
 theorem IPv6.extparse_complete (s : String) (i : IPv6Net) :
     IPv6.IsValid s → IPv6.computeValue s = some (id i) → ipv6Only s = some i := by
-  intro hvalid hcompute
-  exact (IPv6.RuleRegistrySoundness.parser_agrees s i).mpr ⟨hvalid, hcompute⟩
+  intro hvalid hvalue
+  exact (IPv6.RuleRegistrySoundness.parser_agrees s i).mpr ⟨hvalid, hvalue⟩
 
 theorem IPv6.extparse_eq_some_iff_view (s : String) (i : IPv6Net) :
     ipv6Only s = some i ↔
       ∃ v : IPv6.View,
         IPv6.decodeView s = some v ∧
         IPv6.View.Valid v ∧
-        IPv6.View.denotation v = id i :=
-  by
-  constructor
-  · intro hparse
-    obtain ⟨hvalid, hvalue⟩ := IPv6.extparse_sound s i hparse
-    obtain ⟨v, hview, hvalidView⟩ := (IPv6.IsValid_view s).mp hvalid
-    refine ⟨v, hview, hvalidView, ?_⟩
-    rw [IPv6.computeValue_view, hview] at hvalue
-    exact Option.some.inj hvalue
-  · rintro ⟨v, hview, hvalidView, hvalue⟩
-    apply IPv6.extparse_complete s i
-    · exact (IPv6.IsValid_view s).mpr ⟨v, hview, hvalidView⟩
-    · rw [IPv6.computeValue_view, hview]
-      exact congrArg some hvalue
+        IPv6.View.denotation v = id i := by
+  simp only [IPv6.RuleRegistrySoundness.parser_agrees, IPv6.IsValid_view,
+    IPv6.computeValue_view, Triptych.Automation.exists_valid_and_map_eq_some_iff, id]
 
 theorem IPv6.extparse_toString_roundtrip (i : IPv6Net) :
     ipv6Only (ipNetToStr i) = some i :=

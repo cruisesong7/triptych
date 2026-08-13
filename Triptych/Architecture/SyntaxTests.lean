@@ -95,6 +95,7 @@ triptych BinderCollision where
 
 namespace AutoPrinterExample
 
+-- ANCHOR: printerAutoUse
 triptych SignedInteger where
   grammar
     Root   ::= Sign Digits
@@ -108,6 +109,7 @@ triptych SignedInteger where
 #guard SignedInteger.toString 42 = "42"
 #guard SignedInteger.toString (-42) = "-42"
 #guard SignedInteger.parse (SignedInteger.toString (-42)) = some (-42)
+-- ANCHOR_END: printerAutoUse
 
 example (s : String) :
     SignedInteger.parse s =

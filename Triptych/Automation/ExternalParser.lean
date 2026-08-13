@@ -31,9 +31,9 @@ Parser-library backends extend `triptych_parser` with normalization rules and
 registered rules to `h`. Unsupported parser operations remain visible in the resulting hypothesis,
 which makes the next missing backend rule explicit.
 
-`triptych_auto [agreement, helper]` additionally makes the named facts available to bounded
-`grind` search. It closes routine logical composition around parser-agreement facts, but does not
-invent the format-specific fact relating an external parser primitive to the generated denotation.
+`triptych_auto [definition, helper]` additionally makes the named, per-call facts available to
+bounded `grind` search. The bracketed list does not add facts to either global registry. When a
+supplied theorem already rewrites the goal directly, `simp` is the clearer proof.
 
 `triptych_encode [roundtrip, agreement, acceptedView, valueView]` deterministically composes the
 four facts into an identity-denotation `encode_view` witness. Its five-argument form adds the
@@ -85,6 +85,14 @@ theorem ite_option_eq_some_iff {α : Type} (p : Prop) [Decidable p]
     (if p then thenBranch else elseBranch) = some a ↔
       (p ∧ thenBranch = some a) ∨ (¬p ∧ elseBranch = some a) := by
   by_cases hp : p <;> simp [hp]
+
+/-- Validity and denotation witnesses from the same optional result can be merged. -/
+@[triptych_parser]
+theorem exists_valid_and_map_eq_some_iff {α β : Type} (result : Option α)
+    (valid : α → Prop) (denotation : α → β) (expected : β) :
+    ((∃ a, result = some a ∧ valid a) ∧ result.map denotation = some expected) ↔
+      ∃ a, result = some a ∧ valid a ∧ denotation a = expected := by
+  cases result <;> simp
 
 attribute [triptych_parser]
   Option.bind_eq_bind
@@ -153,7 +161,8 @@ explicitly.
 
 Unlike `triptych_sound`, this tactic works over the whole local context and attempts to close the
 goal. If it fails, Lean reports the normalized residual goal, which identifies the next missing
-backend rule or genuinely format-specific fact.
+backend rule or genuinely format-specific fact. Facts in brackets are local to that invocation;
+use `simp` instead when one of them already states the goal.
 -/
 syntax (name := triptychAuto)
   "triptych_auto" (" [" ident,* "]")? : tactic

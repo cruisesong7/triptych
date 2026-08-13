@@ -1427,14 +1427,17 @@ def elabTriptych : CommandElab := fun stx => do
           guardedWrite specPath
             (specHeader ++ "\n" ++ specBanner ++ "\n\n" ++ joinDecls specDecls ++ "\n")
           -- ── parser.lean ── engine + all auto-discharged proofs + the generated verified parser.
-          let parserImports := libImports
+          let parserImports := ["Triptych.Architecture.GeneratedLinter"]
+            ++ libImports
             ++ ["Triptych.Theorems.DecodeLemmas", "Triptych.Theorems.Derivation"]
             ++ (if grammarStaticallyUnique then
                   ["Triptych.Theorems.RelationalParser", "Triptych.Theorems.Unambiguity"]
                 else [])
             ++ [specMod]
             ++ (if needsCallerParser then [callerImport] else [])
-          let parserHeader := mkHeader parserImports needsCallerParser
+          let parserHeader :=
+            mkHeader parserImports needsCallerParser ++
+              "set_option linter.unnecessarySeqFocus false\n"
           let engineBanner := "/- ══════════════════════════════ engine ══════════════════════════════\n\
             The executable counterpart of the spec. `decode` walks the grammar over an input\n\
             string and returns its captured components; `computeValue` then evaluates the value\n\

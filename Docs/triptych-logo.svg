@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="184" viewBox="0 0 300 184">
+  <title>Triptych</title>
+  <style>
+    .art {
+      fill: #172033;
+      font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    .label {
+      fill: #475569;
+      font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    .wordmark {
+      fill: #111827;
+      font: 700 19px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      letter-spacing: 5px;
+    }
+    .tagline {
+      fill: #475569;
+      font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+  </style>
+  <text class="art" x="15" y="18" xml:space="preserve">
+    <tspan x="15" dy="0">+--------+  +--------+  +--------+</tspan>
+    <tspan x="15" dy="16">|        |  |  /##\  |  |        |</tspan>
+    <tspan x="15" dy="16">| # # #  |  | ###### |  | # # #  |</tspan>
+    <tspan x="15" dy="16">|  # # # |  | ###### |  |  # # # |</tspan>
+    <tspan x="15" dy="16">| # # #  |  | ###### |  | # # #  |</tspan>
+    <tspan x="15" dy="16">|        |  |  \##/  |  |        |</tspan>
+    <tspan x="15" dy="16">+--------+  +--------+  +--------+</tspan>
+  </text>
+  <text class="label" x="54" y="127" text-anchor="middle">parser</text>
+  <text class="label" x="150" y="127" text-anchor="middle">spec</text>
+  <text class="label" x="246" y="127" text-anchor="middle">soundness</text>
+  <text class="wordmark" x="150" y="156" text-anchor="middle">TRIPTYCH</text>
+  <text class="tagline" x="150" y="177" text-anchor="middle">one grammar, three panels</text>
+</svg>
