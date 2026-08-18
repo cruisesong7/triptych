@@ -1,7 +1,7 @@
 import Lake
 open Lake DSL
 
-require "leanprover-community" / "batteries" @ git "v4.31.0"
+require "leanprover-community" / "batteries" @ git "v4.33.0"
 
 package triptych
 

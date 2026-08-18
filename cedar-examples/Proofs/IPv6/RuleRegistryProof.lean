@@ -794,8 +794,11 @@ theorem parseIPv6Net_eq_some_iff {s : String} {net : IPNet} :
         by simpa [netValue, cidrValue, prefixValue] using hnet.symm⟩
     rcases rest with _ | ⟨extra, rest⟩
     · triptych_sound at h
-      obtain ⟨hp, a, ⟨c, haddr, hvalid, ha⟩, hnet⟩ := h
-      subst a
+      obtain ⟨hp, parsedPrefix, hprefix, parsedAddr,
+        ⟨c, haddr, hvalid, ha⟩, hnet⟩ := h
+      simp only [Option.pure_def, Option.some.injEq] at hprefix
+      subst parsedPrefix
+      subst parsedAddr
       have hs := Triptych.eq_intercalate_of_splitToList_eq '/' hsplits
       rw [String.intercalate_cons_cons, String.intercalate_singleton] at hs
       exact ⟨c, some pre, by simpa [renderNet, haddr, String.append_assoc] using hs,
@@ -882,7 +885,9 @@ private theorem parseIPv4Net_isV4 {s : String} {net : IPNet}
     exact ⟨_, hnet.symm⟩
   rcases rest with _ | ⟨extra, rest⟩
   · triptych_sound at h
-    obtain ⟨_, a, _, hnet⟩ := h
+    obtain ⟨_, parsedPrefix, hprefix, parsedAddr, _, hnet⟩ := h
+    simp only [Option.pure_def, Option.some.injEq] at hprefix
+    subst parsedPrefix
     exact ⟨_, hnet.symm⟩
   · simp at h
 

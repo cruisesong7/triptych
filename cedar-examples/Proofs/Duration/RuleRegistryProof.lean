@@ -293,8 +293,9 @@ private theorem digitString_optional (pfx suffix : String)
         have hpositive := hcedarDigits.1
         rw [← String.length_toList, hnil] at hpositive
         simp at hpositive
-      simpa only [Cedar.Thm.Duration.durationChunk, String.append_assoc,
-        digitString, CedarSupport.DurationParserInternals.digitString] using
+      change CedarSupport.DurationParserInternals.digitString
+        (pfx ++ Cedar.Thm.Duration.durationChunk (some digits) suffix) suffix = some digits
+      simpa only [Cedar.Thm.Duration.durationChunk, String.append_assoc] using
         (CedarSupport.DurationParserInternals.digitString_present
           pfx digits suffix hlistNonempty hcedarDigits.2 hpfxStop)
 

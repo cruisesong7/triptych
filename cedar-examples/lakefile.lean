@@ -3,7 +3,7 @@ open Lake DSL
 
 require triptych from ".."
 require Cedar from "../../cedar-spec/cedar-lean"
-require verso from git "https://github.com/leanprover/verso.git" @ "v4.31.0"
+require verso from git "https://github.com/leanprover/verso.git" @ "v4.33.0"
 
 package cedarExamples
 
