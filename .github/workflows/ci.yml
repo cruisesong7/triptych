@@ -54,7 +54,7 @@ jobs:
         uses: leanprover/lean-action@v1
         with:
           lake-package-directory: triptych/cedar-examples
-          build-args: "@subverso/SubVerso:static"
+          build-args: "@subverso"
       - name: Build Cedar integration, conformance, and docs
         working-directory: triptych/cedar-examples
         run: lake build CedarExamples ConformanceTests docs
