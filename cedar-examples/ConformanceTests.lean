@@ -10,9 +10,10 @@ overflow bounds, the reject cases — not just the ones we happened to think of.
 Why direct equality against Cedar works as the oracle: for Decimal and Duration the `ofSpec` clause
 makes our `parse` return the SAME type as Cedar's parser (`Option Decimal` / `Option Duration`), so
 `ourParse s = cedarParse s` checks BOTH acceptance and value in one shot, uniformly for valid AND
-invalid strings (a rejected string makes both sides `none`). Datetime has no `ofSpec` (Cedar has no
-canonical `ToString`), so our parse yields `Option Int` (epoch millis) and we compare against
-`(cedarParse s).map datetimeMillis`.
+invalid strings (a rejected string makes both sides `none`). Datetime has no `ofSpec`, so our
+parse yields `Option Int` (epoch millis) and we compare against
+`(cedarParse s).map datetimeMillis`. Cedar's canonical Datetime serializer is partial, so it
+cannot currently be used as a Triptych `printer`.
 
 Run from `cedar-examples` with `lake build ConformanceTests`; the `#eval` at the bottom fails
 the build with a nonzero count if any case diverges. No `native_decide`, no new
@@ -135,13 +136,14 @@ def datetimeStrings : List String :=
     "2022-10-10", "1969-12-31", "1969-12-31T23:59:59Z", "1969-12-31T23:59:59.001Z",
     "1969-12-31T23:59:59.999Z", "2024-10-15", "2024-10-15T11:38:02Z", "2024-10-15T11:38:02.101Z",
     "2024-10-15T11:38:02.101-1134", "2024-10-15T11:38:02.101+1134", "2024-10-15T11:38:02+1134",
-    "2024-10-15T11:38:02-1134",
+    "2024-10-15T11:38:02-1134", "2024-10-15T11:38:02+0000", "2024-10-15T11:38:02-0000",
     -- invalid
     "", "a", "-", "-1", " 2022-10-10", "2022-10-10 ", "2022-10- 10", "11-12-13", "011-12-13",
     "00011-12-13", "0001-2-13", "0001-012-13", "0001-02-3", "0001-02-003", "0001-01-01T1:01:01Z",
     "0001-01-01T001:01:01Z", "0001-01-01T01:1:01Z", "0001-01-01T01:001:01Z", "0001-01-01T01:01:1Z",
     "0001-01-01T01:01:001Z", "0001-01-01T01:01:01.01Z", "0001-01-01T01:01:01.0001Z",
-    "0001-01-01T01:01:01.001+01", "0001-01-01T01:01:01.001+001", "0001-01-01T01:01:01.001+00001",
+    "0001-01-01T01:01:01.001+01", "0001-01-01T01:01:01.001+001", "0001-01-01T01:01:01.001-001",
+    "0001-01-01T01:01:01.001+00001",
     "0001-01-01T01:01:01.001+00:01", "0001-01-01T01:01:01.001+00:00:01", "-0001-01-01", "1111-1x-20",
     "1111-Jul-20", "1111-July-20", "1111-J-20", "2024-10-15Z", "2024-10-15T11:38:02ZZ", "2024-01-01T",
     "2024-01-01Ta", "2024-01-01T01:", "2024-01-01T01:02", "2024-01-01T01:02:0b", "2024-01-01T01::02:03",

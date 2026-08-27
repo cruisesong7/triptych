@@ -54,4 +54,17 @@ theorem parser_rejects_iff (s : String) :
     Cedar.Spec.Ext.Datetime.parse s = none ↔ ¬Datetime.IsValid s := by
   triptych_auto [Datetime.GrammarView.isValid_iff_cedarWf]
 
+/-- The generated parser and Cedar's external parser agree on every input after exposing Cedar's
+    stored epoch-millisecond value. -/
+theorem generated_parse_eq_external (s : String) :
+    Datetime.parse s = (Cedar.Spec.Ext.Datetime.parse s).map datetimeMillis := by
+  cases hparse : Cedar.Spec.Ext.Datetime.parse s with
+  | none =>
+      rw [Option.map_none]
+      exact (Datetime.parse_reject s).mpr ((parser_rejects_iff s).mp hparse)
+  | some d =>
+      rw [Option.map_some]
+      obtain ⟨hvalid, hvalue⟩ := (parser_agrees s d).mp hparse
+      exact Datetime.parse_complete s (datetimeMillis d) hvalid hvalue
+
 end Datetime.RuleRegistryProof

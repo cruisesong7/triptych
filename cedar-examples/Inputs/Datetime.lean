@@ -21,11 +21,12 @@ import Cedar.Spec.Ext.Datetime
 /-!
 # Datetime example — the hard case: 5-way alternation + calendar constraints
 
-Transcribes the complete `doc/CedarDoc/Datetime.lean` spec — the generality stress test,
-exercising top-level alternation, qualified captures (`Time.hh` vs `Offset.hh`), and both
-escape sections (`constraints'` for the calendar day-bound, `value'` for epoch-millis via
-calendar arithmetic). No `printer` — Cedar has no canonical `ToString Datetime`. See the docs
-for the feature-by-feature walkthrough.
+Transcribes the parser-independent specification in `Cedar.Thm.Ext.Datetime.Grammar` — the
+generality stress test, exercising top-level alternation, qualified captures (`Time.hh` vs
+`Offset.hh`), and both escape sections (`constraints'` for the calendar day-bound, `value'` for
+epoch-millis via calendar arithmetic). Cedar's canonical `toString?` is partial because not every
+`Int64` datetime has a four-digit year, while Triptych's current `printer` clause requires a total
+serializer. See the docs for the feature-by-feature walkthrough.
 -/
 
 namespace CedarExamples.Datetime
