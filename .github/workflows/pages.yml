@@ -29,14 +29,18 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: cruisesong7/cedar-spec
-          ref: b759caae4eed73a9580ba3f5fbb66025abddbe54
+          ref: cdffa00777fa8acd30233cd59aa50c708aeed131
           path: cedar-spec
 
-      - name: Build documentation
+      - name: Prepare Lean and SubVerso
         uses: leanprover/lean-action@v1
         with:
           lake-package-directory: triptych/cedar-examples
-          build-args: CedarExamples ConformanceTests docs
+          build-args: "@subverso/SubVerso:static"
+
+      - name: Build documentation
+        working-directory: triptych/cedar-examples
+        run: lake build CedarExamples ConformanceTests docs
 
       - name: Render Verso site
         working-directory: triptych/cedar-examples
