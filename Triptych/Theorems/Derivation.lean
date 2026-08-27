@@ -42,6 +42,13 @@ theorem symMatch_lit (g : Grammar) (qual : String) (fuel : Nat) (lit : String) :
   rw [mem_matchSym_lit_iff]
   simp
 
+theorem symMatch_str (g : Grammar) (qual : String) (fuel : Nat) (text : String)
+    (hvalid : IsStringLiteral text) :
+    SymMatch g qual fuel .str text [] := by
+  intro suffix
+  rw [mem_matchSym_str_iff]
+  exact ⟨rfl, text.toList, rfl, by simpa⟩
+
 theorem symMatch_term (g : Grammar) (qual : String) (fuel : Nat)
     (tok : TokClass) (lenSpec : LenSpec) (text : String)
     (hvalid : matchesTerm tok lenSpec text) :

@@ -1116,19 +1116,20 @@ theorem Duration.parse_view (s : String) :
 
 theorem Duration.parse_eq_some_iff_view (s : String) (d : Cedar.Spec.Ext.Datetime.Duration) :
     Duration.parse s = some d ↔
-      ∃ v : Duration.View,
-        Duration.decodeView s = some v ∧ Duration.View.Valid v ∧ millisToDuration (Duration.View.denotation v) = d :=
+      ∃ decodedView : Duration.View,
+        Duration.decodeView s = some decodedView ∧
+          Duration.View.Valid decodedView ∧ millisToDuration (Duration.View.denotation decodedView) = d :=
   by
   constructor
   · intro hparse
     obtain ⟨hvalid, hvalue⟩ := Duration.parse_sound s d hparse
-    obtain ⟨v, hview, hvalidView⟩ := (Duration.IsValid_view s).mp hvalid
-    refine ⟨v, hview, hvalidView, ?_⟩
+    obtain ⟨decodedView, hview, hvalidView⟩ := (Duration.IsValid_view s).mp hvalid
+    refine ⟨decodedView, hview, hvalidView, ?_⟩
     rw [Duration.computeValue_view, hview] at hvalue
     simpa using Option.some.inj hvalue
-  · rintro ⟨v, hview, hvalidView, hvalue⟩
+  · rintro ⟨decodedView, hview, hvalidView, hvalue⟩
     apply Duration.parse_complete s d
-    · exact (Duration.IsValid_view s).mpr ⟨v, hview, hvalidView⟩
+    · exact (Duration.IsValid_view s).mpr ⟨decodedView, hview, hvalidView⟩
     · rw [Duration.computeValue_view, hview]
       simpa using congrArg some hvalue
 

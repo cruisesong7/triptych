@@ -67,6 +67,7 @@ def termPred (tok : TokClass) (ls : LenSpec) (v : TSyntax `term) : CommandElabM 
     per-production predicate `<specName>.IsWf.<Nt>`. -/
 partial def symPred (specName : Name) : Sym → (v : TSyntax `term) → CommandElabM (TSyntax `term)
   | .lit l,       v => `($v = $(Syntax.mkStrLit l))
+  | .str,         v => `(IsStringLiteral $v)
   | .term tok ls, v => termPred tok ls v
   | .ref nm,      v => do
       -- Resolve to the sibling per-production predicate `<specName>.IsWf.<Nt>`.
@@ -93,6 +94,7 @@ private def deCap (s : String) : String := surfaceBinder s
 /-- Base binder name for a capturing symbol; `none` for a literal (no binder). -/
 private def binderBase : Sym → Option String
   | .lit _      => none
+  | .str        => some "stringLiteral"
   | .ref nm     => some (deCap nm)
   | .term _ _   => some "digits"
   | .rep _ item _ _ => (binderBase item).map (· ++ "s")  -- a list of the items ("groups")
@@ -308,6 +310,7 @@ partial def subtreeDepth (g : Grammar) (name : String) (fuel : Nat) : Nat :=
     the fully-applied constructor form used inside the `show … = some <prod> from rfl`). -/
 private partial def symLit : Sym → CommandElabM (TSyntax `term)
   | .lit l        => `(Sym.lit $(Syntax.mkStrLit l))
+  | .str          => `(Sym.str)
   | .ref nm       => `(Sym.ref $(Syntax.mkStrLit nm))
   | .term tok ls  => do
       let tokT ← match tok with
@@ -363,6 +366,7 @@ private def lenSource : LenSpec → String
 
 private partial def symSource : Sym → String
   | .lit lit => s!"Sym.lit {sourceString lit}"
+  | .str => "Sym.str"
   | .ref name => s!"Sym.ref {sourceString name}"
   | .term tok lenSpec => s!"Sym.term {tokSource tok} ({lenSource lenSpec})"
   | .rep sep item lo hi =>
@@ -388,6 +392,7 @@ private def parseGeneratedCommand (description source : String) :
 
 private partial def derivationSymType (specName : Name) : Sym → String
   | .lit _ => "Unit"
+  | .str => "String"
   | .term _ _ => "String"
   | .ref name => derivationTypeName specName name
   | .rep _ item _ _ => s!"List ({derivationSymType specName item})"
@@ -408,6 +413,7 @@ private partial def derivationSymRender (specName : Name) (sym : Sym) (binder : 
     String :=
   match sym with
   | .lit lit => sourceString lit
+  | .str => binder
   | .term _ _ => binder
   | .ref name => s!"{derivationOperationName specName name "render"} {binder}"
   | .rep sep item _ _ =>
@@ -418,6 +424,7 @@ private partial def derivationSymValid (specName : Name) (sym : Sym) (binder : S
     String :=
   match sym with
   | .lit _ => "True"
+  | .str => s!"IsStringLiteral {binder}"
   | .term tok lenSpec => s!"matchesTerm {tokSource tok} ({lenSource lenSpec}) {binder}"
   | .ref name => s!"{derivationOperationName specName name "Valid"} {binder}"
   | .rep _ item lo hi =>
@@ -428,7 +435,7 @@ private partial def derivationSymValid (specName : Name) (sym : Sym) (binder : S
 private partial def derivationSymCaptures (specName : Name) (sym : Sym)
     (qual binder : String) : String :=
   match sym with
-  | .lit _ | .term _ _ => "[]"
+  | .lit _ | .str | .term _ _ => "[]"
   | .ref name =>
       let render := derivationOperationName specName name "render"
       let captures := derivationOperationName specName name "capturesWith"
@@ -557,6 +564,9 @@ private partial def derivationSymProof (specName : Name) (g : Grammar)
   | .lit lit =>
       s!"Triptych.symMatch_lit {specName.toString true}.grammar {qual} {matchFuel} " ++
         sourceString lit
+  | .str =>
+      s!"Triptych.symMatch_str {specName.toString true}.grammar {qual} {matchFuel} " ++
+        s!"{binder} {validProof}"
   | .term tok lenSpec =>
       s!"Triptych.symMatch_term {specName.toString true}.grammar {qual} {matchFuel} " ++
         s!"{tokSource tok} ({lenSource lenSpec}) {binder} {validProof}"
@@ -1104,7 +1114,7 @@ def requiredCapturesFrom (g : Grammar) : Nat → String → List String
       | none => []
       | some prod =>
           let rec symCaptures : Sym → List String
-            | .lit _ | .term _ _ => []
+            | .lit _ | .str | .term _ _ => []
             | .ref child =>
                 let keys :=
                   if name == g.start then [child] else [child, name ++ "." ++ child]
@@ -1604,39 +1614,39 @@ def parseEqSomeIffViewProof (specName : Name) (ofSpec? : Option (TSyntax `term))
   | none =>
       `(theorem $theoremId (s : String) ($resultId : $resultTy) :
           $parseId s = some $resultId ↔
-            ∃ v : $viewId,
-              $decodeViewId s = some v ∧
-              $viewValidId v ∧
-              $denotationId v = $resultId := by
+            ∃ decodedView : $viewId,
+              $decodeViewId s = some decodedView ∧
+              $viewValidId decodedView ∧
+              $denotationId decodedView = $resultId := by
         constructor
         · intro hparse
           obtain ⟨hvalid, hvalue⟩ := $parseSoundId s $resultId hparse
-          obtain ⟨v, hview, hvalidView⟩ := ($validViewId s).mp hvalid
-          refine ⟨v, hview, hvalidView, ?_⟩
+          obtain ⟨decodedView, hview, hvalidView⟩ := ($validViewId s).mp hvalid
+          refine ⟨decodedView, hview, hvalidView, ?_⟩
           rw [$computeValueViewRw, hview] at hvalue
           exact Option.some.inj hvalue
-        · rintro ⟨v, hview, hvalidView, hvalue⟩
+        · rintro ⟨decodedView, hview, hvalidView, hvalue⟩
           apply $parseCompleteId s $resultId
-          · exact ($validViewId s).mpr ⟨v, hview, hvalidView⟩
+          · exact ($validViewId s).mpr ⟨decodedView, hview, hvalidView⟩
           · rw [$computeValueViewRw, hview]
             exact congrArg some hvalue)
   | some ofSpecT =>
       `(theorem $theoremId (s : String) ($resultId : $resultTy) :
           $parseId s = some $resultId ↔
-            ∃ v : $viewId,
-              $decodeViewId s = some v ∧
-              $viewValidId v ∧
-              $ofSpecT ($denotationId v) = $resultId := by
+            ∃ decodedView : $viewId,
+              $decodeViewId s = some decodedView ∧
+              $viewValidId decodedView ∧
+              $ofSpecT ($denotationId decodedView) = $resultId := by
         constructor
         · intro hparse
           obtain ⟨hvalid, hvalue⟩ := $parseSoundId s $resultId hparse
-          obtain ⟨v, hview, hvalidView⟩ := ($validViewId s).mp hvalid
-          refine ⟨v, hview, hvalidView, ?_⟩
+          obtain ⟨decodedView, hview, hvalidView⟩ := ($validViewId s).mp hvalid
+          refine ⟨decodedView, hview, hvalidView, ?_⟩
           rw [$computeValueViewRw, hview] at hvalue
           simpa using Option.some.inj hvalue
-        · rintro ⟨v, hview, hvalidView, hvalue⟩
+        · rintro ⟨decodedView, hview, hvalidView, hvalue⟩
           apply $parseCompleteId s $resultId
-          · exact ($validViewId s).mpr ⟨v, hview, hvalidView⟩
+          · exact ($validViewId s).mpr ⟨decodedView, hview, hvalidView⟩
           · rw [$computeValueViewRw, hview]
             simpa using congrArg some hvalue)
 
@@ -1682,20 +1692,20 @@ def externalParseEqSomeIffViewProof (specName : Name) (parseT toSpecT : TSyntax 
   let resultId := mkIdent resultName
   `(theorem $theoremId (s : String) ($resultId : $resultTy) :
       $parseT s = some $resultId ↔
-        ∃ v : $viewId,
-          $decodeViewId s = some v ∧
-          $viewValidId v ∧
-          $denotationId v = $toSpecT $resultId := by
+        ∃ decodedView : $viewId,
+          $decodeViewId s = some decodedView ∧
+          $viewValidId decodedView ∧
+          $denotationId decodedView = $toSpecT $resultId := by
     constructor
     · intro hparse
       obtain ⟨hvalid, hvalue⟩ := $soundId s $resultId hparse
-      obtain ⟨v, hview, hvalidView⟩ := ($validViewId s).mp hvalid
-      refine ⟨v, hview, hvalidView, ?_⟩
+      obtain ⟨decodedView, hview, hvalidView⟩ := ($validViewId s).mp hvalid
+      refine ⟨decodedView, hview, hvalidView, ?_⟩
       rw [$computeValueViewRw, hview] at hvalue
       exact Option.some.inj hvalue
-    · rintro ⟨v, hview, hvalidView, hvalue⟩
+    · rintro ⟨decodedView, hview, hvalidView, hvalue⟩
       apply $completeId s $resultId
-      · exact ($validViewId s).mpr ⟨v, hview, hvalidView⟩
+      · exact ($validViewId s).mpr ⟨decodedView, hview, hvalidView⟩
       · rw [$computeValueViewRw, hview]
         exact congrArg some hvalue)
 

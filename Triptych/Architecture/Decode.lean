@@ -63,6 +63,10 @@ namespace Triptych
 def termPrefixOk (tok : TokClass) (ls : LenSpec) (cs : List Char) (k : Nat) : Bool :=
   k ≤ cs.length && decide (matchesTerm tok ls (String.ofList (cs.take k)))
 
+/-- Does the length-`k` prefix of `cs` form a complete quoted string literal? -/
+def stringPrefixOk (cs : List Char) (k : Nat) : Bool :=
+  k ≤ cs.length && decide (IsStringLiteral (String.ofList (cs.take k)))
+
 /-- The `(sep item)*` tail: from position `cs`, every way to match zero-or-more further
     `sep item` groups. Each result is `(captures, remaining, k)` where `k` is the number of
     ADDITIONAL items matched here. Higher-order in the item-matcher `matchItem` and
@@ -103,6 +107,9 @@ def matchSym (g : Grammar) (qual : String) : Nat → Sym → List Char → List 
   | _,      .lit l,        cs =>
       let ls := l.toList
       if ls.isPrefixOf cs then [([], cs.drop ls.length)] else []
+  | _,      .str,          cs =>
+      (List.range (cs.length + 1)).filterMap (fun k =>
+        if stringPrefixOk cs k then some ([], cs.drop k) else none)
   | _,      .term tok ls,  cs =>
       -- try every valid prefix length (backtracking over the token run)
       (List.range (cs.length + 1)).filterMap (fun k =>

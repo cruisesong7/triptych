@@ -557,19 +557,20 @@ theorem Decimal.parse_view (s : String) :
 
 theorem Decimal.parse_eq_some_iff_view (s : String) (i : Int64) :
     Decimal.parse s = some i ↔
-      ∃ v : Decimal.View,
-        Decimal.decodeView s = some v ∧ Decimal.View.Valid v ∧ Int64.ofInt (Decimal.View.denotation v) = i :=
+      ∃ decodedView : Decimal.View,
+        Decimal.decodeView s = some decodedView ∧
+          Decimal.View.Valid decodedView ∧ Int64.ofInt (Decimal.View.denotation decodedView) = i :=
   by
   constructor
   · intro hparse
     obtain ⟨hvalid, hvalue⟩ := Decimal.parse_sound s i hparse
-    obtain ⟨v, hview, hvalidView⟩ := (Decimal.IsValid_view s).mp hvalid
-    refine ⟨v, hview, hvalidView, ?_⟩
+    obtain ⟨decodedView, hview, hvalidView⟩ := (Decimal.IsValid_view s).mp hvalid
+    refine ⟨decodedView, hview, hvalidView, ?_⟩
     rw [Decimal.computeValue_view, hview] at hvalue
     simpa using Option.some.inj hvalue
-  · rintro ⟨v, hview, hvalidView, hvalue⟩
+  · rintro ⟨decodedView, hview, hvalidView, hvalue⟩
     apply Decimal.parse_complete s i
-    · exact (Decimal.IsValid_view s).mpr ⟨v, hview, hvalidView⟩
+    · exact (Decimal.IsValid_view s).mpr ⟨decodedView, hview, hvalidView⟩
     · rw [Decimal.computeValue_view, hview]
       simpa using congrArg some hvalue
 

@@ -35,8 +35,8 @@ The class encoded here:
 * **DAG, non-recursive** — productions may reference other productions by name, but
   the reference graph must be acyclic (a classifier check). No cycles ⟹ the
   denotation unfolds to a flat `Prop`, never an inductive relation.
-* **regular leaves** — the only terminals are literals and character-class token runs
-  (`Terminal`), the sole site of Kleene iteration (`LenSpec`).
+* **regular leaves** — terminals are literals, quoted string literals, and character-class
+  token runs (`Terminal`), the sole site of Kleene iteration (`LenSpec`).
 -/
 
 namespace Triptych
@@ -67,6 +67,8 @@ inductive LenSpec where
 inductive Sym where
   /-- A fixed literal string (separators `"."`, `":"`, `"-"`; unit tags `"ms"`). -/
   | lit (s : String)
+  /-- A Lean-style quoted string literal, including its surrounding quotes and escapes. -/
+  | str
   /-- A reference to another named production (nonterminal). The DAG edge. -/
   | ref (name : String)
   /-- An inline terminal: a token run of class `tok`, length-constrained by `len`. -/

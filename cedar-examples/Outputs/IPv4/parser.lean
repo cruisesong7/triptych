@@ -779,18 +779,19 @@ theorem IPv4.parse_view (s : String) :
 
 theorem IPv4.parse_eq_some_iff_view (s : String) (i : IPv4Net) :
     IPv4.parse s = some i ↔
-      ∃ v : IPv4.View, IPv4.decodeView s = some v ∧ IPv4.View.Valid v ∧ IPv4.View.denotation v = i :=
+      ∃ decodedView : IPv4.View,
+        IPv4.decodeView s = some decodedView ∧ IPv4.View.Valid decodedView ∧ IPv4.View.denotation decodedView = i :=
   by
   constructor
   · intro hparse
     obtain ⟨hvalid, hvalue⟩ := IPv4.parse_sound s i hparse
-    obtain ⟨v, hview, hvalidView⟩ := (IPv4.IsValid_view s).mp hvalid
-    refine ⟨v, hview, hvalidView, ?_⟩
+    obtain ⟨decodedView, hview, hvalidView⟩ := (IPv4.IsValid_view s).mp hvalid
+    refine ⟨decodedView, hview, hvalidView, ?_⟩
     rw [IPv4.computeValue_view, hview] at hvalue
     exact Option.some.inj hvalue
-  · rintro ⟨v, hview, hvalidView, hvalue⟩
+  · rintro ⟨decodedView, hview, hvalidView, hvalue⟩
     apply IPv4.parse_complete s i
-    · exact (IPv4.IsValid_view s).mpr ⟨v, hview, hvalidView⟩
+    · exact (IPv4.IsValid_view s).mpr ⟨decodedView, hview, hvalidView⟩
     · rw [IPv4.computeValue_view, hview]
       exact congrArg some hvalue
 

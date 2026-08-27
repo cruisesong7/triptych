@@ -14,6 +14,7 @@
  limitations under the License.
 -/
 
+import Lean
 import Triptych.Architecture.Grammar
 
 /-!
@@ -71,6 +72,18 @@ def matchesTerm (tok : TokClass) (len : LenSpec) (s : String) : Prop :=
 instance (tok : TokClass) (len : LenSpec) (s : String) : Decidable (matchesTerm tok len s) := by
   unfold matchesTerm; infer_instance
 
+/-- Decode a complete Lean-style quoted string literal, including escape sequences. -/
+def decodeStringLiteral (s : String) : Option String :=
+  Lean.Syntax.decodeStrLit s
+
+/-- A complete Lean-style quoted string literal, including its surrounding quotes. -/
+def IsStringLiteral (s : String) : Prop :=
+  (decodeStringLiteral s).isSome = true
+
+instance (s : String) : Decidable (IsStringLiteral s) := by
+  unfold IsStringLiteral
+  infer_instance
+
 /-! ## Readable leaf predicates
 
 Named predicates matching the hand-written specs' vocabulary (`IsDigits`,
@@ -116,6 +129,7 @@ mutual
 /-- Denotation of a symbol against a string, with `fuel` bounding ref-recursion. -/
 def matchesSym (g : Grammar) : Nat → Sym → String → Prop
   | _,      .lit l,        s => s = l
+  | _,      .str,          s => IsStringLiteral s
   | _,      .term tok len, s => matchesTerm tok len s
   | fuel,   .rep sep item lo hi, s =>
       -- `item (sep item)*`, item-count in `[lo, hi]`: some list of `parts`, each matching

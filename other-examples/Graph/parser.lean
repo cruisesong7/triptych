@@ -361,18 +361,19 @@ theorem Graph.parse_view (s : String) :
 
 theorem Graph.parse_eq_some_iff_view (s : String) (g : Graph) :
     Graph.parse s = some g ↔
-      ∃ v : Graph.View, Graph.decodeView s = some v ∧ Graph.View.Valid v ∧ Graph.View.denotation v = g :=
+      ∃ decodedView : Graph.View,
+        Graph.decodeView s = some decodedView ∧ Graph.View.Valid decodedView ∧ Graph.View.denotation decodedView = g :=
   by
   constructor
   · intro hparse
     obtain ⟨hvalid, hvalue⟩ := Graph.parse_sound s g hparse
-    obtain ⟨v, hview, hvalidView⟩ := (Graph.IsValid_view s).mp hvalid
-    refine ⟨v, hview, hvalidView, ?_⟩
+    obtain ⟨decodedView, hview, hvalidView⟩ := (Graph.IsValid_view s).mp hvalid
+    refine ⟨decodedView, hview, hvalidView, ?_⟩
     rw [Graph.computeValue_view, hview] at hvalue
     exact Option.some.inj hvalue
-  · rintro ⟨v, hview, hvalidView, hvalue⟩
+  · rintro ⟨decodedView, hview, hvalidView, hvalue⟩
     apply Graph.parse_complete s g
-    · exact (Graph.IsValid_view s).mpr ⟨v, hview, hvalidView⟩
+    · exact (Graph.IsValid_view s).mpr ⟨decodedView, hview, hvalidView⟩
     · rw [Graph.computeValue_view, hview]
       exact congrArg some hvalue
 

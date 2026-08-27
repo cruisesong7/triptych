@@ -101,6 +101,44 @@ theorem mem_matchSym_term_iff (g : Grammar) (q : String) (fuel : Nat)
       simp
       rw [hcs, List.drop_left]
 
+theorem mem_matchSym_str_iff (g : Grammar) (q : String) (fuel : Nat)
+    (cs r : List Char) (m : CaptureMap) :
+    (m, r) ∈ matchSym g q fuel Sym.str cs ↔
+      m = [] ∧ ∃ p, cs = p ++ r ∧ IsStringLiteral (String.ofList p) := by
+  simp only [matchSym]
+  constructor
+  · intro hmem
+    rw [List.mem_filterMap] at hmem
+    obtain ⟨k, hk, hval⟩ := hmem
+    by_cases hok : stringPrefixOk cs k = true
+    · rw [hok] at hval
+      simp only [if_true, Option.some.injEq, Prod.mk.injEq] at hval
+      refine ⟨hval.1.symm, cs.take k, ?_, ?_⟩
+      · rw [← hval.2, List.take_append_drop]
+      · unfold stringPrefixOk at hok
+        rw [Bool.and_eq_true] at hok
+        exact of_decide_eq_true hok.2
+    · rw [Bool.not_eq_true] at hok
+      rw [hok] at hval
+      simp at hval
+  · rintro ⟨rfl, p, hcs, hden⟩
+    rw [List.mem_filterMap]
+    refine ⟨p.length, ?_, ?_⟩
+    · rw [List.mem_range, hcs]
+      simp only [List.length_append]
+      omega
+    · have hok : stringPrefixOk cs p.length = true := by
+        unfold stringPrefixOk
+        rw [Bool.and_eq_true]
+        refine ⟨?_, ?_⟩
+        · rw [decide_eq_true_eq, hcs]
+          simp
+        · rw [decide_eq_true_eq, hcs, List.take_left]
+          exact hden
+      rw [hok]
+      simp
+      rw [hcs, List.drop_left]
+
 theorem mem_matchSym_lit_iff (g : Grammar) (q : String) (fuel : Nat) (l : String)
     (cs r : List Char) (m : CaptureMap) :
     (m, r) ∈ matchSym g q fuel (Sym.lit l) cs ↔

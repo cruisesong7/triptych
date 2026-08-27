@@ -189,6 +189,47 @@ triptych BoundedInteger where
 
 end OfSpecParserExample
 
+namespace ValueResultBinderExample
+
+structure Value where
+  digits : String
+  deriving Repr, DecidableEq
+
+private def toValue (digits : String) : Value := { digits }
+
+triptych ValueResult where
+  grammar
+    Root   ::= Digits
+    Digits ::= digit+
+  value'
+    toValue Digits
+
+#guard ValueResult.parse "42" = some { digits := "42" }
+
+end ValueResultBinderExample
+
+namespace StringLiteralExample
+
+private def decodeLiteral (literal : String) : String :=
+  (decodeStringLiteral literal).getD ""
+
+/-
+Corresponding Strata declaration and existing parser test:
+
+  op sc_str (@[unwrap] s:Str) : SpecConstant => s;
+  parse_spec_constant "test";
+-/
+triptych StringValue where
+  grammar
+    SpecConstant ::= StringLiteral
+    StringLiteral ::= str
+  value'
+    decodeLiteral StringLiteral
+
+#guard StringValue.parse "\"test\"" = some "test"
+
+end StringLiteralExample
+
 namespace CollectionConstraintExample
 
 private def taggedSumIsSix (tag : String) (items : List String) : Bool :=

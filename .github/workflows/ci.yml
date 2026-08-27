@@ -27,6 +27,15 @@ jobs:
         working-directory: other-examples
         run: lake exe parser_benchmark
 
+  strata-examples:
+    name: Strata examples
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: leanprover/lean-action@v1
+        with:
+          lake-package-directory: strata-examples
+
   cedar:
     name: Cedar integration and conformance
     runs-on: ubuntu-latest

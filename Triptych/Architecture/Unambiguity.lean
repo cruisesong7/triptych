@@ -58,6 +58,7 @@ namespace Triptych
 /-- Check that `sym` starts a unary reference path ending in one literal or token run. -/
 def Grammar.unaryUniqueFrom (g : Grammar) : Nat → Sym → Bool
   | _, .lit _ => true
+  | _, .str => false
   | _, .term _ _ => true
   | _, .rep _ _ _ _ => false
   | 0, .ref _ => false
@@ -81,6 +82,7 @@ def Grammar.unaryUnique (g : Grammar) : Bool :=
     complete input. References may expand to required, single-alternative sequences. -/
 def Grammar.prefixUniqueFrom (g : Grammar) : Nat → Sym → Bool
   | _, .lit _ => true
+  | _, .str => false
   | _, .term _ (.exactly _) => true
   | _, .term _ (.between lo hi) => lo == hi
   | _, .term _ .atLeastOne => false

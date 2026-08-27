@@ -63,9 +63,9 @@ triptych Decimal where
 
 Grammar notation:
 * a production is `Name ::= item item …`
-* an item is a string literal, a nonterminal reference (`ident`), a terminal
-  (`digit`/`hexDigit`/`bit` with a length suffix), an optional `[item]`, or separated
-  repetition
+* an item is a fixed string literal, `str` (a quoted string literal), a nonterminal reference
+  (`ident`), a terminal (`digit`/`hexDigit`/`bit` with a length suffix), an optional `[item]`,
+  or separated repetition
 * length suffix: `+` (one-or-more), `{n}` (exactly), `{lo,hi}` (between)
 
 Capture names are Lean identifiers. A name that collides with Lean or Triptych syntax must be
@@ -371,8 +371,11 @@ partial def elabSym : TSyntax `fmtItem → CommandElabM (TSyntax `term)
       let (lo, hi) ← elabRepBounds l
       `(Sym.rep $sep $(← elabSym inner) $lo $hi)
   | `(fmtItem| $i:ident)          => do
-      validateCaptureIdent i
-      `(Sym.ref $(Syntax.mkStrLit i.getId.toString))
+      if i.getId.toString == "str" then
+        `(Sym.str)
+      else
+        validateCaptureIdent i
+        `(Sym.ref $(Syntax.mkStrLit i.getId.toString))
   | s                             => throwErrorAt s "unrecognized grammar item"
 
 /-- Elaborate an item into a `SymItem` term, setting `optional` for `[…]`. The `sign` terminal
@@ -435,8 +438,11 @@ partial def parseSym : TSyntax `fmtItem → CommandElabM Sym
       let (lo, hi) ← parseRepBounds l
       pure (.rep sep.getString (← parseSym inner) lo hi)
   | `(fmtItem| $i:ident)           => do
-      validateCaptureIdent i
-      pure (.ref i.getId.toString)
+      if i.getId.toString == "str" then
+        pure .str
+      else
+        validateCaptureIdent i
+        pure (.ref i.getId.toString)
   | s                              => throwErrorAt s "unrecognized grammar item"
 
 def parseItem : TSyntax `fmtItem → CommandElabM SymItem

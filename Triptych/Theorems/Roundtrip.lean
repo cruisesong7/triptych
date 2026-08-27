@@ -112,6 +112,46 @@ theorem term_leaf (g : Grammar) (q : String) (fuel : Nat) (tok : TokClass) (ls :
         rw [hok]; simp
         rw [hcs, List.drop_left])
 
+-- quoted-string leaf
+theorem str_leaf (g : Grammar) (q : String) (fuel : Nat) (cs r₂ : List Char) :
+    (∃ m, (m, r₂) ∈ matchSym g q fuel Sym.str cs)
+      ↔ ∃ r₁, cs = r₁ ++ r₂ ∧ matchesSym g fuel Sym.str (String.ofList r₁) := by
+  cases fuel <;> (
+    simp only [matchSym, matchesSym]
+    constructor
+    · rintro ⟨m, hmem⟩
+      rw [List.mem_filterMap] at hmem
+      obtain ⟨k, hk, hval⟩ := hmem
+      by_cases hok : stringPrefixOk cs k = true
+      · rw [hok] at hval
+        simp only [if_true, Option.some.injEq, Prod.mk.injEq] at hval
+        refine ⟨cs.take k, ?_, ?_⟩
+        · rw [← hval.2, List.take_append_drop]
+        · unfold stringPrefixOk at hok
+          rw [Bool.and_eq_true] at hok
+          exact of_decide_eq_true hok.2
+      · rw [Bool.not_eq_true] at hok
+        rw [hok] at hval
+        simp at hval
+    · rintro ⟨r₁, hcs, hden⟩
+      refine ⟨[], ?_⟩
+      rw [List.mem_filterMap]
+      refine ⟨r₁.length, ?_, ?_⟩
+      · rw [List.mem_range, hcs]
+        simp only [List.length_append]
+        omega
+      · have hok : stringPrefixOk cs r₁.length = true := by
+          unfold stringPrefixOk
+          rw [Bool.and_eq_true]
+          refine ⟨?_, ?_⟩
+          · rw [decide_eq_true_eq, hcs]
+            simp
+          · rw [decide_eq_true_eq, hcs, List.take_left]
+            exact hden
+        rw [hok]
+        simp
+        rw [hcs, List.drop_left])
+
 -- present block characterization
 theorem present_mem (g : Grammar) (q : String) (fuel : Nat) (item : SymItem)
     (rest : Seq) (cs r₂ : List Char) :
@@ -545,6 +585,7 @@ theorem sym_iter (g : Grammar) (hg : g.repOk = true) :
     intro q sym
     induction sym with
     | lit l => intro _ cs r₂; exact lit_leaf g q 0 l cs r₂
+    | str => intro _ cs r₂; exact str_leaf g q 0 cs r₂
     | term tok ls => intro _ cs r₂; exact term_leaf g q 0 tok ls cs r₂
     | rep sep item lo hi ihitem =>
       intro hok cs r₂
@@ -561,6 +602,7 @@ theorem sym_iter (g : Grammar) (hg : g.repOk = true) :
     intro q sym
     induction sym with
     | lit l => intro _ cs r₂; exact lit_leaf g q (fuel+1) l cs r₂
+    | str => intro _ cs r₂; exact str_leaf g q (fuel+1) cs r₂
     | term tok ls => intro _ cs r₂; exact term_leaf g q (fuel+1) tok ls cs r₂
     | rep sep item lo hi ihitem =>
       intro hok cs r₂

@@ -942,18 +942,19 @@ theorem IPv6.parse_view (s : String) :
 
 theorem IPv6.parse_eq_some_iff_view (s : String) (i : IPv6Net) :
     IPv6.parse s = some i ↔
-      ∃ v : IPv6.View, IPv6.decodeView s = some v ∧ IPv6.View.Valid v ∧ IPv6.View.denotation v = i :=
+      ∃ decodedView : IPv6.View,
+        IPv6.decodeView s = some decodedView ∧ IPv6.View.Valid decodedView ∧ IPv6.View.denotation decodedView = i :=
   by
   constructor
   · intro hparse
     obtain ⟨hvalid, hvalue⟩ := IPv6.parse_sound s i hparse
-    obtain ⟨v, hview, hvalidView⟩ := (IPv6.IsValid_view s).mp hvalid
-    refine ⟨v, hview, hvalidView, ?_⟩
+    obtain ⟨decodedView, hview, hvalidView⟩ := (IPv6.IsValid_view s).mp hvalid
+    refine ⟨decodedView, hview, hvalidView, ?_⟩
     rw [IPv6.computeValue_view, hview] at hvalue
     exact Option.some.inj hvalue
-  · rintro ⟨v, hview, hvalidView, hvalue⟩
+  · rintro ⟨decodedView, hview, hvalidView, hvalue⟩
     apply IPv6.parse_complete s i
-    · exact (IPv6.IsValid_view s).mpr ⟨v, hview, hvalidView⟩
+    · exact (IPv6.IsValid_view s).mpr ⟨decodedView, hview, hvalidView⟩
     · rw [IPv6.computeValue_view, hview]
       exact congrArg some hvalue
 

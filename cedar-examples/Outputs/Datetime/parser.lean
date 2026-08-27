@@ -1419,18 +1419,20 @@ theorem Datetime.parse_view (s : String) :
 
 theorem Datetime.parse_eq_some_iff_view (s : String) (i : Int) :
     Datetime.parse s = some i ↔
-      ∃ v : Datetime.View, Datetime.decodeView s = some v ∧ Datetime.View.Valid v ∧ Datetime.View.denotation v = i :=
+      ∃ decodedView : Datetime.View,
+        Datetime.decodeView s = some decodedView ∧
+          Datetime.View.Valid decodedView ∧ Datetime.View.denotation decodedView = i :=
   by
   constructor
   · intro hparse
     obtain ⟨hvalid, hvalue⟩ := Datetime.parse_sound s i hparse
-    obtain ⟨v, hview, hvalidView⟩ := (Datetime.IsValid_view s).mp hvalid
-    refine ⟨v, hview, hvalidView, ?_⟩
+    obtain ⟨decodedView, hview, hvalidView⟩ := (Datetime.IsValid_view s).mp hvalid
+    refine ⟨decodedView, hview, hvalidView, ?_⟩
     rw [Datetime.computeValue_view, hview] at hvalue
     exact Option.some.inj hvalue
-  · rintro ⟨v, hview, hvalidView, hvalue⟩
+  · rintro ⟨decodedView, hview, hvalidView, hvalue⟩
     apply Datetime.parse_complete s i
-    · exact (Datetime.IsValid_view s).mpr ⟨v, hview, hvalidView⟩
+    · exact (Datetime.IsValid_view s).mpr ⟨decodedView, hview, hvalidView⟩
     · rw [Datetime.computeValue_view, hview]
       exact congrArg some hvalue
 

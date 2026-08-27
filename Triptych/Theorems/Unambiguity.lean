@@ -117,6 +117,7 @@ private theorem unaryUniqueFrom_fullMatches (g : Grammar) :
       intro sym h q cs
       cases sym with
       | lit l => exact fullMatches_lit g q 0 l cs
+      | str => simp [Grammar.unaryUniqueFrom] at h
       | term tok ls => exact fullMatches_term g q 0 tok ls cs
       | ref name => simp [Grammar.unaryUniqueFrom] at h
       | rep sep item lo hi => simp [Grammar.unaryUniqueFrom] at h
@@ -124,6 +125,7 @@ private theorem unaryUniqueFrom_fullMatches (g : Grammar) :
       intro sym h q cs
       cases sym with
       | lit l => exact fullMatches_lit g q (fuel + 1) l cs
+      | str => simp [Grammar.unaryUniqueFrom] at h
       | term tok ls => exact fullMatches_term g q (fuel + 1) tok ls cs
       | rep sep item lo hi => simp [Grammar.unaryUniqueFrom] at h
       | ref name =>
@@ -461,6 +463,7 @@ private theorem delimiterUniqueFrom_matches (g : Grammar) :
               rw [hdelim]
               exact termThenLiteral_matches g q 0 tok ls d ds cs (of_decide_eq_false hmem)
       | lit l => simp [Grammar.delimiterUniqueFrom] at h
+      | str => simp [Grammar.delimiterUniqueFrom] at h
       | ref name => simp [Grammar.delimiterUniqueFrom] at h
       | rep sep item lo hi => simp [Grammar.delimiterUniqueFrom] at h
   | succ fuel ih =>
@@ -480,6 +483,7 @@ private theorem delimiterUniqueFrom_matches (g : Grammar) :
               exact termThenLiteral_matches g q (fuel + 1) tok ls d ds cs
                 (of_decide_eq_false hmem)
       | lit l => simp [Grammar.delimiterUniqueFrom] at h
+      | str => simp [Grammar.delimiterUniqueFrom] at h
       | rep sep item lo hi => simp [Grammar.delimiterUniqueFrom] at h
       | ref name =>
           cases hp : g.prod? name with
@@ -599,6 +603,7 @@ private theorem headExcludesFrom_match (g : Grammar) :
       intro sym c h q cs out hout
       cases sym with
       | lit l => exact headExcludes_lit_match g q 0 l c cs out h hout
+      | str => simp [Grammar.headExcludesFrom] at h
       | term tok ls => exact headExcludes_term_match g q 0 tok ls c cs out h hout
       | ref name => simp [Grammar.headExcludesFrom] at h
       | rep sep item lo hi => simp [Grammar.headExcludesFrom] at h
@@ -606,6 +611,7 @@ private theorem headExcludesFrom_match (g : Grammar) :
       intro sym c h q cs out hout
       cases sym with
       | lit l => exact headExcludes_lit_match g q (fuel + 1) l c cs out h hout
+      | str => simp [Grammar.headExcludesFrom] at h
       | term tok ls => exact headExcludes_term_match g q (fuel + 1) tok ls c cs out h hout
       | rep sep item lo hi => simp [Grammar.headExcludesFrom] at h
       | ref name =>
@@ -675,6 +681,7 @@ private theorem prefixUniqueFrom_matches (g : Grammar) :
       | lit l =>
           simp only [matchSym]
           split <;> simp
+      | str => simp [Grammar.prefixUniqueFrom] at h
       | term tok ls =>
           cases ls with
           | exactly n => exact prefixMatches_term g q 0 tok (.exactly n) cs rfl
@@ -690,6 +697,7 @@ private theorem prefixUniqueFrom_matches (g : Grammar) :
       | lit l =>
           simp only [matchSym]
           split <;> simp
+      | str => simp [Grammar.prefixUniqueFrom] at h
       | term tok ls =>
           cases ls with
           | exactly n => exact prefixMatches_term g q (fuel + 1) tok (.exactly n) cs rfl
@@ -815,6 +823,7 @@ private theorem sequenceUniqueSeq_fullMatches (g : Grammar) (fuel : Nat) :
                               (fun x : CaptureMap × List Char => x.2.isEmpty) := rfl
                         rw [hpred]
                         simpa [fullMatches] using hpairsTail y hy
+                    | str => simp at hdelimited
                     | term tok ls => simp at hdelimited
                     | ref name => simp at hdelimited
                     | rep sep inner lo hi => simp at hdelimited
@@ -875,6 +884,7 @@ private theorem leadingLiteral_matchSeq_head (g : Grammar) (q : String) (fuel : 
                     rw [← hcs, hl]
                     rfl
                   · simp [matchSeq, matchSym, hprefix] at hout
+          | str => simp [Seq.leadingLiteral?] at hlead
           | ref name => simp [Seq.leadingLiteral?] at hlead
           | term tok lenSpec => simp [Seq.leadingLiteral?] at hlead
           | rep sep inner lo hi => simp [Seq.leadingLiteral?] at hlead
@@ -955,6 +965,7 @@ private theorem optionalLiteralRefSequence_fullMatches (g : Grammar) :
       intro sym l h q rest cs c ds hl hrest hexcludes
       cases sym with
       | lit lit => simp [Grammar.optionalLiteralRef?] at h
+      | str => simp [Grammar.optionalLiteralRef?] at h
       | term tok ls => simp [Grammar.optionalLiteralRef?] at h
       | rep sep item lo hi => simp [Grammar.optionalLiteralRef?] at h
       | ref name =>
@@ -988,6 +999,7 @@ private theorem optionalLiteralRefSequence_fullMatches (g : Grammar) :
                                         exact optionalLiteralRefSequence_fullMatches_exact
                                           g q name prodName l fuel rest hp cs hrest c ds hl
                                           hexcludes
+                                  | str => simp [Grammar.optionalLiteralRef?, hp] at h
                                   | term tok ls => simp [Grammar.optionalLiteralRef?, hp] at h
                                   | ref innerName => simp [Grammar.optionalLiteralRef?, hp] at h
                                   | rep sep item lo hi =>
