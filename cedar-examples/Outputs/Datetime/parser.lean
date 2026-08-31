@@ -1397,44 +1397,46 @@ theorem Datetime.computeValue_isSome (s : String) : Datetime.IsValid s → (Date
   exact hengine.1.1
 
 def Datetime.parse (s : String) :=
-  Triptych.gatedParse Datetime.IsValid Datetime.computeValue s
+  Triptych.gatedParseOfSpec Datetime.IsValid Datetime.computeValue millisToDatetime s
 
-theorem Datetime.parse_sound (s : String) (i : Int) :
-    Datetime.parse s = some i → Datetime.IsValid s ∧ Datetime.computeValue s = some i :=
-  Triptych.gatedParse_sound _ _ s i
+theorem Datetime.parse_sound (s : String) (d : Cedar.Spec.Ext.Datetime) :
+    Datetime.parse s = some d → Datetime.IsValid s ∧ (Datetime.computeValue s).map millisToDatetime = some d :=
+  Triptych.gatedParseOfSpec_sound _ _ _ s d
 
-theorem Datetime.parse_complete (s : String) (i : Int) :
-    Datetime.IsValid s → Datetime.computeValue s = some i → Datetime.parse s = some i :=
-  Triptych.gatedParse_complete _ _ s i
+theorem Datetime.parse_complete (s : String) (d : Cedar.Spec.Ext.Datetime) :
+    Datetime.IsValid s → (Datetime.computeValue s).map millisToDatetime = some d → Datetime.parse s = some d :=
+  Triptych.gatedParseOfSpec_complete _ _ _ s d
 
 theorem Datetime.parse_reject (s : String) : Datetime.parse s = none ↔ ¬Datetime.IsValid s :=
-  Triptych.gatedParse_reject _ _ Datetime.computeValue_isSome s
+  Triptych.gatedParseOfSpec_reject _ _ _ Datetime.computeValue_isSome s
 
 theorem Datetime.parse_view (s : String) :
     Datetime.parse s =
-      if decide (Datetime.IsValid s) then (Datetime.decodeView s).map Datetime.View.denotation else none :=
+      if decide (Datetime.IsValid s) then (Datetime.decodeView s).map (millisToDatetime ∘ Datetime.View.denotation)
+      else none :=
   by
-  unfold Datetime.parse Triptych.gatedParse
+  unfold Datetime.parse Triptych.gatedParseOfSpec Triptych.gatedParse
   rw [Datetime.computeValue_view]
+  split <;> simp [Option.map_map]
 
-theorem Datetime.parse_eq_some_iff_view (s : String) (i : Int) :
-    Datetime.parse s = some i ↔
+theorem Datetime.parse_eq_some_iff_view (s : String) (d : Cedar.Spec.Ext.Datetime) :
+    Datetime.parse s = some d ↔
       ∃ decodedView : Datetime.View,
         Datetime.decodeView s = some decodedView ∧
-          Datetime.View.Valid decodedView ∧ Datetime.View.denotation decodedView = i :=
+          Datetime.View.Valid decodedView ∧ millisToDatetime (Datetime.View.denotation decodedView) = d :=
   by
   constructor
   · intro hparse
-    obtain ⟨hvalid, hvalue⟩ := Datetime.parse_sound s i hparse
+    obtain ⟨hvalid, hvalue⟩ := Datetime.parse_sound s d hparse
     obtain ⟨decodedView, hview, hvalidView⟩ := (Datetime.IsValid_view s).mp hvalid
     refine ⟨decodedView, hview, hvalidView, ?_⟩
     rw [Datetime.computeValue_view, hview] at hvalue
-    exact Option.some.inj hvalue
+    simpa using Option.some.inj hvalue
   · rintro ⟨decodedView, hview, hvalidView, hvalue⟩
-    apply Datetime.parse_complete s i
+    apply Datetime.parse_complete s d
     · exact (Datetime.IsValid_view s).mpr ⟨decodedView, hview, hvalidView⟩
     · rw [Datetime.computeValue_view, hview]
-      exact congrArg some hvalue
+      simpa using congrArg some hvalue
 
 theorem Datetime.parse_eq_none_iff_view (s : String) :
     Datetime.parse s = none ↔ ¬∃ v : Datetime.View, Datetime.decodeView s = some v ∧ Datetime.View.Valid v :=

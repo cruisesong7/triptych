@@ -79,6 +79,11 @@ theorem IPv6.extparse_complete (s : String) (i : IPv6Net) :
   intro hvalid hvalue
   exact (IPv6.RuleRegistrySoundness.parser_agrees s i).mpr ⟨hvalid, hvalue⟩
 
+theorem IPv6.parse_eq_extparse (s : String) :
+    IPv6.parse s = ipv6Only s :=
+  Triptych.gatedParse_eq_external
+    IPv6.IsValid IPv6.computeValue ipv6Only IPv6.extparse_sound IPv6.extparse_reject s
+
 theorem IPv6.extparse_eq_some_iff_view (s : String) (i : IPv6Net) :
     ipv6Only s = some i ↔
       ∃ v : IPv6.View,

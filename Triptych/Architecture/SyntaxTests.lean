@@ -208,6 +208,28 @@ triptych ValueResult where
 
 end ValueResultBinderExample
 
+namespace EscapedOfSpecExample
+
+structure WrappedNat where
+  val : Nat
+  deriving Repr, DecidableEq
+
+private def readValue (digits : String) : Nat := readNat digits
+
+private def wrapValue (n : Nat) : WrappedNat := { val := n }
+
+triptych EscapedOfSpec where
+  grammar
+    Root   ::= Digits
+    Digits ::= digit+
+  value'
+    readValue Digits
+    ofSpec wrapValue
+
+#guard EscapedOfSpec.parse "42" = some { val := 42 }
+
+end EscapedOfSpecExample
+
 namespace StringLiteralExample
 
 private def decodeLiteral (literal : String) : String :=

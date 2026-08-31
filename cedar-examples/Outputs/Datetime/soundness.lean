@@ -10,6 +10,40 @@ open CedarExamples.Datetime
 set_option linter.unusedSimpArgs false
 set_option linter.unusedVariables false
 
+/- ══════════════════════ soundness · generated parser ══════════════════════
+The generated parser returns Cedar's Datetime domain type. The conversion obligation follows
+from Cedar's proof that every well-formed four-digit datetime fits in Int64. -/
+
+theorem Datetime.toSpec_ofSpec (s : String) (v : Int) :
+    Datetime.IsValid s → Datetime.computeValue s = some v →
+      datetimeMillis (millisToDatetime v) = v := by
+  intro hvalid hvalue
+  have hcedarWf := (Datetime.GrammarView.isValid_iff_cedarWf s).mp hvalid
+  obtain ⟨components, hsyntax, hconstraints, hs⟩ := hcedarWf
+  have hcompute :=
+    Datetime.GrammarView.computeValue_eq_cedar s
+      ⟨components, hsyntax, hconstraints, hs⟩
+  rw [hs, CedarSupport.Datetime.computeValue_asString hsyntax] at hcompute
+  rw [hs] at hvalue
+  have hv : v = components.toMillis :=
+    Option.some.inj (hvalue.symm.trans hcompute)
+  subst v
+  have hrange :=
+    CedarSupport.Datetime.toMillis_int64_range hsyntax hconstraints
+  unfold datetimeMillis millisToDatetime
+  have hofInt :
+      Int64.ofInt? components.toMillis = some (Int64.ofInt components.toMillis) := by
+    apply Int64.ofInt?_some_iff.mp
+    simpa only [Int64.«MIN», Int64.«MAX»] using hrange
+  exact Int64.ofInt?_some_toInt hofInt
+
+theorem Datetime.parse_sound_toSpec (s : String) (d : Cedar.Spec.Ext.Datetime) :
+    Datetime.parse s = some d →
+      Datetime.IsValid s ∧ Datetime.computeValue s = some (datetimeMillis d) :=
+  Triptych.gatedParseOfSpec_sound_toSpec
+    Datetime.IsValid Datetime.computeValue millisToDatetime datetimeMillis
+      Datetime.toSpec_ofSpec s d
+
 /- ══════════════════════ soundness · external parser ══════════════════════
 Obligations for validating YOUR OWN external parser against this specification:
 `extparse_sound`, `extparse_complete`, and `extparse_reject`, stated over the readable
@@ -42,6 +76,13 @@ theorem Datetime.extparse_complete (s : String) (d : Cedar.Spec.Ext.Datetime) :
       Cedar.Spec.Ext.Datetime.parse s = some d := by
   intro hvalid hvalue
   exact (Datetime.RuleRegistryProof.parser_agrees s d).mpr ⟨hvalid, hvalue⟩
+
+theorem Datetime.parse_eq_extparse (s : String) :
+    Datetime.parse s = Cedar.Spec.Ext.Datetime.parse s :=
+  Triptych.gatedParseOfSpec_eq_external
+    Datetime.IsValid Datetime.computeValue millisToDatetime datetimeMillis
+      Cedar.Spec.Ext.Datetime.parse Datetime.extparse_sound Datetime.extparse_reject
+      millisToDatetime_datetimeMillis s
 
 theorem Datetime.extparse_eq_some_iff_view (s : String) (d : Cedar.Spec.Ext.Datetime) :
     Cedar.Spec.Ext.Datetime.parse s = some d ↔

@@ -158,8 +158,8 @@ typed escapes while keeping grammar recognition, decoding, and value reconciliat
   prefix.
 - **IPv6, including `::`** — uses bounded separated repetitions, the analyzable
   `count H16L + count H16R < 8` constraint, and list-valued `value'` arguments for zero filling.
-- **Datetime** — uses `value'` for epoch-millisecond calendar arithmetic and `constraints'`
-  for the cross-field day bound.
+- **Datetime** — uses `value'` for epoch-millisecond calendar arithmetic, `ofSpec`/`toSpec`
+  conversions to Cedar's domain type, and `constraints'` for the cross-field day bound.
 
 All five Cedar examples retain automatic surface/engine recognition and value agreement.
 Every declared external-parser or canonical-printer obligation is discharged in the shipped
@@ -217,6 +217,9 @@ Because the layout combinators are a closed, pre-verified library:
   `checkedExtParse_eq_some_iff`, `checkedExtParse_sound`, and
   `checkedExtParse_sound_view` are discharged without any theorem about the external
   implementation. This provides immediate soundness at the cost of running the reference parser.
+  Once external-parser soundness, exact rejection, and the domain conversion's right-inverse law
+  are proved, `gatedParseOfSpec_eq_external` derives pointwise equality between the generated and
+  external parsers. Decimal, Duration, Datetime, IPv4, and IPv6 all expose this exact equality.
   Independently, each grammar production is compiled to a typed structural derivation:
   alternatives are constructors, optional symbols are `Option`, repetitions are `List`, and
   references contain child derivations. The spec exposes `render` and `Valid`; the parser
@@ -662,10 +665,11 @@ computeValue : String → Option β
 ```
 
 The scalar DSL computes in arbitrary-precision `Int`, allowing Decimal and Duration overflow
-to be expressed as final-value constraints. `ofSpec : β → δ` optionally maps an accepted scalar
-spec value into the generated parser's domain result. `toSpec : δ → β` maps a domain or external
-parser result back for comparison. Their accepted-range inverse obligation prevents lossy
-conversions such as unchecked `Int64.ofInt` wrapping.
+to be expressed as final-value constraints. For either value tier, `ofSpec : β → δ` optionally
+maps an accepted specification value into the generated parser's domain result.
+`toSpec : δ → β` maps a domain or external parser result back for comparison. Their
+accepted-range inverse obligation prevents lossy conversions such as unchecked
+`Int64.ofInt` wrapping.
 
 Structured values need no per-component surrogate. IPv4 and IPv6 construct `IPNet` directly in
 `value'`, so their `computeValue` is `String → Option IPNet`; the omitted `toSpec` defaults to
@@ -682,5 +686,6 @@ escape sections preserve generality without pretending arbitrary Lean code is an
 - provide an explicit printer proof or derivation certificate when inversion is semantic.
 
 This division is visible in the Cedar examples: Decimal and Duration stay in the scalar tier;
-Datetime uses both escapes; IPv4 and IPv6 use structured `value'`; all still receive generated
-recognition, decidability, typed-view, value-agreement, and verified-parser theorems.
+Datetime uses both escapes and converts its specification value to Cedar's domain type; IPv4
+and IPv6 use structured `value'`; all still receive generated recognition, decidability,
+typed-view, value-agreement, and verified-parser theorems.

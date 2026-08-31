@@ -118,7 +118,9 @@ def durationResponse (s : String) : Response :=
   }
 
 def datetimeResponse (s : String) : Response :=
-  let generated := (CedarExamples.Datetime.Datetime.parse s).map toString
+  let generated :=
+    (CedarExamples.Datetime.Datetime.parse s).map fun datetime =>
+      toString (CedarExamples.Datetime.datetimeMillis datetime)
   let cedar :=
     (CedarExamples.Datetime.Datetime.checkedExtParse s).map fun datetime =>
       toString datetime.val.toInt

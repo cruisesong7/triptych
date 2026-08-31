@@ -72,6 +72,11 @@ theorem IPv4.extparse_complete (s : String) (i : IPv4Net) :
   intro hvalid hvalue
   exact (IPv4.RuleRegistrySoundness.parser_agrees s i).mpr ⟨hvalid, hvalue⟩
 
+theorem IPv4.parse_eq_extparse (s : String) :
+    IPv4.parse s = ipv4Only s :=
+  Triptych.gatedParse_eq_external
+    IPv4.IsValid IPv4.computeValue ipv4Only IPv4.extparse_sound IPv4.extparse_reject s
+
 theorem IPv4.extparse_eq_some_iff_view (s : String) (i : IPv4Net) :
     ipv4Only s = some i ↔
       ∃ v : IPv4.View,

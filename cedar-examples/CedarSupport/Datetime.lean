@@ -17,4 +17,10 @@ public theorem computeValue_asString
     Cedar.Thm.Datetime.computeValue components.asString = some components.toMillis :=
   Cedar.Thm.Datetime.computeValue_asString h
 
+public theorem toMillis_int64_range
+    {components : Cedar.Thm.Datetime.DatetimeComponents}
+    (hsyntax : components.syntaxWf) (hconstraints : components.constraintsWf) :
+    Int64.MIN ≤ components.toMillis ∧ components.toMillis ≤ Int64.MAX :=
+  Cedar.Thm.Datetime.toMillis_int64_range hsyntax hconstraints
+
 end CedarSupport.Datetime

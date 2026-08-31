@@ -7,13 +7,11 @@ verified parsers `triptych` emits against the exact strings Cedar's own unit tes
 `IsValid`/`computeValue` capture every requirement Cedar's parser enforces — the range checks, the
 overflow bounds, the reject cases — not just the ones we happened to think of.
 
-Why direct equality against Cedar works as the oracle: for Decimal and Duration the `ofSpec` clause
-makes our `parse` return the SAME type as Cedar's parser (`Option Decimal` / `Option Duration`), so
-`ourParse s = cedarParse s` checks BOTH acceptance and value in one shot, uniformly for valid AND
-invalid strings (a rejected string makes both sides `none`). Datetime has no `ofSpec`, so our
-parse yields `Option Int` (epoch millis) and we compare against
-`(cedarParse s).map datetimeMillis`. Cedar's canonical Datetime serializer is partial, so it
-cannot currently be used as a Triptych `printer`.
+Why direct equality against Cedar works as the oracle: each `ofSpec` clause makes our `parse`
+return the SAME type as Cedar's parser, so `ourParse s = cedarParse s` checks BOTH acceptance and
+value in one shot, uniformly for valid AND invalid strings (a rejected string makes both sides
+`none`). Cedar's canonical Datetime serializer is partial, so it cannot currently be used as a
+Triptych `printer`.
 
 Run from `cedar-examples` with `lake build ConformanceTests`; the `#eval` at the bottom fails
 the build with a nonzero count if any case diverges. No `native_decide`, no new
@@ -128,8 +126,10 @@ def durationCheckedExternalChecks : List (Option String) :=
   durationStrings.map (fun s =>
     check s (Duration.checkedExtParse s) (Cedar.Spec.Ext.Datetime.Duration.parse s))
 
-/-! ## Datetime — no `ofSpec`, so our parse yields `Option Int` (epoch millis). Compare against
-    `(Cedar…Datetime.parse s).map datetimeMillis`. Strings from `cedar-lean/UnitTest/Datetime.lean`. -/
+/-! ## Datetime
+
+The generated and Cedar parsers return the same Datetime domain type. Strings come from
+`cedar-lean/UnitTest/Datetime.lean`. -/
 
 def datetimeStrings : List String :=
   [ -- valid
@@ -159,8 +159,7 @@ def datetimeStrings : List String :=
 
 def datetimeChecks : List (Option String) :=
   datetimeStrings.map (fun s =>
-    check s (Datetime.parse s)
-      ((Cedar.Spec.Ext.Datetime.parse s).map datetimeMillis))
+    check s (Datetime.parse s) (Cedar.Spec.Ext.Datetime.parse s))
 
 def datetimeCheckedExternalChecks : List (Option String) :=
   datetimeStrings.map (fun s =>

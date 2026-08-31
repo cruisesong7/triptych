@@ -307,6 +307,38 @@ theorem gatedParseOfSpec_sound_toSpec (accepted : String → Prop) [DecidablePre
   subst hvd
   exact ⟨hacc, by rw [hv, hToSpecOfSpec s v hacc hv]⟩
 
+/-- A generated domain-valued parser equals an external parser when the external parser is
+    sound, rejects exactly the invalid strings, and its domain conversion is reversible. -/
+theorem gatedParseOfSpec_eq_external
+    (accepted : String → Prop) [DecidablePred accepted]
+    (val : String → Option β) (ofSpec : β → δ) (toSpec : δ → β)
+    (external : String → Option δ)
+    (hsound : SoundStmt accepted val external toSpec)
+    (hreject : RejectStmt accepted external)
+    (hinverse : ∀ d, ofSpec (toSpec d) = d) :
+    ∀ s, gatedParseOfSpec accepted val ofSpec s = external s := by
+  intro s
+  cases hparse : external s with
+  | none =>
+      have hinvalid : ¬accepted s := (hreject s).mp hparse
+      simp [gatedParseOfSpec, gatedParse, hinvalid]
+  | some d =>
+      obtain ⟨hvalid, hvalue⟩ := hsound s d hparse
+      apply gatedParseOfSpec_complete accepted val ofSpec s d hvalid
+      rw [hvalue, Option.map_some, hinverse]
+
+/-- Identity-conversion specialization of `gatedParseOfSpec_eq_external`. -/
+theorem gatedParse_eq_external
+    (accepted : String → Prop) [DecidablePred accepted]
+    (val : String → Option β) (external : String → Option β)
+    (hsound : SoundStmt accepted val external id)
+    (hreject : RejectStmt accepted external) :
+    ∀ s, gatedParse accepted val s = external s := by
+  intro s
+  simpa [gatedParseOfSpec] using
+    gatedParseOfSpec_eq_external accepted val id id external hsound hreject
+      (fun _ => rfl) s
+
 /-! ## The printer side: view encoding / roundtrip / injectivity / normalization (δ-view)
 
 The user supplies ONE canonical serializer `toStr : δ → String` over the DOMAIN type `δ` (e.g.

@@ -75,6 +75,17 @@ def epochMillis (yyyy mm dd time_hh time_mm ss sss offset_hh offset_mm offset : 
     `val : Int64`, matching our `epochMillis` value and letting an external parser be compared. -/
 def datetimeMillis (d : Cedar.Spec.Ext.Datetime) : Int := d.val.toInt
 
+/-- Convert epoch milliseconds to Cedar's Datetime domain type. The generated
+    `toSpec_ofSpec` obligation proves that accepted grammar values are inside Int64's faithful
+    range, so this conversion cannot wrap for valid input. -/
+def millisToDatetime (i : Int) : Cedar.Spec.Ext.Datetime :=
+  ⟨Int64.ofInt i⟩
+
+theorem millisToDatetime_datetimeMillis (d : Cedar.Spec.Ext.Datetime) :
+    millisToDatetime (datetimeMillis d) = d := by
+  cases d
+  simp [millisToDatetime, datetimeMillis, Int64.ofInt_toInt]
+
 triptych Datetime where
   grammar
     Datetime ::= Date
@@ -96,6 +107,7 @@ triptych Datetime where
   -- value(Datetime) = epoch millis; non-affine, so via the `value'` escape (`epochMillis`).
   value'
     epochMillis YYYY MM DD Time.hh Time.mm ss SSS Offset.hh Offset.mm Offset
+    ofSpec millisToDatetime
     toSpec datetimeMillis
   constraints
     -- Numeric field bounds. `hh`/`mm` are reused in `Time` and `Offset`, so they are addressed
@@ -112,10 +124,11 @@ triptych Datetime where
   parser Cedar.Spec.Ext.Datetime.parse
   to "Outputs/Datetime"
 
--- The generated parser (value = epoch milliseconds, matching Unix timestamps):
-#eval Datetime.parse "1970-01-01T00:00:00Z"       -- some 0
-#eval Datetime.parse "2024-01-15T10:30:45.123Z"   -- some 1705314645123
-#eval Datetime.parse "2024-01-15T10:30:45+0530"   -- some 1705294845000  (UTC = local − 05:30)
-#eval Datetime.parse "2024-02-30T00:00:00Z"       -- none (calendar day-bound)
+-- The generated parser returns Cedar's Datetime type. Map to epoch milliseconds for readable
+-- sample output:
+#eval (Datetime.parse "1970-01-01T00:00:00Z").map datetimeMillis
+#eval (Datetime.parse "2024-01-15T10:30:45.123Z").map datetimeMillis
+#eval (Datetime.parse "2024-01-15T10:30:45+0530").map datetimeMillis
+#eval (Datetime.parse "2024-02-30T00:00:00Z").map datetimeMillis
 
 end CedarExamples.Datetime

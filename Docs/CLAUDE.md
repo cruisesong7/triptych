@@ -139,10 +139,11 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
   decision procedure) against Cedar's REAL parsers over Cedar's OWN unit-test corpus
   (`cedar-lean/UnitTest/{Decimal,Datetime}.lean`). Because `ofSpec` makes Decimal/Duration `parse`
   return the SAME type as Cedar's, the check is direct equality `ourParse s = cedarParse s` (Cedar
-  is the oracle — checks accept-set AND value at once); Datetime (no `ofSpec`) compares
-  `ourParse s = (cedarParse s).map datetimeMillis`. Plain `#eval` (no `native_decide`, no axioms);
+  is the oracle — checks accept-set AND value at once). Datetime now uses `ofSpec` on its opaque
+  epoch-millisecond `value'`, so it has the same direct comparison. Plain `#eval` (no
+  `native_decide`, no axioms);
   a nonzero failure count aborts the build. Current generated-parser suites pass 32/32 Decimal,
-  42/42 Duration, and 74/74 Datetime cases; checked-external suites repeat those corpus sizes.
+  42/42 Duration, and 77/77 Datetime cases; checked-external suites repeat those corpus sizes.
   On the shared IPAddr corpus, IPv4 and IPv6 each pass 89/89 generated-parser, 89/89 readable-spec,
   and 89/89 checked-external cases. IPv6 printer roundtrip passes 52/52. Total failures: 0.
   This suite caught the Duration sign bug (below).
@@ -174,8 +175,8 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
   capture (the old silent-`+1` trap) and `nat/int/len` of a sign capture. `sign` lowers to the
   same `Sym` as `["-"]` (optional lit), so it's pure grammar sugar — the engine/denotation/proofs
   never see a new constructor; detection of sign productions is SYNTACTIC (in `elabTriptych`).
-- Clause nesting: `ofSpec <f>` and `toSpec <g>` are semantic sub-clauses of scalar `value`;
-  `value'` may also carry `toSpec` when an external parser returns a different type. The maps
+- Clause nesting: `ofSpec <f>` and `toSpec <g>` are semantic sub-clauses of either `value`
+  form. The maps
   have opposite directions: `ofSpec : β → δ` converts a spec value to the generated parser's
   domain type; `toSpec : δ → β` converts a domain/external-parser result to the spec value.
   An omitted `toSpec` defaults to `id`; write it only when the two value types differ.

@@ -132,6 +132,13 @@ theorem Duration.extparse_complete (s : String) (d : Cedar.Spec.Ext.Datetime.Dur
   intro hvalid hvalue
   exact (Duration.RuleRegistrySoundness.parser_agrees s d).mpr ⟨hvalid, hvalue⟩
 
+theorem Duration.parse_eq_extparse (s : String) :
+    Duration.parse s = Cedar.Spec.Ext.Datetime.Duration.parse s :=
+  Triptych.gatedParseOfSpec_eq_external
+    Duration.IsValid Duration.computeValue millisToDuration durationMillis
+      Cedar.Spec.Ext.Datetime.Duration.parse Duration.extparse_sound Duration.extparse_reject
+      Duration.ofSpec_toSpec s
+
 theorem Duration.extparse_eq_some_iff_view (s : String)
     (d : Cedar.Spec.Ext.Datetime.Duration) :
     Cedar.Spec.Ext.Datetime.Duration.parse s = some d ↔

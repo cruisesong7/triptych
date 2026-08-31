@@ -63,7 +63,8 @@ comparisons, lengths, numeric values, canonical decimal spelling, and {lit}`coun
 
 For semantics outside those DSLs, {lit}`value'` accepts an ordinary Lean function returning any
 type, while {lit}`constraints'` accepts any Boolean Lean predicate. Both can receive scalar
-captures or repeated-capture {lean}`List String` arguments.
+captures or repeated-capture {lean}`List String` arguments. Either value form may use
+{lit}`ofSpec` and {lit}`toSpec` to expose a different application-facing parser result type.
 
 The Cedar-independent Graph example uses both escapes:
 

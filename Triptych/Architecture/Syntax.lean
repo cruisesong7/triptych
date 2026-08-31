@@ -136,8 +136,10 @@ syntax fmtToSpec := "toSpec" term
 syntax fmtValue :=
   withPosition("value" colGt valExpr (colGt fmtOfSpec)? (colGt fmtToSpec)?)
 
-/-- Escape value section for Lean computations that are not expressible in the value DSL. -/
-syntax fmtValueEsc := withPosition("value'" fmtEscEntry (colGt fmtToSpec)?)
+/-- Escape value section for Lean computations that are not expressible in the value DSL,
+    followed by optional domain conversions. -/
+syntax fmtValueEsc :=
+  withPosition("value'" fmtEscEntry (colGt fmtOfSpec)? (colGt fmtToSpec)?)
 
 /-- `parser p` names an existing parser to validate against the generated specification.
     It emits agreement obligations and a checked wrapper. -/
@@ -771,7 +773,7 @@ def elabTriptych : CommandElab := fun stx => do
       else if let some veStx := ve then
         -- `value'` escape section: `value' f X Y …` — author fn applied to captures.
         match veStx with
-        | `(fmtValueEsc| value' $e:fmtEscEntry $[$_:fmtToSpec]?) =>
+        | `(fmtValueEsc| value' $e:fmtEscEntry $[$_:fmtOfSpec]? $[$_:fmtToSpec]?) =>
           let (f, args) ← parseEscEntryArgs e
           hasValueEsc := true
           let vfnIdent := mkIdentFrom name (name.getId ++ `valueFn)
@@ -1020,7 +1022,7 @@ def elabTriptych : CommandElab := fun stx => do
       -- obligations below are the SEPARATE translation-validation surface. An `ofSpec <f>`
       -- clause converts the output to the domain type `δ` (so `parse : String → Option δ`);
       -- otherwise it returns `β`.
-      let (ofSpecTerm?, valueToSpecTerm?) :
+      let (valueOfSpecTerm?, valueToSpecTerm?) :
           Option (TSyntax `term) × Option (TSyntax `term) ←
         match v with
         | some vStx =>
@@ -1035,16 +1037,23 @@ def elabTriptych : CommandElab := fun stx => do
             pure (none, none)
           | _ => throwUnsupportedSyntax
         | none => pure (none, none)
-      let escapeToSpecTerm? : Option (TSyntax `term) ←
+      let (escapeOfSpecTerm?, escapeToSpecTerm?) :
+          Option (TSyntax `term) × Option (TSyntax `term) ←
         match ve with
         | some veStx =>
           match veStx with
+          | `(fmtValueEsc|
+              value' $_:fmtEscEntry ofSpec $ofSpecT:term toSpec $toSpecT:term) =>
+            pure (some ofSpecT, some toSpecT)
+          | `(fmtValueEsc| value' $_:fmtEscEntry ofSpec $ofSpecT:term) =>
+            pure (some ofSpecT, none)
           | `(fmtValueEsc| value' $_:fmtEscEntry toSpec $toSpecT:term) =>
-            pure (some toSpecT)
+            pure (none, some toSpecT)
           | `(fmtValueEsc| value' $_:fmtEscEntry) =>
-            pure none
+            pure (none, none)
           | _ => throwUnsupportedSyntax
-        | none => pure none
+        | none => pure (none, none)
+      let ofSpecTerm? := valueOfSpecTerm?.orElse fun _ => escapeOfSpecTerm?
       let toSpecTerm? := valueToSpecTerm?.orElse fun _ => escapeToSpecTerm?
       if veIdent?.isSome || hasValueEsc then
         for cmd in ← Triptych.parserContractsProof name.getId veIdent?.isSome ofSpecTerm? do
@@ -1055,23 +1064,25 @@ def elabTriptych : CommandElab := fun stx => do
         if grammarStaticallyUnique then
           emitParser (←
             Triptych.relationalParserContractProof name.getId veIdent?.isSome ofSpecTerm?)
-      -- CONVERSION GUARD (lint): an `ofSpec` not injective on all of `Int` (e.g.
-      -- `Int64.ofInt`, which WRAPS) needs a value constraint carving the accepted language down
-      -- to its faithful domain. Otherwise out-of-range inputs are accepted and silently wrap.
+      -- CONVERSION GUARD (lint): a lossy `ofSpec` needs a constraint carving the accepted
+      -- language down to its faithful domain. Otherwise inputs outside that domain are accepted
+      -- and silently converted.
       -- The generated `toSpec_ofSpec` obligation catches this when `toSpec` is present.
       -- We cannot inspect the supplied function
       -- (an opaque term), so this is a heuristic WARNING, not an error: no DSL constraint
       -- mentions `value` and no `constraints'` escape is present ⟹ warn. A total injection
       -- (a plain embedding) legitimately needs no constraint — then ignore the warning.
       if let some ofSpecT := ofSpecTerm? then
-        unless dslExprs.any Triptych.constraintUsesValue do
+        let hasConversionGuard :=
+          dslExprs.any Triptych.constraintUsesValue || (hasValueEsc && cse.isSome)
+        unless hasConversionGuard do
           logWarningAt ofSpecT m!"`ofSpec` without a value constraint: if `{ofSpecT}` is not \
-            injective on \
-            all of Int (e.g. it wraps, like `Int64.ofInt`), out-of-range inputs will be ACCEPTED \
-            and silently converted by the generated parser. Add a range constraint matching \
-            `ofSpec`'s faithful domain (e.g. `value ∈ [Int64.MIN, Int64.MAX]`) — with a \
-            companion `toSpec` clause the emitted `toSpec_ofSpec` obligation is unprovable \
-            without it. If `ofSpec` is a total embedding, this warning can be ignored."
+            faithful on every specification value, inputs outside its faithful domain will be \
+            accepted and silently converted by the generated parser. For `value`, add a range \
+            constraint such as `value ∈ [Int64.MIN, Int64.MAX]`; for `value'`, add a \
+            `constraints'` guard or prove that the grammar already implies the required range. \
+            With a companion `toSpec` clause, the emitted `toSpec_ofSpec` obligation exposes \
+            any missing guard. If `ofSpec` is a total embedding, this warning can be ignored."
       -- CONVERSION FAITHFULNESS (→ soundness file, generated section): with BOTH `ofSpec` and a
       -- `toSpec` clause, emit `toSpec_ofSpec : IsValid s →
       -- computeValue s = some v → toSpec (ofSpec v) = v` on accepted values. The companion
@@ -1090,9 +1101,11 @@ def elabTriptych : CommandElab := fun stx => do
           let parseId     := mkIdentFrom name (name.getId ++ `parse)
           let (dTy, dNm) ← Triptych.ofSpecCodomainBinder ofSpecT
           let dId := mkIdent dNm
-          emitContractGen (← `(theorem $toSpecOfSpecId (s : String) (v : Int) :
-              $validSurf s → $cvIdent s = some v →
-                $toSpecT ($ofSpecT v) = v := by sorry))
+          let (vTy, vNm) ← Triptych.optionPayloadBinder cvIdent
+          let vId := mkIdent vNm
+          emitContractGen (← `(theorem $toSpecOfSpecId (s : String) ($vId : $vTy) :
+              $validSurf s → $cvIdent s = some $vId →
+                $toSpecT ($ofSpecT $vId) = $vId := by sorry))
           emitContractGen (← `(theorem $soundToSpecId (s : String) ($dId : $dTy) :
               $parseId s = some $dId →
                 $validSurf s ∧ $cvIdent s = some ($toSpecT $dId) :=
@@ -1610,8 +1623,11 @@ from analysis and put correctness on you).
                    `List String` (the eight `H16` groups of an IPv6 address), where a scalar `X`
                    would give only the first — the way to read individually-addressable repeated
                    elements. `def f (… xs : List String) …`.
-  An optional trailing `toSpec <g>` maps an external parser's result into this value type;
-                   omission defaults to `id`.
+  ofSpec <f>      optionally maps the escaped specification value α to the generated parser's
+                  domain type δ.
+  toSpec <g>      optionally maps a domain or external-parser result δ back to α. With both
+                  directions, Triptych emits the same accepted-value `toSpec_ofSpec` obligation
+                  as for `value`; omission defaults to `id`.
 
 ── constraints ──  (optional; one per line; may refer to `value`)
   capture/string predicates (fold into IsWf):
@@ -1665,7 +1681,7 @@ from analysis and put correctness on you).
                           `/- Generated by Triptych` header) is never overwritten — hard error.
 
 Section order:  grammar · value · value' · constraints · constraints' · parser · printer · to
-(`ofSpec`/`toSpec` are semantic sub-clauses of `value`; `value'` may carry `toSpec`).
+(`ofSpec`/`toSpec` are semantic sub-clauses of either value form).
 When a format needs something not listed here, that is a signal to either (a) use the
 matching escape section (`value'` / `constraints'`) for that one piece, or (b) request the
 vocabulary be extended — not to hand-write the whole spec in Lean."

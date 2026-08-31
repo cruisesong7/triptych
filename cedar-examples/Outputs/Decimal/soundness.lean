@@ -129,6 +129,13 @@ theorem Decimal.extparse_complete (s : String) (d : Cedar.Spec.Ext.Decimal) :
   intro hvalid hvalue
   exact (Decimal.RuleRegistrySoundness.parser_agrees s d).mpr ⟨hvalid, hvalue⟩
 
+theorem Decimal.parse_eq_extparse (s : String) :
+    Decimal.parse s = Cedar.Spec.Ext.Decimal.parse s :=
+  Triptych.gatedParseOfSpec_eq_external
+    Decimal.IsValid Decimal.computeValue Int64.ofInt Int64.toInt
+      Cedar.Spec.Ext.Decimal.parse Decimal.extparse_sound Decimal.extparse_reject
+      Decimal.ofSpec_toSpec s
+
 theorem Decimal.extparse_eq_some_iff_view (s : String) (d : Cedar.Spec.Ext.Decimal) :
     Cedar.Spec.Ext.Decimal.parse s = some d ↔
       ∃ v : Decimal.View,
