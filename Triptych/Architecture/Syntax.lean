@@ -715,12 +715,12 @@ def elabTriptych : CommandElab := fun stx => do
           emitSound (← `(instance $instAccId:ident : DecidablePred $accSurfId :=
                         fun s => inferInstance))
       -- Value (optional), processed BEFORE constraints so a constraint may refer to `value`.
-      -- DSL tier (`value <formula>`, `v`): elaborate the value-DSL to a `ValExpr` (bound as
-      -- `valueExpr`) whose `eval` is the value fn; `valueSub` is the `ValExpr` substituted for
-      -- a `value` reference in constraints. ESCAPE tier (`value' f X Y …`, `ve`): bind
+      -- DSL tier (`value <formula>`, `v`): parse the value-DSL once to a `ValExpr` (bound as
+      -- `valueExpr`) whose `eval` is the value fn. Constraint parsing substitutes this same AST
+      -- for a source-level `value` reference. ESCAPE tier (`value' f X Y …`, `ve`): bind
       -- `valueFn` to the author's fn applied to the decoded captures (no `ValExpr` AST — so
       -- `computeValue`/contracts, which need the AST, are DSL-tier only).
-      let mut valueSub : Option (TSyntax `term) := none
+      let mut valueAst? : Option ValExpr := none
       let mut veIdent? : Option (TSyntax `ident) := none
       let mut valueCaps : List String := []
       -- For a `value'` escape: each value capture paired with its LIST flag (`[X]` ⟹ `true`).
@@ -736,13 +736,15 @@ def elabTriptych : CommandElab := fun stx => do
         let ve : TSyntax `valExpr := ⟨vStx.raw[1]⟩
         for i in captureIdents ve.raw do
           validateCaptureIdent i
+        let valueAst ← liftMacroM (parseValExpr ve)
+        valueAst? := some valueAst
         -- SIGN-REFERENCE VALIDATION: a BARE capture name in `value` denotes its sign (±1), so it
         -- must name a dedicated sign production (`X ::= sign`). Reject a bare ref to a non-sign
         -- capture (the old silent-`+1` trap), and reject magnitude readers applied to a sign
         -- capture (a sign holds only `""`/`"-"`, so a magnitude reader on it is meaningless).
-        let signRefs := Triptych.valExprSignCaptures ve
-        let magRefs := (Triptych.valExprCaptures ve).filter (· ∉ signRefs)
-        validateCounts ve.raw (Triptych.valExprCountCaptures ve)
+        let signRefs := valueAst.signCaptures
+        let magRefs := valueAst.captures.filter (· ∉ signRefs)
+        validateCounts ve.raw valueAst.countCaptures
         for r in signRefs do
           unless signCaptures.contains r do
             throwError "value references `{r}` bare, which reads its SIGN (±1) — but `{r}` is not \
@@ -753,21 +755,21 @@ def elabTriptych : CommandElab := fun stx => do
             throwError "value reads the magnitude/length of `{r}`, but `{r}` is a sign capture \
               (`{r} ::= sign`, holding only \"\" or \"-\"). Reference it BARE (`{r}`) for its ±1 sign."
         let vfnIdent := mkIdentFrom name (name.getId ++ `valueFn)
-        -- engine: the analyzable AST + its eval
-        let valTerm ← liftMacroM (elabValExpr ve)
+        -- The DSL is parsed once above. Every generated artifact consumes this same `ValExpr`
+        -- value; no downstream phase reparses the value syntax.
+        let valTerm ← liftMacroM (quoteValExpr valueAst)
         let veIdent := mkIdentFrom name (name.getId ++ `valueExpr)
         emitEngine (← `(def $veIdent : ValExpr := $valTerm))
         emitEngine (← `(def $vfnIdent : Env → Int := ($veIdent).eval))
         -- spec: a READABLE `<Name>.value` taking the captured component STRINGS directly
         -- (no `Env`), via `natOf`/`intOf`/… — reads like `value(Natural, Fraction) = …`.
-        let readable ← liftMacroM (elabValReadableWith none ve)
-        let capNames := Triptych.valExprCaptures ve
+        let readable ← liftMacroM (quoteValReadable valueAst)
+        let capNames := valueAst.captures
         validateSurfaceBinders ve.raw "the `value` function" capNames
         let binders : Array (TSyntax `ident) :=
           (capNames.map (fun c => mkIdent (Name.mkSimple (Triptych.surfaceBinder c)))).toArray
         let valIdent := mkIdentFrom name (name.getId ++ `value)
         emitSpec (← `(def $valIdent $[($binders : String)]* : Int := $readable))
-        valueSub := some (← `($veIdent))
         veIdent? := some veIdent
         valueCaps := capNames
       else if let some veStx := ve then
@@ -843,35 +845,47 @@ def elabTriptych : CommandElab := fun stx => do
       let dslExprs : Array (TSyntax `constraintExpr) := match cs with
         | some csStx => csStx.raw[1].getArgs.map (⟨·⟩)
         | none       => #[]
-      for e in dslExprs do
+      let parsedConstraints ← dslExprs.mapM fun e =>
+        liftMacroM (parseConstraintEntryWith valueAst? e)
+      for (e, parsed) in dslExprs.zip parsedConstraints do
         for i in captureIdents e.raw do
           unless i.getId == `value do
             validateCaptureIdent i
-        validateCounts e.raw (Triptych.constraintCountCaptures e)
-      -- The authoritative phase split is whether the ORIGINAL surface expression mentions the
-      -- final `value` keyword. Capture arithmetic such as `nat MM ∈ [1, 12]` remains format
-      -- well-formedness. This must happen before elaboration substitutes `valueExpr` for `value`.
-      let wfExprs := dslExprs.filter (fun e => !(Triptych.constraintUsesValue e))
-      let valueExprs := dslExprs.filter Triptych.constraintUsesValue
+        validateCounts e.raw parsed.constraint.countCaptures
+      -- `parseConstraintEntryWith` preserves whether the ORIGINAL expression mentioned `value`
+      -- while producing its semantic `Constraint` AST. Every downstream artifact consumes this
+      -- one parsed array.
+      let wfConstraintEntries :=
+        parsedConstraints.filter (fun entry => entry.phase == .wellFormed)
+      let valueConstraintEntries :=
+        parsedConstraints.filter (fun entry => entry.phase == .value)
+      let wfConstraintAsts := wfConstraintEntries.map (·.constraint)
+      let valueConstraintAsts := valueConstraintEntries.map (·.constraint)
       if cs.isSome || cse.isSome then
         -- ENGINE list: every entry carries its preserved phase. A `constraints'` escape is
         -- intrinsically a well-formedness constraint and receives the complete capture map.
-        let dslTerms ← dslExprs.mapM (fun e => liftMacroM (elabEntryWith valueSub e))
+        let valueEngineRef : Option (ValExpr × TSyntax `term) ← match valueAst?, veIdent? with
+          | some valueAst, some veIdent => pure (some (valueAst, ← `($veIdent)))
+          | _, _ => pure none
+        let dslTerms ← parsedConstraints.mapM fun parsed =>
+          liftMacroM (quoteConstraintEntryWith valueEngineRef parsed)
         let escTerms ← escEntries.mapM (fun (f, is) => do
           `(ConstraintEntry.opaqueMap ConstraintPhase.wellFormed
               $(← liftMacroM (Triptych.opaqueMapClosure f is))))
         let csep : Syntax.TSepArray `term "," := .ofElems (dslTerms ++ escTerms)
         emitEngine (← `(def $cIdent : List ConstraintEntry := [$csep,*]))
         -- A final `value` reference renders readably as `<Name>.value <components>`.
-        let valSubR : Option (TSyntax `term) ← match veIdent? with
-          | some _ =>
+        let valueReadableRef : Option (ValExpr × TSyntax `term) ← match valueAst?, veIdent? with
+          | some valueAst, some _ =>
             let vId := mkIdentFrom name (name.getId ++ `value)
             let vArgs : Array (TSyntax `term) :=
               (valueCaps.map (fun c => ⟨(mkIdent (Name.mkSimple (Triptych.surfaceBinder c))).raw⟩)).toArray
-            pure (some (← `($vId $vArgs*)))
-          | none   => pure none
-        let wfRTerms ← wfExprs.mapM (fun e => liftMacroM (elabConstraintReadable valSubR e))
-        let valueRTerms ← valueExprs.mapM (fun e => liftMacroM (elabConstraintReadable valSubR e))
+            pure (some (valueAst, ← `($vId $vArgs*)))
+          | _, _ => pure none
+        let wfRTerms ← wfConstraintAsts.mapM (fun constraint =>
+          liftMacroM (quoteConstraintReadable none constraint))
+        let valueRTerms ← valueConstraintAsts.mapM (fun constraint =>
+          liftMacroM (quoteConstraintReadable valueReadableRef constraint))
         let escRTerms ← escEntries.mapM (fun (f, is) => do
           let bArgs : Array (TSyntax `term) := is.map (fun (i, _) =>
             ⟨(mkIdent (Name.mkSimple (Triptych.surfaceBinder i.getId.toString))).raw⟩)
@@ -879,10 +893,10 @@ def elabTriptych : CommandElab := fun stx => do
         let escCaps := escEntries.toList.flatMap (fun (_, is) =>
           is.toList.map (fun (i, isList) => (i.getId.toString, isList)))
         let wfCaps :=
-          ((wfExprs.toList.flatMap Triptych.constraintCaptures).map (·, false) ++ escCaps)
+          ((wfConstraintAsts.toList.flatMap Constraint.captures).map (·, false) ++ escCaps)
             |>.eraseDups
         let valCaps :=
-          (valueExprs.toList.flatMap Triptych.constraintCaptures ++ valueCaps).eraseDups
+          (valueConstraintAsts.toList.flatMap Constraint.captures ++ valueCaps).eraseDups
             |>.map (·, false)
         let constraintLoc := match cs, cse with
           | some constraintsSection, _ => constraintsSection.raw
@@ -1074,7 +1088,7 @@ def elabTriptych : CommandElab := fun stx => do
       -- (a plain embedding) legitimately needs no constraint — then ignore the warning.
       if let some ofSpecT := ofSpecTerm? then
         let hasConversionGuard :=
-          dslExprs.any Triptych.constraintUsesValue || (hasValueEsc && cse.isSome)
+          !valueConstraintAsts.isEmpty || (hasValueEsc && cse.isSome)
         unless hasConversionGuard do
           logWarningAt ofSpecT m!"`ofSpec` without a value constraint: if `{ofSpecT}` is not \
             faithful on every specification value, inputs outside its faithful domain will be \

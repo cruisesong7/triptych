@@ -182,7 +182,7 @@ syntax:max "Int64.MAX"     : valExpr
 syntax:max "Int64.MIN"     : valExpr
 -- `value` — inside a `constraints` entry, refers to the elaborated value expression
 -- (so constraints read like the doc's `value(X) ∈ [MIN, MAX]`). Only meaningful when a
--- value substitution is supplied (see `elabValExprWith`); bare use elsewhere errors.
+-- value substitution is supplied (see `parseValExprWithUsage`); bare use elsewhere errors.
 syntax:max "value"         : valExpr
 syntax:max "(" valExpr ")" : valExpr
 syntax:65 valExpr:65 " + " valExpr:66 : valExpr
@@ -190,31 +190,99 @@ syntax:65 valExpr:65 " - " valExpr:66 : valExpr
 syntax:70 valExpr:70 " * " valExpr:71 : valExpr
 syntax:75 valExpr:76 " ^ " valExpr:75 : valExpr
 
-/-- Translate a `valExpr` formula into a `ValExpr` term. `valueSub`, if provided, is the
-    term substituted for a `value` reference (the format's value expression); `none`
-    makes a `value` reference an error. -/
-partial def elabValExprWith (valueSub : Option (TSyntax `term)) :
-    TSyntax `valExpr → MacroM (TSyntax `term)
-  | `(valExpr| $n:num)      => `(ValExpr.lit $n)
-  | `(valExpr| Int64.MAX)   => `(ValExpr.lit 9223372036854775807)
-  | `(valExpr| Int64.MIN)   => `(ValExpr.lit (-9223372036854775808))
-  | `(valExpr| value)       =>
+/-- A parsed value expression together with the source-level fact that it mentioned the final
+    `value` keyword. Constraint phase classification must preserve this fact before substitution
+    replaces `value` with the format's `ValExpr`. -/
+structure ParsedValExpr where
+  expression : ValExpr
+  usesValue : Bool
+  deriving Inhabited
+
+/-- Parse a value-DSL expression once, preserving whether its source used `value`. -/
+partial def parseValExprWithUsage (valueSub : Option ValExpr) :
+    TSyntax `valExpr → MacroM ParsedValExpr
+  | `(valExpr| $n:num) => pure ⟨.lit (Int.ofNat n.getNat), false⟩
+  | `(valExpr| Int64.MAX) => pure ⟨.lit 9223372036854775807, false⟩
+  | `(valExpr| Int64.MIN) => pure ⟨.lit (-9223372036854775808), false⟩
+  | `(valExpr| value) =>
       match valueSub with
-      | some t => pure t
-      | none   => Macro.throwUnsupported
-  | `(valExpr| nat $i:ident)  => `(ValExpr.nat $(quote i.getId.toString))
-  | `(valExpr| int $i:ident)  => `(ValExpr.int $(quote i.getId.toString))
-  | `(valExpr| len $i:ident)  => `(ValExpr.len $(quote i.getId.toString))
-  | `(valExpr| count $i:ident) => `(ValExpr.count $(quote i.getId.toString))
-  | `(valExpr| $i:ident)      => `(ValExpr.signOf $(quote i.getId.toString))
-  | `(valExpr| ( $e:valExpr )) => elabValExprWith valueSub e
-  | `(valExpr| $a:valExpr + $b:valExpr) => do `(ValExpr.add $(← elabValExprWith valueSub a) $(← elabValExprWith valueSub b))
-  | `(valExpr| $a:valExpr - $b:valExpr) => do `(ValExpr.sub $(← elabValExprWith valueSub a) $(← elabValExprWith valueSub b))
-  | `(valExpr| $a:valExpr * $b:valExpr) => do `(ValExpr.mul $(← elabValExprWith valueSub a) $(← elabValExprWith valueSub b))
-  | `(valExpr| $a:valExpr ^ $b:valExpr) => do `(ValExpr.pow $(← elabValExprWith valueSub a) $(← elabValExprWith valueSub b))
+      | some expression => pure ⟨expression, true⟩
+      | none => Macro.throwUnsupported
+  | `(valExpr| nat $i:ident) => pure ⟨.nat i.getId.toString, false⟩
+  | `(valExpr| int $i:ident) => pure ⟨.int i.getId.toString, false⟩
+  | `(valExpr| len $i:ident) => pure ⟨.len i.getId.toString, false⟩
+  | `(valExpr| count $i:ident) => pure ⟨.count i.getId.toString, false⟩
+  | `(valExpr| $i:ident) => pure ⟨.signOf i.getId.toString, false⟩
+  | `(valExpr| ( $e:valExpr )) => parseValExprWithUsage valueSub e
+  | `(valExpr| $a:valExpr + $b:valExpr) => do
+      let a ← parseValExprWithUsage valueSub a
+      let b ← parseValExprWithUsage valueSub b
+      return ⟨.add a.expression b.expression, a.usesValue || b.usesValue⟩
+  | `(valExpr| $a:valExpr - $b:valExpr) => do
+      let a ← parseValExprWithUsage valueSub a
+      let b ← parseValExprWithUsage valueSub b
+      return ⟨.sub a.expression b.expression, a.usesValue || b.usesValue⟩
+  | `(valExpr| $a:valExpr * $b:valExpr) => do
+      let a ← parseValExprWithUsage valueSub a
+      let b ← parseValExprWithUsage valueSub b
+      return ⟨.mul a.expression b.expression, a.usesValue || b.usesValue⟩
+  | `(valExpr| $a:valExpr ^ $b:valExpr) => do
+      let a ← parseValExprWithUsage valueSub a
+      let b ← parseValExprWithUsage valueSub b
+      return ⟨.pow a.expression b.expression, a.usesValue || b.usesValue⟩
   | _ => Macro.throwUnsupported
 
-/-- Translate a `valExpr` with no `value` substitution (the common case). -/
+/-- Parse a value expression and return its semantic AST. -/
+partial def parseValExprWith (valueSub : Option ValExpr) (e : TSyntax `valExpr) :
+    MacroM ValExpr :=
+  return (← parseValExprWithUsage valueSub e).expression
+
+/-- Parse a value expression with no `value` substitution. -/
+partial def parseValExpr (e : TSyntax `valExpr) : MacroM ValExpr :=
+  parseValExprWith none e
+
+private def quoteIntLiteral : Int → MacroM (TSyntax `term)
+  | .ofNat n =>
+      pure ⟨Syntax.mkNumLit (toString n)⟩
+  | .negSucc n =>
+      let magnitude : TSyntax `term := ⟨Syntax.mkNumLit (toString (n + 1))⟩
+      `(-$magnitude)
+
+/-- Reify a parsed `ValExpr` as Lean syntax. `valueRef` preserves the generated `valueExpr`
+    declaration inside semantic constraints instead of expanding an equal AST inline. -/
+partial def quoteValExprWith
+    (valueRef : Option (ValExpr × TSyntax `term)) (expression : ValExpr) :
+    MacroM (TSyntax `term) := do
+  if let some (valueExpression, reference) := valueRef then
+    if expression = valueExpression then
+      return reference
+  match expression with
+  | .lit n => `(ValExpr.lit $(← quoteIntLiteral n))
+  | .nat field => `(ValExpr.nat $(quote field))
+  | .int field => `(ValExpr.int $(quote field))
+  | .len field => `(ValExpr.len $(quote field))
+  | .count field => `(ValExpr.count $(quote field))
+  | .signOf field => `(ValExpr.signOf $(quote field))
+  | .add a b =>
+      `(ValExpr.add $(← quoteValExprWith valueRef a) $(← quoteValExprWith valueRef b))
+  | .sub a b =>
+      `(ValExpr.sub $(← quoteValExprWith valueRef a) $(← quoteValExprWith valueRef b))
+  | .mul a b =>
+      `(ValExpr.mul $(← quoteValExprWith valueRef a) $(← quoteValExprWith valueRef b))
+  | .pow a b =>
+      `(ValExpr.pow $(← quoteValExprWith valueRef a) $(← quoteValExprWith valueRef b))
+  | .neg a => `(ValExpr.neg $(← quoteValExprWith valueRef a))
+
+/-- Reify a parsed `ValExpr` with no named substitution. -/
+partial def quoteValExpr (expression : ValExpr) : MacroM (TSyntax `term) :=
+  quoteValExprWith none expression
+
+/-- Parse a value expression and reify that same AST as Lean syntax. -/
+partial def elabValExprWith (valueSub : Option ValExpr) (e : TSyntax `valExpr) :
+    MacroM (TSyntax `term) := do
+  quoteValExpr (← parseValExprWith valueSub e)
+
+/-- Translate a `valExpr` with no `value` substitution. -/
 partial def elabValExpr (e : TSyntax `valExpr) : MacroM (TSyntax `term) :=
   elabValExprWith none e
 
@@ -243,81 +311,99 @@ def surfaceBinder (capture : String) : String :=
       else String.ofList (c.toLower :: cs)                       -- CamelCase: first char only
   String.intercalate "_" (((capture.replace "#" ".").splitOn ".").map seg)
 
-/-- Translate a `valExpr` into a READABLE `Int` term over the captured component STRINGS
-    (via `natOf`/`intOf`/`lenOf`/`signOf` applied to lowercase-named binders), NOT over an
-    `Env`. This is the surface/pretty counterpart of the `ValExpr` AST — the generated
-    `<Name>.value` takes the components as string parameters and reads like the doc's
-    `int(Integer)·10⁴ + …`. `valueSub` substitutes a readable term for a `value`
-    reference (used in constraints). -/
-partial def elabValReadableWith (valueSub : Option (TSyntax `term)) :
-    TSyntax `valExpr → MacroM (TSyntax `term)
-  | `(valExpr| $n:num)        => `(($n : Int))
-  | `(valExpr| Int64.MAX)     => `((9223372036854775807 : Int))
-  | `(valExpr| Int64.MIN)     => `((-9223372036854775808 : Int))
-  | `(valExpr| value)         =>
-      match valueSub with
-      | some t => pure t
-      | none   => Macro.throwUnsupported
-  | `(valExpr| nat $i:ident)  => let b := mkIdent (Name.mkSimple (surfaceBinder i.getId.toString)); `(natOf $b)
-  | `(valExpr| int $i:ident)  => let b := mkIdent (Name.mkSimple (surfaceBinder i.getId.toString)); `(intOf $b)
-  | `(valExpr| len $i:ident)  => let b := mkIdent (Name.mkSimple (surfaceBinder i.getId.toString)); `(lenOf $b)
-  | `(valExpr| count $i:ident) =>
-      let b := mkIdent (Name.mkSimple (surfaceBinder (i.getId.toString ++ "#count")))
-      `(countOf $b)
-  | `(valExpr| $i:ident)      => let b := mkIdent (Name.mkSimple (surfaceBinder i.getId.toString)); `(signOf $b)
-  | `(valExpr| ( $e:valExpr )) => do `(($(← elabValReadableWith valueSub e)))
-  | `(valExpr| $a:valExpr + $b:valExpr) => do `($(← elabValReadableWith valueSub a) + $(← elabValReadableWith valueSub b))
-  | `(valExpr| $a:valExpr - $b:valExpr) => do `($(← elabValReadableWith valueSub a) - $(← elabValReadableWith valueSub b))
-  | `(valExpr| $a:valExpr * $b:valExpr) => do `($(← elabValReadableWith valueSub a) * $(← elabValReadableWith valueSub b))
-  | `(valExpr| $a:valExpr ^ $b:valExpr) => do `($(← elabValReadableWith valueSub a) ^ ($(← elabValReadableWith valueSub b)).toNat)
-  | _ => Macro.throwUnsupported
+/-- Render a parsed `ValExpr` as the readable Lean surface over component-string binders.
+    `valueRef` lets a constraint retain the concise `<Name>.value ...` presentation after its
+    source-level `value` reference has been substituted by the format's AST. -/
+partial def quoteValReadableWith
+    (valueRef : Option (ValExpr × TSyntax `term)) (expression : ValExpr) :
+    MacroM (TSyntax `term) := do
+  if let some (valueExpression, readable) := valueRef then
+    if expression = valueExpression then
+      return readable
+  match expression with
+  | .lit n => do
+      let literal ← quoteIntLiteral n
+      `(($literal : Int))
+  | .nat field =>
+      let binder := mkIdent (Name.mkSimple (surfaceBinder field))
+      `(natOf $binder)
+  | .int field =>
+      let binder := mkIdent (Name.mkSimple (surfaceBinder field))
+      `(intOf $binder)
+  | .len field =>
+      let binder := mkIdent (Name.mkSimple (surfaceBinder field))
+      `(lenOf $binder)
+  | .count field =>
+      let binder := mkIdent (Name.mkSimple (surfaceBinder (field ++ "#count")))
+      `(countOf $binder)
+  | .signOf field =>
+      let binder := mkIdent (Name.mkSimple (surfaceBinder field))
+      `(signOf $binder)
+  | .add a b =>
+      `($(← quoteValReadableWith valueRef a) + $(← quoteValReadableWith valueRef b))
+  | .sub a b =>
+      `($(← quoteValReadableWith valueRef a) - $(← quoteValReadableWith valueRef b))
+  | .mul a b => do
+      let aTerm ← quoteValReadableWith valueRef a
+      let bTerm ← quoteValReadableWith valueRef b
+      let aTerm ← match a with
+        | .add _ _ | .sub _ _ => `(($aTerm))
+        | _ => pure aTerm
+      let bTerm ← match b with
+        | .add _ _ | .sub _ _ => `(($bTerm))
+        | _ => pure bTerm
+      `($aTerm * $bTerm)
+  | .pow a b => do
+      let base ← quoteValReadableWith valueRef a
+      let exponent ← quoteValReadableWith valueRef b
+      let exponent ← match b with
+        | .lit _ | .nat _ | .int _ | .len _ | .count _ | .signOf _ => pure exponent
+        | _ => `(($exponent))
+      `($base ^ ($exponent).toNat)
+  | .neg a => `(-$(← quoteValReadableWith valueRef a))
 
-/-- The distinct capture names referenced (as `nat`/`int`/`len`/`sign`) in a `valExpr`,
-    in first-appearance order — the surface value function's string parameters. -/
-partial def valExprCaptures : TSyntax `valExpr → List String
-  | `(valExpr| nat $i:ident)  => [i.getId.toString]
-  | `(valExpr| int $i:ident)  => [i.getId.toString]
-  | `(valExpr| len $i:ident)  => [i.getId.toString]
-  | `(valExpr| count $i:ident) => [i.getId.toString ++ "#count"]
-  | `(valExpr| $i:ident)      => [i.getId.toString]
-  | `(valExpr| ( $e:valExpr )) => valExprCaptures e
-  | `(valExpr| $a:valExpr + $b:valExpr) => (valExprCaptures a ++ valExprCaptures b).eraseDups
-  | `(valExpr| $a:valExpr - $b:valExpr) => (valExprCaptures a ++ valExprCaptures b).eraseDups
-  | `(valExpr| $a:valExpr * $b:valExpr) => (valExprCaptures a ++ valExprCaptures b).eraseDups
-  | `(valExpr| $a:valExpr ^ $b:valExpr) => (valExprCaptures a ++ valExprCaptures b).eraseDups
+/-- Render a parsed value AST as the readable Lean surface. -/
+partial def quoteValReadable (expression : ValExpr) : MacroM (TSyntax `term) :=
+  quoteValReadableWith none expression
+
+/-- Compatibility wrapper: parse once, then render the resulting AST readably. -/
+partial def elabValReadableWith (valueSub : Option (ValExpr × TSyntax `term))
+    (expression : TSyntax `valExpr) : MacroM (TSyntax `term) := do
+  let ast ← parseValExprWith (valueSub.map (·.1)) expression
+  quoteValReadableWith valueSub ast
+
+/-- Captures read by a parsed value expression, in first-appearance order. -/
+partial def ValExpr.captures : ValExpr → List String
+  | .lit _ => []
+  | .nat field
+  | .int field
+  | .len field
+  | .signOf field => [field]
+  | .count field => [field ++ "#count"]
+  | .add a b
+  | .sub a b
+  | .mul a b
+  | .pow a b => (a.captures ++ b.captures).eraseDups
+  | .neg a => a.captures
+
+/-- Captures used as bare sign readers by a parsed value expression. -/
+partial def ValExpr.signCaptures : ValExpr → List String
+  | .signOf field => [field]
+  | .add a b
+  | .sub a b
+  | .mul a b
+  | .pow a b => (a.signCaptures ++ b.signCaptures).eraseDups
+  | .neg a => a.signCaptures
   | _ => []
 
-/-- The capture names referenced BARE (i.e. as a sign, `ValExpr.signOf`) in a `valExpr` — the
-    subset of `valExprCaptures` that must name dedicated SIGN productions (`X ::= sign`). Kept
-    separate so `elabTriptych` can validate each bare ref actually is a sign capture (else the
-    old silent-`+1` trap returns). -/
-partial def valExprSignCaptures : TSyntax `valExpr → List String
-  | `(valExpr| nat $_:ident)  => []
-  | `(valExpr| int $_:ident)  => []
-  | `(valExpr| len $_:ident)  => []
-  | `(valExpr| count $_:ident) => []
-  | `(valExpr| $i:ident)      => [i.getId.toString]
-  | `(valExpr| ( $e:valExpr )) => valExprSignCaptures e
-  | `(valExpr| $a:valExpr + $b:valExpr) => (valExprSignCaptures a ++ valExprSignCaptures b).eraseDups
-  | `(valExpr| $a:valExpr - $b:valExpr) => (valExprSignCaptures a ++ valExprSignCaptures b).eraseDups
-  | `(valExpr| $a:valExpr * $b:valExpr) => (valExprSignCaptures a ++ valExprSignCaptures b).eraseDups
-  | `(valExpr| $a:valExpr ^ $b:valExpr) => (valExprSignCaptures a ++ valExprSignCaptures b).eraseDups
-  | _ => []
-
-/-- The repetition item names referenced by `count X` in a value expression. Kept separate
-    from `valExprCaptures`, which returns the decoder key `X#count`, so the command can verify
-    that each `X` is actually the direct item of a `rep X ...`. -/
-partial def valExprCountCaptures : TSyntax `valExpr → List String
-  | `(valExpr| count $i:ident) => [i.getId.toString]
-  | `(valExpr| ( $e:valExpr )) => valExprCountCaptures e
-  | `(valExpr| $a:valExpr + $b:valExpr) =>
-      (valExprCountCaptures a ++ valExprCountCaptures b).eraseDups
-  | `(valExpr| $a:valExpr - $b:valExpr) =>
-      (valExprCountCaptures a ++ valExprCountCaptures b).eraseDups
-  | `(valExpr| $a:valExpr * $b:valExpr) =>
-      (valExprCountCaptures a ++ valExprCountCaptures b).eraseDups
-  | `(valExpr| $a:valExpr ^ $b:valExpr) =>
-      (valExprCountCaptures a ++ valExprCountCaptures b).eraseDups
+/-- Repetition item names read through `count` by a parsed value expression. -/
+partial def ValExpr.countCaptures : ValExpr → List String
+  | .count field => [field]
+  | .add a b
+  | .sub a b
+  | .mul a b
+  | .pow a b => (a.countCaptures ++ b.countCaptures).eraseDups
+  | .neg a => a.countCaptures
   | _ => []
 
 end Triptych
