@@ -54,6 +54,7 @@ triptych Decimal where
     value ∈ [Int64.MIN, Int64.MAX]
   parser Cedar.Spec.Ext.Decimal.parse
   printer decimalToStr
+  verus "../verus-experiments/cedar-ext/decimal/src/spec.rs"
   to "Outputs/Decimal"
 -- ANCHOR_END: decimalTriptychSource
 

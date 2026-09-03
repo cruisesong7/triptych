@@ -11,6 +11,7 @@ lean_lib Triptych where
     .one `Triptych,
     .submodules `Triptych.Architecture,
     .submodules `Triptych.Automation,
+    .submodules `Triptych.Backend,
     .one `Triptych.Theorems.Coherence,
     .one `Triptych.Theorems.Derivation,
     .one `Triptych.Theorems.DecodeLemmas,

@@ -5,3 +5,5 @@
 /verso-sources.json
 /.DS_Store
 /.worktrees
+/.tools
+/verus-experiments/**/target

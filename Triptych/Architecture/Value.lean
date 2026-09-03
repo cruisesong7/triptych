@@ -78,8 +78,19 @@ inductive ValExpr where
     (2) stdlib is more permissive than our grammar (accepts leading zeros, possibly
     Unicode digits), which would let the value function diverge from `IsWf`. Owning the
     reader keeps its digit-rule identical to `TokClass.digit` and version-stable. -/
+def readNatChars (characters : List Char) : Nat :=
+  characters.foldl (fun acc c => acc * 10 + (c.toNat - '0'.toNat)) 0
+
 def readNat (s : String) : Nat :=
   s.foldl (fun acc c => acc * 10 + (c.toNat - '0'.toNat)) 0
+
+@[simp]
+theorem readNat_empty : readNat "" = 0 := by
+  simp [readNat]
+
+theorem readNat_eq_readNatChars (s : String) : readNat s = readNatChars s.toList := by
+  unfold readNat readNatChars
+  rw [String.foldl_eq_foldl_toList]
 
 /-- Reader: signed decimal value (leading `-` ⟹ negative; `"-12" ↦ -12`).
     PRECONDITION: `s` is optionally a leading `-` then a digit run, per the grammar's
