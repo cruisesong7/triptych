@@ -23,7 +23,7 @@ The `constraints` section of `triptych` lists predicates. Like the value-DSL thi
 a **deep embedding**: each constraint elaborates to an inspectable `Constraint` AST, so
 the tool can (design note §16.1/§16.3):
 
-* classify each constraint before elaboration by whether its surface syntax explicitly
+* classify each constraint while parsing by whether its surface syntax explicitly
   references the format's final `value`:
   - capture-only constraints (including `nat X ≤ 255`) fold into `IsWf`;
   - constraints that mention `value` fold into `SatisfiesConstraints`.
@@ -207,49 +207,116 @@ syntax valExpr " ∈ " "[" valExpr ", " valExpr "]" : constraintExpr
 -- (see `Triptych.Architecture.Syntax`),
 -- whose entries are raw-Lean `f X Y …` applications built via `opaqueEnvClosure` below.
 
-/-- The comma-separated capture names of a cardinality constraint's `[X, Y, …]` list, as a
-    `term` sep-array of quoted strings (for splicing into a `[…]` `List String` literal). -/
-private def cardFieldList (is : Syntax.TSepArray `ident ",") : Syntax.TSepArray `term "," :=
-  .ofElems (is.getElems.map (fun i => Syntax.mkStrLit i.getId.toString))
+/-- A parsed constraint together with its source-determined acceptance phase. -/
+structure ParsedConstraint where
+  phase : ConstraintPhase
+  constraint : Constraint
+  deriving Inhabited
 
-/-- The same capture names as `cardFieldList` but as surface-binder *identifiers* (`Days` →
-    `days`), for the READABLE `presentCount [days, hours, …]` rendering. -/
-private def cardBinderList (is : Syntax.TSepArray `ident ",") : Syntax.TSepArray `term "," :=
-  .ofElems (is.getElems.map (fun i =>
-    ⟨(mkIdent (Name.mkSimple (surfaceBinder i.getId.toString))).raw⟩))
+private def phaseFor (usesValue : Bool) : ConstraintPhase :=
+  if usesValue then .value else .wellFormed
 
-/-- Translate a `constraintExpr` into a `Constraint` term (DSL forms only). `valueSub`,
-    if provided, is substituted for a `value` reference in the arithmetic sides. -/
-def elabConstraintWith (valueSub : Option (TSyntax `term)) :
-    TSyntax `constraintExpr → MacroM (TSyntax `term)
+/-- Parse a constraint once, retaining whether its source explicitly constrained `value`. -/
+def parseConstraintEntryWith (valueSub : Option ValExpr) :
+    TSyntax `constraintExpr → MacroM ParsedConstraint
   | `(constraintExpr| noLeadingZero $i:ident) =>
-      `(Constraint.noLeadingZero $(quote i.getId.toString))
+      pure ⟨.wellFormed, .noLeadingZero i.getId.toString⟩
   | `(constraintExpr| nonempty $i:ident) =>
-      `(Constraint.card CardOp.atLeast 1 [$(quote i.getId.toString)])
+      pure ⟨.wellFormed, .card .atLeast 1 [i.getId.toString]⟩
   | `(constraintExpr| atLeast $k:num { $is,* }) =>
-      `(Constraint.card CardOp.atLeast $k [$(cardFieldList is),*])
+      pure ⟨.wellFormed,
+        .card .atLeast k.getNat (is.getElems.map (·.getId.toString)).toList⟩
   | `(constraintExpr| atMost $k:num { $is,* }) =>
-      `(Constraint.card CardOp.atMost $k [$(cardFieldList is),*])
+      pure ⟨.wellFormed,
+        .card .atMost k.getNat (is.getElems.map (·.getId.toString)).toList⟩
   | `(constraintExpr| exactly $k:num { $is,* }) =>
-      `(Constraint.card CardOp.exactlyK $k [$(cardFieldList is),*])
+      pure ⟨.wellFormed,
+        .card .exactlyK k.getNat (is.getElems.map (·.getId.toString)).toList⟩
   | `(constraintExpr| $i:ident = $l:str) =>
-      `(Constraint.strEq $(quote i.getId.toString) $l)
+      pure ⟨.wellFormed, .strEq i.getId.toString l.getString⟩
   | `(constraintExpr| $a:valExpr ≤ $b:valExpr) => do
-      `(Constraint.le $(← elabValExprWith valueSub a) $(← elabValExprWith valueSub b))
+      let a ← parseValExprWithUsage valueSub a
+      let b ← parseValExprWithUsage valueSub b
+      return ⟨phaseFor (a.usesValue || b.usesValue), .le a.expression b.expression⟩
   | `(constraintExpr| $a:valExpr < $b:valExpr) => do
-      `(Constraint.lt $(← elabValExprWith valueSub a) $(← elabValExprWith valueSub b))
+      let a ← parseValExprWithUsage valueSub a
+      let b ← parseValExprWithUsage valueSub b
+      return ⟨phaseFor (a.usesValue || b.usesValue), .lt a.expression b.expression⟩
   | `(constraintExpr| $a:valExpr == $b:valExpr) => do
-      `(Constraint.eq $(← elabValExprWith valueSub a) $(← elabValExprWith valueSub b))
+      let a ← parseValExprWithUsage valueSub a
+      let b ← parseValExprWithUsage valueSub b
+      return ⟨phaseFor (a.usesValue || b.usesValue), .eq a.expression b.expression⟩
   | `(constraintExpr| $e:valExpr ∈ [ $lo:valExpr , $hi:valExpr ]) => do
-      -- desugar to `lo ≤ e ∧ e ≤ hi`
-      let et ← elabValExprWith valueSub e
-      let lot ← elabValExprWith valueSub lo
-      let hit ← elabValExprWith valueSub hi
-      `(Constraint.and (Constraint.le $lot $et)
-                                  (Constraint.le $et $hit))
+      let expression ← parseValExprWithUsage valueSub e
+      let lower ← parseValExprWithUsage valueSub lo
+      let upper ← parseValExprWithUsage valueSub hi
+      let usesValue := expression.usesValue || lower.usesValue || upper.usesValue
+      return ⟨phaseFor usesValue,
+        .and (.le lower.expression expression.expression)
+          (.le expression.expression upper.expression)⟩
   | _ => Macro.throwUnsupported
 
-/-- Translate a `constraintExpr` into a `Constraint` term with no `value` substitution. -/
+/-- Parse a constraint and return its semantic AST. -/
+def parseConstraintWith (valueSub : Option ValExpr) (c : TSyntax `constraintExpr) :
+    MacroM Constraint :=
+  return (← parseConstraintEntryWith valueSub c).constraint
+
+/-- Parse a constraint expression with no `value` substitution. -/
+def parseConstraint (c : TSyntax `constraintExpr) : MacroM Constraint :=
+  parseConstraintWith none c
+
+private def quoteCardOp : CardOp → MacroM (TSyntax `term)
+  | .atLeast => `(CardOp.atLeast)
+  | .atMost => `(CardOp.atMost)
+  | .exactlyK => `(CardOp.exactlyK)
+
+private def quoteConstraintPhase : ConstraintPhase → MacroM (TSyntax `term)
+  | .wellFormed => `(ConstraintPhase.wellFormed)
+  | .value => `(ConstraintPhase.value)
+
+private def quoteStringList (fields : List String) : MacroM (TSyntax `term) := do
+  let terms : Syntax.TSepArray `term "," :=
+    .ofElems <| fields.toArray.map fun field => ⟨Syntax.mkStrLit field⟩
+  `([$terms,*])
+
+/-- Reify a parsed constraint as a Lean term, optionally preserving the generated `valueExpr`
+    name for subexpressions equal to the format's value AST. -/
+partial def quoteConstraintWith
+    (valueRef : Option (ValExpr × TSyntax `term)) : Constraint → MacroM (TSyntax `term)
+  | .noLeadingZero field => `(Constraint.noLeadingZero $(quote field))
+  | .strEq field literal => `(Constraint.strEq $(quote field) $(quote literal))
+  | .card op k fields => do
+      `(Constraint.card $(← quoteCardOp op) $(quote k) $(← quoteStringList fields))
+  | .le a b => do
+      `(Constraint.le $(← quoteValExprWith valueRef a) $(← quoteValExprWith valueRef b))
+  | .lt a b => do
+      `(Constraint.lt $(← quoteValExprWith valueRef a) $(← quoteValExprWith valueRef b))
+  | .eq a b => do
+      `(Constraint.eq $(← quoteValExprWith valueRef a) $(← quoteValExprWith valueRef b))
+  | .and a b => do
+      `(Constraint.and $(← quoteConstraintWith valueRef a) $(← quoteConstraintWith valueRef b))
+
+/-- Reify a parsed constraint with no named value substitution. -/
+partial def quoteConstraint (constraint : Constraint) : MacroM (TSyntax `term) :=
+  quoteConstraintWith none constraint
+
+/-- Reify a parsed, phased constraint as a generated `ConstraintEntry`. -/
+def quoteConstraintEntryWith (valueRef : Option (ValExpr × TSyntax `term))
+    (entry : ParsedConstraint) : MacroM (TSyntax `term) := do
+  let valueRef := if entry.phase == .value then valueRef else none
+  `(ConstraintEntry.dsl $(← quoteConstraintPhase entry.phase)
+      $(← quoteConstraintWith valueRef entry.constraint))
+
+/-- Reify a parsed constraint entry with no named value substitution. -/
+def quoteConstraintEntry (entry : ParsedConstraint) : MacroM (TSyntax `term) :=
+  quoteConstraintEntryWith none entry
+
+/-- Parse once and reify the resulting constraint AST as Lean syntax. -/
+def elabConstraintWith (valueSub : Option ValExpr) (c : TSyntax `constraintExpr) :
+    MacroM (TSyntax `term) := do
+  quoteConstraint (← parseConstraintWith valueSub c)
+
+/-- Translate a constraint with no `value` substitution. -/
 def elabConstraint (c : TSyntax `constraintExpr) : MacroM (TSyntax `term) :=
   elabConstraintWith none c
 
@@ -283,100 +350,65 @@ def opaqueMapClosure (f : TSyntax `ident) (is : Array (TSyntax `ident × Bool)) 
     else `(($toEnvId m $key).getD ""))
   `(fun m : $capMapId => $f $args*)
 
-/-- Does a `valExpr` reference the final `value` keyword? -/
-partial def valExprUsesValue : TSyntax `valExpr → Bool
-  | `(valExpr| value) => true
-  | `(valExpr| ( $e:valExpr )) => valExprUsesValue e
-  | `(valExpr| $a:valExpr + $b:valExpr) => valExprUsesValue a || valExprUsesValue b
-  | `(valExpr| $a:valExpr - $b:valExpr) => valExprUsesValue a || valExprUsesValue b
-  | `(valExpr| $a:valExpr * $b:valExpr) => valExprUsesValue a || valExprUsesValue b
-  | `(valExpr| $a:valExpr ^ $b:valExpr) => valExprUsesValue a || valExprUsesValue b
-  | _ => false
-
-/-- Does a constraint reference the format's final `value`? This is the authoritative
-    phase classifier and must run before `value` is substituted by its `ValExpr`. -/
-def constraintUsesValue : TSyntax `constraintExpr → Bool
-  | `(constraintExpr| $a:valExpr ≤ $b:valExpr) => valExprUsesValue a || valExprUsesValue b
-  | `(constraintExpr| $a:valExpr < $b:valExpr) => valExprUsesValue a || valExprUsesValue b
-  | `(constraintExpr| $a:valExpr == $b:valExpr) => valExprUsesValue a || valExprUsesValue b
-  | `(constraintExpr| $e:valExpr ∈ [ $lo:valExpr , $hi:valExpr ]) =>
-      valExprUsesValue e || valExprUsesValue lo || valExprUsesValue hi
-  | _ => false
-
-/-- Translate a constraint into an entry, preserving whether its original surface syntax
-    referenced the final `value` before `valueSub` replaces that reference. -/
-def elabEntryWith (valueSub : Option (TSyntax `term)) :
-    TSyntax `constraintExpr → MacroM (TSyntax `term)
-  | c => do
-      let phase ← if constraintUsesValue c then `(ConstraintPhase.value)
-        else `(ConstraintPhase.wellFormed)
-      `(ConstraintEntry.dsl $phase $(← elabConstraintWith valueSub c))
+/-- Parse a constraint once and reify its AST and source-determined phase. -/
+def elabEntryWith (valueSub : Option ValExpr) (c : TSyntax `constraintExpr) :
+    MacroM (TSyntax `term) := do
+  quoteConstraintEntry (← parseConstraintEntryWith valueSub c)
 
 /-- `elabEntry` with no `value` substitution. -/
 def elabEntry (c : TSyntax `constraintExpr) : MacroM (TSyntax `term) :=
   elabEntryWith none c
 
-/-- Translate a `constraintExpr` into a READABLE `Prop` term over environment `env`,
-    using the readable value readers (`env.intVal "X" ≤ 255`, etc.) — the surface/pretty
-    counterpart of the `Constraint` AST, just as `<Name>.value` is for `ValExpr`. Emitted
-    in either `<Name>.WfConstraints` or `<Name>.Constraints` according to the preserved
-    phase. `valueSub` substitutes a readable term for a `value` reference. -/
-def elabConstraintReadable (valueSub : Option (TSyntax `term)) :
-    TSyntax `constraintExpr → MacroM (TSyntax `term)
-  | `(constraintExpr| noLeadingZero $i:ident) =>
-      let b := mkIdent (Name.mkSimple (surfaceBinder i.getId.toString))
-      `(($b).startsWith "0" → $b = "0")
-  | `(constraintExpr| nonempty $i:ident) =>
-      let b := mkIdent (Name.mkSimple (surfaceBinder i.getId.toString))
-      `($b ≠ "")
-  | `(constraintExpr| atLeast $k:num { $is,* }) =>
-      `(presentCount [$(cardBinderList is),*] ≥ $k)
-  | `(constraintExpr| atMost $k:num { $is,* }) =>
-      `(presentCount [$(cardBinderList is),*] ≤ $k)
-  | `(constraintExpr| exactly $k:num { $is,* }) =>
-      `(presentCount [$(cardBinderList is),*] = $k)
-  | `(constraintExpr| $i:ident = $l:str) =>
-      let b := mkIdent (Name.mkSimple (surfaceBinder i.getId.toString))
-      `($b = $l)
-  | `(constraintExpr| $a:valExpr ≤ $b:valExpr) => do
-      `($(← elabValReadableWith valueSub a) ≤ $(← elabValReadableWith valueSub b))
-  | `(constraintExpr| $a:valExpr < $b:valExpr) => do
-      `($(← elabValReadableWith valueSub a) < $(← elabValReadableWith valueSub b))
-  | `(constraintExpr| $a:valExpr == $b:valExpr) => do
-      `($(← elabValReadableWith valueSub a) = $(← elabValReadableWith valueSub b))
-  | `(constraintExpr| $e:valExpr ∈ [ $lo:valExpr , $hi:valExpr ]) => do
-      let et  ← elabValReadableWith valueSub e
-      let lot ← elabValReadableWith valueSub lo
-      let hit ← elabValReadableWith valueSub hi
-      `($lot ≤ $et ∧ $et ≤ $hit)
-  | _ => Macro.throwUnsupported
+/-- Render a parsed constraint as the readable Lean predicate over component-string binders. -/
+partial def quoteConstraintReadable
+    (valueRef : Option (ValExpr × TSyntax `term)) : Constraint → MacroM (TSyntax `term)
+  | .noLeadingZero field =>
+      let binder := mkIdent (Name.mkSimple (surfaceBinder field))
+      `(($binder).startsWith "0" → $binder = "0")
+  | .strEq field literal =>
+      let binder := mkIdent (Name.mkSimple (surfaceBinder field))
+      `($binder = $(quote literal))
+  | .card .atLeast 1 [field] =>
+      let binder := mkIdent (Name.mkSimple (surfaceBinder field))
+      `($binder ≠ "")
+  | .card op k fields => do
+      let terms : Syntax.TSepArray `term "," := .ofElems <| fields.toArray.map fun field =>
+        ⟨(mkIdent (Name.mkSimple (surfaceBinder field))).raw⟩
+      match op with
+      | .atLeast => `(presentCount [$terms,*] ≥ $(quote k))
+      | .atMost => `(presentCount [$terms,*] ≤ $(quote k))
+      | .exactlyK => `(presentCount [$terms,*] = $(quote k))
+  | .le a b => do
+      `($(← quoteValReadableWith valueRef a) ≤ $(← quoteValReadableWith valueRef b))
+  | .lt a b => do
+      `($(← quoteValReadableWith valueRef a) < $(← quoteValReadableWith valueRef b))
+  | .eq a b => do
+      `($(← quoteValReadableWith valueRef a) = $(← quoteValReadableWith valueRef b))
+  | .and a b => do
+      `($(← quoteConstraintReadable valueRef a) ∧ $(← quoteConstraintReadable valueRef b))
 
-/-- Capture names referenced by a `constraintExpr` (for surface parameter binders). -/
-def constraintCaptures : TSyntax `constraintExpr → List String
-  | `(constraintExpr| noLeadingZero $i:ident) => [i.getId.toString]
-  | `(constraintExpr| nonempty $i:ident)      => [i.getId.toString]
-  | `(constraintExpr| atLeast $_:num { $is,* }) => (is.getElems.map (·.getId.toString)).toList
-  | `(constraintExpr| atMost $_:num { $is,* })  => (is.getElems.map (·.getId.toString)).toList
-  | `(constraintExpr| exactly $_:num { $is,* }) => (is.getElems.map (·.getId.toString)).toList
-  | `(constraintExpr| $i:ident = $_:str)      => [i.getId.toString]
-  | `(constraintExpr| $a:valExpr ≤ $b:valExpr) => (valExprCaptures a ++ valExprCaptures b).eraseDups
-  | `(constraintExpr| $a:valExpr < $b:valExpr) => (valExprCaptures a ++ valExprCaptures b).eraseDups
-  | `(constraintExpr| $a:valExpr == $b:valExpr) => (valExprCaptures a ++ valExprCaptures b).eraseDups
-  | `(constraintExpr| $e:valExpr ∈ [ $lo:valExpr , $hi:valExpr ]) =>
-      (valExprCaptures e ++ valExprCaptures lo ++ valExprCaptures hi).eraseDups
-  | _ => []
+/-- Compatibility wrapper: parse once, then render the resulting constraint AST readably. -/
+def elabConstraintReadable (valueSub : Option (ValExpr × TSyntax `term))
+    (c : TSyntax `constraintExpr) : MacroM (TSyntax `term) := do
+  let parsed ← parseConstraintWith (valueSub.map (·.1)) c
+  quoteConstraintReadable valueSub parsed
 
-/-- Repetition item names referenced through `count X` in a constraint. -/
-def constraintCountCaptures : TSyntax `constraintExpr → List String
-  | `(constraintExpr| $a:valExpr ≤ $b:valExpr) =>
-      (valExprCountCaptures a ++ valExprCountCaptures b).eraseDups
-  | `(constraintExpr| $a:valExpr < $b:valExpr) =>
-      (valExprCountCaptures a ++ valExprCountCaptures b).eraseDups
-  | `(constraintExpr| $a:valExpr == $b:valExpr) =>
-      (valExprCountCaptures a ++ valExprCountCaptures b).eraseDups
-  | `(constraintExpr| $e:valExpr ∈ [ $lo:valExpr , $hi:valExpr ]) =>
-      (valExprCountCaptures e ++ valExprCountCaptures lo ++
-        valExprCountCaptures hi).eraseDups
+/-- Capture names referenced by a parsed constraint. -/
+partial def Constraint.captures : Constraint → List String
+  | .noLeadingZero field
+  | .strEq field _ => [field]
+  | .card _ _ fields => fields.eraseDups
+  | .le a b
+  | .lt a b
+  | .eq a b => (a.captures ++ b.captures).eraseDups
+  | .and a b => (a.captures ++ b.captures).eraseDups
+
+/-- Repetition item names referenced through `count` by a parsed constraint. -/
+partial def Constraint.countCaptures : Constraint → List String
+  | .le a b
+  | .lt a b
+  | .eq a b => (a.countCaptures ++ b.countCaptures).eraseDups
+  | .and a b => (a.countCaptures ++ b.countCaptures).eraseDups
   | _ => []
 
 /-- `cstr% <predicate>` : a `Constraint` value from the constraint-DSL. -/
