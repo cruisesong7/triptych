@@ -14,25 +14,25 @@
  limitations under the License.
 -/
 
-import Triptych.Backend.Verus.SemanticSemantics
+import Triptych.Backend.Verus.IRSemantics
 
 /-!
 # Triptych-to-Verus translation
 
-This module translates Triptych values and constraints into the Verus AST while retaining capture
+This module translates Triptych values and constraints into the Verus IR while retaining capture
 provenance. The left-inverse theorems ensure that translation neither drops nor changes a
 supported source node.
 
-Semantic-preservation theorems are stated against the Lean denotation of `Verus.Semantic`.
+IR-preservation theorems are stated against the Lean denotation of `Verus.IR`.
 -/
 
 namespace Triptych.Backend.Verus
 
-open Semantic
+open IR
 
 abbrev FieldName := String → String
 
-def captureExpr (fieldName : FieldName) (source : String) : Semantic.Expr :=
+def captureExpr (fieldName : FieldName) (source : String) : IR.Expr :=
   .capture (fieldName source) source
 
 @[simp]
@@ -41,30 +41,30 @@ private theorem captureSource_capture (fieldName : FieldName) (source : String) 
 
 @[simp]
 private theorem captureSources_map (fieldName : FieldName) (sources : List String) :
-    (sources.map (captureExpr fieldName)).mapM Semantic.Expr.captureSource? = some sources := by
+    (sources.map (captureExpr fieldName)).mapM IR.Expr.captureSource? = some sources := by
   induction sources <;> simp_all
 
 @[simp]
 private theorem captureSources_mapM (fieldName : FieldName) (sources : List String) :
-    sources.mapM (Semantic.Expr.captureSource? ∘ captureExpr fieldName) = some sources := by
+    sources.mapM (IR.Expr.captureSource? ∘ captureExpr fieldName) = some sources := by
   induction sources <;> simp_all [Function.comp]
 
 @[simp]
 private theorem denoteTexts_capture (env : Env) (fieldName : FieldName)
     (sources : List String) :
-    (sources.map (captureExpr fieldName)).mapM (Semantic.Expr.denoteText env) =
+    (sources.map (captureExpr fieldName)).mapM (IR.Expr.denoteText env) =
       some (sources.map fun source => (env source).getD "") := by
-  induction sources <;> simp_all [captureExpr, Semantic.Expr.denoteText]
+  induction sources <;> simp_all [captureExpr, IR.Expr.denoteText]
 
 @[simp]
 private theorem denoteTexts_capture_mapM (env : Env) (fieldName : FieldName)
     (sources : List String) :
-    sources.mapM (Semantic.Expr.denoteText env ∘ captureExpr fieldName) =
+    sources.mapM (IR.Expr.denoteText env ∘ captureExpr fieldName) =
       some (sources.map fun source => (env source).getD "") := by
-  induction sources <;> simp_all [captureExpr, Semantic.Expr.denoteText, Function.comp]
+  induction sources <;> simp_all [captureExpr, IR.Expr.denoteText, Function.comp]
 
-/-- Translate a Triptych value into the Verus AST without target-level abbreviation. -/
-def translateValExpr (fieldName : FieldName) : ValExpr → Semantic.Expr
+/-- Translate a Triptych value into the Verus IR without target-level abbreviation. -/
+def translateValExpr (fieldName : FieldName) : ValExpr → IR.Expr
   | .lit literal => .intLit literal
   | .nat source => .natOf (captureExpr fieldName source)
   | .int source => .intOf (captureExpr fieldName source)
@@ -77,13 +77,13 @@ def translateValExpr (fieldName : FieldName) : ValExpr → Semantic.Expr
   | .pow base exponent => .intPow (translateValExpr fieldName base) (translateValExpr fieldName exponent)
   | .neg expression => .intNeg (translateValExpr fieldName expression)
 
-private def namedOr (source expression : ValExpr) (name : String) (args : List Semantic.Expr)
-    (otherwise : Semantic.Expr) : Semantic.Expr :=
+private def namedOr (source expression : ValExpr) (name : String) (args : List IR.Expr)
+    (otherwise : IR.Expr) : IR.Expr :=
   if expression = source then .valueRef name source args else otherwise
 
 /-- Translate a value while retaining the conventional name for the complete format value. -/
 def translateValExprNamed (fieldName : FieldName) (source : ValExpr) (name : String)
-    (args : List Semantic.Expr) : ValExpr → Semantic.Expr
+    (args : List IR.Expr) : ValExpr → IR.Expr
   | expression@(.lit literal) =>
       namedOr source expression name args (.intLit literal)
   | expression@(.nat captureName) =>
@@ -121,8 +121,8 @@ def translateValExprNamed (fieldName : FieldName) (source : ValExpr) (name : Str
       namedOr source expression name args
         (.intNeg (translateValExprNamed fieldName source name args operand))
 
-/-- Translate a Triptych constraint into the Verus AST. -/
-def translateConstraint (fieldName : FieldName) : Constraint → Semantic.Expr
+/-- Translate a Triptych constraint into the Verus IR. -/
+def translateConstraint (fieldName : FieldName) : Constraint → IR.Expr
   | .noLeadingZero source => .noLeadingZero (captureExpr fieldName source)
   | .strEq source literal => .textEq (captureExpr fieldName source) (.textLit literal)
   | .card operation k sources => .card operation k (sources.map (captureExpr fieldName))
@@ -134,7 +134,7 @@ def translateConstraint (fieldName : FieldName) : Constraint → Semantic.Expr
 
 /-- Name occurrences of the complete format value inside a translated constraint. -/
 def translateConstraintNamed (fieldName : FieldName) (source : ValExpr) (name : String)
-    (args : List Semantic.Expr) : Constraint → Semantic.Expr
+    (args : List IR.Expr) : Constraint → IR.Expr
   | .noLeadingZero captureName => .noLeadingZero (captureExpr fieldName captureName)
   | .strEq captureName literal => .textEq (captureExpr fieldName captureName) (.textLit literal)
   | .card operation k captures => .card operation k (captures.map (captureExpr fieldName))
@@ -154,48 +154,48 @@ def translateConstraintNamed (fieldName : FieldName) (source : ValExpr) (name : 
 @[simp]
 theorem recover_translateValExpr (fieldName : FieldName) (expression : ValExpr) :
     (translateValExpr fieldName expression).toValExpr? = some expression := by
-  induction expression <;> simp [translateValExpr, Semantic.Expr.toValExpr?, *]
+  induction expression <;> simp [translateValExpr, IR.Expr.toValExpr?, *]
 
 @[simp]
 theorem recover_translateValExprNamed (fieldName : FieldName) (source expression : ValExpr)
-    (name : String) (args : List Semantic.Expr) :
+    (name : String) (args : List IR.Expr) :
     (translateValExprNamed fieldName source name args expression).toValExpr? = some expression := by
   induction expression <;> simp only [translateValExprNamed, namedOr]
   all_goals
-    split <;> rename_i h <;> simp_all [Semantic.Expr.toValExpr?]
+    split <;> rename_i h <;> simp_all [IR.Expr.toValExpr?]
 
 @[simp]
 theorem recover_translateConstraint (fieldName : FieldName) (constraint : Constraint) :
     (translateConstraint fieldName constraint).toConstraint? = some constraint := by
   induction constraint <;>
-    simp [translateConstraint, Semantic.Expr.toConstraint?, recover_translateValExpr, *]
+    simp [translateConstraint, IR.Expr.toConstraint?, recover_translateValExpr, *]
 
 @[simp]
 theorem recover_translateConstraintNamed (fieldName : FieldName) (source : ValExpr)
-    (name : String) (args : List Semantic.Expr) (constraint : Constraint) :
+    (name : String) (args : List IR.Expr) (constraint : Constraint) :
     (translateConstraintNamed fieldName source name args constraint).toConstraint? =
       some constraint := by
   induction constraint <;>
-    simp [translateConstraintNamed, Semantic.Expr.toConstraint?, recover_translateValExprNamed, *]
+    simp [translateConstraintNamed, IR.Expr.toConstraint?, recover_translateValExprNamed, *]
 
 @[simp]
 theorem denoteInt_translateValExpr (env : Env) (fieldName : FieldName) (expression : ValExpr) :
     (translateValExpr fieldName expression).denoteInt env = some (expression.eval env) := by
   induction expression <;>
-    simp [translateValExpr, captureExpr, Semantic.Expr.denoteInt, Semantic.Expr.denoteText,
+    simp [translateValExpr, captureExpr, IR.Expr.denoteInt, IR.Expr.denoteText,
       ValExpr.eval, *]
 
 @[simp]
 theorem denoteInt_translateValExprNamed (env : Env) (fieldName : FieldName)
-    (source expression : ValExpr) (name : String) (args : List Semantic.Expr) :
+    (source expression : ValExpr) (name : String) (args : List IR.Expr) :
     (translateValExprNamed fieldName source name args expression).denoteInt env =
       some (expression.eval env) := by
   induction expression <;> simp only [translateValExprNamed, namedOr]
   all_goals
     split <;> rename_i h
     · subst source
-      simp [Semantic.Expr.denoteInt, ValExpr.eval]
-    · simp_all [captureExpr, Semantic.Expr.denoteInt, Semantic.Expr.denoteText, ValExpr.eval]
+      simp [IR.Expr.denoteInt, ValExpr.eval]
+    · simp_all [captureExpr, IR.Expr.denoteInt, IR.Expr.denoteText, ValExpr.eval]
 
 @[simp]
 theorem denoteProp_translateConstraint (env : Env) (fieldName : FieldName)
@@ -204,52 +204,52 @@ theorem denoteProp_translateConstraint (env : Env) (fieldName : FieldName)
       some (constraint.eval env) := by
   induction constraint with
   | «noLeadingZero» field =>
-      simp [translateConstraint, captureExpr, Semantic.Expr.denoteProp, Semantic.Expr.denoteText,
+      simp [translateConstraint, captureExpr, IR.Expr.denoteProp, IR.Expr.denoteText,
         Constraint.eval]
   | strEq field literal =>
       cases hfield : env field <;>
         simp_all [ConstraintStringCapturesPresent, translateConstraint, captureExpr,
-          Semantic.Expr.denoteProp, Semantic.Expr.denoteText, Constraint.eval]
+          IR.Expr.denoteProp, IR.Expr.denoteText, Constraint.eval]
   | card operation k fields =>
-      simp [translateConstraint, Semantic.Expr.denoteProp, Constraint.eval]
+      simp [translateConstraint, IR.Expr.denoteProp, Constraint.eval]
       exact Iff.rfl
   | le left right =>
-      simp [translateConstraint, Semantic.Expr.denoteProp, Constraint.eval]
+      simp [translateConstraint, IR.Expr.denoteProp, Constraint.eval]
   | lt left right =>
-      simp [translateConstraint, Semantic.Expr.denoteProp, Constraint.eval]
+      simp [translateConstraint, IR.Expr.denoteProp, Constraint.eval]
   | eq left right =>
-      simp [translateConstraint, Semantic.Expr.denoteProp, Constraint.eval]
+      simp [translateConstraint, IR.Expr.denoteProp, Constraint.eval]
   | and left right left_ih right_ih =>
-      simp [translateConstraint, Semantic.Expr.denoteProp, Constraint.eval,
+      simp [translateConstraint, IR.Expr.denoteProp, Constraint.eval,
         ConstraintStringCapturesPresent] at hpresent ⊢
       rw [left_ih hpresent.1, right_ih hpresent.2]
       rfl
 
 @[simp]
 theorem denoteProp_translateConstraintNamed (env : Env) (fieldName : FieldName)
-    (source : ValExpr) (name : String) (args : List Semantic.Expr)
+    (source : ValExpr) (name : String) (args : List IR.Expr)
     (constraint : Constraint) (hpresent : ConstraintStringCapturesPresent env constraint) :
     (translateConstraintNamed fieldName source name args constraint).denoteProp env =
       some (constraint.eval env) := by
   induction constraint with
   | «noLeadingZero» field =>
-      simp [translateConstraintNamed, captureExpr, Semantic.Expr.denoteProp, Semantic.Expr.denoteText,
+      simp [translateConstraintNamed, captureExpr, IR.Expr.denoteProp, IR.Expr.denoteText,
         Constraint.eval]
   | strEq field literal =>
       cases hfield : env field <;>
         simp_all [ConstraintStringCapturesPresent, translateConstraintNamed, captureExpr,
-          Semantic.Expr.denoteProp, Semantic.Expr.denoteText, Constraint.eval]
+          IR.Expr.denoteProp, IR.Expr.denoteText, Constraint.eval]
   | card operation k fields =>
-      simp [translateConstraintNamed, Semantic.Expr.denoteProp, Constraint.eval]
+      simp [translateConstraintNamed, IR.Expr.denoteProp, Constraint.eval]
       exact Iff.rfl
   | le left right =>
-      simp [translateConstraintNamed, Semantic.Expr.denoteProp, Constraint.eval]
+      simp [translateConstraintNamed, IR.Expr.denoteProp, Constraint.eval]
   | lt left right =>
-      simp [translateConstraintNamed, Semantic.Expr.denoteProp, Constraint.eval]
+      simp [translateConstraintNamed, IR.Expr.denoteProp, Constraint.eval]
   | eq left right =>
-      simp [translateConstraintNamed, Semantic.Expr.denoteProp, Constraint.eval]
+      simp [translateConstraintNamed, IR.Expr.denoteProp, Constraint.eval]
   | and left right left_ih right_ih =>
-      simp [translateConstraintNamed, Semantic.Expr.denoteProp, Constraint.eval,
+      simp [translateConstraintNamed, IR.Expr.denoteProp, Constraint.eval,
         ConstraintStringCapturesPresent] at hpresent ⊢
       rw [left_ih hpresent.1, right_ih hpresent.2]
       rfl

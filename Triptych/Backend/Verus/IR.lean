@@ -18,19 +18,18 @@ import Triptych.Architecture.Constraint
 import Triptych.Architecture.Grammar
 
 /-!
-# Semantic Verus specification AST
+# Verus specification IR
 
-This is the backend's semantic Verus specification AST. It contains functions, quantifiers, text
-values, options, and explicit semantic operations such as `natOf`. `Verus.Desugar` later
-eliminates those operations into the `Verus.Surface` AST.
-There is no raw Verus source escape.
+This is the backend's Verus specification IR. It contains functions, quantifiers, text values,
+options, and explicit operations such as `natOf`. `Verus.Lowering` later eliminates those
+operations to produce `Verus.Ast`. There is no raw Verus source escape.
 
 `capture` retains both the printed target identifier and the originating Triptych capture. That
 metadata is erased by the pretty-printer but lets Lean check that value and constraint translation
 is lossless.
 -/
 
-namespace Triptych.Backend.Verus.Semantic
+namespace Triptych.Backend.Verus.IR
 
 inductive Ty where
   | bool
@@ -201,4 +200,4 @@ structure Module where
   imports : List String := []
   declarations : List Decl := []
 
-end Triptych.Backend.Verus.Semantic
+end Triptych.Backend.Verus.IR

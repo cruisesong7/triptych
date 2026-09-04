@@ -58,22 +58,23 @@ example (helper : Backend.Verus.Helper) : helper.Realizes :=
   Backend.Verus.helperDeclaration_realizes helper
 
 example (sourceEnv : Env) (fieldName : Backend.Verus.FieldName)
-    (targetEnv : Backend.Verus.Surface.EvalEnv) (expression : ValExpr)
-    (hsupported : Backend.Verus.ValueSupported expression)
-    (hagrees : Backend.Verus.SurfaceEnvAgrees sourceEnv fieldName targetEnv) :
-    (Backend.Verus.desugarExpr (Backend.Verus.translateValExpr fieldName expression)).denote
+    (targetEnv : Backend.Verus.Ast.EvalEnv) (expression : ValExpr)
+    (hagrees : Backend.Verus.AstEnvAgrees sourceEnv fieldName targetEnv) :
+    (Backend.Verus.lowerExpr (Backend.Verus.translateValExpr fieldName expression)).evaluate
         Backend.Verus.canonicalCalls targetEnv =
       some (.int (expression.eval sourceEnv)) :=
-  Backend.Verus.denote_desugar_translateValExpr sourceEnv fieldName targetEnv expression
-    hsupported hagrees
+  Backend.Verus.lower_translateValExpr_preserves sourceEnv fieldName targetEnv expression
+    hagrees
 
-example : Backend.Verus.ValueSupported decimalValue := by
-  simp [decimalValue, Backend.Verus.ValueSupported]
-
-example : ∀ constraint ∈ decimalConstraints,
-    Backend.Verus.ArithmeticConstraintSupported constraint := by
-  simp [decimalConstraints, decimalValue, Backend.Verus.ArithmeticConstraintSupported,
-    Backend.Verus.ValueSupported]
+example (sourceEnv : Env) (fieldName : Backend.Verus.FieldName)
+    (targetEnv : Backend.Verus.Ast.EvalEnv) (constraint : Constraint)
+    (hpresent : Backend.Verus.ConstraintStringCapturesPresent sourceEnv constraint)
+    (hagrees : Backend.Verus.AstEnvAgrees sourceEnv fieldName targetEnv) :
+    (Backend.Verus.lowerExpr (Backend.Verus.translateConstraint fieldName constraint)).evaluate
+        Backend.Verus.canonicalCalls targetEnv =
+      some (.bool (decide (constraint.eval sourceEnv))) :=
+  Backend.Verus.lower_translateConstraint_preserves sourceEnv fieldName targetEnv constraint
+    hpresent hagrees
 
 #guard
   Backend.Verus.evaluateHelper .natOf [.text [49, 50]] == some (.int 12)

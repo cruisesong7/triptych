@@ -17,8 +17,8 @@
 import Triptych.Architecture.Classify
 import Triptych.Architecture.Unambiguity
 import Triptych.Backend.Verus.Translation
-import Triptych.Backend.Verus.Desugar
-import Triptych.Backend.Verus.Alignment
+import Triptych.Backend.Verus.Lowering
+import Triptych.Backend.Verus.Preservation
 import Triptych.Backend.Verus.PrettyPrint
 
 /-!
@@ -28,10 +28,9 @@ The Verus generation pipeline has four stages:
 
 1. the Triptych elaborator supplies the already-parsed grammar, value expression, phased
    constraints, and conversion names in `Verus.FormatInput`;
-2. this module validates that input and translates the readable specification to the semantic
-   Verus AST;
-3. `Triptych.Backend.Verus.Desugar` realizes semantic operations as concrete Verus syntax;
-4. `Triptych.Backend.Verus.PrettyPrint` pretty-prints that Surface AST as Verus source.
+2. this module validates that input and translates the readable specification to `Verus.IR`;
+3. `Triptych.Backend.Verus.Lowering` lowers the IR to `Verus.Ast`;
+4. `Triptych.Backend.Verus.PrettyPrint` emits Verus source from that AST.
 
 `Verus.FormatInput` is only a convenience record at the elaborator/backend boundary. It is not
 another intermediate language: its grammar, value, and constraint fields are the same Triptych
@@ -39,8 +38,8 @@ values used by Lean generation.
 
 Value and constraint translation is checked against the Triptych denotation in
 `Triptych.Backend.Verus.Translation`. Concrete value and arithmetic-constraint expressions are
-checked after desugaring in `Triptych.Backend.Verus.Alignment`, while generated helper bodies are
-checked in `Triptych.Backend.Verus.SurfaceSemantics`. The target pretty-printer remains a separate
+checked after lowering in `Triptych.Backend.Verus.Preservation`, while generated helper bodies are
+checked in `Triptych.Backend.Verus.AstSemantics`. The target pretty-printer remains a separate
 trusted boundary.
 
 This module emits the readable specification and a separate soundness-contract scaffold. The
@@ -50,7 +49,7 @@ parser. A concrete Rust integration implements the generated trait and proves it
 
 namespace Triptych.Backend.Verus
 
-open Semantic
+open IR
 
 /-- The already-elaborated Triptych data required to generate one Verus specification. -/
 structure FormatInput where
@@ -202,11 +201,11 @@ private def validateInput (format : FormatInput) : Except String Unit := do
       throw s!"Verus backend: string equality on `{capture}` requires that capture to be a \
         non-optional direct reference in every root alternative"
 
-private def textLength (expression : Semantic.Expr) : Semantic.Expr :=
+private def textLength (expression : IR.Expr) : IR.Expr :=
   .textLen expression
 
 private def tokenRunCondition (token : TokClass) (length : LenSpec)
-    (input : Semantic.Expr) : Semantic.Expr :=
+    (input : IR.Expr) : IR.Expr :=
   let size := textLength input
   let lengthCondition := match length with
     | .exactly width => .intEq size (.intLit (Int.ofNat width))
@@ -215,7 +214,7 @@ private def tokenRunCondition (token : TokClass) (length : LenSpec)
           (.intLe (.intLit (Int.ofNat lower)) size)
           (.intLe size (.intLit (Int.ofNat upper)))
     | .atLeastOne => .intLe (.intLit 1) size
-  let index : Semantic.Expr := .var "i"
+  let index : IR.Expr := .var "i"
   let inRange :=
     .boolAnd (.intLe (.intLit 0) index) (.intLt index size)
   let charactersValid :=
@@ -224,7 +223,7 @@ private def tokenRunCondition (token : TokClass) (length : LenSpec)
   .boolAnd lengthCondition charactersValid
 
 private def symbolCondition (formatName : String) (symbol : Sym)
-    (input : Semantic.Expr) : Semantic.Expr :=
+    (input : IR.Expr) : IR.Expr :=
   match symbol with
   | .lit literal => .textEq input (.textLit literal)
   | .ref name => .call (productionName formatName name) [input]
@@ -257,7 +256,7 @@ private def assignBinders (items : List SymItem) : List (Option String) := Id.ru
           [some (if total == 1 then base else base ++ toString index)]
   return result
 
-private def itemExpression (item : SymItem) (binder? : Option String) : Semantic.Expr :=
+private def itemExpression (item : SymItem) (binder? : Option String) : IR.Expr :=
   match binder? with
   | some binder => .var binder
   | none =>
@@ -266,11 +265,11 @@ private def itemExpression (item : SymItem) (binder? : Option String) : Semantic
       | _ => .textLit ""
 
 private def itemCondition (formatName : String) (item : SymItem)
-    (binder? : Option String) : Option Semantic.Expr :=
+    (binder? : Option String) : Option IR.Expr :=
   match binder? with
   | none => none
   | some binder =>
-      let input : Semantic.Expr := .var binder
+      let input : IR.Expr := .var binder
       let present := symbolCondition formatName item.sym input
       if item.optional then
         some (.boolOr (.intEq (textLength input) (.intLit 0)) present)
@@ -286,7 +285,7 @@ private def directCaptureBindings (fields : List FieldSpec)
     | _, _ => none
 
 private def sequenceCondition (formatName : String) (fields : List FieldSpec)
-    (input : Semantic.Expr) (items : List SymItem) (view? : Option Semantic.Expr := none) : Semantic.Expr :=
+    (input : IR.Expr) (items : List SymItem) (view? : Option IR.Expr := none) : IR.Expr :=
   let binders := assignBinders items
   let pieces := (items.zip binders).map fun (item, binder?) =>
     itemExpression item binder?
@@ -299,42 +298,42 @@ private def sequenceCondition (formatName : String) (fields : List FieldSpec)
         let bindings := directCaptureBindings fields items binders
         fields.map fun field =>
           let captured := match bindings.find? (·.1 == field.capture) with
-            | some (_, binder) => Semantic.Expr.var binder
+            | some (_, binder) => IR.Expr.var binder
             | none => .textLit ""
           .textEq (.field view field.ident) captured
   let body := .andAll (decomposition :: itemConditions ++ viewConditions)
-  let quantified := binders.filterMap (·.map fun name => Semantic.Binder.mk name .text)
+  let quantified := binders.filterMap (·.map fun name => IR.Binder.mk name .text)
   if quantified.isEmpty then body else .existsE quantified body
 
 private def productionCondition (formatName : String) (fields : List FieldSpec)
-    (input : Semantic.Expr) (production : Production) : Semantic.Expr :=
+    (input : IR.Expr) (production : Production) : IR.Expr :=
   .orAll (production.alts.map (sequenceCondition formatName fields input ·))
 
 private def rootViewCondition (formatName : String) (fields : List FieldSpec)
-    (input view : Semantic.Expr) (production : Production) : Semantic.Expr :=
+    (input view : IR.Expr) (production : Production) : IR.Expr :=
   .orAll (production.alts.map
     (sequenceCondition formatName fields input · (some view)))
 
-private def captureParams (fields : List FieldSpec) (captures : List String) : List Semantic.Param :=
+private def captureParams (fields : List FieldSpec) (captures : List String) : List IR.Param :=
   captures.map fun capture =>
     { name := fieldIdent fields capture, ty := .text }
 
-private def captureArgs (fields : List FieldSpec) (captures : List String) : List Semantic.Expr :=
+private def captureArgs (fields : List FieldSpec) (captures : List String) : List IR.Expr :=
   captures.map fun capture => .capture (fieldIdent fields capture) capture
 
-private def viewArgs (fields : List FieldSpec) (captures : List String) : List Semantic.Expr :=
+private def viewArgs (fields : List FieldSpec) (captures : List String) : List IR.Expr :=
   captures.map fun capture => .field (.var "view") (fieldIdent fields capture)
 
-private def boolFunction (name : String) (params : List Semantic.Param) (body : Semantic.Expr)
-    (doc : Option String := none) : Semantic.Decl :=
+private def boolFunction (name : String) (params : List IR.Param) (body : IR.Expr)
+    (doc : Option String := none) : IR.Decl :=
   .function { name, params, returnType := .bool, body, doc }
 
-private def intFunction (name : String) (params : List Semantic.Param) (body : Semantic.Expr)
-    (doc : Option String := none) : Semantic.Decl :=
+private def intFunction (name : String) (params : List IR.Param) (body : IR.Expr)
+    (doc : Option String := none) : IR.Decl :=
   .function { name, params, returnType := .int, body, doc }
 
 private def productionDeclarations (format : FormatInput)
-    (fields : List FieldSpec) : List Semantic.Decl :=
+    (fields : List FieldSpec) : List IR.Decl :=
   format.grammar.prods.map fun production =>
     boolFunction (productionName format.name production.name)
       [{ name := "input", ty := .text }]
@@ -342,9 +341,9 @@ private def productionDeclarations (format : FormatInput)
       (some s!"Lean counterpart: `{format.name}.IsWf.{production.name}`.")
 
 private def constraintDeclarations (format : FormatInput) (fields : List FieldSpec)
-    (formatPrefix viewType : String) : List Semantic.Decl :=
+    (formatPrefix viewType : String) : List IR.Decl :=
   let makePhase (constraints : List Constraint) (functionSuffix viewSuffix satisfiesSuffix
-      leanName : String) : List Semantic.Decl :=
+      leanName : String) : List IR.Decl :=
     if constraints.isEmpty then
       []
     else
@@ -372,7 +371,7 @@ private def constraintDeclarations (format : FormatInput) (fields : List FieldSp
       "satisfies_constraints" "Constraints"
 
 private def formatDeclarations (format : FormatInput)
-    (fields : List FieldSpec) : Except String (List Semantic.Decl) := do
+    (fields : List FieldSpec) : Except String (List IR.Decl) := do
   let root ← match format.grammar.startProd? with
     | some production => pure production
     | none => throw s!"Verus backend: start production `{format.grammar.start}` is missing"
@@ -383,37 +382,37 @@ private def formatDeclarations (format : FormatInput)
   let hasWfConstraints := !format.wfConstraints.isEmpty
   let hasValueConstraints := !format.valueConstraints.isEmpty
   let viewFields :=
-    { name := "input", ty := .text : Semantic.FieldDecl } ::
+    { name := "input", ty := .text : IR.FieldDecl } ::
       fields.map fun (field : FieldSpec) => { name := field.ident, ty := .text }
   let rootWf := productionName format.name format.grammar.start
   let matchesView := formatPrefix ++ "_matches_view"
-  let wfConstraintCall : Semantic.Expr :=
+  let wfConstraintCall : IR.Expr :=
     if hasWfConstraints then
       .call (formatPrefix ++ "_view_wf_constraints") [.var "view"]
     else
       .boolLit true
-  let valueConstraintCall : Semantic.Expr :=
+  let valueConstraintCall : IR.Expr :=
     if hasValueConstraints then
       .call (formatPrefix ++ "_view_constraints") [.var "view"]
     else
       .boolLit true
-  let viewValid : Semantic.Expr := .boolAnd wfConstraintCall valueConstraintCall
-  let isWfBody : Semantic.Expr :=
+  let viewValid : IR.Expr := .boolAnd wfConstraintCall valueConstraintCall
+  let isWfBody : IR.Expr :=
     if hasWfConstraints then
       .boolAnd
         (.call rootWf [.var "input"])
         (.call (formatPrefix ++ "_satisfies_wf_constraints") [.var "input"])
     else
       .call rootWf [.var "input"]
-  let isValidBody : Semantic.Expr :=
+  let isValidBody : IR.Expr :=
     if hasValueConstraints then
       .boolAnd
         (.call (formatPrefix ++ "_is_wf") [.var "input"])
         (.call (formatPrefix ++ "_satisfies_constraints") [.var "input"])
     else
       .call (formatPrefix ++ "_is_wf") [.var "input"]
-  let declarations : List Semantic.Decl :=
-    [ Semantic.Decl.structure { name := viewType, fields := viewFields },
+  let declarations : List IR.Decl :=
+    [ IR.Decl.structure { name := viewType, fields := viewFields },
       boolFunction matchesView
         [{ name := "input", ty := .text }, { name := "view", ty := .named viewType }]
         (.boolAnd
@@ -435,8 +434,8 @@ private def formatDeclarations (format : FormatInput)
         isValidBody (some s!"Lean counterpart: `{format.name}.IsValid`.") ]
   pure declarations
 
-/-- Validate and translate one elaborated Triptych format into its semantic Verus specification. -/
-def translateSpecModule (format : FormatInput) : Except String Semantic.Module := do
+/-- Validate and translate one elaborated Triptych format into the Verus specification IR. -/
+def translateSpecToIR (format : FormatInput) : Except String IR.Module := do
   validateInput format
   let fields := fieldsFor format.grammar
   let formatDecls ← formatDeclarations format fields
@@ -451,38 +450,38 @@ def translateSpecModule (format : FormatInput) : Except String Semantic.Module :
 
 /-- Generate the readable Verus specification for one elaborated Triptych format. -/
 def emitSpec (format : FormatInput) : Except String String := do
-  let semanticModule ← translateSpecModule format
-  let targetModule := desugarModule semanticModule
-  pure (prettyPrintModule targetModule)
+  let irModule ← translateSpecToIR format
+  let astModule := lowerModule irModule
+  pure (prettyPrintModule astModule)
 
-private def optionEqualsSome (option result : Surface.Expr) : Surface.Expr :=
+private def optionEqualsSome (option result : Ast.Expr) : Ast.Expr :=
   .matchOption option { name := "parsed", ty := .int }
     (.intEq (.var "parsed") result)
     (.boolLit false)
 
-private def optionIsNone (option : Surface.Expr) : Surface.Expr :=
+private def optionIsNone (option : Ast.Expr) : Ast.Expr :=
   .matchOption option { name := "parsed", ty := .int }
     (.boolLit false)
     (.boolLit true)
 
-private def boolNot (expression : Surface.Expr) : Surface.Expr :=
+private def boolNot (expression : Ast.Expr) : Ast.Expr :=
   .boolNot expression
 
-private def soundnessDeclarations (format : FormatInput) : List Surface.Decl :=
+private def soundnessDeclarations (format : FormatInput) : List Ast.Decl :=
   let formatPrefix := snakeCase format.name
   let viewType := typeName format.name ++ "View"
   let contractTrait := typeName format.name ++ "ExternalParserContract"
   let resultPredicate := formatPrefix ++ "_matches_result"
-  let input : Surface.Expr := .var "input"
-  let result : Surface.Expr := .var "value"
-  let view : Surface.Expr := .var "view"
-  let parseResult := Surface.Expr.call "Self::parse_to_spec" [input]
+  let input : Ast.Expr := .var "input"
+  let result : Ast.Expr := .var "value"
+  let view : Ast.Expr := .var "view"
+  let parseResult := Ast.Expr.call "Self::parse_to_spec" [input]
   let parsesValue := optionEqualsSome parseResult result
   let rejects := optionIsNone parseResult
-  let isValid := Surface.Expr.call (formatPrefix ++ "_is_valid") [input]
-  let matchesResult := Surface.Expr.call resultPredicate [input, result]
+  let isValid := Ast.Expr.call (formatPrefix ++ "_is_valid") [input]
+  let matchesResult := Ast.Expr.call resultPredicate [input, result]
   let resultBody :=
-    Surface.Expr.existsE [{ name := "view", ty := .named viewType }]
+    Ast.Expr.existsE [{ name := "view", ty := .named viewType }]
       (.andAll
         [ .call (formatPrefix ++ "_matches_view") [input, view],
           .call (formatPrefix ++ "_view_valid") [view],
@@ -525,8 +524,8 @@ private def soundnessDeclarations (format : FormatInput) : List Surface.Decl :=
                     .boolImplies (boolNot isValid) rejects ]
                 doc := some "The external parser rejects exactly the invalid inputs." } ] } ]
 
-/-- Generate a Verus trait that states the external-parser proof obligations. -/
-def translateSoundnessModule (format : FormatInput) : Except String Surface.Module := do
+/-- Build the Verus AST for the external-parser proof obligations. -/
+def buildSoundnessAst (format : FormatInput) : Except String Ast.Module := do
   validateInput format
   pure
     { header :=
@@ -538,7 +537,7 @@ def translateSoundnessModule (format : FormatInput) : Except String Surface.Modu
 
 /-- Generate the Verus external-parser soundness-contract scaffold. -/
 def emitSoundness (format : FormatInput) : Except String String := do
-  pure (prettyPrintModule (← translateSoundnessModule format))
+  pure (prettyPrintModule (← buildSoundnessAst format))
 
 end Triptych.Backend.Verus
 

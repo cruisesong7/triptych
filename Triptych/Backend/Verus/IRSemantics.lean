@@ -14,32 +14,32 @@
  limitations under the License.
 -/
 
-import Triptych.Backend.Verus.Semantic
+import Triptych.Backend.Verus.IR
 
 /-!
-# Denotation of the Verus semantic AST
+# Denotation of the Verus IR
 
-These functions assign Lean meanings to the semantic AST nodes produced from `ValExpr` and
-`Constraint`. They deliberately cover the semantic expression subset, not arbitrary generated
-functions, quantifiers, or target-language control flow.
+These functions assign Lean meanings to the IR nodes produced from `ValExpr` and `Constraint`.
+They deliberately cover the specification-expression subset, not arbitrary generated functions,
+quantifiers, or target-language control flow.
 
-The pretty-printer remains a separate boundary: these definitions specify what a semantic AST node
-is intended to mean before Verus surface syntax is emitted.
+The pretty-printer remains a separate boundary: these definitions specify what an IR node is
+intended to mean before Verus source is emitted.
 -/
 
 namespace Triptych.Backend.Verus
 
-open Semantic
+open IR
 
-/-- The string value represented by the Verus semantic AST subset. -/
-def Semantic.Expr.denoteText (env : Env) : Semantic.Expr → Option String
+/-- The string value represented by the Verus IR subset. -/
+def IR.Expr.denoteText (env : Env) : IR.Expr → Option String
   | .capture _ source => some ((env source).getD "")
   | .textLit literal => some literal
   | .textConcat left right => return (← left.denoteText env) ++ (← right.denoteText env)
   | _ => none
 
-/-- The integer value represented by the Verus semantic AST subset. -/
-def Semantic.Expr.denoteInt (env : Env) : Semantic.Expr → Option Int
+/-- The integer value represented by the Verus IR subset. -/
+def IR.Expr.denoteInt (env : Env) : IR.Expr → Option Int
   | .intLit literal => some literal
   | .valueRef _ source _ => some (source.eval env)
   | .intAdd left right => return (← left.denoteInt env) + (← right.denoteInt env)
@@ -55,8 +55,8 @@ def Semantic.Expr.denoteInt (env : Env) : Semantic.Expr → Option Int
   | .countOf _ expression => return Triptych.countOf (← expression.denoteText env)
   | _ => none
 
-/-- The proposition represented by the semantic Verus AST subset. -/
-def Semantic.Expr.denoteProp (env : Env) : Semantic.Expr → Option Prop
+/-- The proposition represented by the Verus IR subset. -/
+def IR.Expr.denoteProp (env : Env) : IR.Expr → Option Prop
   | .boolLit literal => some (literal = true)
   | .boolAnd left right => return (← left.denoteProp env) ∧ (← right.denoteProp env)
   | .boolOr left right => return (← left.denoteProp env) ∨ (← right.denoteProp env)
@@ -73,7 +73,7 @@ def Semantic.Expr.denoteProp (env : Env) : Semantic.Expr → Option Prop
       let text ← expression.denoteText env
       pure (text.startsWith "0" = true → text = "0")
   | .card operation k expressions => do
-      let texts ← expressions.mapM (Semantic.Expr.denoteText env)
+      let texts ← expressions.mapM (IR.Expr.denoteText env)
       let present := presentCount texts
       pure <| match operation with
         | .atLeast => k ≤ present

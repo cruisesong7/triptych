@@ -14,20 +14,20 @@
  limitations under the License.
 -/
 
-import Triptych.Backend.Verus.Desugar
+import Triptych.Backend.Verus.Lowering
 
 /-!
-# Semantics of Verus surface helpers
+# Semantics of the generated Verus AST
 
-This module interprets the first-order `Verus.Surface` fragment used by generated helper functions.
+This module interprets the first-order `Verus.Ast` fragment used by generated helper functions.
 Text values are lists of bytes, matching Verus `Seq<u8>`. Calls are interpreted by a canonical
 environment whose definitions are connected to Triptych's audited Lean readers.
 
 The helper-realization theorems evaluate the bodies returned by `helperDeclaration`; they do not
-merely restate the intended meaning of the higher-level semantic AST.
+merely restate the intended meaning of the higher-level IR.
 -/
 
-namespace Triptych.Backend.Verus.Surface
+namespace Triptych.Backend.Verus.Ast
 
 inductive Value where
   | bool (data : Bool)
@@ -108,7 +108,7 @@ theorem ifProp_someBool_or (proposition : Prop) [Decidable proposition] (right :
       some (Value.bool (decide proposition || right)) := by
   by_cases proposition <;> simp_all
 
-def Expr.denote (calls : CallEnv) (env : EvalEnv) : Surface.Expr → Option Value
+def Expr.evaluate (calls : CallEnv) (env : EvalEnv) : Ast.Expr → Option Value
   | .var name => env name
   | .boolLit literal => some (.bool literal)
   | .intLit literal => some (.int literal)
@@ -116,39 +116,39 @@ def Expr.denote (calls : CallEnv) (env : EvalEnv) : Surface.Expr → Option Valu
   | .textLit literal => some (.text (encodeString literal))
   | .optionNone | .optionSome _ | .field _ _ => none
   | .call name args => do
-      let values ← args.mapM (Expr.denote calls env)
+      let values ← args.mapM (Expr.evaluate calls env)
       calls name values
   | .textConcat left right => do
-      let left ← (← left.denote calls env).asText
-      let right ← (← right.denote calls env).asText
+      let left ← (← left.evaluate calls env).asText
+      let right ← (← right.evaluate calls env).asText
       pure (.text (left ++ right))
   | .intAdd left right => do
-      let left ← (← left.denote calls env).asInt
-      let right ← (← right.denote calls env).asInt
+      let left ← (← left.evaluate calls env).asInt
+      let right ← (← right.evaluate calls env).asInt
       pure (.int (left + right))
   | .intSub left right => do
-      let left ← (← left.denote calls env).asInt
-      let right ← (← right.denote calls env).asInt
+      let left ← (← left.evaluate calls env).asInt
+      let right ← (← right.evaluate calls env).asInt
       pure (.int (left - right))
   | .intMul left right => do
-      let left ← (← left.denote calls env).asInt
-      let right ← (← right.denote calls env).asInt
+      let left ← (← left.evaluate calls env).asInt
+      let right ← (← right.evaluate calls env).asInt
       pure (.int (left * right))
   | .intNeg expression => do
-      let data ← (← expression.denote calls env).asInt
+      let data ← (← expression.evaluate calls env).asInt
       pure (.int (-data))
   | .textLen expression => do
-      let data ← (← expression.denote calls env).asText
+      let data ← (← expression.evaluate calls env).asText
       pure (.int (Int.ofNat data.length))
   | .textIndex expression index => do
-      let data ← (← expression.denote calls env).asText
-      let index ← (← index.denote calls env).asInt
+      let data ← (← expression.evaluate calls env).asText
+      let index ← (← index.evaluate calls env).asInt
       let index ← nonnegativeNat? index
       pure (.byte (← data[index]?))
   | .textSubrange expression start stop => do
-      let data ← (← expression.denote calls env).asText
-      let start ← (← start.denote calls env).asInt
-      let stop ← (← stop.denote calls env).asInt
+      let data ← (← expression.evaluate calls env).asText
+      let start ← (← start.evaluate calls env).asInt
+      let stop ← (← stop.evaluate calls env).asInt
       let start ← nonnegativeNat? start
       let stop ← nonnegativeNat? stop
       if start ≤ stop ∧ stop ≤ data.length then
@@ -156,82 +156,82 @@ def Expr.denote (calls : CallEnv) (env : EvalEnv) : Surface.Expr → Option Valu
       else
         none
   | .byteToInt expression => do
-      let data ← (← expression.denote calls env).asByte
+      let data ← (← expression.evaluate calls env).asByte
       pure (.int (Int.ofNat data))
   | .boolNot expression => do
-      let data ← (← expression.denote calls env).asBool
+      let data ← (← expression.evaluate calls env).asBool
       pure (.bool (!data))
   | .boolAnd left right => do
-      let left ← (← left.denote calls env).asBool
+      let left ← (← left.evaluate calls env).asBool
       if left then
-        let right ← (← right.denote calls env).asBool
+        let right ← (← right.evaluate calls env).asBool
         pure (.bool right)
       else
         pure (.bool false)
   | .boolOr left right => do
-      let left ← (← left.denote calls env).asBool
+      let left ← (← left.evaluate calls env).asBool
       if left then
         pure (.bool true)
       else
-        let right ← (← right.denote calls env).asBool
+        let right ← (← right.evaluate calls env).asBool
         pure (.bool right)
   | .boolImplies left right => do
-      let left ← (← left.denote calls env).asBool
+      let left ← (← left.evaluate calls env).asBool
       if left then
-        let right ← (← right.denote calls env).asBool
+        let right ← (← right.evaluate calls env).asBool
         pure (.bool right)
       else
         pure (.bool true)
   | .intEq left right => do
-      let left ← (← left.denote calls env).asInt
-      let right ← (← right.denote calls env).asInt
+      let left ← (← left.evaluate calls env).asInt
+      let right ← (← right.evaluate calls env).asInt
       pure (.bool (decide (left = right)))
   | .intNe left right => do
-      let left ← (← left.denote calls env).asInt
-      let right ← (← right.denote calls env).asInt
+      let left ← (← left.evaluate calls env).asInt
+      let right ← (← right.evaluate calls env).asInt
       pure (.bool (decide (left ≠ right)))
   | .intLt left right => do
-      let left ← (← left.denote calls env).asInt
-      let right ← (← right.denote calls env).asInt
+      let left ← (← left.evaluate calls env).asInt
+      let right ← (← right.evaluate calls env).asInt
       pure (.bool (decide (left < right)))
   | .intLe left right => do
-      let left ← (← left.denote calls env).asInt
-      let right ← (← right.denote calls env).asInt
+      let left ← (← left.evaluate calls env).asInt
+      let right ← (← right.evaluate calls env).asInt
       pure (.bool (decide (left ≤ right)))
   | .intGt left right => do
-      let left ← (← left.denote calls env).asInt
-      let right ← (← right.denote calls env).asInt
+      let left ← (← left.evaluate calls env).asInt
+      let right ← (← right.evaluate calls env).asInt
       pure (.bool (decide (left > right)))
   | .intGe left right => do
-      let left ← (← left.denote calls env).asInt
-      let right ← (← right.denote calls env).asInt
+      let left ← (← left.evaluate calls env).asInt
+      let right ← (← right.evaluate calls env).asInt
       pure (.bool (decide (left ≥ right)))
   | .byteEq left right => do
-      let left ← (← left.denote calls env).asByte
-      let right ← (← right.denote calls env).asByte
+      let left ← (← left.evaluate calls env).asByte
+      let right ← (← right.evaluate calls env).asByte
       pure (.bool (decide (left = right)))
   | .byteNe left right => do
-      let left ← (← left.denote calls env).asByte
-      let right ← (← right.denote calls env).asByte
+      let left ← (← left.evaluate calls env).asByte
+      let right ← (← right.evaluate calls env).asByte
       pure (.bool (decide (left ≠ right)))
   | .textEq left right => do
-      let left ← (← left.denote calls env).asText
-      let right ← (← right.denote calls env).asText
+      let left ← (← left.evaluate calls env).asText
+      let right ← (← right.evaluate calls env).asText
       pure (.bool (decide (left = right)))
   | .textNe left right => do
-      let left ← (← left.denote calls env).asText
-      let right ← (← right.denote calls env).asText
+      let left ← (← left.evaluate calls env).asText
+      let right ← (← right.evaluate calls env).asText
       pure (.bool (decide (left ≠ right)))
   | .ifThenElse condition thenBranch elseBranch => do
-      let condition ← (← condition.denote calls env).asBool
-      if condition then thenBranch.denote calls env else elseBranch.denote calls env
+      let condition ← (← condition.evaluate calls env).asBool
+      if condition then thenBranch.evaluate calls env else elseBranch.evaluate calls env
   | .forallE _ _ _ | .existsE _ _ | .choose _ _ | .matchOption _ _ _ _ => none
 
-end Triptych.Backend.Verus.Surface
+end Triptych.Backend.Verus.Ast
 
 namespace Triptych.Backend.Verus
 
-open Surface
+open Ast
 
 def digitValue (byte : Nat) : Int :=
   if Int.ofNat byte < 48 then 0 else Int.ofNat byte - 48
@@ -258,6 +258,9 @@ def natOfBytesFrom (bytes : List Nat) (index : Nat) (accumulator : Int) : Int :=
 def natOfBytes (bytes : List Nat) : Int :=
   natOfBytesFrom bytes 0 0
 
+def countOfBytes (bytes : List Nat) : Int :=
+  natOfBytes bytes
+
 def intOfBytes : List Nat → Int
   | 45 :: rest => -natOfBytes rest
   | bytes => natOfBytes bytes
@@ -280,7 +283,7 @@ def isHexDigitByte (byte : Nat) : Bool :=
 def isBitByte (byte : Nat) : Bool :=
   decide (byte = 48) || decide (byte = 49)
 
-def canonicalCalls : Surface.CallEnv
+def canonicalCalls : Ast.CallEnv
   | "triptych_is_digit", [.byte byte] =>
       some (.bool (isDigitByte byte))
   | "triptych_is_hex_digit", [.byte byte] =>
@@ -294,6 +297,8 @@ def canonicalCalls : Surface.CallEnv
         none
   | "triptych_nat_of", [.text bytes] =>
       some (.int (natOfBytes bytes))
+  | "triptych_count_of", [.text bytes] =>
+      some (.int (countOfBytes bytes))
   | "triptych_int_of", [.text bytes] =>
       some (.int (intOfBytes bytes))
   | "triptych_sign_of", [.text bytes] =>
@@ -347,6 +352,11 @@ theorem canonicalCalls_natOf (bytes : List Nat) :
   rfl
 
 @[simp]
+theorem canonicalCalls_countOf (bytes : List Nat) :
+    canonicalCalls "triptych_count_of" [.text bytes] = some (.int (countOfBytes bytes)) := by
+  rfl
+
+@[simp]
 theorem canonicalCalls_intOf (bytes : List Nat) :
     canonicalCalls "triptych_int_of" [.text bytes] = some (.int (intOfBytes bytes)) := by
   rfl
@@ -362,27 +372,27 @@ theorem canonicalCalls_intPow (base exponent : Int) :
       some (.int (intPowModel base exponent)) := by
   rfl
 
-private def bindingEnv (bindings : List (String × Surface.Value)) : Surface.EvalEnv :=
+private def bindingEnv (bindings : List (String × Ast.Value)) : Ast.EvalEnv :=
   fun name => (bindings.find? (·.1 == name)).map (·.2)
 
-private def bindParams : List Surface.Param → List Surface.Value →
-    Option (List (String × Surface.Value))
+private def bindParams : List Ast.Param → List Ast.Value →
+    Option (List (String × Ast.Value))
   | [], [] => some []
   | param :: params, argument :: arguments => do
       pure ((param.name, argument) :: (← bindParams params arguments))
   | _, _ => none
 
-private def helperConstants : List (String × Surface.Value) :=
+private def helperConstants : List (String × Ast.Value) :=
   [("TRIPTYCH_MINUS", .byte 45), ("TRIPTYCH_ZERO", .byte 48)]
 
-def evaluateHelper (helper : Helper) (arguments : List Surface.Value) : Option Surface.Value :=
+def evaluateHelper (helper : Helper) (arguments : List Ast.Value) : Option Ast.Value :=
   match helperDeclaration helper with
   | .function function => do
       let bindings ← bindParams function.params arguments
-      function.body.denote canonicalCalls (bindingEnv (bindings ++ helperConstants))
+      function.body.evaluate canonicalCalls (bindingEnv (bindings ++ helperConstants))
   | .constant constant =>
       if arguments.isEmpty then
-        constant.initializer.denote canonicalCalls (bindingEnv helperConstants)
+        constant.initializer.evaluate canonicalCalls (bindingEnv helperConstants)
       else
         none
   | .structure _ | .trait _ => none
@@ -426,16 +436,49 @@ theorem natOfBytes_map_toNat (characters : List Char) :
 
 @[simp]
 theorem natOfBytes_encodeString (source : String) :
-    natOfBytes (Surface.encodeString source) = Triptych.natOf source := by
-  simp [Surface.encodeString, Triptych.natOf, Triptych.readNat_eq_readNatChars]
+    natOfBytes (Ast.encodeString source) = Triptych.natOf source := by
+  simp [Ast.encodeString, Triptych.natOf, Triptych.readNat_eq_readNatChars]
 
 @[simp]
-theorem encodeString_empty : Surface.encodeString "" = [] := by
+theorem countOfBytes_encodeString (source : String) :
+    countOfBytes (Ast.encodeString source) = Triptych.countOf source := by
+  simp [countOfBytes, Triptych.countOf, Triptych.natOf,
+    natOfBytes_encodeString source]
+
+@[simp]
+theorem encodeString_empty : Ast.encodeString "" = [] := by
   rfl
+
+private theorem map_toNat_inj :
+    ∀ {xs ys : List Char}, xs.map Char.toNat = ys.map Char.toNat → xs = ys
+  | [], [], _ => rfl
+  | x :: xs, y :: ys, h => by
+      simp only [List.map_cons, List.cons.injEq] at h
+      rw [Char.toNat_inj.mp h.1, map_toNat_inj h.2]
+
+@[simp]
+theorem encodeString_inj_iff (a b : String) :
+    Ast.encodeString a = Ast.encodeString b ↔ a = b := by
+  constructor
+  · intro h
+    have hlists : a.toList = b.toList := map_toNat_inj h
+    exact String.ext (by simpa using hlists)
+  · intro h
+    rw [h]
+
+@[simp]
+theorem encodeString_length (source : String) :
+    (Ast.encodeString source).length = source.length := by
+  simp [Ast.encodeString, String.length_toList]
+
+@[simp]
+theorem encodeString_eq_nil_iff (source : String) :
+    Ast.encodeString source = [] ↔ source = "" := by
+  rw [show ([] : List Nat) = Ast.encodeString "" from rfl, encodeString_inj_iff]
 
 @[simp]
 theorem intOfBytes_encodeString (source : String) :
-    intOfBytes (Surface.encodeString source) = Triptych.intOf source := by
+    intOfBytes (Ast.encodeString source) = Triptych.intOf source := by
   cases hsource : source.toList with
   | nil =>
       have hempty : source = "" := by
@@ -452,9 +495,9 @@ theorem intOfBytes_encodeString (source : String) :
       by_cases hminus : character = '-'
       · subst character
         calc
-          intOfBytes (Surface.encodeString source) =
+          intOfBytes (Ast.encodeString source) =
               -natOfBytes (rest.map Char.toNat) := by
-            simp [Surface.encodeString, hsource, intOfBytes]
+            simp [Ast.encodeString, hsource, intOfBytes]
           _ = -Int.ofNat (Triptych.readNatChars rest) := by
             rw [natOfBytes_map_toNat]
           _ = Triptych.intOf source := by
@@ -466,9 +509,9 @@ theorem intOfBytes_encodeString (source : String) :
           exact Char.toNat_inj.mp h
         have hminus' : '-' ≠ character := Ne.symm hminus
         calc
-          intOfBytes (Surface.encodeString source) =
+          intOfBytes (Ast.encodeString source) =
               natOfBytes ((character :: rest).map Char.toNat) := by
-            simp [Surface.encodeString, hsource, intOfBytes, hcode]
+            simp [Ast.encodeString, hsource, intOfBytes, hcode]
           _ = Int.ofNat (Triptych.readNatChars (character :: rest)) :=
             natOfBytes_map_toNat (character :: rest)
           _ = Triptych.intOf source := by
@@ -477,8 +520,8 @@ theorem intOfBytes_encodeString (source : String) :
 
 @[simp]
 theorem signOfBytes_encodeString (source : String) :
-    signOfBytes (Surface.encodeString source) = Triptych.signOf source := by
-  simp only [Surface.encodeString, Triptych.signOf]
+    signOfBytes (Ast.encodeString source) = Triptych.signOf source := by
+  simp only [Ast.encodeString, Triptych.signOf]
   cases hsource : source.toList with
   | nil => simp [signOfBytes, String.startsWith_string_iff, hsource]
   | cons character rest =>
@@ -495,32 +538,32 @@ theorem signOfBytes_encodeString (source : String) :
 @[simp]
 theorem evaluateHelper_minusConstant :
     evaluateHelper .minusConstant [] = some (.byte 45) := by
-  simp [evaluateHelper, helperDeclaration, helperConstants, Surface.Expr.denote]
+  simp [evaluateHelper, helperDeclaration, helperConstants, Ast.Expr.evaluate]
 
 @[simp]
 theorem evaluateHelper_zeroConstant :
     evaluateHelper .zeroConstant [] = some (.byte 48) := by
-  simp [evaluateHelper, helperDeclaration, helperConstants, Surface.Expr.denote]
+  simp [evaluateHelper, helperDeclaration, helperConstants, Ast.Expr.evaluate]
 
 @[simp]
 theorem evaluateHelper_isDigit (byte : Nat) :
     evaluateHelper .isDigit [.byte byte] =
       some (.bool (isDigitByte byte)) := by
-  simp [evaluateHelper, helperDeclaration, Surface.Expr.denote, bindingEnv, bindParams,
+  simp [evaluateHelper, helperDeclaration, Ast.Expr.evaluate, bindingEnv, bindParams,
     helperConstants, helperBoolFunction, isDigitByte]
 
 @[simp]
 theorem evaluateHelper_isHexDigit (byte : Nat) :
     evaluateHelper .isHexDigit [.byte byte] =
       some (.bool (isHexDigitByte byte)) := by
-  simp [evaluateHelper, helperDeclaration, Surface.Expr.denote, bindingEnv, bindParams,
+  simp [evaluateHelper, helperDeclaration, Ast.Expr.evaluate, bindingEnv, bindParams,
     helperConstants, helperBoolFunction, isHexDigitByte, isDigitByte]
 
 @[simp]
 theorem evaluateHelper_isBit (byte : Nat) :
     evaluateHelper .isBit [.byte byte] =
       some (.bool (isBitByte byte)) := by
-  simp [evaluateHelper, helperDeclaration, Surface.Expr.denote, bindingEnv, bindParams,
+  simp [evaluateHelper, helperDeclaration, Ast.Expr.evaluate, bindingEnv, bindParams,
     helperConstants, helperBoolFunction, isBitByte]
 
 @[simp]
@@ -531,40 +574,46 @@ theorem evaluateHelper_natOfFrom (bytes : List Nat) (index : Nat) (accumulator :
   by_cases hlt : index < bytes.length
   · rw [natOfBytesFrom_step bytes index accumulator hlt]
     by_cases hbyte : (bytes[index] : Int) < 48
-    · simp [evaluateHelper, helperDeclaration, Surface.Expr.denote, bindingEnv, bindParams,
-        helperConstants, Surface.nonnegativeNat?, digitValue, hlt, hbyte]
+    · simp [evaluateHelper, helperDeclaration, Ast.Expr.evaluate, bindingEnv, bindParams,
+        helperConstants, Ast.nonnegativeNat?, digitValue, hlt, hbyte]
       simp [canonicalCalls]
       omega
-    · simp [evaluateHelper, helperDeclaration, Surface.Expr.denote, bindingEnv, bindParams,
-        helperConstants, Surface.nonnegativeNat?, digitValue, hlt, hbyte]
+    · simp [evaluateHelper, helperDeclaration, Ast.Expr.evaluate, bindingEnv, bindParams,
+        helperConstants, Ast.nonnegativeNat?, digitValue, hlt, hbyte]
       simp [canonicalCalls]
       omega
   · have heq : index = bytes.length := by omega
     subst index
-    simp [evaluateHelper, helperDeclaration, Surface.Expr.denote, bindingEnv, bindParams,
-      helperConstants, Surface.nonnegativeNat?, natOfBytesFrom_end]
+    simp [evaluateHelper, helperDeclaration, Ast.Expr.evaluate, bindingEnv, bindParams,
+      helperConstants, Ast.nonnegativeNat?, natOfBytesFrom_end]
 
 @[simp]
 theorem evaluateHelper_natOf (bytes : List Nat) :
     evaluateHelper .natOf [.text bytes] = some (.int (natOfBytes bytes)) := by
-  simp [evaluateHelper, helperDeclaration, helperIntFunction, Surface.Expr.denote, bindParams,
+  simp [evaluateHelper, helperDeclaration, helperIntFunction, Ast.Expr.evaluate, bindParams,
     bindingEnv, helperConstants, natOfBytes]
+
+@[simp]
+theorem evaluateHelper_countOf (bytes : List Nat) :
+    evaluateHelper .countOf [.text bytes] = some (.int (countOfBytes bytes)) := by
+  simp [evaluateHelper, helperDeclaration, helperIntFunction, Ast.Expr.evaluate, bindParams,
+    bindingEnv, helperConstants, countOfBytes]
 
 @[simp]
 theorem evaluateHelper_intOf (bytes : List Nat) :
     evaluateHelper .intOf [.text bytes] = some (.int (intOfBytes bytes)) := by
   cases bytes with
   | nil =>
-      simp [evaluateHelper, helperDeclaration, Surface.Expr.denote, bindingEnv, bindParams,
+      simp [evaluateHelper, helperDeclaration, Ast.Expr.evaluate, bindingEnv, bindParams,
         helperConstants, helperIntFunction, intOfBytes, natOfBytes,
         natOfBytesFrom, foldDigitBytes]
   | cons byte rest =>
       by_cases hminus : byte = 45
       · subst byte
-        simp [evaluateHelper, helperDeclaration, Surface.Expr.denote, bindingEnv, bindParams,
+        simp [evaluateHelper, helperDeclaration, Ast.Expr.evaluate, bindingEnv, bindParams,
           helperConstants, helperIntFunction, intOfBytes, List.take_length] <;>
           omega
-      · simp [evaluateHelper, helperDeclaration, Surface.Expr.denote, bindingEnv, bindParams,
+      · simp [evaluateHelper, helperDeclaration, Ast.Expr.evaluate, bindingEnv, bindParams,
           helperConstants, helperIntFunction, intOfBytes, hminus]
 
 @[simp]
@@ -572,14 +621,14 @@ theorem evaluateHelper_signOf (bytes : List Nat) :
     evaluateHelper .signOf [.text bytes] = some (.int (signOfBytes bytes)) := by
   cases bytes with
   | nil =>
-      simp [evaluateHelper, helperDeclaration, Surface.Expr.denote, bindingEnv, bindParams,
+      simp [evaluateHelper, helperDeclaration, Ast.Expr.evaluate, bindingEnv, bindParams,
         helperConstants, helperIntFunction, signOfBytes]
   | cons byte rest =>
       by_cases hminus : byte = 45
       · subst byte
-        simp [evaluateHelper, helperDeclaration, Surface.Expr.denote, bindingEnv, bindParams,
+        simp [evaluateHelper, helperDeclaration, Ast.Expr.evaluate, bindingEnv, bindParams,
           helperConstants, helperIntFunction, signOfBytes]
-      · simp [evaluateHelper, helperDeclaration, Surface.Expr.denote, bindingEnv, bindParams,
+      · simp [evaluateHelper, helperDeclaration, Ast.Expr.evaluate, bindingEnv, bindParams,
           helperConstants, helperIntFunction, signOfBytes, hminus]
 
 private theorem intPowModel_step (base exponent : Int) (hpositive : 0 < exponent) :
@@ -597,11 +646,11 @@ theorem evaluateHelper_intPow (base exponent : Int) :
     evaluateHelper .intPow [.int base, .int exponent] =
       some (.int (intPowModel base exponent)) := by
   by_cases hpositive : 0 < exponent
-  · simp [evaluateHelper, helperDeclaration, Surface.Expr.denote, bindingEnv, bindParams,
+  · simp [evaluateHelper, helperDeclaration, Ast.Expr.evaluate, bindingEnv, bindParams,
       helperConstants, hpositive,
       intPowModel_step base exponent hpositive]
   · have hnonpositive : exponent ≤ 0 := by omega
-    simp [evaluateHelper, helperDeclaration, Surface.Expr.denote, bindingEnv, bindParams,
+    simp [evaluateHelper, helperDeclaration, Ast.Expr.evaluate, bindingEnv, bindParams,
       helperConstants, hpositive, intPowModel,
       Int.toNat_of_nonpos hnonpositive]
 
@@ -624,6 +673,8 @@ def Helper.Realizes : Helper → Prop
             some (.int (natOfBytesFrom bytes index accumulator))
   | .natOf =>
       ∀ bytes, evaluateHelper .natOf [.text bytes] = some (.int (natOfBytes bytes))
+  | .countOf =>
+      ∀ bytes, evaluateHelper .countOf [.text bytes] = some (.int (countOfBytes bytes))
   | .intOf =>
       ∀ bytes, evaluateHelper .intOf [.text bytes] = some (.int (intOfBytes bytes))
   | .signOf =>
@@ -641,6 +692,7 @@ theorem helperDeclaration_realizes (helper : Helper) : helper.Realizes := by
   | isBit => exact evaluateHelper_isBit
   | natOfFrom => exact evaluateHelper_natOfFrom
   | natOf => exact evaluateHelper_natOf
+  | countOf => exact evaluateHelper_countOf
   | intOf => exact evaluateHelper_intOf
   | signOf => exact evaluateHelper_signOf
   | intPow => exact evaluateHelper_intPow

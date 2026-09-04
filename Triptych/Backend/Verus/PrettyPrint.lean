@@ -14,19 +14,19 @@
  limitations under the License.
 -/
 
-import Triptych.Backend.Verus.Surface
+import Triptych.Backend.Verus.Ast
 
 /-!
 # Verus AST pretty-printer
 
-This is the only layer that knows Verus punctuation. It accepts only `Verus.Surface`, after semantic
-operations and helper dependencies have been resolved by `Verus.Desugar`. Expressions are
+This is the only layer that knows Verus punctuation. It accepts only `Verus.Ast`, after IR-only
+operations and helper dependencies have been resolved by `Verus.Lowering`. Expressions are
 pretty-printed with explicit precedence, and there is no raw-expression constructor.
 -/
 
 namespace Triptych.Backend.Verus
 
-open Surface
+open Ast
 
 private def leftBrace : String := "{"
 private def rightBrace : String := "}"
@@ -36,7 +36,7 @@ private def indent (source : String) (width : Nat := 4) : String :=
   String.intercalate "\n" ((source.splitOn "\n").map fun line =>
     if line.isEmpty then "" else spaces ++ line)
 
-private def prettyPrintTy : Surface.Ty → String
+private def prettyPrintTy : Ast.Ty → String
   | .bool => "bool"
   | .int => "int"
   | .byte => "u8"
@@ -44,10 +44,10 @@ private def prettyPrintTy : Surface.Ty → String
   | .option inner => s!"Option<{prettyPrintTy inner}>"
   | .named name => name
 
-private def prettyPrintBinder (binder : Surface.Binder) : String :=
+private def prettyPrintBinder (binder : Ast.Binder) : String :=
   s!"{binder.name}: {prettyPrintTy binder.ty}"
 
-private def prettyPrintParam (param : Surface.Param) : String :=
+private def prettyPrintParam (param : Ast.Param) : String :=
   s!"{param.name}: {prettyPrintTy param.ty}"
 
 private def textLiteral (literal : String) : String :=
@@ -57,8 +57,8 @@ private def textLiteral (literal : String) : String :=
 private def parenthesize (condition : Bool) (source : String) : String :=
   if condition then "(" ++ source ++ ")" else source
 
-private partial def prettyPrintExprAt (parentPrecedence : Nat) (expression : Surface.Expr) : String :=
-  let binary (precedence : Nat) (operator : String) (left right : Surface.Expr) :=
+private partial def prettyPrintExprAt (parentPrecedence : Nat) (expression : Ast.Expr) : String :=
+  let binary (precedence : Nat) (operator : String) (left right : Ast.Expr) :=
     let source :=
       prettyPrintExprAt precedence left ++ " " ++ operator ++ " " ++
         prettyPrintExprAt (precedence + 1) right
@@ -131,14 +131,14 @@ private partial def prettyPrintExprAt (parentPrecedence : Nat) (expression : Sur
           {indent noneArm}\n\
           {rightBrace}"
       parenthesize (5 < parentPrecedence) source
-def prettyPrintExpr (expression : Surface.Expr) : String :=
+def prettyPrintExpr (expression : Ast.Expr) : String :=
   prettyPrintExprAt 0 expression
 
 private def prettyPrintDoc : Option String → String
   | none => ""
   | some doc => "/** " ++ doc ++ " */\n"
 
-private def prettyPrintFunction (function : Surface.FunctionDecl) : String :=
+private def prettyPrintFunction (function : Ast.FunctionDecl) : String :=
   let visibility := if function.isPublic then "pub " else ""
   let openness := if function.isOpen then "open " else ""
   let mode := match function.mode with
@@ -161,7 +161,7 @@ private def prettyPrintFunction (function : Surface.FunctionDecl) : String :=
   prettyPrintDoc function.doc ++ signature ++ recommends ++ decreases ++
     "\n" ++ leftBrace ++ "\n" ++ indent (prettyPrintExpr function.body) ++ "\n" ++ rightBrace
 
-private def prettyPrintStruct (structDecl : Surface.StructDecl) : String :=
+private def prettyPrintStruct (structDecl : Ast.StructDecl) : String :=
   let visibility := if structDecl.isPublic then "pub " else ""
   let fields := structDecl.fields.map fun field =>
     let visibility := if field.isPublic then "pub " else ""
@@ -169,12 +169,12 @@ private def prettyPrintStruct (structDecl : Surface.StructDecl) : String :=
   visibility ++ "struct " ++ structDecl.name ++ " " ++ leftBrace ++ "\n" ++
     String.intercalate "\n" fields ++ "\n" ++ rightBrace
 
-private def prettyPrintConst (constant : Surface.ConstDecl) : String :=
+private def prettyPrintConst (constant : Ast.ConstDecl) : String :=
   let visibility := if constant.isPublic then "pub " else ""
   visibility ++ "const " ++ constant.name ++ ": " ++ prettyPrintTy constant.ty ++ " = " ++
     prettyPrintExpr constant.initializer ++ ";"
 
-private def prettyPrintContractClause (keyword : String) (expressions : List Surface.Expr) :
+private def prettyPrintContractClause (keyword : String) (expressions : List Ast.Expr) :
     String :=
   if expressions.isEmpty then
     ""
@@ -183,7 +183,7 @@ private def prettyPrintContractClause (keyword : String) (expressions : List Sur
       String.intercalate ",\n" (expressions.map fun expression =>
         indent (prettyPrintExpr expression) 8) ++ ","
 
-private def prettyPrintTraitItem : Surface.TraitItem → String
+private def prettyPrintTraitItem : Ast.TraitItem → String
   | .specMethod method =>
       prettyPrintDoc method.doc ++
         "spec fn " ++ method.name ++ "(" ++
@@ -197,22 +197,22 @@ private def prettyPrintTraitItem : Surface.TraitItem → String
           prettyPrintContractClause "ensures" method.ensures ++
           "\n;"
 
-private def prettyPrintTrait (traitDecl : Surface.TraitDecl) : String :=
+private def prettyPrintTrait (traitDecl : Ast.TraitDecl) : String :=
   let visibility := if traitDecl.isPublic then "pub " else ""
   let items := String.intercalate "\n\n" (traitDecl.items.map prettyPrintTraitItem)
   prettyPrintDoc traitDecl.doc ++ visibility ++ "trait " ++ traitDecl.name ++ " " ++
     leftBrace ++ "\n" ++ indent items ++ "\n" ++ rightBrace
 
-private def prettyPrintDecl : Surface.Decl → String
+private def prettyPrintDecl : Ast.Decl → String
   | .function function => prettyPrintFunction function
   | .structure structDecl => prettyPrintStruct structDecl
   | .constant constant => prettyPrintConst constant
   | .trait traitDecl => prettyPrintTrait traitDecl
 
-def prettyPrintModule (targetModule : Surface.Module) : String :=
-  let header := String.intercalate "\n" (targetModule.header.map ("// " ++ ·))
-  let imports := String.intercalate "\n" (targetModule.imports.map fun path => "use " ++ path ++ ";")
-  let declarations := String.intercalate "\n\n" (targetModule.declarations.map prettyPrintDecl)
+def prettyPrintModule (astModule : Ast.Module) : String :=
+  let header := String.intercalate "\n" (astModule.header.map ("// " ++ ·))
+  let imports := String.intercalate "\n" (astModule.imports.map fun path => "use " ++ path ++ ";")
+  let declarations := String.intercalate "\n\n" (astModule.declarations.map prettyPrintDecl)
   header ++ "\n\n" ++ imports ++ "\n\nverus! " ++ leftBrace ++ "\n\n" ++ declarations ++
     "\n\n" ++ rightBrace ++ " // verus!\n"
 

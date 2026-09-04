@@ -14,23 +14,23 @@
  limitations under the License.
 -/
 
-import Triptych.Backend.Verus.Semantic
+import Triptych.Backend.Verus.IR
 
 /-!
-# Verus surface AST
+# Verus AST
 
-Unlike `Verus.Semantic`, this type contains only constructs that correspond directly to emitted
-Verus syntax. Triptych-specific semantic operations are eliminated before values enter this layer.
+Unlike `Verus.IR`, this type contains only constructs that correspond directly to emitted
+Verus syntax. IR-only operations are eliminated before values enter this layer.
 -/
 
-namespace Triptych.Backend.Verus.Surface
+namespace Triptych.Backend.Verus.Ast
 
-abbrev Ty := Semantic.Ty
-abbrev Binder := Semantic.Binder
-abbrev FunctionMode := Semantic.FunctionMode
-abbrev Param := Semantic.Param
-abbrev FieldDecl := Semantic.FieldDecl
-abbrev StructDecl := Semantic.StructDecl
+abbrev Ty := IR.Ty
+abbrev Binder := IR.Binder
+abbrev FunctionMode := IR.FunctionMode
+abbrev Param := IR.Param
+abbrev FieldDecl := IR.FieldDecl
+abbrev StructDecl := IR.StructDecl
 
 inductive Expr where
   | var (name : String)
@@ -143,4 +143,4 @@ structure Module where
   imports : List String := []
   declarations : List Decl := []
 
-end Triptych.Backend.Verus.Surface
+end Triptych.Backend.Verus.Ast

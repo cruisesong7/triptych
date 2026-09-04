@@ -72,15 +72,14 @@ Verus generation:
 4. The Lean emitter reifies these values into the readable specification and executable engine.
 5. `Verus.FormatInput` groups the grammar, value, phased constraints, and conversion names for
    the Verus translator. It is a convenience record, not a separate semantic model.
-6. The Verus translator converts these source ASTs into `Triptych.Backend.Verus.Semantic`, a
-   semantic deep embedding that still contains operations such as `natOf` and `intPow`.
-7. `Triptych.Backend.Verus.Desugar` converts that semantic AST into
-   `Triptych.Backend.Verus.Surface`,
-   selects only the required helpers, and replaces every semantic operation with concrete calls
-   and expressions.
-8. `Triptych.Backend.Verus.PrettyPrint` emits Verus syntax from the Surface AST. It does not
+6. The Verus translator converts these source ASTs into `Triptych.Backend.Verus.IR`, which still
+   contains specification operations such as `natOf` and `intPow`.
+7. `Triptych.Backend.Verus.Lowering` converts that IR into
+   `Triptych.Backend.Verus.Ast`, selects only the required helpers, and replaces every IR-only
+   operation with concrete calls and expressions.
+8. `Triptych.Backend.Verus.PrettyPrint` emits Verus syntax from the AST. It does not
    recognize a Decimal-specific shape or substitute a fixed template.
-9. The soundness emitter builds a separate Surface AST containing the result relation and
+9. The soundness emitter builds a separate AST containing the result relation and
    external-parser contract trait.
 
 The grammar translation emits one predicate per production. Literals become byte sequences,
@@ -99,15 +98,15 @@ This architecture genuinely narrows the trusted translation boundary:
 
 - Lean and the Verus translator consume the same parsed `Grammar`, `ValExpr`, and `Constraint`
   values.
-- Lean defines a denotation for the semantic Verus AST subset and proves that translating a
+- Lean defines a denotation for the Verus IR subset and proves that translating a
   `ValExpr` preserves `ValExpr.eval`, including the named-value optimization.
 - Lean proves that compiling a `Constraint` preserves `Constraint.eval`. For `strEq`, this theorem
   requires the capture to be present; backend validation therefore requires that field to be a
   non-optional direct reference in every root alternative.
 - Recovery theorems additionally show that supported source nodes can be reconstructed from their
   translated Verus AST.
-- `denote_desugar_translateValExpr` composes translation and desugaring for every supported value
-  expression. `denote_desugar_translateArithmeticConstraint` does the same for arithmetic
+- `lower_translateValExpr_preserves` composes translation and lowering for every supported value
+  expression. `lower_translateArithmeticConstraint_preserves` does the same for arithmetic
   constraints, including Decimal's `Int64` bound.
 - `helperDeclaration_realizes` proves that every concrete helper declaration evaluates to its
   canonical byte-level meaning. Separate theorems connect `natOf`, `intOf`, and `signOf` on
@@ -118,8 +117,8 @@ This architecture genuinely narrows the trusted translation boundary:
   `cargo verus verify -- --no-cheating`.
 
 This proves semantic preservation from supported Triptych value expressions and arithmetic
-constraints through Surface AST helper calls. The full high-level constraint theorem also
-covers string and cardinality constraints before desugaring. It does not yet prove the grammar
+constraints through Verus AST helper calls. The full high-level constraint theorem also
+covers string and cardinality constraints before lowering. It does not yet prove the grammar
 translation or source pretty-printer correct. The pretty-printer, Verus itself, and the generated
 grammar/view translation remain trusted. Parsing the emitted source back into an independently
 defined syntax, or validating it against Verus's frontend, would reduce that boundary further.
