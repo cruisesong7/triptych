@@ -1,4 +1,5 @@
 import Triptych.Architecture.Assemble
+import Triptych.Theorems.Scanner
 
 /-!
 # Exact decoder membership lemmas
@@ -22,13 +23,13 @@ theorem consumed_eq_of_append {cs piece r : List Char} (h : cs = piece ++ r) :
 theorem component_eq_of_decode {g : Grammar} {s : String} {m : CaptureMap}
     (h : decode g s = some m) (name : String) :
     component g s name = (m.toEnv name).getD "" := by
-  simp [component, envOf, captureMapOf, h]
+  simp [component, envOf, captureMapOf, scan_eq_decode, h]
 
 /-- Rewrite a repeated surface component once the selected decoder result is known. -/
 theorem componentList_eq_of_decode {g : Grammar} {s : String} {m : CaptureMap}
     (h : decode g s = some m) (name : String) :
     componentList g s name = m.toEnvList name := by
-  simp [componentList, captureMapOf, h]
+  simp [componentList, captureMapOf, scan_eq_decode, h]
 
 /-- Eliminate `computeValue` after identifying the selected decoder result. -/
 theorem computeValue_eq_of_decode {g : Grammar} {ve : ValExpr} {s : String}
@@ -54,14 +55,14 @@ theorem computeValueMap_eq_of_decode {α : Type} {g : Grammar}
 theorem isWf_iff_of_decode {g : Grammar} {cs : List ConstraintEntry} {s : String}
     {m : CaptureMap} (h : decode g s = some m) :
     isWf g cs s ↔ ∀ c ∈ cs, c.wfPart m := by
-  simp [isWf, captureMapOf, h]
+  simp [isWf, captureMapOf, scan_eq_decode, h]
 
 /-- With a known successful decode, final-value constraints are exactly their evaluations on
     that capture map. -/
 theorem satisfiesConstraints_iff_of_decode {g : Grammar} {cs : List ConstraintEntry}
     {s : String} {m : CaptureMap} (h : decode g s = some m) :
     satisfiesConstraints g cs s ↔ ∀ c ∈ cs, c.valPart m := by
-  simp [satisfiesConstraints, captureMapOf, h]
+  simp [satisfiesConstraints, captureMapOf, scan_eq_decode, h]
 
 theorem mem_matchSym_term_iff (g : Grammar) (q : String) (fuel : Nat)
     (tok : TokClass) (ls : LenSpec) (cs r : List Char) (m : CaptureMap) :

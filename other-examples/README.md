@@ -8,5 +8,6 @@ lake exe parser_benchmark
 ```
 
 The Lean sources use the `Graph.*` module prefix. Cedar-backed examples and validation proofs
-live in `../cedar-examples/`. The benchmark is a smoke measurement with no timing threshold; it
-reports elapsed time and the reference decoder's structural budgets for representative graphs.
+live in `../cedar-examples/`. The benchmark runs the verified scanner and archived reference
+decoder on the same graph inputs, checks equal acceptance counts, and reports their relative
+time. It is a smoke measurement with no fixed timing threshold.

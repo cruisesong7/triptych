@@ -16,14 +16,16 @@
 
 import Triptych.Architecture.Assemble
 import Triptych.Theorems.Coherence
+import Triptych.Theorems.Scanner
 
 /-!
 # Relational contracts for generated parsers
 
-The generated parser checks the format constraints against `decode`'s selected capture map.
-`Denotes`, by contrast, quantifies over full parses and applies both the constraints and value
-reader to the same map. These views coincide when the grammar's capture semantics is
-functional: every full parse produces the same complete capture map.
+The generated parser checks format constraints against `scan`'s capture map. The scanner
+equivalence theorem reduces that runtime function to the reference `decode`. `Denotes`, by contrast,
+quantifies over full parses and applies both the constraints and value reader to the same map.
+These views coincide when the grammar's capture semantics is functional: every full parse
+produces the same complete capture map.
 
 The map-valued theorems cover `value'`; the `F` variants cover readers through `Env`.
 Domain-valued variants compose `ofSpec` with the relational value reader.
@@ -48,9 +50,10 @@ private theorem gatedParseMap_eq_decodeGatedMap {α : Type}
       decodeGatedMap g (CaptureAccepts cs) valFn s := by
   unfold gatedParse isWf satisfiesConstraints captureMapOf computeValueMap decodeGatedMap
     CaptureAccepts
+  simp only [scan_eq_decode]
   cases hd : decode g s with
-  | none => simp [hd]
-  | some m => simp [hd, forall_and]
+  | none => simp
+  | some m => simp [forall_and]
 
 /-- For a grammar-wide unique format, the generated full-map parser succeeds exactly when a
     constraint-accepted full parse denotes the returned value. -/

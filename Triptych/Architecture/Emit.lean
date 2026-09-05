@@ -23,6 +23,7 @@ import Triptych.Theorems.DecodeLemmas
 import Triptych.Theorems.Derivation
 import Triptych.Theorems.Reconcile
 import Triptych.Theorems.RelationalParser
+import Triptych.Theorems.Scanner
 import Triptych.Architecture.Value
 
 /-!
@@ -743,6 +744,7 @@ def derivationViewProofCommands (specName : Name) (grammarId : TSyntax `ident)
       s!"    {decodeViewId.getId.toString} ({typeName}.render d) = " ++
       s!"some ({toViewName} d) := by\n" ++
       s!"  unfold {decodeViewId.getId.toString} {toViewName}\n" ++
+      "  rw [Triptych.scan_eq_decode]\n" ++
       s!"  rw [{typeName}.decode_render_of_captureFunctional hfunctional d hvalid]\n" ++
       "  rfl"
   let mut commands := #[
@@ -921,10 +923,12 @@ def isWfEquivProof (specName : Name) (hasWfConstraints : Bool) :
   `(theorem $equivId (s : String) :
       $wfSurf s ↔ Triptych.isWf $grammarId $cList s := by
       unfold $wfSurf Triptych.isWf
+      rw [Triptych.scan_eq_decode]
       rw [← $grammarEq, ← decodeSome_iff_IsWf $grammarId (by decide)]
       unfold $[$unfolds:ident]*
       simp only [Triptych.component, Triptych.componentList, Triptych.envOf,
-        Triptych.captureMapOf, List.forall_mem_cons, List.forall_mem_singleton,
+        Triptych.captureMapOf, Triptych.scan_eq_decode,
+        List.forall_mem_cons, List.forall_mem_singleton,
         List.not_mem_nil, forall_const, ConstraintEntry.wfPart, Constraint.eval, ValExpr.eval,
         presentCount, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD,
         Env.countVal, and_true, true_and,
@@ -950,6 +954,7 @@ def satisfiesConstraintsEquivProof (specName : Name)
       unfold Triptych.satisfiesConstraints
       unfold $[$unfolds:ident]*
       simp only [Triptych.component, Triptych.envOf, Triptych.captureMapOf,
+        Triptych.scan_eq_decode,
         List.forall_mem_cons, List.forall_mem_singleton,
         List.not_mem_nil, forall_const, ConstraintEntry.valPart, Constraint.eval, ValExpr.eval,
         presentCount, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD,
@@ -1014,7 +1019,8 @@ def computeValueEqProof (specName : Name) (grammarId : TSyntax `ident)
   -- DSL → `computeValue`/`valueExpr`; escape → `computeValueMap`/`valueFn`. Both readers
   -- (`component` = `(toEnv m ·).getD ""`, `componentList` = `toEnvList m ·`) unfold to the same
   -- `CaptureMap` projections the escape closure uses, so the two sides are defeq after the `simp`.
-  let cvEntry  := mkIdent (if isDsl then `Triptych.computeValue else `Triptych.computeValueMap)
+  let cvEntry := mkIdent
+    (if isDsl then `Triptych.scannerComputeValue else `Triptych.scannerComputeValueMap)
   let valDef   := mkIdent (specName ++ (if isDsl then `valueExpr else `valueFn))
   -- Only unfold a reader that actually appears in the goal (`unfold` errors on an absent target):
   -- `component` iff some scalar cap, `componentList` iff some list cap.
@@ -1027,10 +1033,11 @@ def computeValueEqProof (specName : Name) (grammarId : TSyntax `ident)
   `(theorem $equivId (s : String) :
         $cvId s = (decode $grammarId s).map (fun _ => $valId $compArgs*) := by
       unfold $cvId $cvEntry $[$compUnf:ident]* $valId $valDef
+      rw [Triptych.scan_eq_decode]
       cases h : decode $grammarId s with
-      | none => simp
+      | none => simp [h]
       | some m =>
-        simp [natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD,
+        simp [h, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD,
           Env.countVal, ValExpr.eval])
 
 /-- Emit the decode-elimination specialization of `computeValue_eq`. Once an external-parser
@@ -1249,7 +1256,7 @@ def viewSurfaceCommands (specName : Name) (fields : List ViewFieldSpec)
       (← `(def $denotationId (v : $viewId) := $valueId $args*))
   return commands
 
-/-- Emit `View.ofMap` and `decodeView`, the executable projection from decoder captures to the
+/-- Emit `View.ofMap` and `decodeView`, the executable projection from scanner captures to the
     generated typed view. -/
 def viewEngineCommands (specName : Name) (grammarId : TSyntax `ident)
     (fields : List ViewFieldSpec) : CommandElabM (Array (TSyntax `command)) := do
@@ -1269,7 +1276,7 @@ def viewEngineCommands (specName : Name) (grammarId : TSyntax `ident)
         $ctorId input $args*)
   let decodeView ←
     `(def $decodeViewId (s : String) : Option $viewId :=
-        (decode $grammarId s).map ($ofMapId s))
+        (scan $grammarId s).map ($ofMapId s))
   return #[ofMap, decodeView]
 
 /-- Emit the exact-input invariant carried by every successful generated view. -/
@@ -1298,6 +1305,7 @@ def computeValueViewProof (specName : Name) (grammarId : TSyntax `ident) :
   `(theorem $theoremId (s : String) :
         $cvId s = ($decodeViewId s).map $denotationId := by
       unfold $decodeViewId
+      rw [Triptych.scan_eq_decode]
       cases h : decode $grammarId s with
       | none =>
           rw [show $cvId s = none by
@@ -1347,28 +1355,29 @@ def isValidViewProof (specName : Name) (grammarId : TSyntax `ident)
   let ofMapId := mkIdent (specName ++ `View ++ `ofMap)
   let hvalidId := mkIdent `hvalid
   let hmId := mkIdent `hm
+  let hmDecodeId := mkIdent `hmDecode
   let hgrammarId := mkIdent `hgrammar
-  let hmSimp ← `(Lean.Parser.Tactic.simpLemma| $hmId:ident)
+  let hmDecodeSimp ← `(Lean.Parser.Tactic.simpLemma| $hmDecodeId:ident)
   let forwardResult ←
     match hasWfConstraints, hasValueConstraints with
     | true, true =>
-        `(⟨($viewWfBridgeId $hmId).mp $hvalidId.1.2,
-            ($viewConstraintsBridgeId $hmId).mp $hvalidId.2⟩)
+        `(⟨($viewWfBridgeId $hmDecodeId).mp $hvalidId.1.2,
+            ($viewConstraintsBridgeId $hmDecodeId).mp $hvalidId.2⟩)
     | true, false =>
-        `(($viewWfBridgeId $hmId).mp $hvalidId.2)
+        `(($viewWfBridgeId $hmDecodeId).mp $hvalidId.2)
     | false, true =>
-        `(($viewConstraintsBridgeId $hmId).mp $hvalidId.2)
+        `(($viewConstraintsBridgeId $hmDecodeId).mp $hvalidId.2)
     | false, false =>
         `(True.intro)
   let reverseResult ←
     match hasWfConstraints, hasValueConstraints with
     | true, true =>
-        `(⟨⟨$hgrammarId, ($viewWfBridgeId $hmId).mpr $hvalidId.1⟩,
-            ($viewConstraintsBridgeId $hmId).mpr $hvalidId.2⟩)
+        `(⟨⟨$hgrammarId, ($viewWfBridgeId $hmDecodeId).mpr $hvalidId.1⟩,
+            ($viewConstraintsBridgeId $hmDecodeId).mpr $hvalidId.2⟩)
     | true, false =>
-        `(⟨$hgrammarId, ($viewWfBridgeId $hmId).mpr $hvalidId⟩)
+        `(⟨$hgrammarId, ($viewWfBridgeId $hmDecodeId).mpr $hvalidId⟩)
     | false, true =>
-        `(⟨$hgrammarId, ($viewConstraintsBridgeId $hmId).mpr $hvalidId⟩)
+        `(⟨$hgrammarId, ($viewConstraintsBridgeId $hmDecodeId).mpr $hvalidId⟩)
     | false, false =>
         `($hgrammarId)
   `(theorem $theoremId (s : String) :
@@ -1378,19 +1387,22 @@ def isValidViewProof (specName : Name) (grammarId : TSyntax `ident)
       · intro $hvalidId:ident
         have hengine := ($validEquivId s).mp $hvalidId
         have hsome : (decode $grammarId s).isSome = true := by
-          exact hengine.1.1
+          simpa only [Triptych.scan_eq_decode] using hengine.1.1
         obtain ⟨m, $hmId:ident⟩ := Option.isSome_iff_exists.mp hsome
+        have $hmDecodeId:ident : decode $grammarId s = some m := $hmId
         refine ⟨$ofMapId s m, ?_, ?_⟩
         · unfold $decodeViewId
-          simp [$hmSimp]
+          simp [Triptych.scan_eq_decode, $hmDecodeSimp]
         · exact $forwardResult
       · rintro ⟨v, hview, $hvalidId:ident⟩
         unfold $decodeViewId at hview
         rw [Option.map_eq_some_iff] at hview
         obtain ⟨m, $hmId:ident, hv⟩ := hview
         subst v
+        have $hmDecodeId:ident : decode $grammarId s = some m := by
+          simpa only [Triptych.scan_eq_decode] using $hmId
         have hdecoded : (decode $grammarId s).isSome = true := by
-          simp [$hmSimp]
+          simp [$hmDecodeSimp]
         have $hgrammarId:ident :=
           ($grammarEquivId s).mp
             ((decodeSome_iff_IsWf $grammarId (by decide) s).mp hdecoded)
@@ -1512,7 +1524,8 @@ def parserContractsProof (specName : Name) (isDsl : Bool) (ofSpec? : Option (TSy
   let validSurf := mkIdent (specName ++ `IsValid)
   let validEquivId := mkIdent (specName ++ `IsValid_equiv)
   let cvId      := mkIdent (specName ++ `computeValue)
-  let cvEntry   := mkIdent (if isDsl then `Triptych.computeValue else `Triptych.computeValueMap)
+  let cvEntry := mkIdent
+    (if isDsl then `Triptych.scannerComputeValue else `Triptych.scannerComputeValueMap)
   let isSomeThm ← `(theorem $isSomeId (s : String) : $validSurf s → ($cvId s).isSome := by
       intro h
       have hengine := ($validEquivId s).mp h
@@ -1811,6 +1824,7 @@ def relationalParserContractProof (specName : Name) (isDsl : Bool)
             Triptych.Denotes $grammarId (Triptych.CaptureAccepts $constraintsId)
               $valFnId s $valId := by
         unfold $parseId $cvId
+        simp only [Triptych.scannerComputeValueMap_eq_computeValueMap]
         simpa only [Triptych.gatedParse, decide_eq_true_eq, $validEquivSimp] using
           Triptych.gatedParseMap_eq_some_iff_denotes $grammarId $constraintsId
             $valFnId $functionalId s $valId)
@@ -1821,7 +1835,9 @@ def relationalParserContractProof (specName : Name) (isDsl : Bool)
           $parseId s = some $valId ↔
             Triptych.Denotes $grammarId (Triptych.CaptureAccepts $constraintsId)
               (fun m : Triptych.CaptureMap => $valFnId m.toEnv) s $valId := by
-        unfold $parseId $cvId Triptych.computeValue
+        unfold $parseId $cvId
+        simp only [Triptych.scannerComputeValue_eq_computeValue]
+        unfold Triptych.computeValue
         simpa only [Triptych.gatedParse, Triptych.computeValueF, decide_eq_true_eq,
           $validEquivSimp, $valFnSimp] using
           Triptych.gatedParseF_eq_some_iff_denotes $grammarId $constraintsId
@@ -1834,6 +1850,7 @@ def relationalParserContractProof (specName : Name) (isDsl : Bool)
             Triptych.Denotes $grammarId (Triptych.CaptureAccepts $constraintsId)
               ($ofSpecT ∘ $valFnId) s $domainId := by
         unfold $parseId $cvId
+        simp only [Triptych.scannerComputeValueMap_eq_computeValueMap]
         simpa only [Triptych.gatedParseOfSpec, Triptych.gatedParse, decide_eq_true_eq,
           $validEquivSimp] using
           Triptych.gatedParseOfSpecMap_eq_some_iff_denotes $grammarId $constraintsId
@@ -1845,7 +1862,9 @@ def relationalParserContractProof (specName : Name) (isDsl : Bool)
           $parseId s = some $domainId ↔
             Triptych.Denotes $grammarId (Triptych.CaptureAccepts $constraintsId)
               ($ofSpecT ∘ fun m : Triptych.CaptureMap => $valFnId m.toEnv) s $domainId := by
-        unfold $parseId $cvId Triptych.computeValue
+        unfold $parseId $cvId
+        simp only [Triptych.scannerComputeValue_eq_computeValue]
+        unfold Triptych.computeValue
         simpa only [Triptych.gatedParseOfSpec, Triptych.gatedParse, Triptych.computeValueF,
           decide_eq_true_eq, $validEquivSimp, $valFnSimp] using
           Triptych.gatedParseOfSpecF_eq_some_iff_denotes $grammarId $constraintsId

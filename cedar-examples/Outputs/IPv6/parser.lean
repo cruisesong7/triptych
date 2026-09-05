@@ -10,6 +10,7 @@ import Triptych.Theorems.Reconcile
 import Triptych.Theorems.Value
 import Triptych.Theorems.DecodeLemmas
 import Triptych.Theorems.Derivation
+import Triptych.Theorems.Scanner
 import Outputs.IPv6.spec
 import Inputs.IPv6
 
@@ -21,10 +22,11 @@ set_option linter.unusedVariables false
 set_option linter.unnecessarySeqFocus false
 
 /- ══════════════════════════════ engine ══════════════════════════════
-The executable counterpart of the spec. `decode` walks the grammar over an input
-string and returns its captured components; `computeValue` then evaluates the value
-function on those captures. Generated `DecidablePred` instances make the readable
-`IsWf` and `IsValid` predicates directly executable.
+The executable counterpart of the spec. A verified scanner extracts captured
+components and stops at the first complete parse. The archived reference `decode`
+is used only in the agreement proof, not as a runtime fallback. `computeValue`
+evaluates the value function on those captures. Generated `DecidablePred` instances
+make the readable `IsWf` and `IsValid` predicates directly executable.
 `decodeView` packages the exact input and value/constraint captures as a typed `View`.
 
 The public format API stays capitalized: use `#eval decide (IsValid s)` and
@@ -151,7 +153,7 @@ def IPv6.constraints : List ConstraintEntry :=
         (Constraint.le (ValExpr.nat "Prefix") (ValExpr.lit 128)))]
 
 def IPv6.computeValue (s : String) :=
-  Triptych.computeValueMap IPv6.grammar IPv6.valueFn s
+  Triptych.scannerComputeValueMap IPv6.grammar IPv6.valueFn s
 
 def IPv6.View.ofMap (input : String) (m : Triptych.CaptureMap) : IPv6.View :=
   IPv6.View.mk input (Triptych.CaptureMap.toEnvList m "H16") (Triptych.CaptureMap.toEnvList m "H16L")
@@ -159,7 +161,7 @@ def IPv6.View.ofMap (input : String) (m : Triptych.CaptureMap) : IPv6.View :=
     (Triptych.CaptureMap.toEnv m "H16L#count") (Triptych.CaptureMap.toEnv m "H16R#count")
 
 def IPv6.decodeView (s : String) : Option IPv6.View :=
-  (decode IPv6.grammar s).map (IPv6.View.ofMap s)
+  (scan IPv6.grammar s).map (IPv6.View.ofMap s)
 
 def IPv6.Derivation.V6Net.toView (d : IPv6.Derivation.V6Net) : IPv6.View :=
   IPv6.View.ofMap (IPv6.Derivation.V6Net.render d) (IPv6.Derivation.V6Net.capturesWith "" d)
@@ -558,6 +560,7 @@ theorem IPv6.Derivation.V6Net.decodeView_render_of_captureFunctional
     IPv6.decodeView (IPv6.Derivation.V6Net.render d) = some (IPv6.Derivation.V6Net.toView d) :=
   by
   unfold IPv6.decodeView IPv6.Derivation.V6Net.toView
+  rw [Triptych.scan_eq_decode]
   rw [IPv6.Derivation.V6Net.decode_render_of_captureFunctional hfunctional d hvalid]
   rfl
 
@@ -807,12 +810,13 @@ theorem IPv6.IsWfGrammar_equiv (s : String) : Triptych.IsWf IPv6.grammar s ↔ I
 theorem IPv6.IsWf_equiv (s : String) : IPv6.IsWf s ↔ Triptych.isWf IPv6.grammar IPv6.constraints s :=
   by
   unfold IPv6.IsWf Triptych.isWf
+  rw [Triptych.scan_eq_decode]
   rw [← IPv6.IsWfGrammar_equiv, ← decodeSome_iff_IsWf IPv6.grammar (by decide)]
   unfold IPv6.SatisfiesWfConstraints IPv6.WfConstraints IPv6.constraints
-  simp only [Triptych.component, Triptych.componentList, Triptych.envOf, Triptych.captureMapOf, List.forall_mem_cons,
-    List.forall_mem_singleton, List.not_mem_nil, forall_const, ConstraintEntry.wfPart, Constraint.eval, ValExpr.eval,
-    presentCount, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, Env.countVal, and_true, true_and,
-    false_implies, implies_true, Bool.false_eq_true]
+  simp only [Triptych.component, Triptych.componentList, Triptych.envOf, Triptych.captureMapOf, Triptych.scan_eq_decode,
+    List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const, ConstraintEntry.wfPart,
+    Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD,
+    Env.countVal, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
   try grind
 
 theorem IPv6.IsValid_equiv (s : String) :
@@ -830,7 +834,7 @@ theorem IPv6.IsValid_equiv (s : String) :
   · exact And.left
 
 instance IPv6.instDecidableGrammar : DecidablePred IPv6.IsWf.V6Net := fun s =>
-  @decidable_of_iff _ _ (IPv6.IsWfGrammar_equiv s) (Triptych.decIsWf IPv6.grammar (by decide) s)
+  @decidable_of_iff _ _ (IPv6.IsWfGrammar_equiv s) (Triptych.decIsWfScanner IPv6.grammar (by decide) s)
 
 instance IPv6.instDecidableIsWf : DecidablePred IPv6.IsWf := fun s =>
   @decidable_of_iff _ _ (IPv6.IsWf_equiv s).symm inferInstance
@@ -849,20 +853,22 @@ theorem IPv6.IsValid_view (s : String) :
   constructor
   · intro hvalid
     have hengine := (IPv6.IsValid_equiv s).mp hvalid
-    have hsome : (decode IPv6.grammar s).isSome = true := by exact hengine.1.1
+    have hsome : (decode IPv6.grammar s).isSome = true := by simpa only [Triptych.scan_eq_decode] using hengine.1.1
     obtain ⟨m, hm⟩ := Option.isSome_iff_exists.mp hsome
+    have hmDecode : decode IPv6.grammar s = some m := hm
     refine ⟨IPv6.View.ofMap s m, ?_, ?_⟩
     · unfold IPv6.decodeView
-      simp [hm]
-    · exact (IPv6.View.wfConstraints_of_decode hm).mp hvalid.2
+      simp [Triptych.scan_eq_decode, hmDecode]
+    · exact (IPv6.View.wfConstraints_of_decode hmDecode).mp hvalid.2
   · rintro ⟨v, hview, hvalid⟩
     unfold IPv6.decodeView at hview
     rw [Option.map_eq_some_iff] at hview
     obtain ⟨m, hm, hv⟩ := hview
     subst v
-    have hdecoded : (decode IPv6.grammar s).isSome = true := by simp [hm]
+    have hmDecode : decode IPv6.grammar s = some m := by simpa only [Triptych.scan_eq_decode] using hm
+    have hdecoded : (decode IPv6.grammar s).isSome = true := by simp [hmDecode]
     have hgrammar := (IPv6.IsWfGrammar_equiv s).mp ((decodeSome_iff_IsWf IPv6.grammar (by decide) s).mp hdecoded)
-    exact ⟨hgrammar, (IPv6.View.wfConstraints_of_decode hm).mpr hvalid⟩
+    exact ⟨hgrammar, (IPv6.View.wfConstraints_of_decode hmDecode).mpr hvalid⟩
 
 theorem IPv6.computeValue_eq (s : String) :
     IPv6.computeValue s =
@@ -871,11 +877,12 @@ theorem IPv6.computeValue_eq (s : String) :
           IPv6.value (Triptych.componentList IPv6.grammar s "H16") (Triptych.componentList IPv6.grammar s "H16L")
             (Triptych.componentList IPv6.grammar s "H16R") (Triptych.component IPv6.grammar s "Prefix")) :=
   by
-  unfold IPv6.computeValue Triptych.computeValueMap Triptych.componentList Triptych.component Triptych.envOf
+  unfold IPv6.computeValue Triptych.scannerComputeValueMap Triptych.componentList Triptych.component Triptych.envOf
     Triptych.captureMapOf IPv6.value IPv6.valueFn
+  rw [Triptych.scan_eq_decode]
   cases h : decode IPv6.grammar s with
-  | none => simp
-  | some m => simp [natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, Env.countVal, ValExpr.eval]
+  | none => simp [h]
+  | some m => simp [h, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, Env.countVal, ValExpr.eval]
 
 theorem IPv6.computeValue_of_decode {s : String} {m : Triptych.CaptureMap} (h : decode IPv6.grammar s = some m) :
     IPv6.computeValue s =
@@ -890,6 +897,7 @@ theorem IPv6.computeValue_of_decode {s : String} {m : Triptych.CaptureMap} (h : 
 theorem IPv6.computeValue_view (s : String) : IPv6.computeValue s = (IPv6.decodeView s).map IPv6.View.denotation :=
   by
   unfold IPv6.decodeView
+  rw [Triptych.scan_eq_decode]
   cases h : decode IPv6.grammar s with
   |
     none =>
@@ -916,7 +924,7 @@ theorem IPv6.computeValue_isSome (s : String) : IPv6.IsValid s → (IPv6.compute
   intro h
   have hengine := (IPv6.IsValid_equiv s).mp h
   unfold Triptych.isWf at hengine
-  unfold IPv6.computeValue Triptych.computeValueMap
+  unfold IPv6.computeValue Triptych.scannerComputeValueMap
   rw [Option.isSome_map]
   exact hengine.1.1
 

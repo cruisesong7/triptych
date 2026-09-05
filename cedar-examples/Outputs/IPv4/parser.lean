@@ -10,6 +10,7 @@ import Triptych.Theorems.Reconcile
 import Triptych.Theorems.Value
 import Triptych.Theorems.DecodeLemmas
 import Triptych.Theorems.Derivation
+import Triptych.Theorems.Scanner
 import Outputs.IPv4.spec
 import Inputs.IPv4
 
@@ -21,10 +22,11 @@ set_option linter.unusedVariables false
 set_option linter.unnecessarySeqFocus false
 
 /- ══════════════════════════════ engine ══════════════════════════════
-The executable counterpart of the spec. `decode` walks the grammar over an input
-string and returns its captured components; `computeValue` then evaluates the value
-function on those captures. Generated `DecidablePred` instances make the readable
-`IsWf` and `IsValid` predicates directly executable.
+The executable counterpart of the spec. A verified scanner extracts captured
+components and stops at the first complete parse. The archived reference `decode`
+is used only in the agreement proof, not as a runtime fallback. `computeValue`
+evaluates the value function on those captures. Generated `DecidablePred` instances
+make the readable `IsWf` and `IsValid` predicates directly executable.
 `decodeView` packages the exact input and value/constraint captures as a typed `View`.
 
 The public format API stays capitalized: use `#eval decide (IsValid s)` and
@@ -123,7 +125,7 @@ def IPv4.constraints : List ConstraintEntry :=
         (Constraint.le (ValExpr.nat "Prefix") (ValExpr.lit 32)))]
 
 def IPv4.computeValue (s : String) :=
-  Triptych.computeValueMap IPv4.grammar IPv4.valueFn s
+  Triptych.scannerComputeValueMap IPv4.grammar IPv4.valueFn s
 
 def IPv4.View.ofMap (input : String) (m : Triptych.CaptureMap) : IPv4.View :=
   IPv4.View.mk input ((Triptych.CaptureMap.toEnv m "Oct1").getD "") ((Triptych.CaptureMap.toEnv m "Oct2").getD "")
@@ -131,7 +133,7 @@ def IPv4.View.ofMap (input : String) (m : Triptych.CaptureMap) : IPv4.View :=
     (Triptych.CaptureMap.toEnv m "Prefix")
 
 def IPv4.decodeView (s : String) : Option IPv4.View :=
-  (decode IPv4.grammar s).map (IPv4.View.ofMap s)
+  (scan IPv4.grammar s).map (IPv4.View.ofMap s)
 
 def IPv4.Derivation.V4Net.toView (d : IPv4.Derivation.V4Net) : IPv4.View :=
   IPv4.View.ofMap (IPv4.Derivation.V4Net.render d) (IPv4.Derivation.V4Net.capturesWith "" d)
@@ -444,6 +446,7 @@ theorem IPv4.Derivation.V4Net.decodeView_render_of_captureFunctional
     IPv4.decodeView (IPv4.Derivation.V4Net.render d) = some (IPv4.Derivation.V4Net.toView d) :=
   by
   unfold IPv4.decodeView IPv4.Derivation.V4Net.toView
+  rw [Triptych.scan_eq_decode]
   rw [IPv4.Derivation.V4Net.decode_render_of_captureFunctional hfunctional d hvalid]
   rfl
 
@@ -641,12 +644,13 @@ theorem IPv4.IsWfGrammar_equiv (s : String) : Triptych.IsWf IPv4.grammar s ↔ I
 theorem IPv4.IsWf_equiv (s : String) : IPv4.IsWf s ↔ Triptych.isWf IPv4.grammar IPv4.constraints s :=
   by
   unfold IPv4.IsWf Triptych.isWf
+  rw [Triptych.scan_eq_decode]
   rw [← IPv4.IsWfGrammar_equiv, ← decodeSome_iff_IsWf IPv4.grammar (by decide)]
   unfold IPv4.SatisfiesWfConstraints IPv4.WfConstraints IPv4.constraints
-  simp only [Triptych.component, Triptych.componentList, Triptych.envOf, Triptych.captureMapOf, List.forall_mem_cons,
-    List.forall_mem_singleton, List.not_mem_nil, forall_const, ConstraintEntry.wfPart, Constraint.eval, ValExpr.eval,
-    presentCount, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, Env.countVal, and_true, true_and,
-    false_implies, implies_true, Bool.false_eq_true]
+  simp only [Triptych.component, Triptych.componentList, Triptych.envOf, Triptych.captureMapOf, Triptych.scan_eq_decode,
+    List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const, ConstraintEntry.wfPart,
+    Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD,
+    Env.countVal, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
   try grind
 
 theorem IPv4.IsValid_equiv (s : String) :
@@ -664,7 +668,7 @@ theorem IPv4.IsValid_equiv (s : String) :
   · exact And.left
 
 instance IPv4.instDecidableGrammar : DecidablePred IPv4.IsWf.V4Net := fun s =>
-  @decidable_of_iff _ _ (IPv4.IsWfGrammar_equiv s) (Triptych.decIsWf IPv4.grammar (by decide) s)
+  @decidable_of_iff _ _ (IPv4.IsWfGrammar_equiv s) (Triptych.decIsWfScanner IPv4.grammar (by decide) s)
 
 instance IPv4.instDecidableIsWf : DecidablePred IPv4.IsWf := fun s =>
   @decidable_of_iff _ _ (IPv4.IsWf_equiv s).symm inferInstance
@@ -683,20 +687,22 @@ theorem IPv4.IsValid_view (s : String) :
   constructor
   · intro hvalid
     have hengine := (IPv4.IsValid_equiv s).mp hvalid
-    have hsome : (decode IPv4.grammar s).isSome = true := by exact hengine.1.1
+    have hsome : (decode IPv4.grammar s).isSome = true := by simpa only [Triptych.scan_eq_decode] using hengine.1.1
     obtain ⟨m, hm⟩ := Option.isSome_iff_exists.mp hsome
+    have hmDecode : decode IPv4.grammar s = some m := hm
     refine ⟨IPv4.View.ofMap s m, ?_, ?_⟩
     · unfold IPv4.decodeView
-      simp [hm]
-    · exact (IPv4.View.wfConstraints_of_decode hm).mp hvalid.2
+      simp [Triptych.scan_eq_decode, hmDecode]
+    · exact (IPv4.View.wfConstraints_of_decode hmDecode).mp hvalid.2
   · rintro ⟨v, hview, hvalid⟩
     unfold IPv4.decodeView at hview
     rw [Option.map_eq_some_iff] at hview
     obtain ⟨m, hm, hv⟩ := hview
     subst v
-    have hdecoded : (decode IPv4.grammar s).isSome = true := by simp [hm]
+    have hmDecode : decode IPv4.grammar s = some m := by simpa only [Triptych.scan_eq_decode] using hm
+    have hdecoded : (decode IPv4.grammar s).isSome = true := by simp [hmDecode]
     have hgrammar := (IPv4.IsWfGrammar_equiv s).mp ((decodeSome_iff_IsWf IPv4.grammar (by decide) s).mp hdecoded)
-    exact ⟨hgrammar, (IPv4.View.wfConstraints_of_decode hm).mpr hvalid⟩
+    exact ⟨hgrammar, (IPv4.View.wfConstraints_of_decode hmDecode).mpr hvalid⟩
 
 theorem IPv4.computeValue_eq (s : String) :
     IPv4.computeValue s =
@@ -706,11 +712,12 @@ theorem IPv4.computeValue_eq (s : String) :
             (Triptych.component IPv4.grammar s "Oct3") (Triptych.component IPv4.grammar s "Oct4")
             (Triptych.component IPv4.grammar s "Prefix")) :=
   by
-  unfold IPv4.computeValue Triptych.computeValueMap Triptych.component Triptych.envOf Triptych.captureMapOf IPv4.value
-    IPv4.valueFn
+  unfold IPv4.computeValue Triptych.scannerComputeValueMap Triptych.component Triptych.envOf Triptych.captureMapOf
+    IPv4.value IPv4.valueFn
+  rw [Triptych.scan_eq_decode]
   cases h : decode IPv4.grammar s with
-  | none => simp
-  | some m => simp [natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, Env.countVal, ValExpr.eval]
+  | none => simp [h]
+  | some m => simp [h, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, Env.countVal, ValExpr.eval]
 
 theorem IPv4.computeValue_of_decode {s : String} {m : Triptych.CaptureMap} (h : decode IPv4.grammar s = some m) :
     IPv4.computeValue s =
@@ -727,6 +734,7 @@ theorem IPv4.computeValue_of_decode {s : String} {m : Triptych.CaptureMap} (h : 
 theorem IPv4.computeValue_view (s : String) : IPv4.computeValue s = (IPv4.decodeView s).map IPv4.View.denotation :=
   by
   unfold IPv4.decodeView
+  rw [Triptych.scan_eq_decode]
   cases h : decode IPv4.grammar s with
   |
     none =>
@@ -753,7 +761,7 @@ theorem IPv4.computeValue_isSome (s : String) : IPv4.IsValid s → (IPv4.compute
   intro h
   have hengine := (IPv4.IsValid_equiv s).mp h
   unfold Triptych.isWf at hengine
-  unfold IPv4.computeValue Triptych.computeValueMap
+  unfold IPv4.computeValue Triptych.scannerComputeValueMap
   rw [Option.isSome_map]
   exact hengine.1.1
 

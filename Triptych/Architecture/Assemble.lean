@@ -17,7 +17,7 @@
 import Triptych.Architecture.Grammar
 import Triptych.Architecture.Denote
 import Triptych.Architecture.Constraint
-import Triptych.Architecture.Decode
+import Triptych.Architecture.Scanner
 import Triptych.Architecture.Value
 
 /-!
@@ -33,24 +33,26 @@ Generated formats expose readable capitalized predicates such as `<Name>.IsWf` a
 `<Name>.IsValid`. Their reconciliation theorems connect them directly to these generic
 interpreter applications; no format-specific lowercase aliases are generated.
 
-Both are phrased against the complete capture map produced by `decode`; scalar entries project
+Both are phrased against the complete capture map produced by `scan`; scalar entries
+project
 its `Env` view and collection entries retain repeated spans. Constraints of a not-well-formed
-string are vacuously satisfied (`decode` fails ⟹ the constraint list is checked against the
+string are vacuously satisfied (decoding fails ⟹ the constraint list is checked against the
 empty map, matching "constraints only constrain well-formed strings").
 
-Note: these use `decode` (executable, `partial`) for the environment, so they are
-definitions for *running*/bundling. The grammar-only `Triptych.IsWf` lives in `Denote`;
+`scan` is the verified runtime capture extractor. The archived `decode` remains a transparent
+list semantics used by proofs and differential benchmarks. These remain definitions for
+*running*/bundling. The grammar-only `Triptych.IsWf` lives in `Denote`;
 generated equivalence theorems relate it to both the readable layout predicate and the
 full format-level `<Name>.IsWf`.
 -/
 
 namespace Triptych
 
-/-- The complete capture map `decode` assigns to `s` (empty if not well-formed). -/
+/-- The complete capture map the scanner assigns to `s` (empty if not well-formed). -/
 def captureMapOf (g : Grammar) (s : String) : CaptureMap :=
-  (decode g s).getD []
+  (scan g s).getD []
 
-/-- The scalar capture environment `decode` assigns to `s` (empty if not well-formed). -/
+/-- The scalar capture environment assigned to `s` (empty if not well-formed). -/
 def envOf (g : Grammar) (s : String) : Env :=
   (captureMapOf g s).toEnv
 
@@ -72,7 +74,7 @@ def componentList (g : Grammar) (s : String) (c : String) : List String :=
 /-- Well-formedness: the grammar recognizes `s` AND every constraint that does not explicitly
     reference the final computed value holds on its capture environment. -/
 def isWf (g : Grammar) (cs : List ConstraintEntry) (s : String) : Prop :=
-  (decode g s).isSome = true ∧ ∀ c ∈ cs, c.wfPart (captureMapOf g s)
+  (scan g s).isSome = true ∧ ∀ c ∈ cs, c.wfPart (captureMapOf g s)
 
 /-- The constraints explicitly assigned to the final-value phase hold. -/
 def satisfiesConstraints (g : Grammar) (cs : List ConstraintEntry) (s : String) : Prop :=
@@ -95,9 +97,9 @@ passed as an abstract `accepted : String → Prop` and the value function as
 `value : String → Option Int`. The generated command instantiates these with the READABLE
 `<Name>.IsValid` and `<Name>.computeValue` — so the human-facing contract says exactly
 "the real parser accepts iff the readable spec is valid, with matching value". The proof is
-still discharged operationally by bridging the surface `IsValid` to `decode` via
-`<Name>.IsWf_equiv` (the surface `SatisfiesConstraints` is already decode-based); i.e. the
-statement is surface-level, the proof drops to the engine where it is tractable.
+still discharged operationally by using `scan_eq_decode` to reach the archived reference
+semantics via `<Name>.IsWf_equiv`; i.e. the statement is surface-level, while the proof may
+drop to the reference semantics where its list structure is convenient.
 
 These are the theorem *statements* the command emits as `sorry`d obligations — the
 proof-facing deliverable. They are parameterized over arbitrary `accepted`/`value`/`parse`/

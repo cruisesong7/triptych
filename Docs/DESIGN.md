@@ -16,14 +16,16 @@ other-examples package therefore has no cedar-lean dependency.
 **It is** a *grammar-to-specification compiler*: given an (informal) grammar for a
 flat, non-recursive string format, it deterministically generates the Lean
 **specification** for that format plus the **contract theorem surface**. It also
-emits its OWN correct-by-construction reference parser (`gatedParse` = `computeValue`
+emits its OWN correct-by-construction parser (`gatedParse` = `computeValue`
 gated on the decidable acceptance predicate) and discharges that parser's
 sound/complete/reject contracts for free — so every generated spec ships a verified
-reference parser, not merely an obligation surface.
+parser, not merely an obligation surface.
 
-**It is not** a verified *production* parser generator. The reference parser is the
-decode-backed engine — simple and obviously-correct, not optimized (no streaming,
-error recovery, or complexity theorem). The tool's distinctive job is to validate a
+The generated parser uses a continuation scanner proved extensionally equal to the archived
+list decoder. The tool does not claim streaming or error recovery. Its formal performance model
+bounds completed root-candidate checks for every grammar and records zero such backtracking when
+the certified fast path succeeds; ambiguous grammars can still have exponential candidate trees.
+The tool's distinctive job is also to validate a
 *separate, external, hand-written* parser (e.g. the `Std.Time`-based `Datetime.parse`,
 or the `splitToList`-based `Decimal.parse`) against the generated spec, via the
 `SoundStmt`/`CompleteStmt`/`RejectStmt` obligations. The optional Cedar companion package's
@@ -180,7 +182,7 @@ constraints
   count H16L + count H16R < 8
 ```
 
-The generated decoder, readable `IsWf`, reconciliation theorem, and verified parser remain
+The generated scanner, readable `IsWf`, reconciliation theorem, and verified parser remain
 generic. Only the structured `List String → IPNet` reconstruction is supplied through
 `value'`; its generated value-agreement theorem is still automatic.
 
@@ -267,7 +269,7 @@ The implemented compilation direction is:
 ```
 triptych DSL
   ├─→ readable predicates + typed derivations (`spec.lean`)
-  ├─→ executable decoder/parser + reconciliation proofs (`parser.lean`)
+  ├─→ executable scanner/parser + reconciliation proofs (`parser.lean`)
   └─→ external parser/printer contracts (`soundness.lean`, when requested)
 ```
 
@@ -515,7 +517,7 @@ there over a bigger class. Ours is an **engineering / tooling** contribution
 parsing theory. Modest but real.
 
 **The strongest true framing is a reusable Lean library, not a Cedar tool.** Nothing
-in the design is Cedar-specific: the grammar/decoder roundtrip, scalar value DSL,
+in the design is Cedar-specific: the grammar/scanner roundtrip, scalar value DSL,
 typed derivations, parser contracts, and printer certificates are all about *flat regular
 string formats*. It applies to any Lean
 project parsing scalars from strings — UUID, semver, ISO-8601, IPv4/v6, decimal/
@@ -534,11 +536,13 @@ Novelty = "occupies an empty, practically-important niche," not "new metatheory.
 ## 15. Strategic deployment choice
 
 Triptych supports **verify what is shipped**: keep Cedar's hand-written extension parsers,
-generate an independent reference parser and specification, and prove the external
-implementations agree. If a project instead wants to replace a production parser, it should
-evaluate a production-oriented verified generator and its performance model. Triptych's
-generated parser remains a correct reference implementation, not a claim of streaming,
-error-recovering, or complexity-bounded production parsing.
+generate an independent parser and specification, and prove the external implementations agree.
+The generated parser now runs the continuation-based scanner; the list decoder is retained only
+as an executable reference semantics, with `scan_eq_decode` proving exact agreement. A project
+that wants to replace a production parser should still benchmark its workloads and integration
+requirements. Triptych does not claim streaming or error recovery. Its generic complexity
+theorem bounds completed candidate checks by the finite candidate tree; it deliberately does
+not claim a polynomial bound for ambiguous grammars.
 
 ## 16. The implemented `triptych` DSL
 
@@ -602,7 +606,7 @@ triptych IPv4 where
 
 - **`grammar`** defines a non-recursive DAG of productions with concatenation, finite
   alternatives, optional symbols, token runs, and separated group repetition. It generates
-  readable predicates, the executable decoder, and typed derivation trees.
+  readable predicates, the executable scanner, and typed derivation trees.
 - **`constraints`** is the analyzable constraint AST. Capture-only entries contribute to
   `IsWf`; entries that mention `value` contribute to `SatisfiesConstraints`. Forms include
   `noLeadingZero`, string equality, arithmetic comparisons/ranges, and cardinality.

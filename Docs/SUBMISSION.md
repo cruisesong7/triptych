@@ -59,8 +59,11 @@ failures.
 A four-stage compiler pipeline, implemented as a Lean metaprogram:
 
 1. **DSL → data.** Lean's parser (extended via `syntax` rules) reads the `triptych` block; an elaborator lowers it to a first-order `Grammar` datatype — a closed, inspectable AST. Because the grammar is *data*, not code, the tool can analyze it.
-2. **Two interpretations of one AST.** From the same `Grammar` value we derive a *denotation* (a logical predicate: what strings mean) and an executable *decoder* (a recognizer that extracts named captures).
-3. **One generic proof.** The hard theorem — the decoder recognizes exactly the denoted language — is proved once, for the whole grammar class, in the library (~660 lines of mutual induction). Every format reuses it.
+2. **Two executable views of one AST.** The runtime scanner extracts named captures directly;
+   an archived list decoder provides transparent reference semantics.
+3. **Generic proofs.** The library proves the reference semantics recognizes exactly the
+   denoted language and that the scanner selects exactly the same first complete parse. Every
+   format reuses those theorems.
 4. **Total generation.** Per format, the metaprogram *emits* the readable spec and its equivalence proofs as Lean source, checked by the kernel. The grammar class (flat-regular: no recursion, no data-dependent length) is restricted precisely so this emission is a fixed recipe — never proof search, never stuck.
 
 Scope is layered: the grammar tier is a strict subclass of regular; a constraint tier lifts the *accepted* language to any decidable predicate (checksums, calendar rules, triangular lengths); a value tier produces any type (scalars or structured values — our Graph example parses SAT adjacency bit-strings into actual graph records). Semantics outside the small analyzable AST use typed `value'`/`constraints'` functions; `[X]` passes all spans of a repeated capture to either escape as `List String`, while recognition, decidability, typed views, and value/constraint reconciliation remain generated. Only claims about an independent external parser or a chosen canonical serializer become user proof obligations.

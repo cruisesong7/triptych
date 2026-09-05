@@ -68,7 +68,7 @@ obligation surface for an independent external parser or canonical serializer.
 - Extend automatic printer synthesis beyond the proved signed-decimal patterns and add analyzable
   collection reductions beyond `count X` and list-aware escapes.
 - Improve static capture-functionality coverage and deterministic execution; CI, structural
-  decoder budgets, and a benchmark smoke target now provide regression evidence.
+  reference-decoder budgets and paired scanner benchmarks now provide regression evidence.
 - Add UUID and DIMACS CNF examples. Recursive and data-dependent formats such as JSON, TLV, and
   protobuf remain outside the current grammar class.
 

@@ -1,4 +1,4 @@
-import Triptych.Architecture.Decode
+import Triptych.Archive.ReferenceDecoder
 
 /-!
 # Structural derivation helpers

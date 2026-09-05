@@ -15,7 +15,7 @@
 -/
 
 import Triptych.Architecture.Syntax
-import Triptych.Architecture.Decode
+import Triptych.Archive.ReferenceDecoder
 import Triptych.Theorems.Roundtrip
 import Triptych.Theorems.Coherence
 import Cedar.Spec.Ext.Decimal

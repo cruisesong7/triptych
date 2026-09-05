@@ -10,6 +10,7 @@ import Triptych.Theorems.Reconcile
 import Triptych.Theorems.Value
 import Triptych.Theorems.DecodeLemmas
 import Triptych.Theorems.Derivation
+import Triptych.Theorems.Scanner
 import Outputs.Duration.spec
 import Inputs.Duration
 
@@ -21,10 +22,11 @@ set_option linter.unusedVariables false
 set_option linter.unnecessarySeqFocus false
 
 /- ══════════════════════════════ engine ══════════════════════════════
-The executable counterpart of the spec. `decode` walks the grammar over an input
-string and returns its captured components; `computeValue` then evaluates the value
-function on those captures. Generated `DecidablePred` instances make the readable
-`IsWf` and `IsValid` predicates directly executable.
+The executable counterpart of the spec. A verified scanner extracts captured
+components and stops at the first complete parse. The archived reference `decode`
+is used only in the agreement proof, not as a runtime fallback. `computeValue`
+evaluates the value function on those captures. Generated `DecidablePred` instances
+make the readable `IsWf` and `IsValid` predicates directly executable.
 `decodeView` packages the exact input and value/constraint captures as a typed `View`.
 
 The public format API stays capitalized: use `#eval decide (IsValid s)` and
@@ -176,7 +178,7 @@ def Duration.constraints : List ConstraintEntry :=
         (Constraint.le Duration.valueExpr (ValExpr.lit 9223372036854775807)))]
 
 def Duration.computeValue (s : String) : Option Int :=
-  Triptych.computeValue Duration.grammar Duration.valueExpr s
+  Triptych.scannerComputeValue Duration.grammar Duration.valueExpr s
 
 def Duration.View.ofMap (input : String) (m : Triptych.CaptureMap) : Duration.View :=
   Duration.View.mk input ((Triptych.CaptureMap.toEnv m "Sign").getD "") (Triptych.CaptureMap.toEnv m "DDays")
@@ -185,7 +187,7 @@ def Duration.View.ofMap (input : String) (m : Triptych.CaptureMap) : Duration.Vi
     ((Triptych.CaptureMap.toEnv m "Components").getD "")
 
 def Duration.decodeView (s : String) : Option Duration.View :=
-  (decode Duration.grammar s).map (Duration.View.ofMap s)
+  (scan Duration.grammar s).map (Duration.View.ofMap s)
 
 def Duration.Derivation.Duration.toView (d : Duration.Derivation.Duration) : Duration.View :=
   Duration.View.ofMap (Duration.Derivation.Duration.render d) (Duration.Derivation.Duration.capturesWith "" d)
@@ -666,6 +668,7 @@ theorem Duration.Derivation.Duration.decodeView_render_of_captureFunctional
     Duration.decodeView (Duration.Derivation.Duration.render d) = some (Duration.Derivation.Duration.toView d) :=
   by
   unfold Duration.decodeView Duration.Derivation.Duration.toView
+  rw [Triptych.scan_eq_decode]
   rw [Duration.Derivation.Duration.decode_render_of_captureFunctional hfunctional d hvalid]
   rfl
 
@@ -952,12 +955,13 @@ theorem Duration.IsWfGrammar_equiv (s : String) : Triptych.IsWf Duration.grammar
 theorem Duration.IsWf_equiv (s : String) : Duration.IsWf s ↔ Triptych.isWf Duration.grammar Duration.constraints s :=
   by
   unfold Duration.IsWf Triptych.isWf
+  rw [Triptych.scan_eq_decode]
   rw [← Duration.IsWfGrammar_equiv, ← decodeSome_iff_IsWf Duration.grammar (by decide)]
   unfold Duration.SatisfiesWfConstraints Duration.WfConstraints Duration.constraints
-  simp only [Triptych.component, Triptych.componentList, Triptych.envOf, Triptych.captureMapOf, List.forall_mem_cons,
-    List.forall_mem_singleton, List.not_mem_nil, forall_const, ConstraintEntry.wfPart, Constraint.eval, ValExpr.eval,
-    presentCount, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, Env.countVal, and_true, true_and,
-    false_implies, implies_true, Bool.false_eq_true]
+  simp only [Triptych.component, Triptych.componentList, Triptych.envOf, Triptych.captureMapOf, Triptych.scan_eq_decode,
+    List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const, ConstraintEntry.wfPart,
+    Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD,
+    Env.countVal, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
   try grind
 
 theorem Duration.SatisfiesConstraints_equiv (s : String) :
@@ -965,10 +969,10 @@ theorem Duration.SatisfiesConstraints_equiv (s : String) :
   by
   unfold Triptych.satisfiesConstraints
   unfold Duration.SatisfiesConstraints Duration.Constraints Duration.constraints Duration.value Duration.valueExpr
-  simp only [Triptych.component, Triptych.envOf, Triptych.captureMapOf, List.forall_mem_cons, List.forall_mem_singleton,
-    List.not_mem_nil, forall_const, ConstraintEntry.valPart, Constraint.eval, ValExpr.eval, presentCount, natOf_getD,
-    intOf_getD, lenOf_getD, countOf_getD, signOf_getD, Env.countVal, and_true, true_and, false_implies, implies_true,
-    Bool.false_eq_true]
+  simp only [Triptych.component, Triptych.envOf, Triptych.captureMapOf, Triptych.scan_eq_decode, List.forall_mem_cons,
+    List.forall_mem_singleton, List.not_mem_nil, forall_const, ConstraintEntry.valPart, Constraint.eval, ValExpr.eval,
+    presentCount, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, Env.countVal, and_true, true_and,
+    false_implies, implies_true, Bool.false_eq_true]
   try grind
 
 theorem Duration.IsValid_equiv (s : String) :
@@ -980,7 +984,7 @@ theorem Duration.IsValid_equiv (s : String) :
   rw [(Duration.IsWf_equiv s), (Duration.SatisfiesConstraints_equiv s)]
 
 instance Duration.instDecidableGrammar : DecidablePred Duration.IsWf.Duration := fun s =>
-  @decidable_of_iff _ _ (Duration.IsWfGrammar_equiv s) (Triptych.decIsWf Duration.grammar (by decide) s)
+  @decidable_of_iff _ _ (Duration.IsWfGrammar_equiv s) (Triptych.decIsWfScanner Duration.grammar (by decide) s)
 
 instance Duration.instDecidableIsWf : DecidablePred Duration.IsWf := fun s =>
   @decidable_of_iff _ _ (Duration.IsWf_equiv s).symm inferInstance
@@ -1010,25 +1014,28 @@ theorem Duration.IsValid_view (s : String) :
   constructor
   · intro hvalid
     have hengine := (Duration.IsValid_equiv s).mp hvalid
-    have hsome : (decode Duration.grammar s).isSome = true := by exact hengine.1.1
+    have hsome : (decode Duration.grammar s).isSome = true := by simpa only [Triptych.scan_eq_decode] using hengine.1.1
     obtain ⟨m, hm⟩ := Option.isSome_iff_exists.mp hsome
+    have hmDecode : decode Duration.grammar s = some m := hm
     refine ⟨Duration.View.ofMap s m, ?_, ?_⟩
     · unfold Duration.decodeView
-      simp [hm]
+      simp [Triptych.scan_eq_decode, hmDecode]
     ·
       exact
-        ⟨(Duration.View.wfConstraints_of_decode hm).mp hvalid.1.2, (Duration.View.constraints_of_decode hm).mp hvalid.2⟩
+        ⟨(Duration.View.wfConstraints_of_decode hmDecode).mp hvalid.1.2,
+          (Duration.View.constraints_of_decode hmDecode).mp hvalid.2⟩
   · rintro ⟨v, hview, hvalid⟩
     unfold Duration.decodeView at hview
     rw [Option.map_eq_some_iff] at hview
     obtain ⟨m, hm, hv⟩ := hview
     subst v
-    have hdecoded : (decode Duration.grammar s).isSome = true := by simp [hm]
+    have hmDecode : decode Duration.grammar s = some m := by simpa only [Triptych.scan_eq_decode] using hm
+    have hdecoded : (decode Duration.grammar s).isSome = true := by simp [hmDecode]
     have hgrammar :=
       (Duration.IsWfGrammar_equiv s).mp ((decodeSome_iff_IsWf Duration.grammar (by decide) s).mp hdecoded)
     exact
-      ⟨⟨hgrammar, (Duration.View.wfConstraints_of_decode hm).mpr hvalid.1⟩,
-        (Duration.View.constraints_of_decode hm).mpr hvalid.2⟩
+      ⟨⟨hgrammar, (Duration.View.wfConstraints_of_decode hmDecode).mpr hvalid.1⟩,
+        (Duration.View.constraints_of_decode hmDecode).mpr hvalid.2⟩
 
 theorem Duration.computeValue_eq (s : String) :
     Duration.computeValue s =
@@ -1038,11 +1045,12 @@ theorem Duration.computeValue_eq (s : String) :
             (Triptych.component Duration.grammar s "DHours") (Triptych.component Duration.grammar s "DMinutes")
             (Triptych.component Duration.grammar s "DSeconds") (Triptych.component Duration.grammar s "DMillis")) :=
   by
-  unfold Duration.computeValue Triptych.computeValue Triptych.component Triptych.envOf Triptych.captureMapOf
+  unfold Duration.computeValue Triptych.scannerComputeValue Triptych.component Triptych.envOf Triptych.captureMapOf
     Duration.value Duration.valueExpr
+  rw [Triptych.scan_eq_decode]
   cases h : decode Duration.grammar s with
-  | none => simp
-  | some m => simp [natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, Env.countVal, ValExpr.eval]
+  | none => simp [h]
+  | some m => simp [h, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, Env.countVal, ValExpr.eval]
 
 theorem Duration.computeValue_of_decode {s : String} {m : Triptych.CaptureMap}
     (h : decode Duration.grammar s = some m) :
@@ -1061,6 +1069,7 @@ theorem Duration.computeValue_view (s : String) :
     Duration.computeValue s = (Duration.decodeView s).map Duration.View.denotation :=
   by
   unfold Duration.decodeView
+  rw [Triptych.scan_eq_decode]
   cases h : decode Duration.grammar s with
   |
     none =>
@@ -1087,7 +1096,7 @@ theorem Duration.computeValue_isSome (s : String) : Duration.IsValid s → (Dura
   intro h
   have hengine := (Duration.IsValid_equiv s).mp h
   unfold Triptych.isWf at hengine
-  unfold Duration.computeValue Triptych.computeValue
+  unfold Duration.computeValue Triptych.scannerComputeValue
   rw [Option.isSome_map]
   exact hengine.1.1
 

@@ -10,6 +10,7 @@ import Triptych.Theorems.Reconcile
 import Triptych.Theorems.Value
 import Triptych.Theorems.DecodeLemmas
 import Triptych.Theorems.Derivation
+import Triptych.Theorems.Scanner
 import Outputs.SMT.BitVector.spec
 import Inputs.SMT.BitVector.grammar
 
@@ -21,10 +22,11 @@ set_option linter.unusedVariables false
 set_option linter.unnecessarySeqFocus false
 
 /- ══════════════════════════════ engine ══════════════════════════════
-The executable counterpart of the spec. `decode` walks the grammar over an input
-string and returns its captured components; `computeValue` then evaluates the value
-function on those captures. Generated `DecidablePred` instances make the readable
-`IsWf` and `IsValid` predicates directly executable.
+The executable counterpart of the spec. A verified scanner extracts captured
+components and stops at the first complete parse. The archived reference `decode`
+is used only in the agreement proof, not as a runtime fallback. `computeValue`
+evaluates the value function on those captures. Generated `DecidablePred` instances
+make the readable `IsWf` and `IsValid` predicates directly executable.
 `decodeView` packages the exact input and value/constraint captures as a typed `View`.
 
 The public format API stays capitalized: use `#eval decide (IsValid s)` and
@@ -95,13 +97,13 @@ def BitVector.constraints : List ConstraintEntry :=
   []
 
 def BitVector.computeValue (s : String) :=
-  Triptych.computeValueMap BitVector.grammar BitVector.valueFn s
+  Triptych.scannerComputeValueMap BitVector.grammar BitVector.valueFn s
 
 def BitVector.View.ofMap (input : String) (m : Triptych.CaptureMap) : BitVector.View :=
   BitVector.View.mk input (Triptych.CaptureMap.toEnv m "BinaryDigits") (Triptych.CaptureMap.toEnv m "HexDigits")
 
 def BitVector.decodeView (s : String) : Option BitVector.View :=
-  (decode BitVector.grammar s).map (BitVector.View.ofMap s)
+  (scan BitVector.grammar s).map (BitVector.View.ofMap s)
 
 def BitVector.Derivation.BitVector.toView (d : BitVector.Derivation.BitVector) : BitVector.View :=
   BitVector.View.ofMap (BitVector.Derivation.BitVector.render d) (BitVector.Derivation.BitVector.capturesWith "" d)
@@ -342,6 +344,7 @@ theorem BitVector.Derivation.BitVector.decodeView_render_of_captureFunctional
     BitVector.decodeView (BitVector.Derivation.BitVector.render d) = some (BitVector.Derivation.BitVector.toView d) :=
   by
   unfold BitVector.decodeView BitVector.Derivation.BitVector.toView
+  rw [Triptych.scan_eq_decode]
   rw [BitVector.Derivation.BitVector.decode_render_of_captureFunctional hfunctional d hvalid]
   rfl
 
@@ -487,12 +490,13 @@ theorem BitVector.IsWf_equiv (s : String) :
     BitVector.IsWf s ↔ Triptych.isWf BitVector.grammar BitVector.constraints s :=
   by
   unfold BitVector.IsWf Triptych.isWf
+  rw [Triptych.scan_eq_decode]
   rw [← BitVector.IsWfGrammar_equiv, ← decodeSome_iff_IsWf BitVector.grammar (by decide)]
   unfold BitVector.constraints
-  simp only [Triptych.component, Triptych.componentList, Triptych.envOf, Triptych.captureMapOf, List.forall_mem_cons,
-    List.forall_mem_singleton, List.not_mem_nil, forall_const, ConstraintEntry.wfPart, Constraint.eval, ValExpr.eval,
-    presentCount, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, Env.countVal, and_true, true_and,
-    false_implies, implies_true, Bool.false_eq_true]
+  simp only [Triptych.component, Triptych.componentList, Triptych.envOf, Triptych.captureMapOf, Triptych.scan_eq_decode,
+    List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const, ConstraintEntry.wfPart,
+    Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD,
+    Env.countVal, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
   try grind
 
 theorem BitVector.IsValid_equiv (s : String) :
@@ -511,7 +515,7 @@ theorem BitVector.IsValid_equiv (s : String) :
   · exact And.left
 
 instance BitVector.instDecidableGrammar : DecidablePred BitVector.IsWf.BitVector := fun s =>
-  @decidable_of_iff _ _ (BitVector.IsWfGrammar_equiv s) (Triptych.decIsWf BitVector.grammar (by decide) s)
+  @decidable_of_iff _ _ (BitVector.IsWfGrammar_equiv s) (Triptych.decIsWfScanner BitVector.grammar (by decide) s)
 
 instance BitVector.instDecidableIsWf : DecidablePred BitVector.IsWf := fun s =>
   @decidable_of_iff _ _ (BitVector.IsWf_equiv s).symm inferInstance
@@ -524,18 +528,20 @@ theorem BitVector.IsValid_view (s : String) :
   constructor
   · intro hvalid
     have hengine := (BitVector.IsValid_equiv s).mp hvalid
-    have hsome : (decode BitVector.grammar s).isSome = true := by exact hengine.1.1
+    have hsome : (decode BitVector.grammar s).isSome = true := by simpa only [Triptych.scan_eq_decode] using hengine.1.1
     obtain ⟨m, hm⟩ := Option.isSome_iff_exists.mp hsome
+    have hmDecode : decode BitVector.grammar s = some m := hm
     refine ⟨BitVector.View.ofMap s m, ?_, ?_⟩
     · unfold BitVector.decodeView
-      simp [hm]
+      simp [Triptych.scan_eq_decode, hmDecode]
     · exact True.intro
   · rintro ⟨v, hview, hvalid⟩
     unfold BitVector.decodeView at hview
     rw [Option.map_eq_some_iff] at hview
     obtain ⟨m, hm, hv⟩ := hview
     subst v
-    have hdecoded : (decode BitVector.grammar s).isSome = true := by simp [hm]
+    have hmDecode : decode BitVector.grammar s = some m := by simpa only [Triptych.scan_eq_decode] using hm
+    have hdecoded : (decode BitVector.grammar s).isSome = true := by simp [hmDecode]
     have hgrammar :=
       (BitVector.IsWfGrammar_equiv s).mp ((decodeSome_iff_IsWf BitVector.grammar (by decide) s).mp hdecoded)
     exact hgrammar
@@ -547,11 +553,12 @@ theorem BitVector.computeValue_eq (s : String) :
           BitVector.value (Triptych.component BitVector.grammar s "BinaryDigits")
             (Triptych.component BitVector.grammar s "HexDigits")) :=
   by
-  unfold BitVector.computeValue Triptych.computeValueMap Triptych.component Triptych.envOf Triptych.captureMapOf
+  unfold BitVector.computeValue Triptych.scannerComputeValueMap Triptych.component Triptych.envOf Triptych.captureMapOf
     BitVector.value BitVector.valueFn
+  rw [Triptych.scan_eq_decode]
   cases h : decode BitVector.grammar s with
-  | none => simp
-  | some m => simp [natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, Env.countVal, ValExpr.eval]
+  | none => simp [h]
+  | some m => simp [h, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, Env.countVal, ValExpr.eval]
 
 theorem BitVector.computeValue_of_decode {s : String} {m : Triptych.CaptureMap}
     (h : decode BitVector.grammar s = some m) :
@@ -568,6 +575,7 @@ theorem BitVector.computeValue_view (s : String) :
     BitVector.computeValue s = (BitVector.decodeView s).map BitVector.View.denotation :=
   by
   unfold BitVector.decodeView
+  rw [Triptych.scan_eq_decode]
   cases h : decode BitVector.grammar s with
   |
     none =>
@@ -594,7 +602,7 @@ theorem BitVector.computeValue_isSome (s : String) : BitVector.IsValid s → (Bi
   intro h
   have hengine := (BitVector.IsValid_equiv s).mp h
   unfold Triptych.isWf at hengine
-  unfold BitVector.computeValue Triptych.computeValueMap
+  unfold BitVector.computeValue Triptych.scannerComputeValueMap
   rw [Option.isSome_map]
   exact hengine.1.1
 

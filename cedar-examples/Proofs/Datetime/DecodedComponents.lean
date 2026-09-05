@@ -229,7 +229,9 @@ theorem components_of_decodeView {s : String} {v : Datetime.View}
   unfold Datetime.decodeView at h
   rw [Option.map_eq_some_iff] at h
   obtain ⟨m, hm, rfl⟩ := h
-  obtain ⟨components, rfl, hs, hsyn⟩ := components_of_decode hm
+  have hmDecode : decode Datetime.grammar s = some m := by
+    simpa only [Triptych.scan_eq_decode] using hm
+  obtain ⟨components, rfl, hs, hsyn⟩ := components_of_decode hmDecode
   refine ⟨components, ?_, hs, hsyn⟩
   rcases components with ⟨date, time⟩
   rcases date with ⟨year, month, day⟩

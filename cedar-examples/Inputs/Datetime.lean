@@ -15,7 +15,7 @@
 -/
 
 import Triptych.Architecture.Syntax
-import Triptych.Architecture.Decode
+import Triptych.Archive.ReferenceDecoder
 import Cedar.Spec.Ext.Datetime
 
 /-!

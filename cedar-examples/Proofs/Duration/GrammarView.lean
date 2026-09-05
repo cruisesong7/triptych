@@ -492,7 +492,7 @@ theorem constraints_of_decode (s sgn : String)
         formatValue sgn components ≤ (9223372036854775807 : Int) := by
   unfold Duration.SatisfiesConstraints Duration.Constraints
   unfold Triptych.component Triptych.envOf Triptych.captureMapOf
-  rw [h]
+  rw [Triptych.scan_eq_decode, h]
   rcases components with ⟨days, hours, minutes, seconds, milliseconds⟩
   rcases days with _ | days <;> rcases hours with _ | hours <;>
     rcases minutes with _ | minutes <;> rcases seconds with _ | seconds <;>
@@ -512,7 +512,7 @@ theorem wf_constraints_of_decode (s sgn : String)
     Duration.SatisfiesWfConstraints s ↔ components.asString ≠ "" := by
   unfold Duration.SatisfiesWfConstraints Duration.WfConstraints
   unfold Triptych.component Triptych.envOf Triptych.captureMapOf
-  rw [h]
+  rw [Triptych.scan_eq_decode, h]
   simp [CaptureMap.toEnv]
 
 end Duration.GrammarView

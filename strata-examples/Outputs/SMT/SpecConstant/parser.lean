@@ -10,6 +10,7 @@ import Triptych.Theorems.Reconcile
 import Triptych.Theorems.Value
 import Triptych.Theorems.DecodeLemmas
 import Triptych.Theorems.Derivation
+import Triptych.Theorems.Scanner
 import Outputs.SMT.SpecConstant.spec
 import Inputs.SMT.SpecConstant.grammar
 
@@ -21,10 +22,11 @@ set_option linter.unusedVariables false
 set_option linter.unnecessarySeqFocus false
 
 /- ══════════════════════════════ engine ══════════════════════════════
-The executable counterpart of the spec. `decode` walks the grammar over an input
-string and returns its captured components; `computeValue` then evaluates the value
-function on those captures. Generated `DecidablePred` instances make the readable
-`IsWf` and `IsValid` predicates directly executable.
+The executable counterpart of the spec. A verified scanner extracts captured
+components and stops at the first complete parse. The archived reference `decode`
+is used only in the agreement proof, not as a runtime fallback. `computeValue`
+evaluates the value function on those captures. Generated `DecidablePred` instances
+make the readable `IsWf` and `IsValid` predicates directly executable.
 `decodeView` packages the exact input and value/constraint captures as a typed `View`.
 
 The public format API stays capitalized: use `#eval decide (IsValid s)` and
@@ -111,14 +113,14 @@ def SpecConstant.constraints : List ConstraintEntry :=
   []
 
 def SpecConstant.computeValue (s : String) :=
-  Triptych.computeValueMap SpecConstant.grammar SpecConstant.valueFn s
+  Triptych.scannerComputeValueMap SpecConstant.grammar SpecConstant.valueFn s
 
 def SpecConstant.View.ofMap (input : String) (m : Triptych.CaptureMap) : SpecConstant.View :=
   SpecConstant.View.mk input (Triptych.CaptureMap.toEnv m "StringLiteral") (Triptych.CaptureMap.toEnv m "Sign")
     (Triptych.CaptureMap.toEnv m "Natural") (Triptych.CaptureMap.toEnv m "Fraction")
 
 def SpecConstant.decodeView (s : String) : Option SpecConstant.View :=
-  (decode SpecConstant.grammar s).map (SpecConstant.View.ofMap s)
+  (scan SpecConstant.grammar s).map (SpecConstant.View.ofMap s)
 
 def SpecConstant.Derivation.SpecConstant.toView (d : SpecConstant.Derivation.SpecConstant) : SpecConstant.View :=
   SpecConstant.View.ofMap (SpecConstant.Derivation.SpecConstant.render d)
@@ -399,6 +401,7 @@ theorem SpecConstant.Derivation.SpecConstant.decodeView_render_of_captureFunctio
       some (SpecConstant.Derivation.SpecConstant.toView d) :=
   by
   unfold SpecConstant.decodeView SpecConstant.Derivation.SpecConstant.toView
+  rw [Triptych.scan_eq_decode]
   rw [SpecConstant.Derivation.SpecConstant.decode_render_of_captureFunctional hfunctional d hvalid]
   rfl
 
@@ -570,12 +573,13 @@ theorem SpecConstant.IsWf_equiv (s : String) :
     SpecConstant.IsWf s ↔ Triptych.isWf SpecConstant.grammar SpecConstant.constraints s :=
   by
   unfold SpecConstant.IsWf Triptych.isWf
+  rw [Triptych.scan_eq_decode]
   rw [← SpecConstant.IsWfGrammar_equiv, ← decodeSome_iff_IsWf SpecConstant.grammar (by decide)]
   unfold SpecConstant.constraints
-  simp only [Triptych.component, Triptych.componentList, Triptych.envOf, Triptych.captureMapOf, List.forall_mem_cons,
-    List.forall_mem_singleton, List.not_mem_nil, forall_const, ConstraintEntry.wfPart, Constraint.eval, ValExpr.eval,
-    presentCount, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, Env.countVal, and_true, true_and,
-    false_implies, implies_true, Bool.false_eq_true]
+  simp only [Triptych.component, Triptych.componentList, Triptych.envOf, Triptych.captureMapOf, Triptych.scan_eq_decode,
+    List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const, ConstraintEntry.wfPart,
+    Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD,
+    Env.countVal, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
   try grind
 
 theorem SpecConstant.IsValid_equiv (s : String) :
@@ -594,7 +598,7 @@ theorem SpecConstant.IsValid_equiv (s : String) :
   · exact And.left
 
 instance SpecConstant.instDecidableGrammar : DecidablePred SpecConstant.IsWf.SpecConstant := fun s =>
-  @decidable_of_iff _ _ (SpecConstant.IsWfGrammar_equiv s) (Triptych.decIsWf SpecConstant.grammar (by decide) s)
+  @decidable_of_iff _ _ (SpecConstant.IsWfGrammar_equiv s) (Triptych.decIsWfScanner SpecConstant.grammar (by decide) s)
 
 instance SpecConstant.instDecidableIsWf : DecidablePred SpecConstant.IsWf := fun s =>
   @decidable_of_iff _ _ (SpecConstant.IsWf_equiv s).symm inferInstance
@@ -607,18 +611,21 @@ theorem SpecConstant.IsValid_view (s : String) :
   constructor
   · intro hvalid
     have hengine := (SpecConstant.IsValid_equiv s).mp hvalid
-    have hsome : (decode SpecConstant.grammar s).isSome = true := by exact hengine.1.1
+    have hsome : (decode SpecConstant.grammar s).isSome = true := by
+      simpa only [Triptych.scan_eq_decode] using hengine.1.1
     obtain ⟨m, hm⟩ := Option.isSome_iff_exists.mp hsome
+    have hmDecode : decode SpecConstant.grammar s = some m := hm
     refine ⟨SpecConstant.View.ofMap s m, ?_, ?_⟩
     · unfold SpecConstant.decodeView
-      simp [hm]
+      simp [Triptych.scan_eq_decode, hmDecode]
     · exact True.intro
   · rintro ⟨v, hview, hvalid⟩
     unfold SpecConstant.decodeView at hview
     rw [Option.map_eq_some_iff] at hview
     obtain ⟨m, hm, hv⟩ := hview
     subst v
-    have hdecoded : (decode SpecConstant.grammar s).isSome = true := by simp [hm]
+    have hmDecode : decode SpecConstant.grammar s = some m := by simpa only [Triptych.scan_eq_decode] using hm
+    have hdecoded : (decode SpecConstant.grammar s).isSome = true := by simp [hmDecode]
     have hgrammar :=
       (SpecConstant.IsWfGrammar_equiv s).mp ((decodeSome_iff_IsWf SpecConstant.grammar (by decide) s).mp hdecoded)
     exact hgrammar
@@ -631,11 +638,12 @@ theorem SpecConstant.computeValue_eq (s : String) :
             (Triptych.component SpecConstant.grammar s "Sign") (Triptych.component SpecConstant.grammar s "Natural")
             (Triptych.component SpecConstant.grammar s "Fraction")) :=
   by
-  unfold SpecConstant.computeValue Triptych.computeValueMap Triptych.component Triptych.envOf Triptych.captureMapOf
-    SpecConstant.value SpecConstant.valueFn
+  unfold SpecConstant.computeValue Triptych.scannerComputeValueMap Triptych.component Triptych.envOf
+    Triptych.captureMapOf SpecConstant.value SpecConstant.valueFn
+  rw [Triptych.scan_eq_decode]
   cases h : decode SpecConstant.grammar s with
-  | none => simp
-  | some m => simp [natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, Env.countVal, ValExpr.eval]
+  | none => simp [h]
+  | some m => simp [h, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, Env.countVal, ValExpr.eval]
 
 theorem SpecConstant.computeValue_of_decode {s : String} {m : Triptych.CaptureMap}
     (h : decode SpecConstant.grammar s = some m) :
@@ -654,6 +662,7 @@ theorem SpecConstant.computeValue_view (s : String) :
     SpecConstant.computeValue s = (SpecConstant.decodeView s).map SpecConstant.View.denotation :=
   by
   unfold SpecConstant.decodeView
+  rw [Triptych.scan_eq_decode]
   cases h : decode SpecConstant.grammar s with
   |
     none =>
@@ -681,7 +690,7 @@ theorem SpecConstant.computeValue_isSome (s : String) : SpecConstant.IsValid s �
   intro h
   have hengine := (SpecConstant.IsValid_equiv s).mp h
   unfold Triptych.isWf at hengine
-  unfold SpecConstant.computeValue Triptych.computeValueMap
+  unfold SpecConstant.computeValue Triptych.scannerComputeValueMap
   rw [Option.isSome_map]
   exact hengine.1.1
 

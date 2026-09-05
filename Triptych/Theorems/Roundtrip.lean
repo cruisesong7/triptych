@@ -14,12 +14,12 @@
  limitations under the License.
 -/
 
-import Triptych.Architecture.Decode
+import Triptych.Archive.ReferenceDecoder
 
 /-!
 # `decode` ↔ `IsWf` roundtrip
 
-The executable capture extractor `decode` (from `Triptych.Architecture.Decode`) and the
+The archived capture extractor `decode` (from `Triptych.Archive.ReferenceDecoder`) and the
 denotational well-formedness predicate `IsWf` (from `Triptych.Architecture.Denote`) agree
 on acceptance, for every
 grammar in the decoder-agreeing class (`hg : g.repOk = true`):

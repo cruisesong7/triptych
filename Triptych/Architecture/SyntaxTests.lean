@@ -284,7 +284,7 @@ triptych InvalidListConstraint where
 
 end CollectionConstraintExample
 
-namespace DecodeBudgetExample
+namespace ScannerBudgetExample
 
 private def budgetGrammar : Grammar where
   start := "Root"
@@ -297,7 +297,13 @@ example (s : String) :
     (decodeBudget budgetGrammar s).terminalPrefixCandidates = s.length + 1 := by
   simp
 
-end DecodeBudgetExample
+example (s : String) :
+    scannerCandidateChecks budgetGrammar s ≤ scannerCandidateBudget budgetGrammar s :=
+  scannerCandidateChecks_le budgetGrammar s
+
+#guard scannerCandidateChecks budgetGrammar "1234" = 0
+
+end ScannerBudgetExample
 
 namespace DefaultPrinterExample
 
