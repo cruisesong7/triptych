@@ -10,6 +10,7 @@ import Triptych.Theorems.Reconcile
 import Triptych.Theorems.Value
 import Triptych.Theorems.DecodeLemmas
 import Triptych.Theorems.Derivation
+import Triptych.Theorems.Scanner
 import Outputs.Datetime.spec
 import Inputs.Datetime
 
@@ -21,10 +22,11 @@ set_option linter.unusedVariables false
 set_option linter.unnecessarySeqFocus false
 
 /- ══════════════════════════════ engine ══════════════════════════════
-The executable counterpart of the spec. `decode` walks the grammar over an input
-string and returns its captured components; `computeValue` then evaluates the value
-function on those captures. Generated `DecidablePred` instances make the readable
-`IsWf` and `IsValid` predicates directly executable.
+The executable counterpart of the spec. A verified scanner extracts captured
+components and stops at the first complete parse. The archived reference `decode`
+is used only in the agreement proof, not as a runtime fallback. `computeValue`
+evaluates the value function on those captures. Generated `DecidablePred` instances
+make the readable `IsWf` and `IsValid` predicates directly executable.
 `decodeView` packages the exact input and value/constraint captures as a typed `View`.
 
 The public format API stays capitalized: use `#eval decide (IsValid s)` and
@@ -200,7 +202,7 @@ def Datetime.constraints : List ConstraintEntry :=
         ((Triptych.CaptureMap.toEnv m "DD").getD "")]
 
 def Datetime.computeValue (s : String) :=
-  Triptych.computeValueMap Datetime.grammar Datetime.valueFn s
+  Triptych.scannerComputeValueMap Datetime.grammar Datetime.valueFn s
 
 def Datetime.View.ofMap (input : String) (m : Triptych.CaptureMap) : Datetime.View :=
   Datetime.View.mk input ((Triptych.CaptureMap.toEnv m "YYYY").getD "") ((Triptych.CaptureMap.toEnv m "MM").getD "")
@@ -210,7 +212,7 @@ def Datetime.View.ofMap (input : String) (m : Triptych.CaptureMap) : Datetime.Vi
     (Triptych.CaptureMap.toEnv m "Offset")
 
 def Datetime.decodeView (s : String) : Option Datetime.View :=
-  (decode Datetime.grammar s).map (Datetime.View.ofMap s)
+  (scan Datetime.grammar s).map (Datetime.View.ofMap s)
 
 def Datetime.Derivation.Datetime.toView (d : Datetime.Derivation.Datetime) : Datetime.View :=
   Datetime.View.ofMap (Datetime.Derivation.Datetime.render d) (Datetime.Derivation.Datetime.capturesWith "" d)
@@ -958,6 +960,7 @@ theorem Datetime.Derivation.Datetime.decodeView_render_of_captureFunctional
     Datetime.decodeView (Datetime.Derivation.Datetime.render d) = some (Datetime.Derivation.Datetime.toView d) :=
   by
   unfold Datetime.decodeView Datetime.Derivation.Datetime.toView
+  rw [Triptych.scan_eq_decode]
   rw [Datetime.Derivation.Datetime.decode_render_of_captureFunctional hfunctional d hvalid]
   rfl
 
@@ -1269,12 +1272,13 @@ theorem Datetime.IsWfGrammar_equiv (s : String) : Triptych.IsWf Datetime.grammar
 theorem Datetime.IsWf_equiv (s : String) : Datetime.IsWf s ↔ Triptych.isWf Datetime.grammar Datetime.constraints s :=
   by
   unfold Datetime.IsWf Triptych.isWf
+  rw [Triptych.scan_eq_decode]
   rw [← Datetime.IsWfGrammar_equiv, ← decodeSome_iff_IsWf Datetime.grammar (by decide)]
   unfold Datetime.SatisfiesWfConstraints Datetime.WfConstraints Datetime.constraints
-  simp only [Triptych.component, Triptych.componentList, Triptych.envOf, Triptych.captureMapOf, List.forall_mem_cons,
-    List.forall_mem_singleton, List.not_mem_nil, forall_const, ConstraintEntry.wfPart, Constraint.eval, ValExpr.eval,
-    presentCount, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, Env.countVal, and_true, true_and,
-    false_implies, implies_true, Bool.false_eq_true]
+  simp only [Triptych.component, Triptych.componentList, Triptych.envOf, Triptych.captureMapOf, Triptych.scan_eq_decode,
+    List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const, ConstraintEntry.wfPart,
+    Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD,
+    Env.countVal, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
   try grind
 
 theorem Datetime.IsValid_equiv (s : String) :
@@ -1293,7 +1297,7 @@ theorem Datetime.IsValid_equiv (s : String) :
   · exact And.left
 
 instance Datetime.instDecidableGrammar : DecidablePred Datetime.IsWf.Datetime := fun s =>
-  @decidable_of_iff _ _ (Datetime.IsWfGrammar_equiv s) (Triptych.decIsWf Datetime.grammar (by decide) s)
+  @decidable_of_iff _ _ (Datetime.IsWfGrammar_equiv s) (Triptych.decIsWfScanner Datetime.grammar (by decide) s)
 
 instance Datetime.instDecidableIsWf : DecidablePred Datetime.IsWf := fun s =>
   @decidable_of_iff _ _ (Datetime.IsWf_equiv s).symm inferInstance
@@ -1313,21 +1317,23 @@ theorem Datetime.IsValid_view (s : String) :
   constructor
   · intro hvalid
     have hengine := (Datetime.IsValid_equiv s).mp hvalid
-    have hsome : (decode Datetime.grammar s).isSome = true := by exact hengine.1.1
+    have hsome : (decode Datetime.grammar s).isSome = true := by simpa only [Triptych.scan_eq_decode] using hengine.1.1
     obtain ⟨m, hm⟩ := Option.isSome_iff_exists.mp hsome
+    have hmDecode : decode Datetime.grammar s = some m := hm
     refine ⟨Datetime.View.ofMap s m, ?_, ?_⟩
     · unfold Datetime.decodeView
-      simp [hm]
-    · exact (Datetime.View.wfConstraints_of_decode hm).mp hvalid.2
+      simp [Triptych.scan_eq_decode, hmDecode]
+    · exact (Datetime.View.wfConstraints_of_decode hmDecode).mp hvalid.2
   · rintro ⟨v, hview, hvalid⟩
     unfold Datetime.decodeView at hview
     rw [Option.map_eq_some_iff] at hview
     obtain ⟨m, hm, hv⟩ := hview
     subst v
-    have hdecoded : (decode Datetime.grammar s).isSome = true := by simp [hm]
+    have hmDecode : decode Datetime.grammar s = some m := by simpa only [Triptych.scan_eq_decode] using hm
+    have hdecoded : (decode Datetime.grammar s).isSome = true := by simp [hmDecode]
     have hgrammar :=
       (Datetime.IsWfGrammar_equiv s).mp ((decodeSome_iff_IsWf Datetime.grammar (by decide) s).mp hdecoded)
-    exact ⟨hgrammar, (Datetime.View.wfConstraints_of_decode hm).mpr hvalid⟩
+    exact ⟨hgrammar, (Datetime.View.wfConstraints_of_decode hmDecode).mpr hvalid⟩
 
 theorem Datetime.computeValue_eq (s : String) :
     Datetime.computeValue s =
@@ -1339,11 +1345,12 @@ theorem Datetime.computeValue_eq (s : String) :
             (Triptych.component Datetime.grammar s "SSS") (Triptych.component Datetime.grammar s "Offset.hh")
             (Triptych.component Datetime.grammar s "Offset.mm") (Triptych.component Datetime.grammar s "Offset")) :=
   by
-  unfold Datetime.computeValue Triptych.computeValueMap Triptych.component Triptych.envOf Triptych.captureMapOf
+  unfold Datetime.computeValue Triptych.scannerComputeValueMap Triptych.component Triptych.envOf Triptych.captureMapOf
     Datetime.value Datetime.valueFn
+  rw [Triptych.scan_eq_decode]
   cases h : decode Datetime.grammar s with
-  | none => simp
-  | some m => simp [natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, Env.countVal, ValExpr.eval]
+  | none => simp [h]
+  | some m => simp [h, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, Env.countVal, ValExpr.eval]
 
 theorem Datetime.computeValue_of_decode {s : String} {m : Triptych.CaptureMap}
     (h : decode Datetime.grammar s = some m) :
@@ -1366,6 +1373,7 @@ theorem Datetime.computeValue_view (s : String) :
     Datetime.computeValue s = (Datetime.decodeView s).map Datetime.View.denotation :=
   by
   unfold Datetime.decodeView
+  rw [Triptych.scan_eq_decode]
   cases h : decode Datetime.grammar s with
   |
     none =>
@@ -1392,7 +1400,7 @@ theorem Datetime.computeValue_isSome (s : String) : Datetime.IsValid s → (Date
   intro h
   have hengine := (Datetime.IsValid_equiv s).mp h
   unfold Triptych.isWf at hengine
-  unfold Datetime.computeValue Triptych.computeValueMap
+  unfold Datetime.computeValue Triptych.scannerComputeValueMap
   rw [Option.isSome_map]
   exact hengine.1.1
 

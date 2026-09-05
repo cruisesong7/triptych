@@ -76,9 +76,10 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
 - `Constraint.lean` — `Constraint`/`ConstraintEntry` AST, explicit
   `.wellFormed`/`.value` phase classification, `card`/`presentCount`, and the `opaque`
   internal node used by the surface `constraints'` escape (`opaqueEnvClosure`).
-- `Decode.lean` — executable capture extractor `decode`/`matchSym`/`matchStar`/`matchRep`;
-  `computeValue : … → Option Int` and `computeValueF : … → (Env → α) → Option α` (arbitrary
-  value type). `CaptureMap`/`Env`.
+- `Archive/ReferenceDecoder.lean` — archived executable reference semantics:
+  `decode`/`matchSym`/`matchStar`/`matchRep`, plus the reference `computeValue` functions.
+- `Scanner.lean` — runtime continuation scanner, deterministic fast path, and proof-only
+  candidate-cost profile. `CaptureMap`/`Env`.
 - `Roundtrip.lean` — `decodeSome_iff_IsWf` (decode ↔ IsWf), `rep_iter`/`matchStar_iter`,
   `decIsWf` (conditional `DecidablePred (IsWf g)`, needs `g.repOk = true`).
 - `Coherence.lean` — value is grammar-determined, not decoder-selected: `fullParses`
@@ -225,9 +226,10 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
    conversions, and named canonicalization policies.
 3. Generalize repeated captures beyond `count X` and list-aware escapes: analyzable sums and
    per-element constraints.
-4. Broaden static capture-functionality certificates and improve deterministic execution.
-   `DecodeBudget`, the Graph benchmark smoke executable, and three-package CI are now present;
-   they do not yet constitute a total-runtime complexity proof.
+4. Broaden static capture-functionality certificates and deterministic fast-path coverage.
+   `scannerCandidateChecks_le` now gives a grammar-generic completed-candidate bound, while the
+   paired benchmarks characterize wall-clock behavior. A polynomial bound is intentionally not
+   claimed for ambiguous grammars.
 5. Package each generated `<Name>.parse` behind a standalone executable and then a narrow C ABI.
    Keep the trust statement explicit: reverse FFI does not verify Lean's runtime, ABI, or Rust.
 6. Add UUIDv4/v7 and then DIMACS CNF after those utility improvements. Full JSON and SQL require

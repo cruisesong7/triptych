@@ -97,9 +97,9 @@ constraint.
 
 # Ambiguity and static certificates
 
-The grammar class permits ambiguous alternatives and token splits. The reference decoder
-enumerates full parses and chooses the first, so recognition alone does not imply that captures
-or values are grammar-determined.
+The grammar class permits ambiguous alternatives and token splits. The runtime scanner preserves
+the archived reference decoder's source order and chooses the same first complete parse, so
+recognition alone does not imply that captures or values are grammar-determined.
 
 {name}`Triptych.GrammarCaptureFunctional` states the needed semantic property. A conservative
 {name}`Triptych.Grammar.staticUnique` checker proves it for deterministic fragments such as

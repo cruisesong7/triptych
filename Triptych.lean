@@ -19,11 +19,13 @@ import Triptych.Architecture.Classify
 import Triptych.Architecture.Denote
 import Triptych.Architecture.Value
 import Triptych.Architecture.Constraint
-import Triptych.Architecture.Decode
+import Triptych.Archive.ReferenceDecoder
+import Triptych.Architecture.Scanner
 import Triptych.Architecture.Derivation
 import Triptych.Architecture.Unambiguity
 import Triptych.Architecture.Assemble
 import Triptych.Theorems.Roundtrip
+import Triptych.Theorems.Scanner
 import Triptych.Theorems.Coherence
 import Triptych.Theorems.Derivation
 import Triptych.Theorems.RelationalParser
@@ -49,9 +51,10 @@ the grammar-generic obligations and delegating the non-affine parts via typed ho
 See `Docs/DESIGN.md` for the full design.
 
 Module layout:
-* `Triptych.Architecture.*` — grammar, classifier, denotation, decoder, value/constraint
+* `Triptych.Architecture.*` — grammar, classifier, denotation, scanner, value/constraint
                                 DSLs, assembly, emission, and `triptych` syntax
-* `Triptych.Theorems.*`     — reusable decoder, roundtrip, coherence, unambiguity, and
+* `Triptych.Archive.*`      — executable reference semantics retained for proofs and comparison
+* `Triptych.Theorems.*`     — reusable scanner, roundtrip, coherence, unambiguity, and
                                 reconciliation theorems
 * `Triptych.Automation.*`   — extensible static external-parser proof rules and tactics
 

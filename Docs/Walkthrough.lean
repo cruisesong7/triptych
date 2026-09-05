@@ -281,27 +281,32 @@ The first string fails {name}`Decimal.IsWf` because it has five fraction digits.
 string is well-formed, but it fails {name}`Decimal.SatisfiesConstraints`, so
 {name}`Decimal.IsValid` also returns false.
 
-## Decoding the grammar
+## Scanning the grammar
 
-Before a value can be computed, the generated engine decodes the input into the grammar's named
-captures:
+Before a value can be computed, the generated scanner extracts the grammar's named captures:
 
-```lean (name := decodeEval)
-#eval decode Decimal.grammar "1.5"
+```lean (name := scanEval)
+#eval scan Decimal.grammar "1.5"
 ```
 
-```leanOutput decodeEval
+```leanOutput scanEval
 some [("Sign", ""), ("Natural", "1"), ("Fraction", "5")]
 ```
 
 This capture map is an engine representation. Ordinary clients use the typed
 {name}`Decimal.View` introduced in §2.2 instead of looking up these string keys.
 
+The scanner performs ordered search directly and stops at the first complete parse. The
+archived {name}`Triptych.decode` definition instead constructs lists of candidate splits; it is
+kept as a transparent reference semantics. The checked theorem {name}`Triptych.scan_eq_decode`
+proves that both select exactly the same capture map on every input, so replacing the runtime
+engine does not change the readable specification, computed value, or parser contracts.
+
 ## Computing the specification value
 
-{name}`Decimal.computeValue` decodes the input and evaluates the DSL's {lit}`value` expression.
-Its result is still the specification-level {name}`Int`; it neither applies the semantic
-constraint nor converts the result to {name}`Int64`:
+{name}`Decimal.computeValue` uses the scanner and evaluates the DSL's
+{lit}`value` expression. Its result is still the specification-level {name}`Int`; it neither
+applies the semantic constraint nor converts the result to {name}`Int64`:
 
 ```lean (name := computeValueDefinition)
 #print Decimal.computeValue
@@ -309,7 +314,7 @@ constraint nor converts the result to {name}`Int64`:
 
 ```leanOutput computeValueDefinition
 def Decimal.computeValue : String → Option Int :=
-fun s => computeValue Decimal.grammar Decimal.valueExpr s
+fun s => scannerComputeValue Decimal.grammar Decimal.valueExpr s
 ```
 
 The distinction is visible in these three results. A valid decimal computes normally, the

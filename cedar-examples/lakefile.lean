@@ -43,3 +43,6 @@ lean_exe docs where
 
 lean_exe playground where
   root := `PlaygroundMain
+
+lean_exe scanner_benchmark where
+  root := `ScannerBenchmark

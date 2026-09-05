@@ -14,13 +14,13 @@
  limitations under the License.
 -/
 
-import Triptych.Architecture.Decode
+import Triptych.Archive.ReferenceDecoder
 import Triptych.Theorems.Roundtrip
 
 /-!
 # Value coherence: the computed value is grammar-determined, not decoder-selected
 
-`decode` (`Triptych.Architecture.Decode`) enumerates *every* full-consumption parse of the
+`decode` (`Triptych.Archive.ReferenceDecoder`) enumerates *every* full-consumption parse of the
 start production and returns the FIRST one (`List.head?`); `computeValueF`/`computeValue` then
 read the value off that one capture map. Recognition (`IsWf`) forgets captures entirely
 (`decodeSome_iff_IsWf` quantifies the capture map away), so nothing in the roundtrip forces an

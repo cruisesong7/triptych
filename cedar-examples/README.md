@@ -43,6 +43,9 @@ matrix is:
 | Datetime generated / checked external | 74/74 each |
 | IPv4 generated / readable spec / checked external | 89/89 each |
 | IPv6 generated / readable spec / checked external | 89/89 each |
+
+Run `lake exe scanner_benchmark` for paired scanner/reference-decoder measurements on Decimal
+and IPv6. The benchmark checks equal acceptance counts and reports timing without a CI threshold.
 | IPv6 printer roundtrip | 52/52 |
 
 The build aborts on any mismatch; the current total is zero failures.

@@ -23,11 +23,10 @@ open Triptych
 open CedarExamples.Decimal
 ```
 
-The previous chapter described Triptych's current boundary. This chapter turns that boundary
-into three development tracks, ordered by how much of the system they change. Better automation
-reduces proof effort around the existing artifacts. A faster backend changes parser execution
-while preserving the same specification. Broader grammar coverage changes what the DSL can
-express.
+The previous chapter described Triptych's current boundary. This chapter records the completed
+scanner replacement and then turns the remaining boundary into two development tracks. Better
+automation reduces proof effort around the existing artifacts. Broader grammar coverage changes
+what the DSL can express.
 
 # Generalizing automation
 
@@ -46,12 +45,30 @@ Each extension should have a focused theorem-level test and at least one complet
 Success means fewer repeated proof steps and clearer failures, without changing the generated
 parser or allowing automation to manufacture semantic facts.
 
-# Faster executable parsers
+# Scanner backend and performance
 
-The generated {lit}`parser.lean` names {lit}`decodeView`, {lit}`computeValue`, {lit}`parse`, and
-their contracts. These definitions are executable, but the current engine is designed first as
-a transparent reference decoder: it enumerates possible splits and chooses the first complete
-parse. Its performance has not yet been characterized as an optimized parser.
+The original executable engine was also the proof-oriented reference decoder. It materialized
+lists containing every candidate split, filtered them for complete parses, and selected the
+first result. That definition is easy to inspect, but it performs work and allocation that a
+generated parser does not need.
+
+Generated parsers now use {name}`Triptych.scan`. Its continuation-based search discards a failed
+candidate immediately and stops at the first complete parse. It covers every current grammar
+form, including quoted strings and separated repetition. Grammars accepted by
+{name}`Triptych.Grammar.staticUnique` also receive a boundary-driven path that avoids candidate
+prefix enumeration.
+
+The old {name}`Triptych.decode` remains executable as an archived reference semantics. It is not
+a runtime fallback. The replacement is justified by a grammar-generic theorem:
+
+```lean (name := scannerAgreement)
+#check @Triptych.scan_eq_decode
+```
+
+The proof first shows that scanning each symbol, sequence, and production is exactly ordered
+{name}`List.findSome?` over the reference candidates. Therefore both engines choose the same
+capture map, including for ambiguous grammars where ordering matters. Existing readable
+specifications, values, constraints, and parser contracts are unchanged.
 
 The reference decoder exposes the bounds that make this search total:
 
@@ -66,16 +83,52 @@ The reference decoder exposes the bounds that make this search total:
 search limits, not a runtime complexity theorem: separate choices can multiply into many
 backtracking branches.
 
-The current {lit}`parser_benchmark` smoke test repeatedly parses complete-graph inputs at orders
-8 and 16. It detects gross execution failures but has no timing threshold. This track should:
+The scanner now also exposes a proof-only cost profile. It counts complete root candidates that
+reach the final empty-suffix check. The profile is proved to return exactly the complete
+scanner's result:
 
-1. establish reproducible benchmarks and performance thresholds;
-2. specialize deterministic grammar fragments to avoid unnecessary split enumeration; and
-3. prove that the optimized backend agrees with the same readable specification and parser
-   contracts.
+```lean (name := scannerProfileAgreement)
+#check @Triptych.scanSearchProfile_result
+```
 
-The reference decoder can then remain a simple executable oracle, while applications use the
-optimized backend.
+For every grammar and input, the checked candidates are bounded by the finite candidate tree:
+
+```lean (name := scannerCandidateBound)
+#check @Triptych.scannerCandidateChecks_le
+```
+
+When the certified fast path succeeds, no complete-candidate backtracking occurs:
+
+```lean (name := scannerFastPathCost)
+#check @Triptych.scannerCandidateChecks_eq_zero_of_fastScan
+```
+
+This formalizes the search guarantee without hiding the hard case. An ambiguous grammar can
+have an exponential candidate tree, so Triptych does not claim a grammar-wide polynomial bound.
+The theorem is about scanner search choices, not compiler-specific wall-clock time or allocation;
+those remain benchmarked empirically.
+
+The paired benchmarks run the scanner and reference decoder on the same input and verify that
+both accept the same number of iterations. One arm64 development-build run produced:
+
+* Graph K8, 28 characters, 1,000 parses: 2,084 us versus 31,355 us, or 15.0x faster,
+  with 0 of 28 complete candidates checked;
+* Graph K16, 120 characters, 250 parses: 1,562 us versus 103,394 us, or 66.1x faster,
+  with 0 of 120 complete candidates checked;
+* Graph K32, 496 characters, 25 parses: 564 us versus 152,855 us, or 270.7x faster,
+  with 0 of 496 complete candidates checked;
+* Decimal, 1,000 parses: 2,876 us versus 18,660 us, or 6.4x faster, with 0 of 4
+  complete candidates checked;
+* full IPv6, 100 parses: 2,902 us versus 52,774 us, or 18.1x faster, with all 4
+  complete candidates checked; and
+* compressed IPv6, 100 parses: 16,445 us versus 20,679 us, or 1.2x faster, with all 13
+  complete candidates checked.
+
+Run {lit}`lake exe parser_benchmark` in {lit}`other-examples/` and
+{lit}`lake exe scanner_benchmark` in {lit}`cedar-examples/` to reproduce the comparison.
+Timings vary by machine and build mode, so CI treats these as smoke measurements rather than
+fixed thresholds. The important correctness evidence is {name}`Triptych.scan_eq_decode`; the
+measurements explain why the scanner is now the runtime engine.
 
 # Broader grammar coverage
 

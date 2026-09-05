@@ -22,6 +22,7 @@ import Triptych.Architecture.Constraint
 import Triptych.Architecture.Assemble
 import Triptych.Architecture.Emit
 import Triptych.Theorems.RelationalParser
+import Triptych.Theorems.Scanner
 import Triptych.Theorems.Unambiguity
 import Triptych.Theorems.Value
 
@@ -702,7 +703,7 @@ def elabTriptych : CommandElab := fun stx => do
           let instAccId := mkIdentFrom name (name.getId ++ `instDecidableIsValid)
           emitSound (← `(instance $instGrammarId:ident : DecidablePred $startIsWfId := fun s =>
                         @decidable_of_iff _ _ ($grammarEquivId s)
-                          (Triptych.decIsWf $grammarIdent (by decide) s)))
+                          (Triptych.decIsWfScanner $grammarIdent (by decide) s)))
           emitSound (← `(instance $instWfId:ident : DecidablePred $wfSurfId := fun s =>
                         @decidable_of_iff _ _ ($wfEquivId s).symm inferInstance))
           if hasValueConstraints then
@@ -937,7 +938,7 @@ def elabTriptych : CommandElab := fun stx => do
         -- DSL tier: `computeValue` via the analyzable `ValExpr` (Int-valued).
         let cvIdent := mkIdentFrom name (name.getId ++ `computeValue)
         emitEngine (← `(def $cvIdent (s : String) : Option Int :=
-                      Triptych.computeValue $grammarIdent $veIdent s))
+                      Triptych.scannerComputeValue $grammarIdent $veIdent s))
       else if hasValueEsc then
         -- ESCAPE tier: `computeValue` via `computeValueMap` and the author's `valueFn` (a
         -- `CaptureMap → α`). The value type is arbitrary (inferred from `valueFn`), so this
@@ -947,7 +948,7 @@ def elabTriptych : CommandElab := fun stx => do
         let cvIdent := mkIdentFrom name (name.getId ++ `computeValue)
         let vfnIdent := mkIdentFrom name (name.getId ++ `valueFn)
         emitEngine (← `(def $cvIdent (s : String) :=
-                      Triptych.computeValueMap $grammarIdent $vfnIdent s))
+                      Triptych.scannerComputeValueMap $grammarIdent $vfnIdent s))
       -- SPEC bundle (capitalized): `IsWf.<start>` remains the per-production grammar layout.
       -- Top-level `IsWf` adds every capture-only format constraint; only constraints that
       -- explicitly mention the final `value` remain in `SatisfiesConstraints`.
@@ -1462,7 +1463,8 @@ def elabTriptych : CommandElab := fun stx => do
           -- ── parser.lean ── engine + all auto-discharged proofs + the generated verified parser.
           let parserImports := ["Triptych.Architecture.GeneratedLinter"]
             ++ libImports
-            ++ ["Triptych.Theorems.DecodeLemmas", "Triptych.Theorems.Derivation"]
+            ++ ["Triptych.Theorems.DecodeLemmas", "Triptych.Theorems.Derivation",
+              "Triptych.Theorems.Scanner"]
             ++ (if grammarStaticallyUnique then
                   ["Triptych.Theorems.RelationalParser", "Triptych.Theorems.Unambiguity"]
                 else [])
@@ -1472,10 +1474,11 @@ def elabTriptych : CommandElab := fun stx => do
             mkHeader parserImports needsCallerParser ++
               "set_option linter.unnecessarySeqFocus false\n"
           let engineBanner := "/- ══════════════════════════════ engine ══════════════════════════════\n\
-            The executable counterpart of the spec. `decode` walks the grammar over an input\n\
-            string and returns its captured components; `computeValue` then evaluates the value\n\
-            function on those captures. Generated `DecidablePred` instances make the readable\n\
-            `IsWf` and `IsValid` predicates directly executable.\n\
+            The executable counterpart of the spec. A verified scanner extracts captured\n\
+            components and stops at the first complete parse. The archived reference `decode`\n\
+            is used only in the agreement proof, not as a runtime fallback. `computeValue`\n\
+            evaluates the value function on those captures. Generated `DecidablePred` instances\n\
+            make the readable `IsWf` and `IsValid` predicates directly executable.\n\
             `decodeView` packages the exact input and value/constraint captures as a typed `View`.\n\
             \n\
             The public format API stays capitalized: use `#eval decide (IsValid s)` and\n\
