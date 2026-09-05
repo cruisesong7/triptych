@@ -839,26 +839,6 @@ public theorem splitOnDoubleColon_eq (s : String) :
     s.splitOn "::" = legacySplitDoubleColonAux [] s.toList := by
   simpa [String.splitOn] using splitOnAuxDoubleColon "" [] s.toList []
 
-/-- The proof-oriented reference splitter agrees with Cedar's public implementation. -/
-public theorem splitDoubleColonAux_eq_cedar (current remaining : List Char) :
-    legacySplitDoubleColonAux current remaining =
-      Cedar.Spec.Ext.IPAddr.splitDoubleColonAux current remaining := by
-  induction current, remaining using legacySplitDoubleColonAux.induct with
-  | case1 current rest ih =>
-      rw [legacySplitDoubleColonAux.eq_1,
-        Cedar.Spec.Ext.IPAddr.splitDoubleColonAux.eq_1, ih]
-  | case2 current c rest hnomatch ih =>
-      rw [legacySplitDoubleColonAux.eq_2 current c rest hnomatch,
-        Cedar.Spec.Ext.IPAddr.splitDoubleColonAux.eq_2 current c rest hnomatch, ih]
-  | case3 current =>
-      rw [legacySplitDoubleColonAux.eq_3, Cedar.Spec.Ext.IPAddr.splitDoubleColonAux.eq_3]
-
-/-- Legacy `String.splitOn "::"` agrees with Cedar's public splitter. -/
-public theorem splitOnDoubleColon_eq_cedar (s : String) :
-    s.splitOn "::" = Cedar.Spec.Ext.IPAddr.splitDoubleColon s := by
-  rw [splitOnDoubleColon_eq]
-  exact splitDoubleColonAux_eq_cedar [] s.toList
-
 /-- Legacy `String.splitOn` is reconstructed by intercalating its nonempty separator. -/
 public theorem intercalateSplitOn (s sep : String) (hsep : sep ≠ "") :
     String.intercalate sep (s.splitOn sep) = s := by

@@ -558,7 +558,6 @@ theorem parseSegsV6_sound {s : String} {addr : IPv6Addr}
     (h : parseSegsV6 s = some addr) :
     ∃ c : AddrComponents, s = c.render ∧ c.Valid ∧ addr = c.denotation := by
   unfold parseSegsV6 at h
-  rw [← splitOnDoubleColon_eq_cedar] at h
   generalize hsplits : s.splitOn "::" = splits at h
   rcases splits with _ | ⟨left, rest⟩
   · simp at h
@@ -580,7 +579,6 @@ private theorem parseSegsV6_complete (c : AddrComponents) (hvalid : c.Valid) :
           parseNumSegsV6 (renderGroups parts) = some (groupValues parts) :=
         parseNumSegsV6_eq_some_iff.mpr ⟨parts, rfl, hall, rfl⟩
       unfold parseSegsV6
-      rw [← splitOnDoubleColon_eq_cedar]
       rw [hsplit]
       simp only
       rw [hparse]
@@ -603,7 +601,6 @@ private theorem parseSegsV6_complete (c : AddrComponents) (hvalid : c.Valid) :
       have hvalueCount : (groupValues left).length + (groupValues right).length < 8 := by
         simpa [groupValues] using hcount
       unfold parseSegsV6
-      rw [← splitOnDoubleColon_eq_cedar]
       rw [hsplit]
       simp only
       rw [hleftParse, hrightParse]
