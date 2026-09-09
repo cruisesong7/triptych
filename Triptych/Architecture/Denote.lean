@@ -32,9 +32,9 @@ bounded by **fuel** = the number of productions (a DAG cannot chain refs longer 
 that); the fuel is a definitional device, not an operational one — this is a `Prop`,
 not a parser.
 
-Scope of this increment: the recognition predicate `IsWf` only. The computational
-inverse `decode : String → Option Env` (with its roundtrip lemma) and decidability of
-`IsWf` are follow-on milestones.
+The computational inverse is the verified runtime scanner. Its agreement proof factors through
+an archived list-producing reference decoder, which keeps this denotation independent of the
+optimized execution strategy.
 -/
 
 namespace Triptych
@@ -44,6 +44,7 @@ def TokClass.mem : TokClass → Char → Prop
   | .digit,    c => '0' ≤ c ∧ c ≤ '9'
   | .hexDigit, c => ('0' ≤ c ∧ c ≤ '9') ∨ ('a' ≤ c ∧ c ≤ 'f') ∨ ('A' ≤ c ∧ c ≤ 'F')
   | .bit,      c => c = '0' ∨ c = '1'
+  | .asciiRange lo hi, c => lo ≤ c.toNat ∧ c.toNat ≤ hi
 
 instance (tok : TokClass) : DecidablePred tok.mem := by
   intro c; cases tok <;> unfold TokClass.mem <;> infer_instance

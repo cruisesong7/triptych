@@ -1,4 +1,4 @@
-import Triptych.Archive.ReferenceDecoder
+import Triptych.Architecture.Value
 
 /-!
 # Structural derivation helpers
@@ -43,7 +43,7 @@ def capturesSeparated (base : String) (captures : α → CaptureMap)
     (values : List α) : CaptureMap :=
   (base ++ "#count", toString values.length) :: values.flatMap captures
 
-/-- Structural validity of a separated repetition. The nonempty clause reflects the decoder's
+/-- Structural validity of a separated repetition. The nonempty clause reflects the scanner's
     `item (sep item)*` shape; generated grammars additionally guarantee `1 ≤ lo`. -/
 def RepetitionValid (lo : Nat) (hi : Option Nat) (valid : α → Prop)
     (values : List α) : Prop :=

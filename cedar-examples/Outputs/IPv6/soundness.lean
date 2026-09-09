@@ -81,7 +81,9 @@ theorem IPv6.extparse_complete (s : String) (i : IPv6Net) :
 
 theorem IPv6.parse_eq_extparse (s : String) :
     IPv6.parse s = ipv6Only s :=
-  Triptych.gatedParse_eq_external
+  by
+  rw [IPv6.parse_eq_gated]
+  exact Triptych.gatedParse_eq_external
     IPv6.IsValid IPv6.computeValue ipv6Only IPv6.extparse_sound IPv6.extparse_reject s
 
 theorem IPv6.extparse_eq_some_iff_view (s : String) (i : IPv6Net) :

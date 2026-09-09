@@ -22,14 +22,10 @@ classifier / spec-generator consume. It records **only the syntactic skeleton** 
 DAG of named productions in an EBNF subset, matching the `::=` grammars written in
 `doc/CedarDoc/*.lean`.
 
-Deliberately *not* here: the value function. Per the design (see
-`Docs/DESIGN.md`), the value function is an *arbitrary Lean
-term* supplied alongside the grammar; it is never stored as first-order data.
-`computeValue = valueFn ∘ decode` is always available (the author writes `valueFn`,
-`decode` is synthesized from this syntax). The tool's job is to *analyze* that term's
-`Expr` at elaboration time to decide whether the contract proofs auto-discharge
-(affine) or need manual `sorry` holes (e.g. calendar arithmetic) — that analysis is
-NOT part of this data type.
+Deliberately *not* here: the value function. An analyzable `value` clause elaborates to the
+separate `ValExpr` AST, while a `value'` escape supplies a Lean function over captures.
+Generated computation composes either form with `scan`; the archived reference decoder is used
+only in proofs of the scanner and reconciliation layer.
 
 The class encoded here:
 * **DAG, non-recursive** — productions may reference other productions by name, but
@@ -50,6 +46,9 @@ inductive TokClass where
   | hexDigit
   /-- Binary digits `0`/`1` — the bit alphabet (adjacency-matrix strings, bitsets, flags). -/
   | bit
+  /-- An inclusive ASCII code-point range. This keeps compact textual encodings such as
+      Graph6 inside the grammar instead of expanding a character class into many alternatives. -/
+  | asciiRange (lo hi : Nat)
   deriving Repr, DecidableEq, Inhabited
 
 /-- Length constraint on a terminal token run (the `Digit⁺` / `Digit{4}` / `Digit{1,4}`
@@ -78,7 +77,7 @@ inductive Sym where
       `[lo, hi]` (`hi = none` ⟹ unbounded — an infinite language). This is the sole site
       of GROUP iteration (as opposed to `LenSpec`, which iterates a single leaf token run):
       IPv6 groups `H16 (':' H16){7}`, semver dot-lists, domain labels, CSV rows. `item` is a
-      strict subterm, so the denotation/decoder recurse into it structurally. -/
+      strict subterm, so the denotation and scanner recurse into it structurally. -/
   | rep (sep : String) (item : Sym) (lo : Nat) (hi : Option Nat)
   deriving Repr, DecidableEq, Inhabited
 
@@ -134,11 +133,11 @@ def allRefs : Sym → List String
   | .rep _ item _ _  => item.allRefs
   | _                => []
 
-/-- Every `rep` in this symbol is in the class where the reference decoder and the
+/-- Every `rep` in this symbol is in the class where the scanner/reference semantics and the
     denotation provably agree: (1) a **non-empty separator** — an empty separator is
-    degenerate for a *separated* list (the denotation would admit repetitions the decoder can
+    degenerate for a *separated* list (the denotation would admit repetitions the scanner can
     never enumerate, e.g. arbitrarily many empty items); and (2) **at least one required
-    item** (`1 ≤ lo`) — the decoder's `matchRep` structurally matches `item (sep item)*`, so
+    item** (`1 ≤ lo`) — matching structurally follows `item (sep item)*`, so
     it always consumes ≥ 1 item and can never produce the zero-item match that `lo = 0` would
     admit denotationally. The DSL rejects both degenerate cases at parse time, so this holds
     for every generated grammar; it is a `Bool` so concrete grammars discharge it by `decide`. -/
@@ -148,8 +147,8 @@ def repOk : Sym → Bool
 
 end Sym
 
-/-- Every `rep` in the grammar is in the decoder-agreeing class (see `Sym.repOk`). Decidable;
-    the hypothesis under which `decode` and `IsWf` provably agree. -/
+/-- Every `rep` in the grammar is in the scanner-agreeing class (see `Sym.repOk`). Decidable;
+    the hypothesis under which executable scanning and `IsWf` provably agree. -/
 def Grammar.repOk (g : Grammar) : Bool :=
   g.prods.all (fun p => p.alts.all (fun alt => alt.all (fun it => it.sym.repOk)))
 

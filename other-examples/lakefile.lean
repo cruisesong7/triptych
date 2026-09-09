@@ -3,13 +3,15 @@ open Lake DSL
 
 require triptych from ".."
 
-package graph
+package otherExamples
 
 @[default_target]
-lean_lib Graph where
+lean_lib OtherExamples where
   globs := #[
-    .one `Graph,
-    .submodules `Graph
+    .one `OtherExamples,
+    .submodules `Inputs,
+    .submodules `Outputs,
+    .submodules `Proofs
   ]
   defaultFacets := #[LeanLib.staticFacet]
 

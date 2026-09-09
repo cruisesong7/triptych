@@ -29,7 +29,7 @@ import Triptych.Theorems.Value
 /-!
 # `triptych` embedded DSL
 
-Surface syntax for flat non-recursive attribute grammars, transcribing the `::=`
+Surface syntax for acyclic, non-recursive attribute grammars, transcribing the `::=`
 grammars written in `doc/CedarDoc/*.lean`. Lean's own `syntax`/`declare_syntax_cat`
 framework does all the *parsing* of the notation; this module declares the notation
 and elaborates the resulting `Syntax` tree into the generated declarations.
@@ -65,9 +65,10 @@ triptych Decimal where
 Grammar notation:
 * a production is `Name ::= item item …`
 * an item is a fixed string literal, `str` (a quoted string literal), a nonterminal reference
-  (`ident`), a terminal (`digit`/`hexDigit`/`bit` with a length suffix), an optional `[item]`,
-  or separated repetition
+  (`ident`), a terminal (`digit`/`hexDigit`/`bit` or `ascii[lo,hi]` with a length suffix), an
+  optional `[item]`, or separated repetition
 * length suffix: `+` (one-or-more), `{n}` (exactly), `{lo,hi}` (between)
+* dependent suffix: `{f X …}` (exact width computed from earlier captures)
 
 Capture names are Lean identifiers. A name that collides with Lean or Triptych syntax must be
 escaped everywhere with guillemets, for example `«bit»`. Triptych preserves the semantic spelling,
@@ -91,6 +92,16 @@ syntax str                : fmtItem  -- literal
 syntax "digit" fmtLen     : fmtItem  -- decimal terminal
 syntax "hexDigit" fmtLen  : fmtItem  -- hex terminal
 syntax "bit" fmtLen       : fmtItem  -- binary terminal (`0`/`1`)
+syntax "ascii" "[" num "," num "]" fmtLen : fmtItem  -- inclusive ASCII range
+/-- A final decimal payload whose exact width is computed from earlier captures. -/
+syntax "digit" "{" ident (ppSpace rawIdent)+ "}" : fmtItem
+/-- A final hexadecimal payload whose exact width is computed from earlier captures. -/
+syntax "hexDigit" "{" ident (ppSpace rawIdent)+ "}" : fmtItem
+/-- A final bit payload whose exact width is computed from earlier captures. -/
+syntax "bit" "{" ident (ppSpace rawIdent)+ "}" : fmtItem
+/-- A final ASCII-range payload whose exact width is computed from earlier captures. -/
+syntax "ascii" "[" num "," num "]"
+  "{" ident (ppSpace rawIdent)+ "}" : fmtItem
 syntax rawIdent           : fmtItem  -- nonterminal reference
 syntax "[" fmtItem "]"    : fmtItem  -- optional
 -- Dedicated SIGN terminal: an optional leading `"-"`, whose CAPTURE denotes ±1 in `value` (bare
@@ -171,6 +182,60 @@ syntax (name := triptychCmd)
     (fmtParser)?
     (fmtPrinter)?
     (fmtTo)? : command
+
+/-- One capture-dependent exact-width terminal from the public grammar syntax. The first
+    implementation deliberately supports a final, delimiter-bounded field, which can be
+    lowered to the existing grammar/constraint pipeline without changing flat grammars. -/
+private structure SizedTerminalSpec where
+  production : String
+  token : TokClass
+  widthFn : TSyntax `ident
+  widthArgs : Array (TSyntax `ident)
+  location : Syntax
+
+/-- Recognize the dependent-width terminal forms. -/
+private def parseSizedTerminal? :
+    TSyntax `fmtItem →
+      CommandElabM (Option (TokClass × TSyntax `ident × Array (TSyntax `ident)))
+  | `(fmtItem| digit { $f:ident $args:ident* }) =>
+      pure (some (.digit, f, args))
+  | `(fmtItem| hexDigit { $f:ident $args:ident* }) =>
+      pure (some (.hexDigit, f, args))
+  | `(fmtItem| bit { $f:ident $args:ident* }) =>
+      pure (some (.bit, f, args))
+  | `(fmtItem| ascii [ $lo:num , $hi:num ] { $f:ident $args:ident* }) => do
+      let lower := lo.getNat
+      let upper := hi.getNat
+      if upper < lower then
+        throwErrorAt hi s!"ASCII range upper bound {upper} is below lower bound {lower}"
+      if 127 < upper then
+        throwErrorAt hi s!"ASCII range upper bound {upper} exceeds 127"
+      pure (some (.asciiRange lower upper, f, args))
+  | _ => pure none
+
+/-- The ordinary grammar that safely over-approximates a dependent-width token: either empty
+    or one-or-more characters of the requested class. The generated width condition later
+    selects exactly the width requested by the header captures. -/
+private def sizedTerminalProduction (name : String) (token : TokClass) : Production :=
+  {
+    name
+    alts := [
+      [{ sym := .lit "" }],
+      [{ sym := .term token .atLeastOne }]
+    ]
+  }
+
+private def sizedTerminalProductionTerm (name : String) (token : TokClass) :
+    CommandElabM (TSyntax `term) := do
+  let tokenTerm ← match token with
+    | .digit => `(TokClass.digit)
+    | .hexDigit => `(TokClass.hexDigit)
+    | .bit => `(TokClass.bit)
+    | .asciiRange lo hi =>
+        `((TokClass.asciiRange $(quote lo) $(quote hi) : TokClass))
+  `(Production.mk $(Syntax.mkStrLit name)
+      [[SymItem.mk (Sym.lit "") false],
+       [SymItem.mk (Sym.term $tokenTerm LenSpec.atLeastOne) false]])
 
 /-- Elaborate a `fmtLen` into a `LenSpec` term. -/
 def elabLen : TSyntax `fmtLen → CommandElabM (TSyntax `term)
@@ -364,6 +429,16 @@ partial def elabSym : TSyntax `fmtItem → CommandElabM (TSyntax `term)
   | `(fmtItem| digit $l:fmtLen)   => do `(Sym.term TokClass.digit $(← elabLen l))
   | `(fmtItem| hexDigit $l:fmtLen) => do `(Sym.term TokClass.hexDigit $(← elabLen l))
   | `(fmtItem| bit $l:fmtLen)     => do `(Sym.term TokClass.bit $(← elabLen l))
+  | `(fmtItem| ascii [ $lo:num , $hi:num ] $l:fmtLen) =>
+      do
+        let lower := lo.getNat
+        let upper := hi.getNat
+        if upper < lower then
+          throwErrorAt hi s!"ASCII range upper bound {upper} is below lower bound {lower}"
+        if 127 < upper then
+          throwErrorAt hi s!"ASCII range upper bound {upper} exceeds 127"
+        `(Sym.term ((TokClass.asciiRange $(quote lower) $(quote upper) : TokClass))
+            $(← elabLen l))
   | `(fmtItem| rep $inner:fmtItem sepBy $sep:str $l:fmtLen) => do
       if sep.getString.isEmpty then
         throwErrorAt sep "repetition separator must be non-empty (an empty separator makes the \
@@ -373,13 +448,18 @@ partial def elabSym : TSyntax `fmtItem → CommandElabM (TSyntax `term)
           zero-item repetition has no separated-list decoding"
       let (lo, hi) ← elabRepBounds l
       `(Sym.rep $sep $(← elabSym inner) $lo $hi)
-  | `(fmtItem| $i:ident)          => do
-      if i.getId.toString == "str" then
-        `(Sym.str)
-      else
-        validateCaptureIdent i
-        `(Sym.ref $(Syntax.mkStrLit i.getId.toString))
-  | s                             => throwErrorAt s "unrecognized grammar item"
+  | item => do
+      if (← parseSizedTerminal? item).isSome then
+        throwErrorAt item
+          "a dependent-width terminal must be the sole right-hand side of a named production"
+      match item with
+      | `(fmtItem| $i:ident) => do
+          if i.getId.toString == "str" then
+            `(Sym.str)
+          else
+            validateCaptureIdent i
+            `(Sym.ref $(Syntax.mkStrLit i.getId.toString))
+      | s => throwErrorAt s "unrecognized grammar item"
 
 /-- Elaborate an item into a `SymItem` term, setting `optional` for `[…]`. The `sign` terminal
     lowers to the SAME `SymItem` as `["-"]` (an optional literal `-`) — sign is grammar sugar, so
@@ -403,6 +483,11 @@ def elabSeq : TSyntax `fmtSeq → CommandElabM (TSyntax `term)
 def elabProd : TSyntax `fmtProd → CommandElabM (TSyntax `term)
   | `(fmtProd| $lhs:ident ::= $alts:fmtSeq|*) => do
       validateCaptureIdent lhs
+      if let [onlyAlt] := alts.getElems.toList then
+        if let `(fmtSeq| $items:fmtItem*) := onlyAlt then
+          if let [onlyItem] := items.toList then
+            if let some (token, _, _) ← parseSizedTerminal? onlyItem then
+              return ← sizedTerminalProductionTerm lhs.getId.toString token
       let altTerms ← alts.getElems.mapM elabSeq
       let sep : Syntax.TSepArray `term "," := .ofElems altTerms
       `(Production.mk $(Syntax.mkStrLit lhs.getId.toString) [$sep,*])
@@ -431,6 +516,15 @@ partial def parseSym : TSyntax `fmtItem → CommandElabM Sym
   | `(fmtItem| digit $l:fmtLen)    => do pure (.term .digit (← parseLen l))
   | `(fmtItem| hexDigit $l:fmtLen) => do pure (.term .hexDigit (← parseLen l))
   | `(fmtItem| bit $l:fmtLen)      => do pure (.term .bit (← parseLen l))
+  | `(fmtItem| ascii [ $lo:num , $hi:num ] $l:fmtLen) =>
+      do
+        let lower := lo.getNat
+        let upper := hi.getNat
+        if upper < lower then
+          throwErrorAt hi s!"ASCII range upper bound {upper} is below lower bound {lower}"
+        if 127 < upper then
+          throwErrorAt hi s!"ASCII range upper bound {upper} exceeds 127"
+        pure (.term (.asciiRange lower upper) (← parseLen l))
   | `(fmtItem| rep $inner:fmtItem sepBy $sep:str $l:fmtLen) => do
       if sep.getString.isEmpty then
         throwErrorAt sep "repetition separator must be non-empty (an empty separator makes the \
@@ -440,13 +534,18 @@ partial def parseSym : TSyntax `fmtItem → CommandElabM Sym
           zero-item repetition has no separated-list decoding"
       let (lo, hi) ← parseRepBounds l
       pure (.rep sep.getString (← parseSym inner) lo hi)
-  | `(fmtItem| $i:ident)           => do
-      if i.getId.toString == "str" then
-        pure .str
-      else
-        validateCaptureIdent i
-        pure (.ref i.getId.toString)
-  | s                              => throwErrorAt s "unrecognized grammar item"
+  | item => do
+      if (← parseSizedTerminal? item).isSome then
+        throwErrorAt item
+          "a dependent-width terminal must be the sole right-hand side of a named production"
+      match item with
+      | `(fmtItem| $i:ident) => do
+          if i.getId.toString == "str" then
+            pure .str
+          else
+            validateCaptureIdent i
+            pure (.ref i.getId.toString)
+      | s => throwErrorAt s "unrecognized grammar item"
 
 def parseItem : TSyntax `fmtItem → CommandElabM SymItem
   | `(fmtItem| [ $inner:fmtItem ]) => do pure { sym := ← parseSym inner, optional := true }
@@ -460,6 +559,11 @@ def parseSeq : TSyntax `fmtSeq → CommandElabM Seq
 def parseProd : TSyntax `fmtProd → CommandElabM Production
   | `(fmtProd| $lhs:ident ::= $alts:fmtSeq|*) => do
       validateCaptureIdent lhs
+      if let [onlyAlt] := alts.getElems.toList then
+        if let `(fmtSeq| $items:fmtItem*) := onlyAlt then
+          if let [onlyItem] := items.toList then
+            if let some (token, _, _) ← parseSizedTerminal? onlyItem then
+              return sizedTerminalProduction lhs.getId.toString token
       pure { name := lhs.getId.toString, alts := ← alts.getElems.toList.mapM parseSeq }
   | s => throwErrorAt s "unrecognized production"
 
@@ -592,6 +696,76 @@ def elabTriptych : CommandElab := fun stx => do
       let startName := (prodVals.head?.map (·.name)).getD name.getId.toString
       let gval : Triptych.Grammar :=
         { start := startName, prods := prodVals }
+      let mut sizedTerminals : Array SizedTerminalSpec := #[]
+      for prodStx in prods do
+        if let `(fmtProd| $lhs:ident ::= $alts:fmtSeq|*) := prodStx then
+          for alternative in alts.getElems do
+            if let `(fmtSeq| $items:fmtItem*) := alternative then
+              for item in items do
+                if let some (token, widthFn, widthArgs) ← parseSizedTerminal? item then
+                  unless alts.getElems.size = 1 && items.size = 1 do
+                    throwErrorAt item
+                      "a dependent-width terminal must be the sole right-hand side of a named \
+                        production"
+                  for argument in widthArgs do
+                    validateCaptureIdent argument
+                  sizedTerminals := sizedTerminals.push
+                    {
+                      production := lhs.getId.toString
+                      token
+                      widthFn
+                      widthArgs
+                      location := item.raw
+                    }
+      if 1 < sizedTerminals.size then
+        if let some second := sizedTerminals[1]? then
+          throwErrorAt second.location
+            "this Triptych release supports one dependent-width field per declaration"
+      for sized in sizedTerminals do
+        if sized.production = startName then
+          throwErrorAt sized.location
+            "a dependent width must describe a final payload field, not the start production"
+        for argument in sized.widthArgs do
+          let capture := argument.getId.toString
+          unless gval.prods.any (·.name = capture) do
+            throwErrorAt argument
+              m!"dependent-width argument `{capture}` is not a grammar production"
+          if capture = sized.production then
+            throwErrorAt argument
+              "a dependent field cannot compute its width from that same field"
+        let some root := gval.startProd?
+          | throwErrorAt sized.location "the start production is missing"
+        let [rootAlt] := root.alts
+          | throwErrorAt sized.location
+              "dependent width currently requires a single-alternative start production"
+        let some finalItem := rootAlt.getLast?
+          | throwErrorAt sized.location "the start production cannot be empty"
+        unless finalItem = { sym := .ref sized.production } do
+          throwErrorAt sized.location m!"`{sized.production}` must be the final field of the \
+            start production when it has a dependent width"
+        let headerItems := rootAlt.dropLast
+        let hasDelimiter := headerItems.any fun item =>
+          match item with
+          | { sym := .lit literal, optional := false } => !literal.isEmpty
+          | _ => false
+        unless hasDelimiter do
+          throwErrorAt sized.location
+            "dependent width currently requires a nonempty literal delimiter before the final \
+              payload"
+        for argument in sized.widthArgs do
+          let capture := argument.getId.toString
+          unless headerItems.any (fun item => item = { sym := .ref capture }) do
+            throwErrorAt argument m!"dependent-width argument `{capture}` must be captured \
+              before the final `{sized.production}` field in the start production"
+        let referenceCount : Nat :=
+          gval.prods.foldl (fun total production =>
+            total + production.alts.foldl (fun subtotal alternative =>
+              subtotal + alternative.foldl (fun occurrences item =>
+                occurrences + if item.sym.allRefs.contains sized.production then 1 else 0) 0)
+              0) 0
+        unless referenceCount = 1 do
+          throwErrorAt sized.location m!"`{sized.production}` must be referenced exactly once \
+            when it has a dependent width"
       if let some cycle := gval.cycle? then
         let cycleStart := cycle.headD startName
         let mut cycleLoc : Syntax := name
@@ -841,7 +1015,7 @@ def elabTriptych : CommandElab := fun stx => do
           if isList && !repeatedCaptures.contains i.getId.toString then
             throwErrorAt i m!"list argument `[{i.getId}]` does not name a repeated item. \
               Declare `rep {i.getId} sepBy \"...\" <len>` before reading all of its spans."
-      let hasOpaque := !escEntries.isEmpty
+      let hasOpaque := !escEntries.isEmpty || !sizedTerminals.isEmpty
       -- DSL constraint exprs (may be empty even when `constraints'` is present).
       let dslExprs : Array (TSyntax `constraintExpr) := match cs with
         | some csStx => csStx.raw[1].getArgs.map (⟨·⟩)
@@ -853,6 +1027,26 @@ def elabTriptych : CommandElab := fun stx => do
           unless i.getId == `value do
             validateCaptureIdent i
         validateCounts e.raw parsed.constraint.countCaptures
+      let sizedEngineTerms : Array (TSyntax `term) ← sizedTerminals.mapM fun sized => do
+        let payloadTerm ←
+          `((Triptych.CaptureMap.toEnv m $(Syntax.mkStrLit sized.production)).getD "")
+        let widthArgs : Array (TSyntax `term) ← sized.widthArgs.mapM fun argument =>
+          `((Triptych.CaptureMap.toEnv m
+              $(Syntax.mkStrLit argument.getId.toString)).getD "")
+        `(ConstraintEntry.opaqueMap ConstraintPhase.wellFormed
+            (fun m : CaptureMap =>
+              ($payloadTerm).length == $sized.widthFn $widthArgs*))
+      let sizedReadableTerms : Array (TSyntax `term) ← sizedTerminals.mapM fun sized => do
+        let payload :=
+          mkIdent (Name.mkSimple (Triptych.surfaceBinder sized.production))
+        let widthArgs : Array (TSyntax `term) := sized.widthArgs.map fun argument =>
+          ⟨(mkIdent
+            (Name.mkSimple (Triptych.surfaceBinder argument.getId.toString))).raw⟩
+        `(($payload).length = $sized.widthFn $widthArgs*)
+      let sizedCaps : List (String × Bool) :=
+        sizedTerminals.toList.flatMap fun sized =>
+          (sized.production, false) ::
+            sized.widthArgs.toList.map fun argument => (argument.getId.toString, false)
       -- `parseConstraintEntryWith` preserves whether the ORIGINAL expression mentioned `value`
       -- while producing its semantic `Constraint` AST. Every downstream artifact consumes this
       -- one parsed array.
@@ -862,7 +1056,7 @@ def elabTriptych : CommandElab := fun stx => do
         parsedConstraints.filter (fun entry => entry.phase == .value)
       let wfConstraintAsts := wfConstraintEntries.map (·.constraint)
       let valueConstraintAsts := valueConstraintEntries.map (·.constraint)
-      if cs.isSome || cse.isSome then
+      if cs.isSome || cse.isSome || !sizedTerminals.isEmpty then
         -- ENGINE list: every entry carries its preserved phase. A `constraints'` escape is
         -- intrinsically a well-formedness constraint and receives the complete capture map.
         let valueEngineRef : Option (ValExpr × TSyntax `term) ← match valueAst?, veIdent? with
@@ -873,7 +1067,8 @@ def elabTriptych : CommandElab := fun stx => do
         let escTerms ← escEntries.mapM (fun (f, is) => do
           `(ConstraintEntry.opaqueMap ConstraintPhase.wellFormed
               $(← liftMacroM (Triptych.opaqueMapClosure f is))))
-        let csep : Syntax.TSepArray `term "," := .ofElems (dslTerms ++ escTerms)
+        let csep : Syntax.TSepArray `term "," :=
+          .ofElems (dslTerms ++ escTerms ++ sizedEngineTerms)
         emitEngine (← `(def $cIdent : List ConstraintEntry := [$csep,*]))
         -- A final `value` reference renders readably as `<Name>.value <components>`.
         let valueReadableRef : Option (ValExpr × TSyntax `term) ← match valueAst?, veIdent? with
@@ -894,7 +1089,8 @@ def elabTriptych : CommandElab := fun stx => do
         let escCaps := escEntries.toList.flatMap (fun (_, is) =>
           is.toList.map (fun (i, isList) => (i.getId.toString, isList)))
         let wfCaps :=
-          ((wfConstraintAsts.toList.flatMap Constraint.captures).map (·, false) ++ escCaps)
+          ((wfConstraintAsts.toList.flatMap Constraint.captures).map (·, false) ++ escCaps ++
+              sizedCaps)
             |>.eraseDups
         let valCaps :=
           (valueConstraintAsts.toList.flatMap Constraint.captures ++ valueCaps).eraseDups
@@ -902,12 +1098,12 @@ def elabTriptych : CommandElab := fun stx => do
         let constraintLoc := match cs, cse with
           | some constraintsSection, _ => constraintsSection.raw
           | _, some constraintsSection => constraintsSection.raw
-          | _, _ => name.raw
+          | _, _ => (sizedTerminals[0]?).map (·.location) |>.getD name.raw
         validateSurfaceBinders constraintLoc "the well-formedness constraint function"
           (wfCaps.map (·.1)) true
         validateSurfaceBinders constraintLoc "the value constraint function" (valCaps.map (·.1))
-        unless wfRTerms.isEmpty && escRTerms.isEmpty do
-          let wfBody ← match (wfRTerms ++ escRTerms).toList with
+        unless wfRTerms.isEmpty && escRTerms.isEmpty && sizedReadableTerms.isEmpty do
+          let wfBody ← match (wfRTerms ++ escRTerms ++ sizedReadableTerms).toList with
             | []      => `(True)
             | x :: xs => xs.foldlM (fun acc p => `($acc ∧ $p)) x
           let wfBinders : Array (TSyntax ``Lean.Parser.Term.bracketedBinder) ←
@@ -1114,6 +1310,9 @@ def elabTriptych : CommandElab := fun stx => do
           let validSurf   := mkIdentFrom name (name.getId ++ `IsValid)
           let cvIdent     := mkIdentFrom name (name.getId ++ `computeValue)
           let parseId     := mkIdentFrom name (name.getId ++ `parse)
+          let parseEqGatedId := mkIdentFrom name (name.getId ++ `parse_eq_gated)
+          let parseEqGatedRw ←
+            `(Lean.Parser.Tactic.rwRule| $parseEqGatedId:ident)
           let (dTy, dNm) ← Triptych.ofSpecCodomainBinder ofSpecT
           let dId := mkIdent dNm
           let (vTy, vNm) ← Triptych.optionPayloadBinder cvIdent
@@ -1123,9 +1322,11 @@ def elabTriptych : CommandElab := fun stx => do
                 $toSpecT ($ofSpecT $vId) = $vId := by sorry))
           emitContractGen (← `(theorem $soundToSpecId (s : String) ($dId : $dTy) :
               $parseId s = some $dId →
-                $validSurf s ∧ $cvIdent s = some ($toSpecT $dId) :=
-            Triptych.gatedParseOfSpec_sound_toSpec
-              $validSurf $cvIdent $ofSpecT $toSpecT $toSpecOfSpecId s $dId))
+                $validSurf s ∧ $cvIdent s = some ($toSpecT $dId) := by
+            intro hparse
+            rw [$parseEqGatedRw] at hparse
+            exact Triptych.gatedParseOfSpec_sound_toSpec
+              $validSurf $cvIdent $ofSpecT $toSpecT $toSpecOfSpecId s $dId hparse))
       -- EXTERNAL-PARSER obligations (→ soundness file): with a `parser <p>`
       -- clause naming an EXISTING external parser, emit `<Name>.sound`/`.complete`/`.reject` as
       -- `sorry`d theorems (design §16.1), stated over the SURFACE `<Name>.IsValid`/
@@ -1463,7 +1664,7 @@ def elabTriptych : CommandElab := fun stx => do
           -- ── parser.lean ── engine + all auto-discharged proofs + the generated verified parser.
           let parserImports := ["Triptych.Architecture.GeneratedLinter"]
             ++ libImports
-            ++ ["Triptych.Theorems.DecodeLemmas", "Triptych.Theorems.Derivation",
+            ++ ["Triptych.Archive.DecodeLemmas", "Triptych.Theorems.Derivation",
               "Triptych.Theorems.Scanner"]
             ++ (if grammarStaticallyUnique then
                   ["Triptych.Theorems.RelationalParser", "Triptych.Theorems.Unambiguity"]
@@ -1492,10 +1693,13 @@ def elabTriptych : CommandElab := fun stx => do
             parse view. Derived `DecidablePred` instances make the surface predicates executable\n\
             via the engine. No `sorry`. -/"
           let parserBanner := "/- ═══════════════════════════════ parser ══════════════════════════════\n\
-            The generated correct-by-construction parser `parse` (= `computeValue` gated on the\n\
-            decidable `IsValid`) together with its guarantees — `parse_sound`, `parse_complete`,\n\
-            `parse_reject`, `parse_view`, and typed `parse_eq_some_iff_view` /\n\
-            `parse_eq_none_iff_view` normal forms — all AUTO-DISCHARGED here.\n\
+            The generated correct-by-construction parser `parse` scans once, checks constraints\n\
+            on that capture map, and computes the result from the same captures. `parse_eq_gated`\n\
+            proves equality with the readable validity-gated presentation. Its correctness and\n\
+            search-cost guarantees — `parse_sound`, `parse_complete`, `parse_reject`,\n\
+            `parse_profile_result`, `parse_candidateChecks_le`, `parse_view`, and typed\n\
+            `parse_eq_some_iff_view` / `parse_eq_none_iff_view` normal forms — are all\n\
+            AUTO-DISCHARGED here.\n\
             When an external parser is declared, `checkedExtParse` additionally validates each\n\
             external result against this parser and ships an AUTO-DISCHARGED soundness theorem.\n\
             A verified parser, no `sorry`. -/"
@@ -1590,16 +1794,22 @@ Triptych DSL — the vocabulary of `triptych <Name> where …`.
 Prefer these forms; the `opaque` escapes are a LAST resort (they hide the value/constraint
 from analysis and put correctness on you).
 
-── grammar ──  (required; a flat non-recursive DAG of `::=` productions)
+── grammar ──  (required; an acyclic, non-recursive DAG of `::=` productions)
   Name ::= item item … | alt | …     one or more `|`-separated alternatives
   item forms:
     \"lit\"                            a string literal (separators, unit tags)
     Nonterminal                      a reference to another production (the DAG edge)
-    digit<len> / hexDigit<len> / bit<len>   a terminal token run
+    digit<len> / hexDigit<len> / bit<len>   a built-in terminal token run
+    ascii[lo,hi]<len>               characters in an inclusive ASCII range
+    bit{f X …}                      final payload whose exact width is `f X …`
     [ item ]                         optional
     sign                             optional leading '-' (only as a production's SOLE rhs)
     rep item sepBy \"sep\" <len>       separated repetition (sep non-empty, count ≥ 1)
   <len> suffix:  +  (one-or-more)   {n}  (exactly n)   {lo,hi}  (between)
+  A dependent width currently requires a sole named payload production, referenced once as the final
+  field of a single-alternative start rule after a nonempty literal delimiter. `f` receives the
+  earlier capture strings and returns the exact character count. The same form is available for
+  digit, hexDigit, bit, and ascii[lo,hi].
 
   CAPTURE RULE: only NAMED productions are captured — a capture `X` in `value`/`constraints`
   always means \"the span matched by the production named X\". Bare literals/terminals inside a

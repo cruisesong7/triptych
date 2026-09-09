@@ -8,7 +8,7 @@ import Triptych.Architecture.Constraint
 import Triptych.Architecture.Assemble
 import Triptych.Theorems.Reconcile
 import Triptych.Theorems.Value
-import Triptych.Theorems.DecodeLemmas
+import Triptych.Archive.DecodeLemmas
 import Triptych.Theorems.Derivation
 import Triptych.Theorems.Scanner
 import Outputs.Datetime.spec
@@ -1387,10 +1387,13 @@ theorem Datetime.computeValue_view (s : String) :
     rfl
 
 /- ═══════════════════════════════ parser ══════════════════════════════
-The generated correct-by-construction parser `parse` (= `computeValue` gated on the
-decidable `IsValid`) together with its guarantees — `parse_sound`, `parse_complete`,
-`parse_reject`, `parse_view`, and typed `parse_eq_some_iff_view` /
-`parse_eq_none_iff_view` normal forms — all AUTO-DISCHARGED here.
+The generated correct-by-construction parser `parse` scans once, checks constraints
+on that capture map, and computes the result from the same captures. `parse_eq_gated`
+proves equality with the readable validity-gated presentation. Its correctness and
+search-cost guarantees — `parse_sound`, `parse_complete`, `parse_reject`,
+`parse_profile_result`, `parse_candidateChecks_le`, `parse_view`, and typed
+`parse_eq_some_iff_view` / `parse_eq_none_iff_view` normal forms — are all
+AUTO-DISCHARGED here.
 When an external parser is declared, `checkedExtParse` additionally validates each
 external result against this parser and ships an AUTO-DISCHARGED soundness theorem.
 A verified parser, no `sorry`. -/
@@ -1405,25 +1408,62 @@ theorem Datetime.computeValue_isSome (s : String) : Datetime.IsValid s → (Date
   exact hengine.1.1
 
 def Datetime.parse (s : String) :=
-  Triptych.gatedParseOfSpec Datetime.IsValid Datetime.computeValue millisToDatetime s
+  Triptych.scannerParseMap Datetime.grammar Datetime.constraints Datetime.valueFn millisToDatetime s
+
+theorem Datetime.parse_eq_gated (s : String) :
+    Datetime.parse s = Triptych.gatedParseOfSpec Datetime.IsValid Datetime.computeValue millisToDatetime s :=
+  by
+  unfold Datetime.parse Datetime.computeValue
+  exact
+    Triptych.scannerParseMap_eq_surfaceGatedParseOfSpec Datetime.grammar Datetime.constraints Datetime.valueFn
+      millisToDatetime Datetime.IsValid Datetime.IsValid_equiv s
+
+theorem Datetime.parse_profile_result (s : String) :
+    (Triptych.scannerParseMapProfile Datetime.grammar Datetime.constraints Datetime.valueFn millisToDatetime s).result =
+      Datetime.parse s :=
+  by
+  unfold Datetime.parse
+  exact Triptych.scannerParseMapProfile_result Datetime.grammar Datetime.constraints Datetime.valueFn millisToDatetime s
+
+theorem Datetime.parse_candidateChecks_le (s : String) :
+    (Triptych.scannerParseMapProfile Datetime.grammar Datetime.constraints Datetime.valueFn millisToDatetime
+          s).candidateChecks ≤
+      Triptych.scannerCandidateBudget Datetime.grammar s :=
+  Triptych.scannerParseMap_candidateChecks_le Datetime.grammar Datetime.constraints Datetime.valueFn millisToDatetime s
+
+theorem Datetime.parse_candidateChecks_eq_zero_of_fastScan (s : String)
+    (hunique : (Datetime.grammar).staticUnique = true) {captures : Triptych.CaptureMap}
+    (hscan : Triptych.fastScan Datetime.grammar s = some captures) :
+    (Triptych.scannerParseMapProfile Datetime.grammar Datetime.constraints Datetime.valueFn millisToDatetime
+          s).candidateChecks =
+      0 :=
+  Triptych.scannerParseMap_candidateChecks_eq_zero_of_fastScan Datetime.grammar Datetime.constraints Datetime.valueFn
+    millisToDatetime s hunique hscan
 
 theorem Datetime.parse_sound (s : String) (d : Cedar.Spec.Ext.Datetime) :
     Datetime.parse s = some d → Datetime.IsValid s ∧ (Datetime.computeValue s).map millisToDatetime = some d :=
-  Triptych.gatedParseOfSpec_sound _ _ _ s d
+  by
+  rw [Datetime.parse_eq_gated]
+  exact Triptych.gatedParseOfSpec_sound _ _ _ s d
 
 theorem Datetime.parse_complete (s : String) (d : Cedar.Spec.Ext.Datetime) :
     Datetime.IsValid s → (Datetime.computeValue s).map millisToDatetime = some d → Datetime.parse s = some d :=
-  Triptych.gatedParseOfSpec_complete _ _ _ s d
+  by
+  rw [Datetime.parse_eq_gated]
+  exact Triptych.gatedParseOfSpec_complete _ _ _ s d
 
 theorem Datetime.parse_reject (s : String) : Datetime.parse s = none ↔ ¬Datetime.IsValid s :=
-  Triptych.gatedParseOfSpec_reject _ _ _ Datetime.computeValue_isSome s
+  by
+  rw [Datetime.parse_eq_gated]
+  exact Triptych.gatedParseOfSpec_reject _ _ _ Datetime.computeValue_isSome s
 
 theorem Datetime.parse_view (s : String) :
     Datetime.parse s =
       if decide (Datetime.IsValid s) then (Datetime.decodeView s).map (millisToDatetime ∘ Datetime.View.denotation)
       else none :=
   by
-  unfold Datetime.parse Triptych.gatedParseOfSpec Triptych.gatedParse
+  rw [Datetime.parse_eq_gated]
+  unfold Triptych.gatedParseOfSpec Triptych.gatedParse
   rw [Datetime.computeValue_view]
   split <;> simp [Option.map_map]
 

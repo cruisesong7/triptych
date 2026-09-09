@@ -4,7 +4,7 @@ This file captures the project state a fresh coding session needs to continue th
 
 ## What this repo is
 
-A Lean 4 library: a **grammar-to-specification compiler** for flat, non-recursive
+A Lean 4 library: a **grammar-to-specification compiler** for acyclic, non-recursive
 string-format parsers. A `triptych` DSL block (grammar + optional value/constraints)
 generates a readable surface spec, an analyzable/executable engine, and an auto-emitted,
 machine-checked reconciliation proof between them. See `../README.md` (overview) and
@@ -97,8 +97,8 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
   `grammarValueCoherent` when it succeeds.
 - `RelationalParser.lean` — connects generated gated parsers to capture-level `Denotes`.
   Under `GrammarCaptureFunctional`, it covers map/environment readers and `ofSpec` variants;
-  the DSL emits `parse_iff_denotes` from these theorems. Graph has this contract and all three
-  static all-input certificates. Other example `#eval`s remain representative.
+  the DSL emits `parse_iff_denotes` from these theorems when the conservative static checker
+  succeeds. Other example `#eval`s remain representative.
 - `Reconcile.lean` — reusable lemmas for emitted grammar/full-WF equivalences (leaf
   `_matchesTerm`, `matchesSym_rep_iff`, reader-agreement `natOf_getD` etc.).
 - `Assemble.lean` — defines the generic `isWf`/`satisfiesConstraints` interpreters; `component`;
@@ -109,7 +109,11 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
 - `Syntax.lean` — the `triptych` command (DSL surface → core, elaborate, write the three
   generated files). Emits `gatedParse`/`parserContractsProof` (the verified parser) and
   splits output into `spec`/`parser`/`soundness` (see below).
-- `other-examples/Graph/` — the Cedar-free structured Graph example.
+- `other-examples/Inputs/Graph.lean` — the Cedar-free dependent-width Graph declaration.
+- `other-examples/Outputs/Graph/` — its generated specification and parser.
+- `other-examples/Proofs/Graph/` — executable Graph checks.
+- `other-examples/Inputs/Graph6.lean` and `Proofs/Graph6/Scanner.lean` — the staged Graph6
+  implementation and its checks.
 - `cedar-examples/Inputs/<Format>.lean`
   — each handwritten grammar runs
   `triptych` and writes up to THREE modules under `Outputs/<Format>/`: `spec.lean` (readable surface,
@@ -162,8 +166,10 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
 - Grammar: concatenation, alternation (`|`), optional `[x]`, terminals `digit`/`hexDigit`/`bit`
   with length `{n}`/`{lo,hi}`/`+`, the `sign` terminal (optional leading `-`, only as a
   production's sole rhs — see sign captures below), and separated group repetition
-  `rep <item> sepBy "<sep>" <len>`. Strict subclass of regular; NO recursion (not context-free),
-  NO data-dependent length.
+  `rep <item> sepBy "<sep>" <len>`. `Terminal{f X ...}` supports one exact-width final
+  payload after a literal delimiter; `f` reads earlier capture strings. General internal or
+  delimiter-free dependent boundaries use the architecture-level `scanDependent` API. Strict
+  subclass of regular at the lexical grammar tier; NO recursion (not context-free).
 - Constraints: capture-only forms, including arithmetic bounds, enter `wfPart`; only
   expressions explicitly mentioning final `value` enter `valPart`. Includes cardinality
   `card` and arbitrary-decidable capture escapes `constraints' f X Y` (so `IsWf` can be
@@ -235,9 +241,6 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
 6. Add UUIDv4/v7 and then DIMACS CNF after those utility improvements. Full JSON and SQL require
    a separate recursive-grammar project and are not near-term examples.
 
-Deferred housekeeping: consider Mathlib for the Graph representation as a separate toolchain
-upgrade and keep the concise `HACKATHON.md` pitch aligned with the main overview.
-
 ## Generated structural derivations
 
 Every production now has `<Name>.Derivation.<Production>`. Alternatives become constructors,
@@ -254,10 +257,10 @@ capture-functional grammar also gets `decode_render`. The root gets `toView`,
 
 The conventional SAT representation of a graph is the upper-triangle of its adjacency matrix
 as a space-separated bit assignment (the model read back from a Ramsey/coloring instance). The
-The Cedar-free Graph example parses that into a structured graph value. "One grammar for all
-orders" is achieved by a `bit+` grammar (any length) + a triangular-number constraint (carves
-out valid lengths) + a value that recovers `n` from the length — demonstrating the
-grammar-over-approximate / constraints-carve / value-interpret split. NOTE: DIMACS clauses are
-the *solver input* (distinct from the graph *assignment*); graph6 (6-bit packed) is the dense
-on-disk graph format and is a data-dependent-length case (out of grammar scope → hand-written
-decode).
+The Cedar-free package contains two related points in the design space:
+
+- `Graph` uses the public `bit{upperTriangleSize Order}` surface;
+- `Graph6` exercises the more general architecture-level `scanDependent` API.
+
+DIMACS clauses are the *solver input* (distinct from the graph *assignment*) and still need
+whitespace/comment tokens, zero-terminated clauses, and dependent collection counts.

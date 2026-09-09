@@ -8,7 +8,7 @@ import Triptych.Architecture.Constraint
 import Triptych.Architecture.Assemble
 import Triptych.Theorems.Reconcile
 import Triptych.Theorems.Value
-import Triptych.Theorems.DecodeLemmas
+import Triptych.Archive.DecodeLemmas
 import Triptych.Theorems.Derivation
 import Triptych.Theorems.Scanner
 import Outputs.SMT.SpecConstant.spec
@@ -677,10 +677,13 @@ theorem SpecConstant.computeValue_view (s : String) :
     rfl
 
 /- ═══════════════════════════════ parser ══════════════════════════════
-The generated correct-by-construction parser `parse` (= `computeValue` gated on the
-decidable `IsValid`) together with its guarantees — `parse_sound`, `parse_complete`,
-`parse_reject`, `parse_view`, and typed `parse_eq_some_iff_view` /
-`parse_eq_none_iff_view` normal forms — all AUTO-DISCHARGED here.
+The generated correct-by-construction parser `parse` scans once, checks constraints
+on that capture map, and computes the result from the same captures. `parse_eq_gated`
+proves equality with the readable validity-gated presentation. Its correctness and
+search-cost guarantees — `parse_sound`, `parse_complete`, `parse_reject`,
+`parse_profile_result`, `parse_candidateChecks_le`, `parse_view`, and typed
+`parse_eq_some_iff_view` / `parse_eq_none_iff_view` normal forms — are all
+AUTO-DISCHARGED here.
 When an external parser is declared, `checkedExtParse` additionally validates each
 external result against this parser and ships an AUTO-DISCHARGED soundness theorem.
 A verified parser, no `sorry`. -/
@@ -695,24 +698,61 @@ theorem SpecConstant.computeValue_isSome (s : String) : SpecConstant.IsValid s �
   exact hengine.1.1
 
 def SpecConstant.parse (s : String) :=
-  Triptych.gatedParse SpecConstant.IsValid SpecConstant.computeValue s
+  Triptych.scannerParseMap SpecConstant.grammar SpecConstant.constraints SpecConstant.valueFn id s
+
+theorem SpecConstant.parse_eq_gated (s : String) :
+    SpecConstant.parse s = Triptych.gatedParse SpecConstant.IsValid SpecConstant.computeValue s :=
+  by
+  unfold SpecConstant.parse SpecConstant.computeValue
+  exact
+    Triptych.scannerParseMap_eq_surfaceGated SpecConstant.grammar SpecConstant.constraints SpecConstant.valueFn
+      SpecConstant.IsValid SpecConstant.IsValid_equiv s
+
+theorem SpecConstant.parse_profile_result (s : String) :
+    (Triptych.scannerParseMapProfile SpecConstant.grammar SpecConstant.constraints SpecConstant.valueFn id s).result =
+      SpecConstant.parse s :=
+  by
+  unfold SpecConstant.parse
+  exact Triptych.scannerParseMapProfile_result SpecConstant.grammar SpecConstant.constraints SpecConstant.valueFn id s
+
+theorem SpecConstant.parse_candidateChecks_le (s : String) :
+    (Triptych.scannerParseMapProfile SpecConstant.grammar SpecConstant.constraints SpecConstant.valueFn id
+          s).candidateChecks ≤
+      Triptych.scannerCandidateBudget SpecConstant.grammar s :=
+  Triptych.scannerParseMap_candidateChecks_le SpecConstant.grammar SpecConstant.constraints SpecConstant.valueFn id s
+
+theorem SpecConstant.parse_candidateChecks_eq_zero_of_fastScan (s : String)
+    (hunique : (SpecConstant.grammar).staticUnique = true) {captures : Triptych.CaptureMap}
+    (hscan : Triptych.fastScan SpecConstant.grammar s = some captures) :
+    (Triptych.scannerParseMapProfile SpecConstant.grammar SpecConstant.constraints SpecConstant.valueFn id
+          s).candidateChecks =
+      0 :=
+  Triptych.scannerParseMap_candidateChecks_eq_zero_of_fastScan SpecConstant.grammar SpecConstant.constraints
+    SpecConstant.valueFn id s hunique hscan
 
 theorem SpecConstant.parse_sound (s : String) (v : Value) :
     SpecConstant.parse s = some v → SpecConstant.IsValid s ∧ SpecConstant.computeValue s = some v :=
-  Triptych.gatedParse_sound _ _ s v
+  by
+  rw [SpecConstant.parse_eq_gated]
+  exact Triptych.gatedParse_sound _ _ s v
 
 theorem SpecConstant.parse_complete (s : String) (v : Value) :
     SpecConstant.IsValid s → SpecConstant.computeValue s = some v → SpecConstant.parse s = some v :=
-  Triptych.gatedParse_complete _ _ s v
+  by
+  rw [SpecConstant.parse_eq_gated]
+  exact Triptych.gatedParse_complete _ _ s v
 
 theorem SpecConstant.parse_reject (s : String) : SpecConstant.parse s = none ↔ ¬SpecConstant.IsValid s :=
-  Triptych.gatedParse_reject _ _ SpecConstant.computeValue_isSome s
+  by
+  rw [SpecConstant.parse_eq_gated]
+  exact Triptych.gatedParse_reject _ _ SpecConstant.computeValue_isSome s
 
 theorem SpecConstant.parse_view (s : String) :
     SpecConstant.parse s =
       if decide (SpecConstant.IsValid s) then (SpecConstant.decodeView s).map SpecConstant.View.denotation else none :=
   by
-  unfold SpecConstant.parse Triptych.gatedParse
+  rw [SpecConstant.parse_eq_gated]
+  unfold Triptych.gatedParse
   rw [SpecConstant.computeValue_view]
 
 theorem SpecConstant.parse_eq_some_iff_view (s : String) (v : Value) :

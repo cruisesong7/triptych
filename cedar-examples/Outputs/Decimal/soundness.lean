@@ -38,8 +38,12 @@ theorem Decimal.toSpec_ofSpec (s : String) (v : Int) :
 theorem Decimal.parse_sound_toSpec (s : String) (i : Int64) :
     Decimal.parse s = some i →
       Decimal.IsValid s ∧ Decimal.computeValue s = some (Int64.toInt i) :=
-  Triptych.gatedParseOfSpec_sound_toSpec
+  by
+  intro hparse
+  rw [Decimal.parse_eq_gated] at hparse
+  exact Triptych.gatedParseOfSpec_sound_toSpec
     Decimal.IsValid Decimal.computeValue Int64.ofInt Int64.toInt Decimal.toSpec_ofSpec s i
+      hparse
 
 -- ANCHOR: decimalEncodeViewProof
 theorem Decimal.encode_view (i : Int64) :
@@ -131,7 +135,9 @@ theorem Decimal.extparse_complete (s : String) (d : Cedar.Spec.Ext.Decimal) :
 
 theorem Decimal.parse_eq_extparse (s : String) :
     Decimal.parse s = Cedar.Spec.Ext.Decimal.parse s :=
-  Triptych.gatedParseOfSpec_eq_external
+  by
+  rw [Decimal.parse_eq_gated]
+  exact Triptych.gatedParseOfSpec_eq_external
     Decimal.IsValid Decimal.computeValue Int64.ofInt Int64.toInt
       Cedar.Spec.Ext.Decimal.parse Decimal.extparse_sound Decimal.extparse_reject
       Decimal.ofSpec_toSpec s

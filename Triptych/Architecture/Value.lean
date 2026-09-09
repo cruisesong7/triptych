@@ -49,7 +49,7 @@ inductive ValExpr where
   | int    (field : String)
   /-- `len X` — character length of capture `X` (0 if absent). -/
   | len    (field : String)
-  /-- `count X` — number of elements matched by a `rep X ...` (0 if absent). The decoder
+  /-- `count X` — number of elements matched by a `rep X ...` (0 if absent). The scanner
       records this under the derived capture key `X#count`. -/
   | count  (field : String)
   /-- `sign X` — `-1` if capture `X` starts with `-`, else `+1` (used for the doc's
@@ -66,7 +66,7 @@ inductive ValExpr where
 /-- Reader: unsigned decimal value of a digit string (`"345" ↦ 345`).
 
     PRECONDITION: `s` is a run of ASCII digits `'0'..'9'` — guaranteed at every real call
-    site by the grammar's `TokClass.digit`/`IsWf` (via `decode`). On a non-digit char the
+    site by the grammar's `TokClass.digit`/`IsWf`. On a non-digit char the
     `Nat` truncated subtraction yields an unspecified (but total, non-crashing) value;
     *well-formedness*, not this reader, rejects non-digit inputs. The fold is left
     unguarded deliberately: the `else` branch would be dead code on valid input and would
@@ -89,12 +89,12 @@ def readInt (s : String) : Int :=
   if s.startsWith "-" then -(readNat (s.drop 1).toString : Int) else (readNat s : Int)
 
 /-- Evaluation environment: capture name ↦ its matched substring (absent ⟹ `none`).
-    In the full pipeline this comes from `decode`; here it is supplied directly. -/
+    In the full pipeline this comes from `scan`; here it is supplied directly. -/
 abbrev Env := String → Option String
 
 /-- A complete capture assignment: nonterminal name ↦ matched substring. Unlike `Env`, this
     representation preserves every occurrence of a repeated capture. It lives with the value
-    readers rather than the decoder so both values and constraints can consume collections
+    readers rather than the scanner so both values and constraints can consume collections
     without introducing an architecture import cycle. -/
 abbrev CaptureMap := List (String × String)
 

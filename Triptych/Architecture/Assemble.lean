@@ -134,14 +134,44 @@ def CompleteStmt (accepted : String → Prop) (val : String → Option β)
 def RejectStmt (accepted : String → Prop) (parse : String → Option α) : Prop :=
   ∀ s, parse s = none ↔ ¬ accepted s
 
-/-! ## The generated correct-by-construction parser
+/-! ## The generated single-scan parser -/
 
-Unlike the `sorry`'d contracts above (which relate an *external* hand-written parser to the
-spec), the tool can emit its OWN parser — `computeValue` gated on the decidable acceptance
-predicate — and DISCHARGE its three contracts for free. So every generated spec ships a real
-verified parser, not just an obligation surface. `gatedParse` yields the value exactly when
-the string is accepted; with `toSpec = id` the three `*Stmt`s become the lemmas below, whose only
-per-spec input is `hsome` (accepted ⟹ value present), itself uniform (see `Syntax.lean`). -/
+/-- Scan once, validate every constraint against that capture map, and compute the converted
+    value. This is the runtime primitive used by generated parsers. -/
+def scannerParseMap {β δ : Type} (g : Grammar) (constraints : List ConstraintEntry)
+    (valueFn : CaptureMap → β) (ofSpec : β → δ) (s : String) : Option δ :=
+  match scan g s with
+  | none => none
+  | some captures =>
+      if CaptureAccepts constraints captures then
+        some (ofSpec (valueFn captures))
+      else
+        none
+
+/-- Environment-reader specialization of `scannerParseMap`. -/
+def scannerParseF {β δ : Type} (g : Grammar) (constraints : List ConstraintEntry)
+    (valueFn : Env → β) (ofSpec : β → δ) (s : String) : Option δ :=
+  scannerParseMap g constraints (fun captures => valueFn captures.toEnv) ofSpec s
+
+/-- Analyzable `ValExpr` specialization of `scannerParseMap`. -/
+def scannerParse (g : Grammar) (constraints : List ConstraintEntry)
+    (valueExpr : ValExpr) (ofSpec : Int → δ) (s : String) : Option δ :=
+  scannerParseF g constraints valueExpr.eval ofSpec s
+
+/-- Once scanning succeeds, the two surface constraint phases are exactly the combined
+    capture-level check used by the single-scan parser. -/
+theorem captureAccepts_iff_of_scan_eq_some (g : Grammar) (constraints : List ConstraintEntry)
+    (s : String) {captures : CaptureMap} (hscan : scan g s = some captures) :
+    isWf g constraints s ∧ satisfiesConstraints g constraints s ↔
+      CaptureAccepts constraints captures := by
+  unfold isWf satisfiesConstraints captureMapOf CaptureAccepts
+  simp [hscan, forall_and]
+
+/-! ## Archived gated-parser presentation
+
+`gatedParse` is retained as a simple specification combinator and compatibility API. Generated
+parsers no longer execute it: `scannerParseMap` is proved equal to this presentation while
+avoiding its repeated validity and value scans. -/
 
 /-- The tool's own parser: yield the value exactly when `accepted` holds. -/
 def gatedParse (accepted : String → Prop) [DecidablePred accepted]
@@ -255,6 +285,132 @@ variable {δ : Type}
 def gatedParseOfSpec (accepted : String → Prop) [DecidablePred accepted]
     (val : String → Option β) (ofSpec : β → δ) (s : String) : Option δ :=
   (gatedParse accepted val s).map ofSpec
+
+/-- The single-scan parser is extensionally equal to the former gated implementation over the
+    generic engine predicates. -/
+theorem scannerParseMap_eq_gatedParseOfSpec
+    (g : Grammar) (constraints : List ConstraintEntry)
+    (valueFn : CaptureMap → β) (ofSpec : β → δ) (s : String) :
+    scannerParseMap g constraints valueFn ofSpec s =
+      gatedParseOfSpec
+        (fun input => isWf g constraints input ∧ satisfiesConstraints g constraints input)
+        (scannerComputeValueMap g valueFn) ofSpec s := by
+  unfold scannerParseMap gatedParseOfSpec gatedParse scannerComputeValueMap
+  cases hscan : scan g s with
+  | none => simp [hscan, isWf]
+  | some captures =>
+      have haccept :=
+        captureAccepts_iff_of_scan_eq_some g constraints s hscan
+      by_cases hcaptures : CaptureAccepts constraints captures
+      · have hvalid := haccept.mpr hcaptures
+        simp [hcaptures, hvalid]
+      · have hinvalid : ¬(isWf g constraints s ∧ satisfiesConstraints g constraints s) :=
+          fun hvalid => hcaptures (haccept.mp hvalid)
+        simp [hcaptures, hinvalid]
+
+/-- Environment-reader specialization of `scannerParseMap_eq_gatedParseOfSpec`. -/
+theorem scannerParseF_eq_gatedParseOfSpec
+    (g : Grammar) (constraints : List ConstraintEntry)
+    (valueFn : Env → β) (ofSpec : β → δ) (s : String) :
+    scannerParseF g constraints valueFn ofSpec s =
+      gatedParseOfSpec
+        (fun input => isWf g constraints input ∧ satisfiesConstraints g constraints input)
+        (scannerComputeValueF g valueFn) ofSpec s :=
+  scannerParseMap_eq_gatedParseOfSpec
+    g constraints (fun captures => valueFn captures.toEnv) ofSpec s
+
+/-- `ValExpr` specialization of `scannerParseMap_eq_gatedParseOfSpec`. -/
+theorem scannerParse_eq_gatedParseOfSpec
+    (g : Grammar) (constraints : List ConstraintEntry)
+    (valueExpr : ValExpr) (ofSpec : Int → δ) (s : String) :
+    scannerParse g constraints valueExpr ofSpec s =
+      gatedParseOfSpec
+        (fun input => isWf g constraints input ∧ satisfiesConstraints g constraints input)
+        (scannerComputeValue g valueExpr) ofSpec s :=
+  scannerParseF_eq_gatedParseOfSpec g constraints valueExpr.eval ofSpec s
+
+/-- Replace the generic engine acceptance predicate in
+    `scannerParseMap_eq_gatedParseOfSpec` with an equivalent readable surface predicate. -/
+theorem scannerParseMap_eq_surfaceGatedParseOfSpec
+    (g : Grammar) (constraints : List ConstraintEntry)
+    (valueFn : CaptureMap → β) (ofSpec : β → δ)
+    (accepted : String → Prop) [DecidablePred accepted]
+    (haccepted : ∀ input,
+      accepted input ↔ isWf g constraints input ∧ satisfiesConstraints g constraints input)
+    (s : String) :
+    scannerParseMap g constraints valueFn ofSpec s =
+      gatedParseOfSpec accepted (scannerComputeValueMap g valueFn) ofSpec s := by
+  rw [scannerParseMap_eq_gatedParseOfSpec]
+  unfold gatedParseOfSpec gatedParse
+  simp only [haccepted]
+
+/-- Environment-reader specialization of
+    `scannerParseMap_eq_surfaceGatedParseOfSpec`. -/
+theorem scannerParseF_eq_surfaceGatedParseOfSpec
+    (g : Grammar) (constraints : List ConstraintEntry)
+    (valueFn : Env → β) (ofSpec : β → δ)
+    (accepted : String → Prop) [DecidablePred accepted]
+    (haccepted : ∀ input,
+      accepted input ↔ isWf g constraints input ∧ satisfiesConstraints g constraints input)
+    (s : String) :
+    scannerParseF g constraints valueFn ofSpec s =
+      gatedParseOfSpec accepted (scannerComputeValueF g valueFn) ofSpec s :=
+  scannerParseMap_eq_surfaceGatedParseOfSpec
+    g constraints (fun captures => valueFn captures.toEnv) ofSpec accepted haccepted s
+
+/-- `ValExpr` specialization of `scannerParseMap_eq_surfaceGatedParseOfSpec`. -/
+theorem scannerParse_eq_surfaceGatedParseOfSpec
+    (g : Grammar) (constraints : List ConstraintEntry)
+    (valueExpr : ValExpr) (ofSpec : Int → δ)
+    (accepted : String → Prop) [DecidablePred accepted]
+    (haccepted : ∀ input,
+      accepted input ↔ isWf g constraints input ∧ satisfiesConstraints g constraints input)
+    (s : String) :
+    scannerParse g constraints valueExpr ofSpec s =
+      gatedParseOfSpec accepted (scannerComputeValue g valueExpr) ofSpec s :=
+  scannerParseF_eq_surfaceGatedParseOfSpec
+    g constraints valueExpr.eval ofSpec accepted haccepted s
+
+/-- No-conversion specialization of `scannerParseMap_eq_surfaceGatedParseOfSpec`. -/
+theorem scannerParseMap_eq_surfaceGated
+    (g : Grammar) (constraints : List ConstraintEntry)
+    (valueFn : CaptureMap → β)
+    (accepted : String → Prop) [DecidablePred accepted]
+    (haccepted : ∀ input,
+      accepted input ↔ isWf g constraints input ∧ satisfiesConstraints g constraints input)
+    (s : String) :
+    scannerParseMap g constraints valueFn id s =
+      gatedParse accepted (scannerComputeValueMap g valueFn) s := by
+  rw [scannerParseMap_eq_surfaceGatedParseOfSpec
+    g constraints valueFn id accepted haccepted s]
+  unfold gatedParseOfSpec
+  cases gatedParse accepted (scannerComputeValueMap g valueFn) s <;> rfl
+
+/-- Environment-reader specialization of `scannerParseMap_eq_surfaceGated`. -/
+theorem scannerParseF_eq_surfaceGated
+    (g : Grammar) (constraints : List ConstraintEntry)
+    (valueFn : Env → β)
+    (accepted : String → Prop) [DecidablePred accepted]
+    (haccepted : ∀ input,
+      accepted input ↔ isWf g constraints input ∧ satisfiesConstraints g constraints input)
+    (s : String) :
+    scannerParseF g constraints valueFn id s =
+      gatedParse accepted (scannerComputeValueF g valueFn) s :=
+  scannerParseMap_eq_surfaceGated
+    g constraints (fun captures => valueFn captures.toEnv) accepted haccepted s
+
+/-- `ValExpr` specialization of `scannerParseMap_eq_surfaceGated`. -/
+theorem scannerParse_eq_surfaceGated
+    (g : Grammar) (constraints : List ConstraintEntry)
+    (valueExpr : ValExpr)
+    (accepted : String → Prop) [DecidablePred accepted]
+    (haccepted : ∀ input,
+      accepted input ↔ isWf g constraints input ∧ satisfiesConstraints g constraints input)
+    (s : String) :
+    scannerParse g constraints valueExpr id s =
+      gatedParse accepted (scannerComputeValue g valueExpr) s :=
+  scannerParseF_eq_surfaceGated
+    g constraints valueExpr.eval accepted haccepted s
 
 /-- Soundness (`ofSpec` view): if the parser accepts `s` as `d`, then `s` is accepted and
     `(val s).map ofSpec = some d`. -/

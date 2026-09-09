@@ -14,7 +14,7 @@ other-examples package therefore has no cedar-lean dependency.
 ## 1. What the tool is (and is not)
 
 **It is** a *grammar-to-specification compiler*: given an (informal) grammar for a
-flat, non-recursive string format, it deterministically generates the Lean
+acyclic, non-recursive string format, it deterministically generates the Lean
 **specification** for that format plus the **contract theorem surface**. It also
 emits its OWN correct-by-construction parser (`gatedParse` = `computeValue`
 gated on the decidable acceptance predicate) and discharges that parser's
@@ -88,10 +88,12 @@ handles a leading `X ::= ["lit"]` reference when the unique remainder excludes `
 character, which certifies Decimal's optional sign without assigning priority to it. For
 grammars in this fragment, the DSL emits `grammarDecodeUnique`, derives
 `grammarCaptureFunctional`, and, when a value exists, emits `grammarValueCoherent` and
-`parse_iff_denotes`; Graph and Decimal receive all four. Relational parser contracts consume
-only capture functionality. Extending the checker to recursive FIRST sets, shared-prefix
-alternatives, general nullable sequences, and repetitions requires stronger split/disjointness
-reasoning.
+`parse_iff_denotes`; Decimal receives all four. The dependent-width Graph grammar lowers its
+payload to nullable lexical alternatives, which the current conservative checker does not
+certify. It still receives the verified parser contracts, while premise-free capture-coherence
+consequences require a separate certificate. Relational parser contracts consume only capture
+functionality. Extending the checker to recursive FIRST sets, shared-prefix alternatives,
+general nullable sequences, and repetitions requires stronger split/disjointness reasoning.
 
 Neither is "the compose side" nor "the decompose side" — they are two readings of
 one relation. The implemented relation has explicit layout, capture-constraint, value, and

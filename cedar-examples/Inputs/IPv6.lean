@@ -15,7 +15,6 @@
 -/
 
 import Triptych.Architecture.Syntax
-import Triptych.Archive.ReferenceDecoder
 import Triptych.Theorems.Roundtrip
 import Triptych.Theorems.Coherence
 import Cedar.Spec.Ext.IPAddr
@@ -32,7 +31,7 @@ Compressed ::= [Left] "::" [Right]
 
 Each present side is a separated repetition. The format constraint
 `count H16L + count H16R < 8` says that `::` replaces at least one group. `count` is an
-analyzable DSL reader backed by the repetition count already captured by the decoder, so this
+analyzable DSL reader backed by the repetition count already captured by the scanner, so this
 shared bound remains part of generated `IsWf` and its automatically generated equivalence
 proof.
 
@@ -51,7 +50,7 @@ export Cedar.Spec.Ext.IPAddr (IPv6Addr IPNet)
 abbrev IPv6Net := CIDR V6_WIDTH
 
 /-- Unsigned value of a hex-digit string (`"1a" ↦ 26`). PRECONDITION: `s` is a run of 1–4 hex
-    digits, guaranteed by the grammar's `hexDigit{1,4}` (via `decode`); a non-hex char folds to
+    digits, guaranteed by the grammar's `hexDigit{1,4}`; a non-hex char folds to
     a total-but-unspecified value, exactly as `readNat` treats non-decimal input. -/
 def readHex (s : String) : Nat :=
   s.foldl (fun n c =>

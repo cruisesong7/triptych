@@ -8,7 +8,7 @@ import Triptych.Architecture.Constraint
 import Triptych.Architecture.Assemble
 import Triptych.Theorems.Reconcile
 import Triptych.Theorems.Value
-import Triptych.Theorems.DecodeLemmas
+import Triptych.Archive.DecodeLemmas
 import Triptych.Theorems.Derivation
 import Triptych.Theorems.Scanner
 import Outputs.SMT.BitVector.spec
@@ -589,10 +589,13 @@ theorem BitVector.computeValue_view (s : String) :
     rfl
 
 /- ═══════════════════════════════ parser ══════════════════════════════
-The generated correct-by-construction parser `parse` (= `computeValue` gated on the
-decidable `IsValid`) together with its guarantees — `parse_sound`, `parse_complete`,
-`parse_reject`, `parse_view`, and typed `parse_eq_some_iff_view` /
-`parse_eq_none_iff_view` normal forms — all AUTO-DISCHARGED here.
+The generated correct-by-construction parser `parse` scans once, checks constraints
+on that capture map, and computes the result from the same captures. `parse_eq_gated`
+proves equality with the readable validity-gated presentation. Its correctness and
+search-cost guarantees — `parse_sound`, `parse_complete`, `parse_reject`,
+`parse_profile_result`, `parse_candidateChecks_le`, `parse_view`, and typed
+`parse_eq_some_iff_view` / `parse_eq_none_iff_view` normal forms — are all
+AUTO-DISCHARGED here.
 When an external parser is declared, `checkedExtParse` additionally validates each
 external result against this parser and ships an AUTO-DISCHARGED soundness theorem.
 A verified parser, no `sorry`. -/
@@ -607,24 +610,59 @@ theorem BitVector.computeValue_isSome (s : String) : BitVector.IsValid s → (Bi
   exact hengine.1.1
 
 def BitVector.parse (s : String) :=
-  Triptych.gatedParse BitVector.IsValid BitVector.computeValue s
+  Triptych.scannerParseMap BitVector.grammar BitVector.constraints BitVector.valueFn id s
+
+theorem BitVector.parse_eq_gated (s : String) :
+    BitVector.parse s = Triptych.gatedParse BitVector.IsValid BitVector.computeValue s :=
+  by
+  unfold BitVector.parse BitVector.computeValue
+  exact
+    Triptych.scannerParseMap_eq_surfaceGated BitVector.grammar BitVector.constraints BitVector.valueFn BitVector.IsValid
+      BitVector.IsValid_equiv s
+
+theorem BitVector.parse_profile_result (s : String) :
+    (Triptych.scannerParseMapProfile BitVector.grammar BitVector.constraints BitVector.valueFn id s).result =
+      BitVector.parse s :=
+  by
+  unfold BitVector.parse
+  exact Triptych.scannerParseMapProfile_result BitVector.grammar BitVector.constraints BitVector.valueFn id s
+
+theorem BitVector.parse_candidateChecks_le (s : String) :
+    (Triptych.scannerParseMapProfile BitVector.grammar BitVector.constraints BitVector.valueFn id s).candidateChecks ≤
+      Triptych.scannerCandidateBudget BitVector.grammar s :=
+  Triptych.scannerParseMap_candidateChecks_le BitVector.grammar BitVector.constraints BitVector.valueFn id s
+
+theorem BitVector.parse_candidateChecks_eq_zero_of_fastScan (s : String)
+    (hunique : (BitVector.grammar).staticUnique = true) {captures : Triptych.CaptureMap}
+    (hscan : Triptych.fastScan BitVector.grammar s = some captures) :
+    (Triptych.scannerParseMapProfile BitVector.grammar BitVector.constraints BitVector.valueFn id s).candidateChecks =
+      0 :=
+  Triptych.scannerParseMap_candidateChecks_eq_zero_of_fastScan BitVector.grammar BitVector.constraints BitVector.valueFn
+    id s hunique hscan
 
 theorem BitVector.parse_sound (s : String) (v : Value) :
     BitVector.parse s = some v → BitVector.IsValid s ∧ BitVector.computeValue s = some v :=
-  Triptych.gatedParse_sound _ _ s v
+  by
+  rw [BitVector.parse_eq_gated]
+  exact Triptych.gatedParse_sound _ _ s v
 
 theorem BitVector.parse_complete (s : String) (v : Value) :
     BitVector.IsValid s → BitVector.computeValue s = some v → BitVector.parse s = some v :=
-  Triptych.gatedParse_complete _ _ s v
+  by
+  rw [BitVector.parse_eq_gated]
+  exact Triptych.gatedParse_complete _ _ s v
 
 theorem BitVector.parse_reject (s : String) : BitVector.parse s = none ↔ ¬BitVector.IsValid s :=
-  Triptych.gatedParse_reject _ _ BitVector.computeValue_isSome s
+  by
+  rw [BitVector.parse_eq_gated]
+  exact Triptych.gatedParse_reject _ _ BitVector.computeValue_isSome s
 
 theorem BitVector.parse_view (s : String) :
     BitVector.parse s =
       if decide (BitVector.IsValid s) then (BitVector.decodeView s).map BitVector.View.denotation else none :=
   by
-  unfold BitVector.parse Triptych.gatedParse
+  rw [BitVector.parse_eq_gated]
+  unfold Triptych.gatedParse
   rw [BitVector.computeValue_view]
 
 theorem BitVector.parse_eq_some_iff_view (s : String) (v : Value) :

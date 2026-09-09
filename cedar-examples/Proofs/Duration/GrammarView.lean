@@ -1,6 +1,6 @@
 import Outputs.Duration.parser
 import CedarSupport.String
-import Triptych.Theorems.DecodeLemmas
+import Triptych.Archive.DecodeLemmas
 import Cedar.Thm.Ext.Duration.Grammar
 
 /-!

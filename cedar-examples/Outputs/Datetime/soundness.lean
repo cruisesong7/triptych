@@ -40,9 +40,12 @@ theorem Datetime.toSpec_ofSpec (s : String) (v : Int) :
 theorem Datetime.parse_sound_toSpec (s : String) (d : Cedar.Spec.Ext.Datetime) :
     Datetime.parse s = some d →
       Datetime.IsValid s ∧ Datetime.computeValue s = some (datetimeMillis d) :=
-  Triptych.gatedParseOfSpec_sound_toSpec
+  by
+  intro hparse
+  rw [Datetime.parse_eq_gated] at hparse
+  exact Triptych.gatedParseOfSpec_sound_toSpec
     Datetime.IsValid Datetime.computeValue millisToDatetime datetimeMillis
-      Datetime.toSpec_ofSpec s d
+      Datetime.toSpec_ofSpec s d hparse
 
 /- ══════════════════════ soundness · external parser ══════════════════════
 Obligations for validating YOUR OWN external parser against this specification:
@@ -79,7 +82,9 @@ theorem Datetime.extparse_complete (s : String) (d : Cedar.Spec.Ext.Datetime) :
 
 theorem Datetime.parse_eq_extparse (s : String) :
     Datetime.parse s = Cedar.Spec.Ext.Datetime.parse s :=
-  Triptych.gatedParseOfSpec_eq_external
+  by
+  rw [Datetime.parse_eq_gated]
+  exact Triptych.gatedParseOfSpec_eq_external
     Datetime.IsValid Datetime.computeValue millisToDatetime datetimeMillis
       Cedar.Spec.Ext.Datetime.parse Datetime.extparse_sound Datetime.extparse_reject
       millisToDatetime_datetimeMillis s

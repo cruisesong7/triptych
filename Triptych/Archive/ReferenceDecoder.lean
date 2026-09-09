@@ -14,8 +14,7 @@
  limitations under the License.
 -/
 
-import Triptych.Architecture.Grammar
-import Triptych.Architecture.Denote
+import Triptych.Architecture.Prefix
 import Triptych.Architecture.Value
 
 /-!
@@ -60,16 +59,6 @@ repetitions still require stronger analysis.
 -/
 
 namespace Triptych
-
-/-- Does the length-`k` prefix of `cs` satisfy the terminal `tok`/`ls`? Routes through the
-    single `matchesTerm` predicate (shared with the recognizer/spec), so the token semantics
-    is defined once; the `k ≤ cs.length` guard keeps the prefix a genuine prefix. -/
-def termPrefixOk (tok : TokClass) (ls : LenSpec) (cs : List Char) (k : Nat) : Bool :=
-  k ≤ cs.length && decide (matchesTerm tok ls (String.ofList (cs.take k)))
-
-/-- Does the length-`k` prefix of `cs` form a complete quoted string literal? -/
-def stringPrefixOk (cs : List Char) (k : Nat) : Bool :=
-  k ≤ cs.length && decide (IsStringLiteral (String.ofList (cs.take k)))
 
 /-- The `(sep item)*` tail: from position `cs`, every way to match zero-or-more further
     `sep item` groups. Each result is `(captures, remaining, k)` where `k` is the number of
