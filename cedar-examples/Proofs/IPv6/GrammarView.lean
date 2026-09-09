@@ -1,7 +1,7 @@
 import Outputs.IPv6.parser
 import CedarSupport.String
 import CedarSupport.StringInternals
-import Triptych.Theorems.DecodeRepLemmas
+import Triptych.Archive.DecodeRepLemmas
 import Triptych.Theorems.String
 
 /-!

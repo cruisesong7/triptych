@@ -2,7 +2,7 @@ import Outputs.IPv4.parser
 import CedarSupport.IPAddrInternals
 import CedarSupport.String
 import CedarSupport.StringInternals
-import Triptych.Theorems.DecodeLemmas
+import Triptych.Archive.DecodeLemmas
 import Triptych.Theorems.String
 
 /-!

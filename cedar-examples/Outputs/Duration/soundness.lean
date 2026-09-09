@@ -39,9 +39,12 @@ theorem Duration.toSpec_ofSpec (s : String) (v : Int) :
 theorem Duration.parse_sound_toSpec (s : String) (d : Cedar.Spec.Ext.Datetime.Duration) :
     Duration.parse s = some d →
       Duration.IsValid s ∧ Duration.computeValue s = some (durationMillis d) :=
-  Triptych.gatedParseOfSpec_sound_toSpec
+  by
+  intro hparse
+  rw [Duration.parse_eq_gated] at hparse
+  exact Triptych.gatedParseOfSpec_sound_toSpec
     Duration.IsValid Duration.computeValue millisToDuration durationMillis
-      Duration.toSpec_ofSpec s d
+      Duration.toSpec_ofSpec s d hparse
 
 theorem Duration.encode_view (d : Cedar.Spec.Ext.Datetime.Duration) :
     ∃ v : Duration.View,
@@ -134,7 +137,9 @@ theorem Duration.extparse_complete (s : String) (d : Cedar.Spec.Ext.Datetime.Dur
 
 theorem Duration.parse_eq_extparse (s : String) :
     Duration.parse s = Cedar.Spec.Ext.Datetime.Duration.parse s :=
-  Triptych.gatedParseOfSpec_eq_external
+  by
+  rw [Duration.parse_eq_gated]
+  exact Triptych.gatedParseOfSpec_eq_external
     Duration.IsValid Duration.computeValue millisToDuration durationMillis
       Cedar.Spec.Ext.Datetime.Duration.parse Duration.extparse_sound Duration.extparse_reject
       Duration.ofSpec_toSpec s

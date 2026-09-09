@@ -74,7 +74,9 @@ theorem IPv4.extparse_complete (s : String) (i : IPv4Net) :
 
 theorem IPv4.parse_eq_extparse (s : String) :
     IPv4.parse s = ipv4Only s :=
-  Triptych.gatedParse_eq_external
+  by
+  rw [IPv4.parse_eq_gated]
+  exact Triptych.gatedParse_eq_external
     IPv4.IsValid IPv4.computeValue ipv4Only IPv4.extparse_sound IPv4.extparse_reject s
 
 theorem IPv4.extparse_eq_some_iff_view (s : String) (i : IPv4Net) :

@@ -8,7 +8,7 @@ import Triptych.Architecture.Constraint
 import Triptych.Architecture.Assemble
 import Triptych.Theorems.Reconcile
 import Triptych.Theorems.Value
-import Triptych.Theorems.DecodeLemmas
+import Triptych.Archive.DecodeLemmas
 import Triptych.Theorems.Derivation
 import Triptych.Theorems.Scanner
 import Outputs.Duration.spec
@@ -1083,10 +1083,13 @@ theorem Duration.computeValue_view (s : String) :
     rfl
 
 /- ═══════════════════════════════ parser ══════════════════════════════
-The generated correct-by-construction parser `parse` (= `computeValue` gated on the
-decidable `IsValid`) together with its guarantees — `parse_sound`, `parse_complete`,
-`parse_reject`, `parse_view`, and typed `parse_eq_some_iff_view` /
-`parse_eq_none_iff_view` normal forms — all AUTO-DISCHARGED here.
+The generated correct-by-construction parser `parse` scans once, checks constraints
+on that capture map, and computes the result from the same captures. `parse_eq_gated`
+proves equality with the readable validity-gated presentation. Its correctness and
+search-cost guarantees — `parse_sound`, `parse_complete`, `parse_reject`,
+`parse_profile_result`, `parse_candidateChecks_le`, `parse_view`, and typed
+`parse_eq_some_iff_view` / `parse_eq_none_iff_view` normal forms — are all
+AUTO-DISCHARGED here.
 When an external parser is declared, `checkedExtParse` additionally validates each
 external result against this parser and ships an AUTO-DISCHARGED soundness theorem.
 A verified parser, no `sorry`. -/
@@ -1101,25 +1104,62 @@ theorem Duration.computeValue_isSome (s : String) : Duration.IsValid s → (Dura
   exact hengine.1.1
 
 def Duration.parse (s : String) :=
-  Triptych.gatedParseOfSpec Duration.IsValid Duration.computeValue millisToDuration s
+  Triptych.scannerParse Duration.grammar Duration.constraints Duration.valueExpr millisToDuration s
+
+theorem Duration.parse_eq_gated (s : String) :
+    Duration.parse s = Triptych.gatedParseOfSpec Duration.IsValid Duration.computeValue millisToDuration s :=
+  by
+  unfold Duration.parse Duration.computeValue
+  exact
+    Triptych.scannerParse_eq_surfaceGatedParseOfSpec Duration.grammar Duration.constraints Duration.valueExpr
+      millisToDuration Duration.IsValid Duration.IsValid_equiv s
+
+theorem Duration.parse_profile_result (s : String) :
+    (Triptych.scannerParseProfile Duration.grammar Duration.constraints Duration.valueExpr millisToDuration s).result =
+      Duration.parse s :=
+  by
+  unfold Duration.parse
+  exact Triptych.scannerParseProfile_result Duration.grammar Duration.constraints Duration.valueExpr millisToDuration s
+
+theorem Duration.parse_candidateChecks_le (s : String) :
+    (Triptych.scannerParseProfile Duration.grammar Duration.constraints Duration.valueExpr millisToDuration
+          s).candidateChecks ≤
+      Triptych.scannerCandidateBudget Duration.grammar s :=
+  Triptych.scannerParse_candidateChecks_le Duration.grammar Duration.constraints Duration.valueExpr millisToDuration s
+
+theorem Duration.parse_candidateChecks_eq_zero_of_fastScan (s : String)
+    (hunique : (Duration.grammar).staticUnique = true) {captures : Triptych.CaptureMap}
+    (hscan : Triptych.fastScan Duration.grammar s = some captures) :
+    (Triptych.scannerParseProfile Duration.grammar Duration.constraints Duration.valueExpr millisToDuration
+          s).candidateChecks =
+      0 :=
+  Triptych.scannerParse_candidateChecks_eq_zero_of_fastScan Duration.grammar Duration.constraints Duration.valueExpr
+    millisToDuration s hunique hscan
 
 theorem Duration.parse_sound (s : String) (d : Cedar.Spec.Ext.Datetime.Duration) :
     Duration.parse s = some d → Duration.IsValid s ∧ (Duration.computeValue s).map millisToDuration = some d :=
-  Triptych.gatedParseOfSpec_sound _ _ _ s d
+  by
+  rw [Duration.parse_eq_gated]
+  exact Triptych.gatedParseOfSpec_sound _ _ _ s d
 
 theorem Duration.parse_complete (s : String) (d : Cedar.Spec.Ext.Datetime.Duration) :
     Duration.IsValid s → (Duration.computeValue s).map millisToDuration = some d → Duration.parse s = some d :=
-  Triptych.gatedParseOfSpec_complete _ _ _ s d
+  by
+  rw [Duration.parse_eq_gated]
+  exact Triptych.gatedParseOfSpec_complete _ _ _ s d
 
 theorem Duration.parse_reject (s : String) : Duration.parse s = none ↔ ¬Duration.IsValid s :=
-  Triptych.gatedParseOfSpec_reject _ _ _ Duration.computeValue_isSome s
+  by
+  rw [Duration.parse_eq_gated]
+  exact Triptych.gatedParseOfSpec_reject _ _ _ Duration.computeValue_isSome s
 
 theorem Duration.parse_view (s : String) :
     Duration.parse s =
       if decide (Duration.IsValid s) then (Duration.decodeView s).map (millisToDuration ∘ Duration.View.denotation)
       else none :=
   by
-  unfold Duration.parse Triptych.gatedParseOfSpec Triptych.gatedParse
+  rw [Duration.parse_eq_gated]
+  unfold Triptych.gatedParseOfSpec Triptych.gatedParse
   rw [Duration.computeValue_view]
   split <;> simp [Option.map_map]
 

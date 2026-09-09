@@ -15,6 +15,7 @@
 -/
 
 import Triptych.Architecture.Scanner
+import Triptych.Archive.ScannerProfile
 import Triptych.Theorems.Unambiguity
 
 /-!
@@ -491,22 +492,140 @@ theorem scanSearch_candidateChecks_le (g : Grammar) (input : String) :
       exact profileCompleteCandidates_checks_le_length
         (matchProd g "" g.prods.length production input.toList)
 
+/-- The public scanner profile returns exactly the public scanner's result. -/
+@[simp] theorem scanProfile_result (g : Grammar) (input : String) :
+    (scanProfile g input).result = scan g input := by
+  unfold scanProfile scan
+  by_cases hunique : g.staticUnique = true
+  · simp only [hunique, if_true]
+    cases hfast : fastScan g input with
+    | none => simp
+    | some captures => simp
+  · rw [Bool.not_eq_true] at hunique
+    simp [hunique]
+
 /-- The public scanner's completed-candidate search is bounded for every grammar and input. -/
 theorem scannerCandidateChecks_le (g : Grammar) (input : String) :
     scannerCandidateChecks g input ≤ scannerCandidateBudget g input := by
-  unfold scannerCandidateChecks
-  split
-  · split
-    · simp
-    · exact scanSearch_candidateChecks_le g input
-  · exact scanSearch_candidateChecks_le g input
+  unfold scannerCandidateChecks scanProfile
+  by_cases hunique : g.staticUnique = true
+  · simp only [hunique, if_true]
+    cases hfast : fastScan g input with
+    | none =>
+        simp only
+        exact scanSearch_candidateChecks_le g input
+    | some captures => simp
+  · rw [Bool.not_eq_true] at hunique
+    simp only [hunique]
+    exact scanSearch_candidateChecks_le g input
 
 /-- A successful certified fast path performs no complete-candidate backtracking. -/
 theorem scannerCandidateChecks_eq_zero_of_fastScan
     (g : Grammar) (input : String) (hunique : g.staticUnique = true)
     {captures : CaptureMap} (hscan : fastScan g input = some captures) :
     scannerCandidateChecks g input = 0 := by
-  simp [scannerCandidateChecks, hunique, hscan]
+  unfold scannerCandidateChecks scanProfile
+  simp [hunique, hscan]
+
+/-- The parser profile returns exactly the generated single-scan parser's result. -/
+@[simp] theorem scannerParseMapProfile_result {β δ : Type} (g : Grammar)
+    (constraints : List ConstraintEntry) (valueFn : CaptureMap → β)
+    (ofSpec : β → δ) (input : String) :
+    (scannerParseMapProfile g constraints valueFn ofSpec input).result =
+      scannerParseMap g constraints valueFn ofSpec input := by
+  change
+    (match (scanProfile g input).result with
+      | none => none
+      | some captures =>
+          if CaptureAccepts constraints captures then
+            some (ofSpec (valueFn captures))
+          else
+            none) =
+      scannerParseMap g constraints valueFn ofSpec input
+  rw [scanProfile_result]
+  rfl
+
+/-- Profiling does not add another scan: the parser's completed-candidate count is exactly the
+    public scanner's count for the same grammar and input. -/
+@[simp] theorem scannerParseMapProfile_candidateChecks {β δ : Type} (g : Grammar)
+    (constraints : List ConstraintEntry) (valueFn : CaptureMap → β)
+    (ofSpec : β → δ) (input : String) :
+    (scannerParseMapProfile g constraints valueFn ofSpec input).candidateChecks =
+      scannerCandidateChecks g input := by
+  rfl
+
+/-- Every generated parser execution stays within the archived finite candidate budget. -/
+theorem scannerParseMap_candidateChecks_le {β δ : Type} (g : Grammar)
+    (constraints : List ConstraintEntry) (valueFn : CaptureMap → β)
+    (ofSpec : β → δ) (input : String) :
+    (scannerParseMapProfile g constraints valueFn ofSpec input).candidateChecks ≤
+      scannerCandidateBudget g input := by
+  rw [scannerParseMapProfile_candidateChecks]
+  exact scannerCandidateChecks_le g input
+
+/-- A generated parser using a successful certified fast scan performs no complete-candidate
+    backtracking. -/
+theorem scannerParseMap_candidateChecks_eq_zero_of_fastScan {β δ : Type} (g : Grammar)
+    (constraints : List ConstraintEntry) (valueFn : CaptureMap → β)
+    (ofSpec : β → δ) (input : String) (hunique : g.staticUnique = true)
+    {captures : CaptureMap} (hscan : fastScan g input = some captures) :
+    (scannerParseMapProfile g constraints valueFn ofSpec input).candidateChecks = 0 := by
+  rw [scannerParseMapProfile_candidateChecks]
+  exact scannerCandidateChecks_eq_zero_of_fastScan g input hunique hscan
+
+/-- Environment-reader parser profiles return exactly `scannerParseF`. -/
+@[simp] theorem scannerParseFProfile_result {β δ : Type} (g : Grammar)
+    (constraints : List ConstraintEntry) (valueFn : Env → β)
+    (ofSpec : β → δ) (input : String) :
+    (scannerParseFProfile g constraints valueFn ofSpec input).result =
+      scannerParseF g constraints valueFn ofSpec input :=
+  scannerParseMapProfile_result
+    g constraints (fun captures => valueFn captures.toEnv) ofSpec input
+
+/-- Analyzable-value parser profiles return exactly `scannerParse`. -/
+@[simp] theorem scannerParseProfile_result (g : Grammar)
+    (constraints : List ConstraintEntry) (valueExpr : ValExpr)
+    (ofSpec : Int → δ) (input : String) :
+    (scannerParseProfile g constraints valueExpr ofSpec input).result =
+      scannerParse g constraints valueExpr ofSpec input :=
+  scannerParseFProfile_result g constraints valueExpr.eval ofSpec input
+
+/-- Every environment-reader generated parser stays within the finite candidate budget. -/
+theorem scannerParseF_candidateChecks_le {β δ : Type} (g : Grammar)
+    (constraints : List ConstraintEntry) (valueFn : Env → β)
+    (ofSpec : β → δ) (input : String) :
+    (scannerParseFProfile g constraints valueFn ofSpec input).candidateChecks ≤
+      scannerCandidateBudget g input :=
+  scannerParseMap_candidateChecks_le
+    g constraints (fun captures => valueFn captures.toEnv) ofSpec input
+
+/-- Every analyzable-value generated parser stays within the finite candidate budget. -/
+theorem scannerParse_candidateChecks_le (g : Grammar)
+    (constraints : List ConstraintEntry) (valueExpr : ValExpr)
+    (ofSpec : Int → δ) (input : String) :
+    (scannerParseProfile g constraints valueExpr ofSpec input).candidateChecks ≤
+      scannerCandidateBudget g input :=
+  scannerParseF_candidateChecks_le g constraints valueExpr.eval ofSpec input
+
+/-- A successful certified fast scan gives an environment-reader parser zero complete-candidate
+    backtracking. -/
+theorem scannerParseF_candidateChecks_eq_zero_of_fastScan {β δ : Type} (g : Grammar)
+    (constraints : List ConstraintEntry) (valueFn : Env → β)
+    (ofSpec : β → δ) (input : String) (hunique : g.staticUnique = true)
+    {captures : CaptureMap} (hscan : fastScan g input = some captures) :
+    (scannerParseFProfile g constraints valueFn ofSpec input).candidateChecks = 0 :=
+  scannerParseMap_candidateChecks_eq_zero_of_fastScan
+    g constraints (fun found => valueFn found.toEnv) ofSpec input hunique hscan
+
+/-- A successful certified fast scan gives an analyzable-value parser zero complete-candidate
+    backtracking. -/
+theorem scannerParse_candidateChecks_eq_zero_of_fastScan (g : Grammar)
+    (constraints : List ConstraintEntry) (valueExpr : ValExpr)
+    (ofSpec : Int → δ) (input : String) (hunique : g.staticUnique = true)
+    {captures : CaptureMap} (hscan : fastScan g input = some captures) :
+    (scannerParseProfile g constraints valueExpr ofSpec input).candidateChecks = 0 :=
+  scannerParseF_candidateChecks_eq_zero_of_fastScan
+    g constraints valueExpr.eval ofSpec input hunique hscan
 
 @[simp] theorem scannerComputeValue_eq_computeValue
     (g : Grammar) (valueExpr : ValExpr) (input : String) :

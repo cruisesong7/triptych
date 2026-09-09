@@ -15,7 +15,6 @@
 -/
 
 import Triptych.Architecture.Syntax
-import Triptych.Archive.ReferenceDecoder
 import Triptych.Theorems.Roundtrip
 import Triptych.Theorems.Coherence
 import Cedar.Spec.Ext.Decimal
@@ -77,9 +76,5 @@ example :
     GrammarValueCoherent Decimal.grammar
       (fun m : CaptureMap => Decimal.valueFn m.toEnv) :=
   Decimal.grammarValueCoherent
-
--- Per-string diagnostics remain executable witnesses for representative inputs.
-#eval (Triptych.fullParses Decimal.grammar "-12.34").length    -- 1  (unique here)
-#eval decide (Triptych.DecodeUnique Decimal.grammar "-12.34") -- true
 
 end CedarExamples.Decimal

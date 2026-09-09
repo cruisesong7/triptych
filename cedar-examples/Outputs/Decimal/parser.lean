@@ -8,7 +8,7 @@ import Triptych.Architecture.Constraint
 import Triptych.Architecture.Assemble
 import Triptych.Theorems.Reconcile
 import Triptych.Theorems.Value
-import Triptych.Theorems.DecodeLemmas
+import Triptych.Archive.DecodeLemmas
 import Triptych.Theorems.Derivation
 import Triptych.Theorems.Scanner
 import Triptych.Theorems.RelationalParser
@@ -524,10 +524,13 @@ theorem Decimal.computeValue_view (s : String) :
     rfl
 
 /- ═══════════════════════════════ parser ══════════════════════════════
-The generated correct-by-construction parser `parse` (= `computeValue` gated on the
-decidable `IsValid`) together with its guarantees — `parse_sound`, `parse_complete`,
-`parse_reject`, `parse_view`, and typed `parse_eq_some_iff_view` /
-`parse_eq_none_iff_view` normal forms — all AUTO-DISCHARGED here.
+The generated correct-by-construction parser `parse` scans once, checks constraints
+on that capture map, and computes the result from the same captures. `parse_eq_gated`
+proves equality with the readable validity-gated presentation. Its correctness and
+search-cost guarantees — `parse_sound`, `parse_complete`, `parse_reject`,
+`parse_profile_result`, `parse_candidateChecks_le`, `parse_view`, and typed
+`parse_eq_some_iff_view` / `parse_eq_none_iff_view` normal forms — are all
+AUTO-DISCHARGED here.
 When an external parser is declared, `checkedExtParse` additionally validates each
 external result against this parser and ships an AUTO-DISCHARGED soundness theorem.
 A verified parser, no `sorry`. -/
@@ -542,24 +545,58 @@ theorem Decimal.computeValue_isSome (s : String) : Decimal.IsValid s → (Decima
   exact hengine.1.1
 
 def Decimal.parse (s : String) :=
-  Triptych.gatedParseOfSpec Decimal.IsValid Decimal.computeValue Int64.ofInt s
+  Triptych.scannerParse Decimal.grammar Decimal.constraints Decimal.valueExpr Int64.ofInt s
+
+theorem Decimal.parse_eq_gated (s : String) :
+    Decimal.parse s = Triptych.gatedParseOfSpec Decimal.IsValid Decimal.computeValue Int64.ofInt s :=
+  by
+  unfold Decimal.parse Decimal.computeValue
+  exact
+    Triptych.scannerParse_eq_surfaceGatedParseOfSpec Decimal.grammar Decimal.constraints Decimal.valueExpr Int64.ofInt
+      Decimal.IsValid Decimal.IsValid_equiv s
+
+theorem Decimal.parse_profile_result (s : String) :
+    (Triptych.scannerParseProfile Decimal.grammar Decimal.constraints Decimal.valueExpr Int64.ofInt s).result =
+      Decimal.parse s :=
+  by
+  unfold Decimal.parse
+  exact Triptych.scannerParseProfile_result Decimal.grammar Decimal.constraints Decimal.valueExpr Int64.ofInt s
+
+theorem Decimal.parse_candidateChecks_le (s : String) :
+    (Triptych.scannerParseProfile Decimal.grammar Decimal.constraints Decimal.valueExpr Int64.ofInt s).candidateChecks ≤
+      Triptych.scannerCandidateBudget Decimal.grammar s :=
+  Triptych.scannerParse_candidateChecks_le Decimal.grammar Decimal.constraints Decimal.valueExpr Int64.ofInt s
+
+theorem Decimal.parse_candidateChecks_eq_zero_of_fastScan (s : String) (hunique : (Decimal.grammar).staticUnique = true)
+    {captures : Triptych.CaptureMap} (hscan : Triptych.fastScan Decimal.grammar s = some captures) :
+    (Triptych.scannerParseProfile Decimal.grammar Decimal.constraints Decimal.valueExpr Int64.ofInt s).candidateChecks =
+      0 :=
+  Triptych.scannerParse_candidateChecks_eq_zero_of_fastScan Decimal.grammar Decimal.constraints Decimal.valueExpr
+    Int64.ofInt s hunique hscan
 
 theorem Decimal.parse_sound (s : String) (i : Int64) :
     Decimal.parse s = some i → Decimal.IsValid s ∧ (Decimal.computeValue s).map Int64.ofInt = some i :=
-  Triptych.gatedParseOfSpec_sound _ _ _ s i
+  by
+  rw [Decimal.parse_eq_gated]
+  exact Triptych.gatedParseOfSpec_sound _ _ _ s i
 
 theorem Decimal.parse_complete (s : String) (i : Int64) :
     Decimal.IsValid s → (Decimal.computeValue s).map Int64.ofInt = some i → Decimal.parse s = some i :=
-  Triptych.gatedParseOfSpec_complete _ _ _ s i
+  by
+  rw [Decimal.parse_eq_gated]
+  exact Triptych.gatedParseOfSpec_complete _ _ _ s i
 
 theorem Decimal.parse_reject (s : String) : Decimal.parse s = none ↔ ¬Decimal.IsValid s :=
-  Triptych.gatedParseOfSpec_reject _ _ _ Decimal.computeValue_isSome s
+  by
+  rw [Decimal.parse_eq_gated]
+  exact Triptych.gatedParseOfSpec_reject _ _ _ Decimal.computeValue_isSome s
 
 theorem Decimal.parse_view (s : String) :
     Decimal.parse s =
       if decide (Decimal.IsValid s) then (Decimal.decodeView s).map (Int64.ofInt ∘ Decimal.View.denotation) else none :=
   by
-  unfold Decimal.parse Triptych.gatedParseOfSpec Triptych.gatedParse
+  rw [Decimal.parse_eq_gated]
+  unfold Triptych.gatedParseOfSpec Triptych.gatedParse
   rw [Decimal.computeValue_view]
   split <;> simp [Option.map_map]
 
@@ -597,7 +634,8 @@ theorem Decimal.parse_iff_denotes (s : String) (i : Int64) :
       Triptych.Denotes Decimal.grammar (Triptych.CaptureAccepts Decimal.constraints)
         (Int64.ofInt ∘ fun m : Triptych.CaptureMap => Decimal.valueFn m.toEnv) s i :=
   by
-  unfold Decimal.parse Decimal.computeValue
+  rw [Decimal.parse_eq_gated]
+  unfold Decimal.computeValue
   simp only [Triptych.scannerComputeValue_eq_computeValue]
   unfold Triptych.computeValue
   simpa only [Triptych.gatedParseOfSpec, Triptych.gatedParse, Triptych.computeValueF, decide_eq_true_eq,

@@ -105,6 +105,27 @@ for the user, with routine parser plumbing discharged automatically.
   timing-report benchmark smoke test; total runtime remains branch-sensitive under backtracking;
 - make generated files and proof obligations easier to navigate from the source DSL.
 
+### Dependent formats
+
+- complete: add inclusive ASCII-range terminals to the grammar and generated readable specs;
+- complete: add `scanDependent`, which parses a header prefix and selects the remaining grammar
+  from its captures;
+- complete: prove exact equality with the source-ordered dependent reference semantics;
+- complete: prove recognition equivalence and a finite combined header/tail candidate bound;
+- complete: exercise one-, four-, and eight-character Graph6 headers, exact payload widths,
+  semantic padding validation, and structured graph decoding;
+- complete: add `Terminal{f Header...}` for one delimiter-bounded final payload and
+  generate its readable `IsWf`, typed `View`, structural `Derivation`, parser contracts, and
+  search-cost theorem;
+- lower delimiter-free and internal capture-dependent fields from the `triptych` command into
+  `scanDependent`;
+- generate combined readable `IsWf`, typed `View`, and structural `Derivation` artifacts for the
+  general staged form;
+- extend the cost model from completed candidates to character inspections and establish a
+  linear bound for deterministic exact-width dependent payloads;
+- add DIMACS CNF after the grammar can express whitespace-separated, zero-terminated clauses and
+  connect the declared clause count to the parsed collection.
+
 ### Standalone specialized parsers and foreign consumers
 
 The generic generated entry points are verified but still expose compiler plumbing such as
@@ -120,8 +141,10 @@ individual executable artifact in stages:
 4. document the trust boundary: the Lean theorem verifies parser semantics, while code
    generation, the Lean runtime, ABI wrapper, FFI, and Rust caller remain trusted integration
    components;
-5. treat direct verified Rust extraction or translation as a separate research track rather
-   than describing reverse FFI as verified Rust.
+5. target Vest as the first verified Rust implementation backend: Triptych owns the shared
+   format semantics and Lean artifacts, while Vest/Verus verifies the generated Rust parser;
+6. build a direct Verus parser backend only if Vest cannot preserve the required textual
+   behavior, API, or performance.
 
 ## 4. Maintain the Cedar baseline
 

@@ -179,6 +179,16 @@ instance (m : CaptureMap) : (e : ConstraintEntry) → Decidable (e.valPart m)
   | .opaque phase p => by cases phase <;> unfold ConstraintEntry.valPart <;> infer_instance
   | .opaqueMap phase p => by cases phase <;> unfold ConstraintEntry.valPart <;> infer_instance
 
+/-- Every format constraint accepts one capture map. Each entry contributes in exactly one
+    phase; its contribution in the other phase is `True`. -/
+def CaptureAccepts (cs : List ConstraintEntry) (m : CaptureMap) : Prop :=
+  ∀ c ∈ cs, c.wfPart m ∧ c.valPart m
+
+instance (cs : List ConstraintEntry) : DecidablePred (CaptureAccepts cs) := by
+  intro m
+  unfold CaptureAccepts
+  infer_instance
+
 /-! ## Surface syntax → `Constraint`
 
 A `constraintExpr` category reusing the `valExpr` category

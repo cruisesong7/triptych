@@ -41,7 +41,7 @@ normal forms connect that record to acceptance, denotation, parser success, and 
 A structural derivation retains the grammar choices that a view deliberately forgets. Valid
 derivations can be rendered and connected back to decoding, which makes them useful inputs to
 printer and roundtrip proofs. Automation works through these generated interfaces rather than
-unfolding the generic decoder.
+unfolding scanner search or archived reference candidates.
 
 # Two parser registries
 

@@ -25,7 +25,7 @@ The generator emits two well-formedness artifacts for each grammar (design note 
 `Docs/DESIGN.md`):
 
 * the **engine** `IsWf g` — the generic `Grammar`-interpreter denotation (`Denote`), which
-  carries `DecidablePred` (via the `decode` roundtrip, `Roundtrip`) and drives `decode`; and
+  carries `DecidablePred` via the scanner/reference roundtrip and drives executable scanning; and
 * the **surface** `<Name>.IsWf.<Prod>` — readable, inlined per-production predicates
   (`Emit`) that read like the hand-written specs (`∃ integer fraction, s = integer ++ …`).
 

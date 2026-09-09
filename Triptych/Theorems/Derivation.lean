@@ -1,6 +1,6 @@
 import Triptych.Architecture.Derivation
 import Triptych.Theorems.Coherence
-import Triptych.Theorems.DecodeLemmas
+import Triptych.Archive.DecodeLemmas
 import Triptych.Theorems.Roundtrip
 
 /-!

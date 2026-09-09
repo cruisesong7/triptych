@@ -8,6 +8,7 @@ Render:  lake exe docs --output ../_site
 import VersoManual
 import Docs.Intro
 import Docs.Walkthrough
+import Docs.Scanner
 import Docs.Automation
 import Docs.Scope
 import Docs.NextSteps
@@ -28,7 +29,7 @@ shortTitle := "Triptych"
 
 ![Triptych. Parser, spec, and soundness: one grammar, three panels.](triptych-logo.svg)
 
-Triptych is a Lean 4 *grammar-to-parser compiler* for flat, non-recursive string formats.
+Triptych is a Lean 4 *grammar-to-parser compiler* for acyclic, non-recursive string formats.
 
 A {lit}`triptych` block -- a grammar plus optional value, constraint, external-parser, and
 printer clauses -- generates a coherent family of artifacts:
@@ -48,6 +49,8 @@ next steps.
 {include 0 Docs.Intro}
 
 {include 0 Docs.Walkthrough}
+
+{include 0 Docs.Scanner}
 
 {include 0 Docs.Automation}
 

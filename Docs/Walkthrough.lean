@@ -233,16 +233,21 @@ The readable specification says which strings are valid and what they mean. The 
 
 ```leanOutput parseDefinition
 def Decimal.parse : String → Option Int64 :=
-fun s => gatedParseOfSpec Decimal.IsValid Decimal.computeValue Int64.ofInt s
+fun s => scannerParse Decimal.grammar Decimal.constraints Decimal.valueExpr Int64.ofInt s
 ```
 
 Read this definition as a pipeline:
 
-1. {name}`gatedParseOfSpec` uses the generated decision procedure for
-   {name}`Decimal.IsValid` to check both the grammar and its semantic constraints.
-2. An invalid input returns {name}`Option.none`.
-3. For a valid input, {name}`Decimal.computeValue` computes the specification-level {name}`Int`.
-4. {name}`Int64.ofInt` converts that value to the parser's {name}`Int64` result.
+1. {name}`scannerParse` scans the input once and obtains the named captures.
+2. It checks both grammar-derived and semantic constraints against that same capture map.
+3. For an accepted input, it evaluates {name}`Decimal.valueExpr` to the specification-level
+   {name}`Int`.
+4. {name}`Int64.ofInt` converts that value to the parser's {name}`Int64` result; a rejected input
+   returns {name}`Option.none`.
+
+The generated {name}`Decimal.parse_eq_gated` theorem proves that this single-scan implementation
+has exactly the readable behavior “accept when {name}`Decimal.IsValid`, then return
+{name}`Decimal.computeValue` converted by {name}`Int64.ofInt`.”
 
 The first two inputs below succeed. The third violates the grammar, while the fourth has the
 right shape but denotes a value outside the {name}`Int64` range:
@@ -387,20 +392,22 @@ Compiler-generated theorems use only {name}`propext`, {name}`Classical.choice`, 
 
 ## Why the parser is correct by construction
 
-Triptych does not generate a format-specific parsing algorithm and then ask the user to prove it
-correct. It generates {name}`Decimal.IsValid` and {name}`Decimal.computeValue` from the same DSL
-description, then instantiates the already-proved {name}`Triptych.gatedParseOfSpec` combinator
-with those two definitions.
+Triptych generates the grammar, constraints, value expression, and scanner parser from the same
+DSL description. The generic theorem {name}`Triptych.scannerParse_eq_surfaceGatedParseOfSpec`
+proves that the one-scan implementation equals the readable
+{name}`Triptych.gatedParseOfSpec` contract.
 
-The generated contracts are direct applications of generic theorems about that combinator. For
-example, the complete proof of the generated parser's soundness has this form:
+The generated contracts rewrite through {name}`Decimal.parse_eq_gated` and then apply generic
+theorems about that contract. For example, the complete soundness proof has this form:
 
 ```lean
 example (s : String) (i : Int64) :
     Decimal.parse s = some i →
       Decimal.IsValid s ∧
         (Decimal.computeValue s).map Int64.ofInt = some i :=
-  Triptych.gatedParseOfSpec_sound _ _ _ s i
+  by
+  rw [Decimal.parse_eq_gated]
+  exact Triptych.gatedParseOfSpec_sound _ _ _ s i
 ```
 
 The same construction supplies completeness and rejection. When the generated file builds,

@@ -14,8 +14,9 @@
  limitations under the License.
 -/
 
-import Triptych.Archive.ReferenceDecoder
+import Triptych.Architecture.Prefix
 import Triptych.Architecture.Unambiguity
+import Triptych.Architecture.Value
 
 /-!
 # Executable scanner
@@ -268,56 +269,6 @@ def scan (g : Grammar) (input : String) : Option CaptureMap :=
 
 /-- Compatibility name for code generated before the scanner became the sole runtime engine. -/
 abbrev executeDecode := scan
-
-/-! ## Proof-only performance model -/
-
-/-- Result and completed-candidate count for the scanner's root continuation.
-
-This profile is proof and diagnostic data, not the runtime implementation. One candidate check
-means that a complete root-production candidate reached the final continuation and was tested
-for an empty suffix. Internal branches that fail before reaching the root continuation are
-accounted for by the candidate tree from which the budget is computed. -/
-structure ScanSearchProfile where
-  result : Option CaptureMap
-  candidateChecks : Nat
-  deriving Repr, Inhabited, DecidableEq
-
-/-- Inspect ordered root candidates until the first full-consumption candidate is found. -/
-def profileCompleteCandidates : List (CaptureMap × List Char) → ScanSearchProfile
-  | [] => ⟨none, 0⟩
-  | (captures, remaining) :: rest =>
-      if remaining.isEmpty then
-        ⟨some captures, 1⟩
-      else
-        let tail := profileCompleteCandidates rest
-        ⟨tail.result, tail.candidateChecks + 1⟩
-
-/-- Proof-only profile corresponding to `scanSearch`. It deliberately uses the archived
-    candidate semantics so its bound is transparent and independently inspectable. -/
-def scanSearchProfile (g : Grammar) (input : String) : ScanSearchProfile :=
-  match g.startProd? with
-  | none => ⟨none, 0⟩
-  | some production =>
-      profileCompleteCandidates
-        (matchProd g "" g.prods.length production input.toList)
-
-/-- Number of complete root candidates available to the ordered scanner search. This may be
-    exponential for an ambiguous grammar; exposing that fact is part of the guarantee. -/
-def scannerCandidateBudget (g : Grammar) (input : String) : Nat :=
-  match g.startProd? with
-  | none => 0
-  | some production =>
-      (matchProd g "" g.prods.length production input.toList).length
-
-/-- Completed-candidate checks performed by the public scanner's search phase. A successful
-    certified fast path performs no complete-candidate backtracking. -/
-def scannerCandidateChecks (g : Grammar) (input : String) : Nat :=
-  if g.staticUnique then
-    match fastScan g input with
-    | some _ => 0
-    | none => (scanSearchProfile g input).candidateChecks
-  else
-    (scanSearchProfile g input).candidateChecks
 
 /-- Scanner-backed counterpart of `computeValue`. -/
 def scannerComputeValue (g : Grammar) (valueExpr : ValExpr) (input : String) : Option Int :=

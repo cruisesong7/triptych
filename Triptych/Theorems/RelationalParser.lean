@@ -33,16 +33,6 @@ Domain-valued variants compose `ofSpec` with the relational value reader.
 
 namespace Triptych
 
-/-- Every format constraint accepts one capture map. Each entry contributes in exactly one
-    phase; its contribution in the other phase is `True`. -/
-def CaptureAccepts (cs : List ConstraintEntry) (m : CaptureMap) : Prop :=
-  ∀ c ∈ cs, c.wfPart m ∧ c.valPart m
-
-instance (cs : List ConstraintEntry) : DecidablePred (CaptureAccepts cs) := by
-  intro m
-  unfold CaptureAccepts
-  infer_instance
-
 private theorem gatedParseMap_eq_decodeGatedMap {α : Type}
     (g : Grammar) (cs : List ConstraintEntry) (valFn : CaptureMap → α) (s : String) :
     gatedParse (fun s => isWf g cs s ∧ satisfiesConstraints g cs s)

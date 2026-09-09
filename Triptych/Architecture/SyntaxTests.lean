@@ -114,7 +114,7 @@ triptych SignedInteger where
 example (s : String) :
     SignedInteger.parse s =
       Triptych.gatedParse SignedInteger.IsValid SignedInteger.computeValue s := by
-  rfl
+  exact SignedInteger.parse_eq_gated s
 
 /--
 error: Unknown identifier `SignedInteger.isValid`
@@ -251,6 +251,93 @@ triptych StringValue where
 #guard StringValue.parse "\"test\"" = some "test"
 
 end StringLiteralExample
+
+namespace AsciiRangeExample
+
+triptych Graph6Character where
+  grammar
+    Root       ::= Character
+    Character  ::= ascii[63,126]{1}
+
+#guard decide (Graph6Character.IsWf "?")
+#guard decide (Graph6Character.IsWf "~")
+#guard !decide (Graph6Character.IsWf " ")
+
+/--
+error: ASCII range upper bound 64 is below lower bound 65
+-/
+#guard_msgs in
+triptych ReversedAsciiRange where
+  grammar
+    Root ::= ascii[65,64]{1}
+
+/--
+error: ASCII range upper bound 128 exceeds 127
+-/
+#guard_msgs in
+triptych NonAsciiRange where
+  grammar
+    Root ::= ascii[0,128]{1}
+
+end AsciiRangeExample
+
+namespace SizedTerminalExample
+
+private def upperTriangleSize (order : String) : Nat :=
+  let vertices := readNat order
+  vertices * (vertices - 1) / 2
+
+private def sizedGraphValue (order cells : String) : Nat × String :=
+  (readNat order, cells)
+
+triptych SizedGraph where
+  grammar
+    Graph ::= Order ":" Cells
+    Order ::= digit+
+    Cells ::= bit{upperTriangleSize Order}
+  value'
+    sizedGraphValue Order Cells
+
+#guard SizedGraph.parse "3:101" = some (3, "101")
+#guard SizedGraph.parse "4:101001" = some (4, "101001")
+#guard SizedGraph.parse "1:" = some (1, "")
+#guard SizedGraph.parse "3:10" = none
+#guard SizedGraph.parse "3:1010" = none
+#guard SizedGraph.parse "3:10a" = none
+#guard decide (SizedGraph.IsWf "3:101")
+#guard !decide (SizedGraph.IsWf "3:10")
+#guard (SizedGraph.decodeView "3:101").map (fun view => (view.order, view.cells)) =
+  some ("3", "101")
+
+example (cells order : String) :
+    SizedGraph.WfConstraints cells order ↔ cells.length = upperTriangleSize order :=
+  Iff.rfl
+
+example (s : String) :
+    SizedGraph.parse s = none ↔ ¬SizedGraph.IsValid s :=
+  SizedGraph.parse_reject s
+
+/--
+error: dependent width currently requires a nonempty literal delimiter before the final payload
+-/
+#guard_msgs in
+triptych UndelimitedSized where
+  grammar
+    Root ::= Order Cells
+    Order ::= digit+
+    Cells ::= bit{upperTriangleSize Order}
+
+/--
+error: `Cells` must be the final field of the start production when it has a dependent width
+-/
+#guard_msgs in
+triptych NonfinalSized where
+  grammar
+    Root ::= Order ":" Cells "!"
+    Order ::= digit+
+    Cells ::= bit{upperTriangleSize Order}
+
+end SizedTerminalExample
 
 namespace CollectionConstraintExample
 

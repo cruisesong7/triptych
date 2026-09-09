@@ -8,7 +8,7 @@ import Triptych.Architecture.Constraint
 import Triptych.Architecture.Assemble
 import Triptych.Theorems.Reconcile
 import Triptych.Theorems.Value
-import Triptych.Theorems.DecodeLemmas
+import Triptych.Archive.DecodeLemmas
 import Triptych.Theorems.Derivation
 import Triptych.Theorems.Scanner
 import Outputs.IPv4.spec
@@ -748,10 +748,13 @@ theorem IPv4.computeValue_view (s : String) : IPv4.computeValue s = (IPv4.decode
     rfl
 
 /- ═══════════════════════════════ parser ══════════════════════════════
-The generated correct-by-construction parser `parse` (= `computeValue` gated on the
-decidable `IsValid`) together with its guarantees — `parse_sound`, `parse_complete`,
-`parse_reject`, `parse_view`, and typed `parse_eq_some_iff_view` /
-`parse_eq_none_iff_view` normal forms — all AUTO-DISCHARGED here.
+The generated correct-by-construction parser `parse` scans once, checks constraints
+on that capture map, and computes the result from the same captures. `parse_eq_gated`
+proves equality with the readable validity-gated presentation. Its correctness and
+search-cost guarantees — `parse_sound`, `parse_complete`, `parse_reject`,
+`parse_profile_result`, `parse_candidateChecks_le`, `parse_view`, and typed
+`parse_eq_some_iff_view` / `parse_eq_none_iff_view` normal forms — are all
+AUTO-DISCHARGED here.
 When an external parser is declared, `checkedExtParse` additionally validates each
 external result against this parser and ships an AUTO-DISCHARGED soundness theorem.
 A verified parser, no `sorry`. -/
@@ -766,23 +769,54 @@ theorem IPv4.computeValue_isSome (s : String) : IPv4.IsValid s → (IPv4.compute
   exact hengine.1.1
 
 def IPv4.parse (s : String) :=
-  Triptych.gatedParse IPv4.IsValid IPv4.computeValue s
+  Triptych.scannerParseMap IPv4.grammar IPv4.constraints IPv4.valueFn id s
+
+theorem IPv4.parse_eq_gated (s : String) : IPv4.parse s = Triptych.gatedParse IPv4.IsValid IPv4.computeValue s :=
+  by
+  unfold IPv4.parse IPv4.computeValue
+  exact
+    Triptych.scannerParseMap_eq_surfaceGated IPv4.grammar IPv4.constraints IPv4.valueFn IPv4.IsValid IPv4.IsValid_equiv
+      s
+
+theorem IPv4.parse_profile_result (s : String) :
+    (Triptych.scannerParseMapProfile IPv4.grammar IPv4.constraints IPv4.valueFn id s).result = IPv4.parse s :=
+  by
+  unfold IPv4.parse
+  exact Triptych.scannerParseMapProfile_result IPv4.grammar IPv4.constraints IPv4.valueFn id s
+
+theorem IPv4.parse_candidateChecks_le (s : String) :
+    (Triptych.scannerParseMapProfile IPv4.grammar IPv4.constraints IPv4.valueFn id s).candidateChecks ≤
+      Triptych.scannerCandidateBudget IPv4.grammar s :=
+  Triptych.scannerParseMap_candidateChecks_le IPv4.grammar IPv4.constraints IPv4.valueFn id s
+
+theorem IPv4.parse_candidateChecks_eq_zero_of_fastScan (s : String) (hunique : (IPv4.grammar).staticUnique = true)
+    {captures : Triptych.CaptureMap} (hscan : Triptych.fastScan IPv4.grammar s = some captures) :
+    (Triptych.scannerParseMapProfile IPv4.grammar IPv4.constraints IPv4.valueFn id s).candidateChecks = 0 :=
+  Triptych.scannerParseMap_candidateChecks_eq_zero_of_fastScan IPv4.grammar IPv4.constraints IPv4.valueFn id s hunique
+    hscan
 
 theorem IPv4.parse_sound (s : String) (i : IPv4Net) :
     IPv4.parse s = some i → IPv4.IsValid s ∧ IPv4.computeValue s = some i :=
-  Triptych.gatedParse_sound _ _ s i
+  by
+  rw [IPv4.parse_eq_gated]
+  exact Triptych.gatedParse_sound _ _ s i
 
 theorem IPv4.parse_complete (s : String) (i : IPv4Net) :
     IPv4.IsValid s → IPv4.computeValue s = some i → IPv4.parse s = some i :=
-  Triptych.gatedParse_complete _ _ s i
+  by
+  rw [IPv4.parse_eq_gated]
+  exact Triptych.gatedParse_complete _ _ s i
 
 theorem IPv4.parse_reject (s : String) : IPv4.parse s = none ↔ ¬IPv4.IsValid s :=
-  Triptych.gatedParse_reject _ _ IPv4.computeValue_isSome s
+  by
+  rw [IPv4.parse_eq_gated]
+  exact Triptych.gatedParse_reject _ _ IPv4.computeValue_isSome s
 
 theorem IPv4.parse_view (s : String) :
     IPv4.parse s = if decide (IPv4.IsValid s) then (IPv4.decodeView s).map IPv4.View.denotation else none :=
   by
-  unfold IPv4.parse Triptych.gatedParse
+  rw [IPv4.parse_eq_gated]
+  unfold Triptych.gatedParse
   rw [IPv4.computeValue_view]
 
 theorem IPv4.parse_eq_some_iff_view (s : String) (i : IPv4Net) :
