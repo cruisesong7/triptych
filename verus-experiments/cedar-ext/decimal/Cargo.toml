@@ -12,6 +12,11 @@ vstd = "=0.0.0-2026-08-30-0159"
 cedar-policy = { path = "../../../../cedar/cedar-policy", default-features = false, features = [
   "decimal",
 ] }
+regex = "=1.13.1"
+
+[[bench]]
+name = "runtime"
+harness = false
 
 [package.metadata.verus]
 verify = true

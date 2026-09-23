@@ -19,7 +19,9 @@ set_option linter.unusedVariables false
 The more readable specification. Each production of the input grammar becomes an
 inlined well-formedness predicate `IsWf.*` written as a plain existential over the
 named captures, so you can read it side-by-side with the grammar and check that it
-says the same thing. When present, `WfConstraints` contains capture-derived format
+says the same thing. The start rule is named `Production`; `IsWf.<Start>` and
+top-level `IsWf` reuse it. When a value is present, `Denotes` combines valid syntax
+with the readable value function. `WfConstraints` contains capture-derived format
 conditions and `Constraints` contains conditions that explicitly mention the final
 `value`. Empty phases are omitted; `IsWf` and `IsValid` specialize accordingly.
 This file is proof-free — it is what you cite. -/
@@ -182,9 +184,12 @@ def IPv6.IsWf.V6Addr (s : String) : Prop :=
 def IPv6.IsWf.Prefix (s : String) : Prop :=
   IsDigitsBetween 1 3 s
 
-def IPv6.IsWf.V6Net (s : String) : Prop :=
+def IPv6.Production (s : String) : Prop :=
   IPv6.IsWf.V6Addr s ∨
     ∃ v6Addr «prefix», (s = v6Addr ++ "/" ++ «prefix» ∧ IPv6.IsWf.V6Addr v6Addr) ∧ IPv6.IsWf.Prefix «prefix»
+
+abbrev IPv6.IsWf.V6Net (s : String) : Prop :=
+  IPv6.Production s
 
 def IPv6.value (h16 : List String) (h16l : List String) (h16r : List String) («prefix» : String) :=
   toIPv6Net h16 h16l h16r «prefix»
@@ -198,10 +203,16 @@ def IPv6.SatisfiesWfConstraints (s : String) : Prop :=
     (Triptych.component IPv6.grammar s "Prefix")
 
 abbrev IPv6.IsWf (s : String) : Prop :=
-  IPv6.IsWf.V6Net s ∧ IPv6.SatisfiesWfConstraints s
+  IPv6.Production s ∧ IPv6.SatisfiesWfConstraints s
 
 abbrev IPv6.IsValid (s : String) : Prop :=
   IPv6.IsWf s
+
+def IPv6.Denotes (s : String) (i : IPv6Net) : Prop :=
+  IPv6.IsValid s ∧
+    i =
+      IPv6.value (Triptych.componentList IPv6.grammar s "H16") (Triptych.componentList IPv6.grammar s "H16L")
+        (Triptych.componentList IPv6.grammar s "H16R") (Triptych.component IPv6.grammar s "Prefix")
 
 structure IPv6.View where
   input : String

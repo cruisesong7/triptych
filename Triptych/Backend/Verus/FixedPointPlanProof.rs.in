@@ -1,0 +1,111 @@
+proof {
+    let __SIGN__ = input@.subrange(__SIGN___start as int, __SIGN___end as int);
+    let __NATURAL__ =
+        input@.subrange(__NATURAL___start as int, __NATURAL___end as int);
+    let __FRACTION__ =
+        input@.subrange(__FRACTION___start as int, __FRACTION___end as int);
+
+    assert(__SIGN_WF__(__SIGN__)) by {
+        reveal(__SIGN_WF__);
+        assert(
+            __SIGN__.len()
+                == __SIGN___end as int - __SIGN___start as int
+        );
+        if __SIGN___end == __SIGN___start {
+            assert(__SIGN__.len() == 0);
+        } else {
+            assert(__SIGN___start == 0);
+            assert(__SIGN___end == 1);
+            assert(input@[0] as int == __SIGN_CHAR_CODE__);
+            assert(__SIGN__ =~= seq![__SIGN_CHAR_LITERAL__]) by {
+                assert_seqs_equal!(__SIGN__ == seq![__SIGN_CHAR_LITERAL__]);
+            }
+        }
+        assert(exists|literal: Seq<char>|
+            __SIGN__ == literal
+                && (literal.len() == 0
+                    || literal == seq![__SIGN_CHAR_LITERAL__])) by {
+            assert(
+                __SIGN__ == __SIGN__
+                    && (__SIGN__.len() == 0
+                        || __SIGN__ == seq![__SIGN_CHAR_LITERAL__])
+            );
+        }
+    }
+    assert(__NATURAL_WF__(__NATURAL__)) by {
+        reveal(__NATURAL_WF__);
+        assert(
+            __NATURAL__.len()
+                == __NATURAL___end as int - __NATURAL___start as int
+        );
+        assert(1 <= __NATURAL__.len());
+        assert forall|i: int| 0 <= i < __NATURAL__.len() implies
+            #[trigger] triptych_is_digit(__NATURAL__[i]) by {
+            assert(
+                __NATURAL__[i]
+                    == input@[__NATURAL___start as int + i]
+            );
+            assert(plan_token_accepts(
+                PlanTokenClass::Digit,
+                input@[__NATURAL___start as int + i],
+            ));
+            reveal(plan_token_accepts);
+        }
+        assert(exists|digits: Seq<char>|
+            __NATURAL__ == digits
+                && 1 <= digits.len()
+                && forall|i: int| #![auto]
+                    0 <= i && i < digits.len()
+                        ==> triptych_is_digit(digits[i])) by {
+            assert(__NATURAL__ == __NATURAL__);
+        }
+    }
+    assert(__FRACTION_WF__(__FRACTION__)) by {
+        reveal(__FRACTION_WF__);
+        assert(
+            __FRACTION__.len()
+                == __FRACTION___end as int - __FRACTION___start as int
+        );
+        assert(__FRACTION_LOWER__ <= __FRACTION__.len());
+        assert(__FRACTION__.len() <= __FRACTION_UPPER__);
+        assert forall|i: int| 0 <= i < __FRACTION__.len() implies
+            #[trigger] triptych_is_digit(__FRACTION__[i]) by {
+            assert(
+                __FRACTION__[i]
+                    == input@[__FRACTION___start as int + i]
+            );
+            assert(plan_token_accepts(
+                PlanTokenClass::Digit,
+                input@[__FRACTION___start as int + i],
+            ));
+            reveal(plan_token_accepts);
+        }
+        assert(exists|digits: Seq<char>|
+            __FRACTION__ == digits
+                && __FRACTION_LOWER__ <= digits.len()
+                && digits.len() <= __FRACTION_UPPER__
+                && forall|i: int| #![auto]
+                    0 <= i && i < digits.len()
+                        ==> triptych_is_digit(digits[i])) by {
+            assert(__FRACTION__ == __FRACTION__);
+        }
+    }
+    assert(
+        input@
+            =~= __SIGN__
+                + __NATURAL__
+                + seq![__SEPARATOR_CHAR_LITERAL__]
+                + __FRACTION__
+    ) by {
+        assert_seqs_equal!(
+            input@
+                == __SIGN__
+                    + __NATURAL__
+                    + seq![__SEPARATOR_CHAR_LITERAL__]
+                    + __FRACTION__
+        );
+    }
+    assert(__ROOT_WF__(input@)) by {
+        reveal(__ROOT_WF__);
+    }
+}

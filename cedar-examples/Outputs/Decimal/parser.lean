@@ -8,6 +8,8 @@ import Triptych.Architecture.Constraint
 import Triptych.Architecture.Assemble
 import Triptych.Theorems.Reconcile
 import Triptych.Theorems.Value
+import Triptych.Architecture.CursorProgram
+import Triptych.Theorems.ScanPlan
 import Triptych.Archive.DecodeLemmas
 import Triptych.Theorems.Derivation
 import Triptych.Theorems.Scanner
@@ -310,7 +312,7 @@ theorem Decimal.Internal.matchesRef.Sign (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold Decimal.IsWf.Sign
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym]
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
@@ -327,7 +329,7 @@ theorem Decimal.Internal.matchesRef.Natural (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold Decimal.IsWf.Natural
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
@@ -345,14 +347,14 @@ theorem Decimal.Internal.matchesRef.Fraction (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold Decimal.IsWf.Fraction
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem Decimal.Internal.matchesRef.Decimal (fuel : Nat) (s : String) :
-    matchesSym Decimal.grammar (fuel + 2) (Sym.ref "Decimal") s ↔ Decimal.IsWf.Decimal s :=
+    matchesSym Decimal.grammar (fuel + 2) (Sym.ref "Decimal") s ↔ Decimal.Production s :=
   by
   rw [matchesSym,
     show
@@ -364,15 +366,15 @@ theorem Decimal.Internal.matchesRef.Decimal (fuel : Nat) (s : String) :
       from rfl]
   dsimp only
   rw [matchesProd_single]
-  unfold Decimal.IsWf.Decimal
+  unfold Decimal.Production
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     Decimal.Internal.matchesRef.Sign, Decimal.Internal.matchesRef.Natural, Decimal.Internal.matchesRef.Fraction]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
-theorem Decimal.IsWfGrammar_equiv (s : String) : Triptych.IsWf Decimal.grammar s ↔ Decimal.IsWf.Decimal s :=
+theorem Decimal.IsWfGrammar_equiv (s : String) : Triptych.IsWf Decimal.grammar s ↔ Decimal.Production s :=
   by
   rw [isWf_eq_isWfProd_start, IsWfProd,
     show
@@ -524,16 +526,123 @@ theorem Decimal.computeValue_view (s : String) :
     rfl
 
 /- ═══════════════════════════════ parser ══════════════════════════════
-The generated correct-by-construction parser `parse` scans once, checks constraints
-on that capture map, and computes the result from the same captures. `parse_eq_gated`
-proves equality with the readable validity-gated presentation. Its correctness and
-search-cost guarantees — `parse_sound`, `parse_complete`, `parse_reject`,
+The generated correct-by-construction parser `parse` uses a certified staged cursor
+program when the grammar supports one, checks constraints on its capture map, and
+computes the result from those captures. The complete scanner remains the checked
+fallback. `parse_eq_scanner` and `parse_eq_gated` prove equality with the generic
+scanner and readable validity-gated presentation. Its correctness and search-cost
+guarantees — `parse_sound`, `parse_complete`, `parse_reject`,
 `parse_profile_result`, `parse_candidateChecks_le`, `parse_view`, and typed
 `parse_eq_some_iff_view` / `parse_eq_none_iff_view` normal forms — are all
 AUTO-DISCHARGED here.
 When an external parser is declared, `checkedExtParse` additionally validates each
 external result against this parser and ships an AUTO-DISCHARGED soundness theorem.
 A verified parser, no `sorry`. -/
+
+private abbrev Decimal.scanPlan : ScanPlan :=
+  ({ start := "Decimal",
+      pattern :=
+        ScanPattern.capture "Sign" ["Sign"] (ScanPattern.optionalLiteral '-' ScanPattern.empty)
+          (ScanPattern.capture "Natural" ["Natural"]
+            (ScanPattern.tokenRun TokClass.digit LenSpec.atLeastOne ScanPattern.empty)
+            (ScanPattern.literal '.'
+              (ScanPattern.capture "Fraction" ["Fraction"]
+                (ScanPattern.tokenRun TokClass.digit (LenSpec.between 1 4) ScanPattern.empty) ScanPattern.empty))) } :
+    ScanPlan)
+
+private theorem Decimal.scanPlan_mirrorsGrammar : ScanPlan.MirrorsGrammar Decimal.scanPlan Decimal.grammar :=
+  ScanPlan.MirrorsGrammar.intro rfl
+    (Production.mk "Decimal"
+      [[SymItem.mk (Sym.ref "Sign") false, SymItem.mk (Sym.ref "Natural") false, SymItem.mk (Sym.lit ".") false,
+          SymItem.mk (Sym.ref "Fraction") false]])
+    [SymItem.mk (Sym.ref "Sign") false, SymItem.mk (Sym.ref "Natural") false, SymItem.mk (Sym.lit ".") false,
+      SymItem.mk (Sym.ref "Fraction") false]
+    (by rfl) (by rfl)
+    (ScanPattern.MirrorsSequence.capture («grammar» := Decimal.grammar) rfl rfl (by rfl) (by rfl)
+      (ScanPattern.MirrorsSequence.optionalLiteral (by rfl) ScanPattern.MirrorsSequence.empty)
+      (ScanPattern.MirrorsSequence.capture («grammar» := Decimal.grammar) rfl rfl (by rfl) (by rfl)
+        (ScanPattern.MirrorsSequence.tokenRun rfl rfl ScanPattern.MirrorsSequence.empty)
+        (ScanPattern.MirrorsSequence.literal (by rfl)
+          (ScanPattern.MirrorsSequence.capture («grammar» := Decimal.grammar) rfl rfl (by rfl) (by rfl)
+            (ScanPattern.MirrorsSequence.tokenRun rfl rfl ScanPattern.MirrorsSequence.empty)
+            ScanPattern.MirrorsSequence.empty))))
+
+private abbrev Decimal.cursorProgram : CursorProgram :=
+  ({  start := "Decimal"
+      operations :=
+        [CursorOp.beginCapture "Sign" ["Sign"], CursorOp.consumeOptional '-', CursorOp.endCapture "Sign",
+          CursorOp.beginCapture "Natural" ["Natural"], CursorOp.consumeRun TokClass.digit CursorRun.greedyAtLeastOne,
+          CursorOp.endCapture "Natural", CursorOp.expect '.', CursorOp.beginCapture "Fraction" ["Fraction"],
+          CursorOp.consumeRun TokClass.digit (CursorRun.greedyBetween 1 4), CursorOp.endCapture "Fraction"]
+      captures := ["Sign", "Natural", "Fraction"]
+      captureKeys := [("Sign", ["Sign"]), ("Natural", ["Natural"]), ("Fraction", ["Fraction"])] } : CursorProgram)
+
+private theorem Decimal.cursorProgram_lowered : lowerScanPlan Decimal.scanPlan = Decimal.cursorProgram := by rfl
+
+private def Decimal.directRun (source : String) : Option ScanResult :=
+  let input := source.toList
+  Option.bind
+    (Option.bind
+      (CursorProgram.executeOperation input (CursorOp.beginCapture "Sign" ["Sign"]) ({ } : ScanPlan.ExecutionState))
+      (fun next =>
+        Option.bind (CursorProgram.executeOperation input (CursorOp.consumeOptional '-') next)
+          (fun next =>
+            Option.bind (CursorProgram.executeOperation input (CursorOp.endCapture "Sign") next)
+              (fun next =>
+                Option.bind (CursorProgram.executeOperation input (CursorOp.beginCapture "Natural" ["Natural"]) next)
+                  (fun next =>
+                    Option.bind
+                      (CursorProgram.executeOperation input
+                        (CursorOp.consumeRun TokClass.digit CursorRun.greedyAtLeastOne) next)
+                      (fun next =>
+                        Option.bind (CursorProgram.executeOperation input (CursorOp.endCapture "Natural") next)
+                          (fun next =>
+                            Option.bind (CursorProgram.executeOperation input (CursorOp.expect '.') next)
+                              (fun next =>
+                                Option.bind
+                                  (CursorProgram.executeOperation input (CursorOp.beginCapture "Fraction" ["Fraction"])
+                                    next)
+                                  (fun next =>
+                                    Option.bind
+                                      (CursorProgram.executeOperation input
+                                        (CursorOp.consumeRun TokClass.digit (CursorRun.greedyBetween 1 4)) next)
+                                      (fun next =>
+                                        Option.bind
+                                          (CursorProgram.executeOperation input (CursorOp.endCapture "Fraction") next)
+                                          (fun next => some next)))))))))))
+    fun state =>
+    if state.position == List.length input && state.starts.isEmpty then
+      some
+        { stop := state.position
+          captures := state.captures
+          captureMap := state.captureMap }
+    else none
+
+private theorem Decimal.directRun_eq_cursor (source : String) :
+    Decimal.directRun source = CursorProgram.run Decimal.cursorProgram source := by rfl
+
+private def Decimal.directDecode (source : String) : Option CaptureMap :=
+  (Decimal.directRun source).map (·.captureMap)
+
+private theorem Decimal.directDecode_eq_cursor (source : String) :
+    Decimal.directDecode source = CursorProgram.decode Decimal.cursorProgram source := by rfl
+
+private def Decimal.decodeCaptures (source : String) : Option CaptureMap :=
+  (Decimal.directDecode source).orElse fun _ => scanSearch Decimal.grammar source
+
+private theorem Decimal.decodeCaptures_eq_scan (source : String) :
+    Decimal.decodeCaptures source = scan Decimal.grammar source := by
+  calc
+    Decimal.decodeCaptures source = CursorProgram.decodeCertified Decimal.cursorProgram Decimal.grammar source :=
+      by
+      unfold Decimal.decodeCaptures CursorProgram.decodeCertified
+      rw [Decimal.directDecode_eq_cursor]
+    _ = CursorProgram.decodeCertified (lowerScanPlan Decimal.scanPlan) Decimal.grammar source := by
+      rw [Decimal.cursorProgram_lowered]
+    _ = Triptych.decode Decimal.grammar source :=
+      (CursorProgram.decodeCertified_eq_decode_of_mirrors Decimal.scanPlan_mirrorsGrammar
+        Decimal.grammarCaptureFunctional source)
+    _ = scan Decimal.grammar source := (scan_eq_decode Decimal.grammar source).symm
 
 theorem Decimal.computeValue_isSome (s : String) : Decimal.IsValid s → (Decimal.computeValue s).isSome :=
   by
@@ -545,12 +654,21 @@ theorem Decimal.computeValue_isSome (s : String) : Decimal.IsValid s → (Decima
   exact hengine.1.1
 
 def Decimal.parse (s : String) :=
-  Triptych.scannerParse Decimal.grammar Decimal.constraints Decimal.valueExpr Int64.ofInt s
+  Triptych.decodedParse Decimal.decodeCaptures Decimal.constraints Decimal.valueExpr Int64.ofInt s
+
+theorem Decimal.parse_eq_scanner (s : String) :
+    Decimal.parse s = Triptych.scannerParse Decimal.grammar Decimal.constraints Decimal.valueExpr Int64.ofInt s :=
+  by
+  unfold Decimal.parse
+  exact
+    Triptych.decodedParse_eq_scannerParse Decimal.decodeCaptures Decimal.grammar Decimal.constraints Decimal.valueExpr
+      Int64.ofInt Decimal.decodeCaptures_eq_scan s
 
 theorem Decimal.parse_eq_gated (s : String) :
     Decimal.parse s = Triptych.gatedParseOfSpec Decimal.IsValid Decimal.computeValue Int64.ofInt s :=
   by
-  unfold Decimal.parse Decimal.computeValue
+  rw [Decimal.parse_eq_scanner]
+  unfold Decimal.computeValue
   exact
     Triptych.scannerParse_eq_surfaceGatedParseOfSpec Decimal.grammar Decimal.constraints Decimal.valueExpr Int64.ofInt
       Decimal.IsValid Decimal.IsValid_equiv s
@@ -559,8 +677,8 @@ theorem Decimal.parse_profile_result (s : String) :
     (Triptych.scannerParseProfile Decimal.grammar Decimal.constraints Decimal.valueExpr Int64.ofInt s).result =
       Decimal.parse s :=
   by
-  unfold Decimal.parse
-  exact Triptych.scannerParseProfile_result Decimal.grammar Decimal.constraints Decimal.valueExpr Int64.ofInt s
+  rw [Triptych.scannerParseProfile_result]
+  exact (Decimal.parse_eq_scanner s).symm
 
 theorem Decimal.parse_candidateChecks_le (s : String) :
     (Triptych.scannerParseProfile Decimal.grammar Decimal.constraints Decimal.valueExpr Int64.ofInt s).candidateChecks ≤

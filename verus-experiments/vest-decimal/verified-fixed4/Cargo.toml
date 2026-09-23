@@ -1,0 +1,18 @@
+[package]
+name = "triptych-vest-decimal-fixed4"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+vest_lib = "0.2.1"
+vstd = { version = "=0.0.0-2026-09-06-0133", default-features = false }
+
+[package.metadata.verus]
+verify = true
+
+[package.metadata.verus.ide]
+extra_args = "--expand-errors"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(verus_only)", "cfg(verus_keep_ghost)"] }

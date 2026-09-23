@@ -19,7 +19,9 @@ set_option linter.unusedVariables false
 The more readable specification. Each production of the input grammar becomes an
 inlined well-formedness predicate `IsWf.*` written as a plain existential over the
 named captures, so you can read it side-by-side with the grammar and check that it
-says the same thing. When present, `WfConstraints` contains capture-derived format
+says the same thing. The start rule is named `Production`; `IsWf.<Start>` and
+top-level `IsWf` reuse it. When a value is present, `Denotes` combines valid syntax
+with the readable value function. `WfConstraints` contains capture-derived format
 conditions and `Constraints` contains conditions that explicitly mention the final
 `value`. Empty phases are omitted; `IsWf` and `IsValid` specialize accordingly.
 This file is proof-free — it is what you cite. -/
@@ -141,9 +143,12 @@ def IPv4.IsWf.V4Addr (s : String) : Prop :=
 def IPv4.IsWf.Prefix (s : String) : Prop :=
   IsDigitsBetween 1 2 s
 
-def IPv4.IsWf.V4Net (s : String) : Prop :=
+def IPv4.Production (s : String) : Prop :=
   IPv4.IsWf.V4Addr s ∨
     ∃ v4Addr «prefix», (s = v4Addr ++ "/" ++ «prefix» ∧ IPv4.IsWf.V4Addr v4Addr) ∧ IPv4.IsWf.Prefix «prefix»
+
+abbrev IPv4.IsWf.V4Net (s : String) : Prop :=
+  IPv4.Production s
 
 def IPv4.value (oct1 : String) (oct2 : String) (oct3 : String) (oct4 : String) («prefix» : String) :=
   toIPv4Net oct1 oct2 oct3 oct4 «prefix»
@@ -165,10 +170,17 @@ def IPv4.SatisfiesWfConstraints (s : String) : Prop :=
     (Triptych.component IPv4.grammar s "Prefix")
 
 abbrev IPv4.IsWf (s : String) : Prop :=
-  IPv4.IsWf.V4Net s ∧ IPv4.SatisfiesWfConstraints s
+  IPv4.Production s ∧ IPv4.SatisfiesWfConstraints s
 
 abbrev IPv4.IsValid (s : String) : Prop :=
   IPv4.IsWf s
+
+def IPv4.Denotes (s : String) (i : IPv4Net) : Prop :=
+  IPv4.IsValid s ∧
+    i =
+      IPv4.value (Triptych.component IPv4.grammar s "Oct1") (Triptych.component IPv4.grammar s "Oct2")
+        (Triptych.component IPv4.grammar s "Oct3") (Triptych.component IPv4.grammar s "Oct4")
+        (Triptych.component IPv4.grammar s "Prefix")
 
 structure IPv4.View where
   input : String

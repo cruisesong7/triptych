@@ -6,16 +6,16 @@ use vstd::prelude::*;
 
 verus! {
 
-pub const TRIPTYCH_MINUS: u8 = 45u8;
+pub const TRIPTYCH_MINUS: char = '\u{2d}';
 
-pub const TRIPTYCH_ZERO: u8 = 48u8;
+pub const TRIPTYCH_ZERO: char = '\u{30}';
 
-pub open spec fn triptych_is_digit(byte: u8) -> bool
+pub open spec fn triptych_is_digit(byte: char) -> bool
 {
     (48) <= (byte as int) && (byte as int) <= (57)
 }
 
-pub open spec fn triptych_nat_of_from(bytes: Seq<u8>, index: int, accumulator: int) -> int
+pub open spec fn triptych_nat_of_from(bytes: Seq<char>, index: int, accumulator: int) -> int
     recommends
         (0) <= index && index <= (bytes.len() as int),
     decreases (bytes.len() as int) - index,
@@ -31,12 +31,12 @@ pub open spec fn triptych_nat_of_from(bytes: Seq<u8>, index: int, accumulator: i
     }
 }
 
-pub open spec fn triptych_nat_of(bytes: Seq<u8>) -> int
+pub open spec fn triptych_nat_of(bytes: Seq<char>) -> int
 {
     triptych_nat_of_from(bytes, (0), (0))
 }
 
-pub open spec fn triptych_sign_of(bytes: Seq<u8>) -> int
+pub open spec fn triptych_sign_of(bytes: Seq<char>) -> int
 {
     if (bytes.len() as int) > (0) && bytes[(0)] == TRIPTYCH_MINUS {
         (-1)
@@ -60,54 +60,54 @@ pub open spec fn triptych_int_pow(base: int, exponent: int) -> int
 }
 
 /** Lean counterpart: `Decimal.IsWf.Decimal`. */
-pub open spec fn decimal_is_wf_decimal(input: Seq<u8>) -> bool
+pub open spec fn decimal_is_wf_decimal(input: Seq<char>) -> bool
 {
-    exists|sign: Seq<u8>, natural: Seq<u8>, fraction: Seq<u8>|
-        input == sign + natural + seq![46u8] + fraction && decimal_is_wf_sign(sign) && decimal_is_wf_natural(natural) && decimal_is_wf_fraction(fraction)
+    exists|sign: Seq<char>, natural: Seq<char>, fraction: Seq<char>|
+        input == sign + natural + seq!['\u{2e}'] + fraction && decimal_is_wf_sign(sign) && decimal_is_wf_natural(natural) && decimal_is_wf_fraction(fraction)
 }
 
 /** Lean counterpart: `Decimal.IsWf.Sign`. */
-pub open spec fn decimal_is_wf_sign(input: Seq<u8>) -> bool
+pub open spec fn decimal_is_wf_sign(input: Seq<char>) -> bool
 {
-    exists|literal: Seq<u8>|
-        input == literal && ((literal.len() as int) == (0) || literal == seq![45u8])
+    exists|literal: Seq<char>|
+        input == literal && ((literal.len() as int) == (0) || literal == seq!['\u{2d}'])
 }
 
 /** Lean counterpart: `Decimal.IsWf.Natural`. */
-pub open spec fn decimal_is_wf_natural(input: Seq<u8>) -> bool
+pub open spec fn decimal_is_wf_natural(input: Seq<char>) -> bool
 {
-    exists|digits: Seq<u8>|
+    exists|digits: Seq<char>|
         input == digits && ((1) <= (digits.len() as int) && (forall|i: int| #![auto] (0) <= i && i < (digits.len() as int) ==> triptych_is_digit(digits[i])))
 }
 
 /** Lean counterpart: `Decimal.IsWf.Fraction`. */
-pub open spec fn decimal_is_wf_fraction(input: Seq<u8>) -> bool
+pub open spec fn decimal_is_wf_fraction(input: Seq<char>) -> bool
 {
-    exists|digits: Seq<u8>|
+    exists|digits: Seq<char>|
         input == digits && ((1) <= (digits.len() as int) && (digits.len() as int) <= (4) && (forall|i: int| #![auto] (0) <= i && i < (digits.len() as int) ==> triptych_is_digit(digits[i])))
 }
 
 pub struct DecimalView {
-    pub input: Seq<u8>,
-    pub sign: Seq<u8>,
-    pub natural: Seq<u8>,
-    pub fraction: Seq<u8>,
+    pub input: Seq<char>,
+    pub sign: Seq<char>,
+    pub natural: Seq<char>,
+    pub fraction: Seq<char>,
 }
 
-pub open spec fn decimal_matches_view(input: Seq<u8>, view: DecimalView) -> bool
+pub open spec fn decimal_matches_view(input: Seq<char>, view: DecimalView) -> bool
 {
-    view.input == input && (exists|sign: Seq<u8>, natural: Seq<u8>, fraction: Seq<u8>|
-        input == sign + natural + seq![46u8] + fraction && decimal_is_wf_sign(sign) && decimal_is_wf_natural(natural) && decimal_is_wf_fraction(fraction) && view.sign == sign && view.natural == natural && view.fraction == fraction)
+    view.input == input && (exists|sign: Seq<char>, natural: Seq<char>, fraction: Seq<char>|
+        input == sign + natural + seq!['\u{2e}'] + fraction && decimal_is_wf_sign(sign) && decimal_is_wf_natural(natural) && decimal_is_wf_fraction(fraction) && view.sign == sign && view.natural == natural && view.fraction == fraction)
 }
 
 /** Lean counterpart: `Decimal.value`. */
-pub open spec fn decimal_value(sign: Seq<u8>, natural: Seq<u8>, fraction: Seq<u8>) -> int
+pub open spec fn decimal_value(sign: Seq<char>, natural: Seq<char>, fraction: Seq<char>) -> int
 {
     triptych_sign_of(sign) * (triptych_nat_of(natural) * triptych_int_pow((10), (4)) + triptych_nat_of(fraction) * triptych_int_pow((10), (4) - (fraction.len() as int)))
 }
 
 /** Lean counterpart: `Decimal.Constraints`. */
-pub open spec fn decimal_constraints(sign: Seq<u8>, natural: Seq<u8>, fraction: Seq<u8>) -> bool
+pub open spec fn decimal_constraints(sign: Seq<char>, natural: Seq<char>, fraction: Seq<char>) -> bool
 {
     (-9223372036854775808) <= decimal_value(sign, natural, fraction) && decimal_value(sign, natural, fraction) <= (9223372036854775807)
 }
@@ -118,14 +118,14 @@ pub open spec fn decimal_view_constraints(view: DecimalView) -> bool
 }
 
 /** Lean counterpart: `Decimal.SatisfiesConstraints`. */
-pub open spec fn decimal_satisfies_constraints(input: Seq<u8>) -> bool
+pub open spec fn decimal_satisfies_constraints(input: Seq<char>) -> bool
 {
     exists|view: DecimalView|
         decimal_matches_view(input, view) && decimal_view_constraints(view)
 }
 
 /** Lean counterpart: `Decimal.IsWf`. */
-pub open spec fn decimal_is_wf(input: Seq<u8>) -> bool
+pub open spec fn decimal_is_wf(input: Seq<char>) -> bool
 {
     decimal_is_wf_decimal(input)
 }
@@ -142,7 +142,7 @@ pub open spec fn decimal_view_denotation(view: DecimalView) -> int
 }
 
 /** Lean counterpart: `Decimal.IsValid`. */
-pub open spec fn decimal_is_valid(input: Seq<u8>) -> bool
+pub open spec fn decimal_is_valid(input: Seq<char>) -> bool
 {
     decimal_is_wf(input) && decimal_satisfies_constraints(input)
 }

@@ -36,18 +36,20 @@ theorem parser_agrees (s : String) (d : Cedar.Spec.Ext.Datetime) :
     have hcedarWf : Cedar.Thm.Datetime.IsWfDatetime s :=
       ⟨components, hsyntax, hconstraints, hs⟩
     refine ⟨(Datetime.GrammarView.isValid_iff_cedarWf s).mpr hcedarWf, ?_⟩
-    rw [Datetime.GrammarView.computeValue_eq_cedar s hcedarWf, hs,
-      CedarSupport.Datetime.computeValue_asString hsyntax, hvalue]
+    apply Datetime.GrammarView.computeValue_eq_of_isDatetimeValue
+    exact ⟨components, ⟨hsyntax, hconstraints, hs⟩, hvalue.symm⟩
   · rintro ⟨hvalid, hcompute⟩
     have hcedarWf :=
       (Datetime.GrammarView.isValid_iff_cedarWf s).mp hvalid
     obtain ⟨components, hsyntax, hconstraints, hs⟩ := hcedarWf
     apply CedarSupport.DatetimeParserRules.parse_eq_some_iff_components.mpr
     refine ⟨components, hsyntax, hconstraints, hs, ?_⟩
-    rw [Datetime.GrammarView.computeValue_eq_cedar s
-      ⟨components, hsyntax, hconstraints, hs⟩] at hcompute
-    rw [hs, CedarSupport.Datetime.computeValue_asString hsyntax] at hcompute
-    exact Option.some.inj hcompute
+    have hcomponents :
+        Cedar.Thm.Datetime.IsDatetimeValue s components.toMillis :=
+      ⟨components, ⟨hsyntax, hconstraints, hs⟩, rfl⟩
+    have hcomponentsValue :=
+      Datetime.GrammarView.computeValue_eq_of_isDatetimeValue hcomponents
+    exact Option.some.inj (hcomponentsValue.symm.trans hcompute)
 
 /-- Cedar rejects exactly the strings rejected by the generated specification. -/
 theorem parser_rejects_iff (s : String) :

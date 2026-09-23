@@ -701,7 +701,7 @@ theorem Duration.Internal.matchesRef.Sign (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold Duration.IsWf.Sign
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym]
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
@@ -718,7 +718,7 @@ theorem Duration.Internal.matchesRef.DDays (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold Duration.IsWf.DDays
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
@@ -736,7 +736,7 @@ theorem Duration.Internal.matchesRef.Days (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold Duration.IsWf.Days
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     Duration.Internal.matchesRef.DDays]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
@@ -754,7 +754,7 @@ theorem Duration.Internal.matchesRef.DHours (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold Duration.IsWf.DHours
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
@@ -772,7 +772,7 @@ theorem Duration.Internal.matchesRef.Hours (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold Duration.IsWf.Hours
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     Duration.Internal.matchesRef.DHours]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
@@ -790,7 +790,7 @@ theorem Duration.Internal.matchesRef.DMinutes (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold Duration.IsWf.DMinutes
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
@@ -808,7 +808,7 @@ theorem Duration.Internal.matchesRef.Minutes (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold Duration.IsWf.Minutes
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     Duration.Internal.matchesRef.DMinutes]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
@@ -826,7 +826,7 @@ theorem Duration.Internal.matchesRef.DSeconds (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold Duration.IsWf.DSeconds
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
@@ -844,7 +844,7 @@ theorem Duration.Internal.matchesRef.Seconds (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold Duration.IsWf.Seconds
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     Duration.Internal.matchesRef.DSeconds]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
@@ -862,7 +862,7 @@ theorem Duration.Internal.matchesRef.DMillis (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold Duration.IsWf.DMillis
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
@@ -880,7 +880,7 @@ theorem Duration.Internal.matchesRef.Millis (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold Duration.IsWf.Millis
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     Duration.Internal.matchesRef.DMillis]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
@@ -901,7 +901,7 @@ theorem Duration.Internal.matchesRef.Components (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold Duration.IsWf.Components
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq_opt_cons, Triptych.matchesSeq.eq_1,
-    Triptych.matchesSeq.eq_2, exists_eq_left, if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc,
+    Triptych.matchesSeq.eq_2, exists_eq_left, ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc,
     Triptych.matchesSym, Duration.Internal.matchesRef.Days, Duration.Internal.matchesRef.Hours,
     Duration.Internal.matchesRef.Minutes, Duration.Internal.matchesRef.Seconds, Duration.Internal.matchesRef.Millis]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
@@ -909,7 +909,7 @@ theorem Duration.Internal.matchesRef.Components (fuel : Nat) (s : String) :
   try grind [String.append_assoc, String.append_empty]
 
 theorem Duration.Internal.matchesRef.Duration (fuel : Nat) (s : String) :
-    matchesSym Duration.grammar (fuel + 4) (Sym.ref "Duration") s ↔ Duration.IsWf.Duration s :=
+    matchesSym Duration.grammar (fuel + 4) (Sym.ref "Duration") s ↔ Duration.Production s :=
   by
   rw [matchesSym,
     show
@@ -918,15 +918,15 @@ theorem Duration.Internal.matchesRef.Duration (fuel : Nat) (s : String) :
       from rfl]
   dsimp only
   rw [matchesProd_single]
-  unfold Duration.IsWf.Duration
+  unfold Duration.Production
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     Duration.Internal.matchesRef.Sign, Duration.Internal.matchesRef.Components]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
-theorem Duration.IsWfGrammar_equiv (s : String) : Triptych.IsWf Duration.grammar s ↔ Duration.IsWf.Duration s :=
+theorem Duration.IsWfGrammar_equiv (s : String) : Triptych.IsWf Duration.grammar s ↔ Duration.Production s :=
   by
   rw [isWf_eq_isWfProd_start, IsWfProd,
     show
@@ -1083,10 +1083,12 @@ theorem Duration.computeValue_view (s : String) :
     rfl
 
 /- ═══════════════════════════════ parser ══════════════════════════════
-The generated correct-by-construction parser `parse` scans once, checks constraints
-on that capture map, and computes the result from the same captures. `parse_eq_gated`
-proves equality with the readable validity-gated presentation. Its correctness and
-search-cost guarantees — `parse_sound`, `parse_complete`, `parse_reject`,
+The generated correct-by-construction parser `parse` uses a certified staged cursor
+program when the grammar supports one, checks constraints on its capture map, and
+computes the result from those captures. The complete scanner remains the checked
+fallback. `parse_eq_scanner` and `parse_eq_gated` prove equality with the generic
+scanner and readable validity-gated presentation. Its correctness and search-cost
+guarantees — `parse_sound`, `parse_complete`, `parse_reject`,
 `parse_profile_result`, `parse_candidateChecks_le`, `parse_view`, and typed
 `parse_eq_some_iff_view` / `parse_eq_none_iff_view` normal forms — are all
 AUTO-DISCHARGED here.
@@ -1106,10 +1108,16 @@ theorem Duration.computeValue_isSome (s : String) : Duration.IsValid s → (Dura
 def Duration.parse (s : String) :=
   Triptych.scannerParse Duration.grammar Duration.constraints Duration.valueExpr millisToDuration s
 
+theorem Duration.parse_eq_scanner (s : String) :
+    Duration.parse s =
+      Triptych.scannerParse Duration.grammar Duration.constraints Duration.valueExpr millisToDuration s :=
+  by rfl
+
 theorem Duration.parse_eq_gated (s : String) :
     Duration.parse s = Triptych.gatedParseOfSpec Duration.IsValid Duration.computeValue millisToDuration s :=
   by
-  unfold Duration.parse Duration.computeValue
+  rw [Duration.parse_eq_scanner]
+  unfold Duration.computeValue
   exact
     Triptych.scannerParse_eq_surfaceGatedParseOfSpec Duration.grammar Duration.constraints Duration.valueExpr
       millisToDuration Duration.IsValid Duration.IsValid_equiv s
@@ -1118,8 +1126,8 @@ theorem Duration.parse_profile_result (s : String) :
     (Triptych.scannerParseProfile Duration.grammar Duration.constraints Duration.valueExpr millisToDuration s).result =
       Duration.parse s :=
   by
-  unfold Duration.parse
-  exact Triptych.scannerParseProfile_result Duration.grammar Duration.constraints Duration.valueExpr millisToDuration s
+  rw [Triptych.scannerParseProfile_result]
+  exact (Duration.parse_eq_scanner s).symm
 
 theorem Duration.parse_candidateChecks_le (s : String) :
     (Triptych.scannerParseProfile Duration.grammar Duration.constraints Duration.valueExpr millisToDuration

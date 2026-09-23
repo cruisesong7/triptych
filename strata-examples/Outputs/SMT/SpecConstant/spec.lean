@@ -19,7 +19,9 @@ set_option linter.unusedVariables false
 The more readable specification. Each production of the input grammar becomes an
 inlined well-formedness predicate `IsWf.*` written as a plain existential over the
 named captures, so you can read it side-by-side with the grammar and check that it
-says the same thing. When present, `WfConstraints` contains capture-derived format
+says the same thing. The start rule is named `Production`; `IsWf.<Start>` and
+top-level `IsWf` reuse it. When a value is present, `Denotes` combines valid syntax
+with the readable value function. `WfConstraints` contains capture-derived format
 conditions and `Constraints` contains conditions that explicitly mention the final
 `value`. Empty phases are omitted; `IsWf` and `IsValid` specialize accordingly.
 This file is proof-free — it is what you cite. -/
@@ -141,17 +143,27 @@ def SpecConstant.IsWf.NumericLiteral (s : String) : Prop :=
           rest = natural ++ rest₁ ∧
             SpecConstant.IsWf.Natural natural ∧ (SpecConstant.IsWf.DecimalPart rest₁ ∨ rest₁ = "")
 
-def SpecConstant.IsWf.SpecConstant (s : String) : Prop :=
+def SpecConstant.Production (s : String) : Prop :=
   SpecConstant.IsWf.StringLiteral s ∨ SpecConstant.IsWf.NumericLiteral s
+
+abbrev SpecConstant.IsWf.SpecConstant (s : String) : Prop :=
+  SpecConstant.Production s
 
 def SpecConstant.value (stringLiteral : String) («sign» : String) (natural : String) (fraction : String) :=
   toValue stringLiteral «sign» natural fraction
 
 abbrev SpecConstant.IsWf (s : String) : Prop :=
-  SpecConstant.IsWf.SpecConstant s
+  SpecConstant.Production s
 
 abbrev SpecConstant.IsValid (s : String) : Prop :=
   SpecConstant.IsWf s
+
+def SpecConstant.Denotes (s : String) (v : Value) : Prop :=
+  SpecConstant.IsValid s ∧
+    v =
+      SpecConstant.value (Triptych.component SpecConstant.grammar s "StringLiteral")
+        (Triptych.component SpecConstant.grammar s "Sign") (Triptych.component SpecConstant.grammar s "Natural")
+        (Triptych.component SpecConstant.grammar s "Fraction")
 
 structure SpecConstant.View where
   input : String

@@ -109,12 +109,31 @@ triptych SignedInteger where
 #guard SignedInteger.toString 42 = "42"
 #guard SignedInteger.toString (-42) = "-42"
 #guard SignedInteger.parse (SignedInteger.toString (-42)) = some (-42)
+#guard decide (SignedInteger.Production "-42")
 -- ANCHOR_END: printerAutoUse
+
+example (s : String) :
+    SignedInteger.IsWf.Root s ↔ SignedInteger.Production s :=
+  Iff.rfl
+
+example : SignedInteger.Denotes "-42" (-42) := by
+  unfold SignedInteger.Denotes
+  native_decide
+
+example : ¬SignedInteger.Denotes "--42" (-42) := by
+  unfold SignedInteger.Denotes
+  native_decide
 
 example (s : String) :
     SignedInteger.parse s =
       Triptych.gatedParse SignedInteger.IsValid SignedInteger.computeValue s := by
   exact SignedInteger.parse_eq_gated s
+
+example (s : String) :
+    SignedInteger.parse s =
+      Triptych.scannerParse SignedInteger.grammar SignedInteger.constraints
+        SignedInteger.valueExpr id s := by
+  exact SignedInteger.parse_eq_scanner s
 
 /--
 error: Unknown identifier `SignedInteger.isValid`
@@ -205,6 +224,10 @@ triptych ValueResult where
     toValue Digits
 
 #guard ValueResult.parse "42" = some { digits := "42" }
+
+example : ValueResult.Denotes "42" { digits := "42" } := by
+  unfold ValueResult.Denotes
+  native_decide
 
 end ValueResultBinderExample
 

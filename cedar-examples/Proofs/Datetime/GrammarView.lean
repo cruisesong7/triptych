@@ -49,28 +49,28 @@ def _root_.Datetime.View.toCedarComponents? (v : Datetime.View) :
   | _, _, _, _, _, _, _ => none
 
 theorem fixedDigits_iff (n : Nat) (hn : 0 < n) (s : String) :
-    Triptych.IsFixedDigits n s ↔ _root_.IsFixedDigits n s := by
-  unfold Triptych.IsFixedDigits _root_.IsFixedDigits
+    Triptych.IsFixedDigits n s ↔ String.IsFixedDigits n s := by
+  unfold Triptych.IsFixedDigits String.IsFixedDigits
   constructor
   · rintro ⟨hdigits, hlen⟩
     exact ⟨(digits_iff s).mp ⟨hdigits, by omega⟩, hlen⟩
   · rintro ⟨hdigits, hlen⟩
     exact ⟨((digits_iff s).mpr hdigits).1, hlen⟩
 
-theorem fieldValue_eq_natOf {s : String} (h : _root_.IsDigits s) :
-    (Cedar.Thm.Datetime.fieldValue s : Int) = Triptych.natOf s := by
-  unfold Cedar.Thm.Datetime.fieldValue Triptych.natOf
+theorem stringNatOf_eq_natOf {s : String} (h : String.IsDigits s) :
+    (String.natOf s : Int) = Triptych.natOf s := by
+  unfold String.natOf Triptych.natOf
   rw [readNat_eq s h]
   rfl
 
-theorem fieldValue_eq_natOf_of_fixed {n : Nat} {s : String}
-    (h : _root_.IsFixedDigits n s) :
-    (Cedar.Thm.Datetime.fieldValue s : Int) = Triptych.natOf s :=
-  fieldValue_eq_natOf h.1
+theorem stringNatOf_eq_natOf_of_fixed {n : Nat} {s : String}
+    (h : String.IsFixedDigits n s) :
+    (String.natOf s : Int) = Triptych.natOf s :=
+  stringNatOf_eq_natOf h.1
 
-theorem fieldValue_eq_readNat {s : String} (h : _root_.IsDigits s) :
-    Cedar.Thm.Datetime.fieldValue s = Triptych.readNat s := by
-  unfold Cedar.Thm.Datetime.fieldValue
+theorem stringNatOf_eq_readNat {s : String} (h : String.IsDigits s) :
+    String.natOf s = Triptych.readNat s := by
+  unfold String.natOf
   rw [readNat_eq s h]
   rfl
 
@@ -82,47 +82,47 @@ theorem daysInMonth_eq (year month : Nat) :
     daysInMonth year month = Cedar.Thm.Datetime.daysInMonth year month :=
   rfl
 
-def CedarFieldValuesAgree (c : Cedar.Thm.Datetime.DatetimeComponents) : Prop :=
-  Cedar.Thm.Datetime.fieldValue c.date.year = readNat c.date.year ∧
-  Cedar.Thm.Datetime.fieldValue c.date.month = readNat c.date.month ∧
-  Cedar.Thm.Datetime.fieldValue c.date.day = readNat c.date.day ∧
+def CedarNatValuesAgree (c : Cedar.Thm.Datetime.DatetimeComponents) : Prop :=
+  String.natOf c.date.year = readNat c.date.year ∧
+  String.natOf c.date.month = readNat c.date.month ∧
+  String.natOf c.date.day = readNat c.date.day ∧
   match c.time with
   | none => True
   | some tp =>
-      Cedar.Thm.Datetime.fieldValue tp.time.hours = readNat tp.time.hours ∧
-      Cedar.Thm.Datetime.fieldValue tp.time.minutes = readNat tp.time.minutes ∧
-      Cedar.Thm.Datetime.fieldValue tp.time.seconds = readNat tp.time.seconds ∧
+      String.natOf tp.time.hours = readNat tp.time.hours ∧
+      String.natOf tp.time.minutes = readNat tp.time.minutes ∧
+      String.natOf tp.time.seconds = readNat tp.time.seconds ∧
       (match tp.millis with
         | none => True
         | some millis =>
-            Cedar.Thm.Datetime.fieldValue millis = readNat millis) ∧
+            String.natOf millis = readNat millis) ∧
       match tp.zone with
       | .utc => True
       | .offset offset =>
-          Cedar.Thm.Datetime.fieldValue offset.hours = readNat offset.hours ∧
-          Cedar.Thm.Datetime.fieldValue offset.minutes = readNat offset.minutes
+          String.natOf offset.hours = readNat offset.hours ∧
+          String.natOf offset.minutes = readNat offset.minutes
 
-theorem cedarFieldValuesAgree {c : Cedar.Thm.Datetime.DatetimeComponents}
-    (h : c.syntaxWf) : CedarFieldValuesAgree c := by
+theorem cedarNatValuesAgree {c : Cedar.Thm.Datetime.DatetimeComponents}
+    (h : c.syntaxWf) : CedarNatValuesAgree c := by
   rcases c with ⟨⟨year, month, day⟩, time⟩
   cases time with
   | none =>
       rcases h with ⟨⟨hy, hm, hd⟩, _⟩
-      exact ⟨fieldValue_eq_readNat hy.1, fieldValue_eq_readNat hm.1,
-        fieldValue_eq_readNat hd.1, trivial⟩
+      exact ⟨stringNatOf_eq_readNat hy.1, stringNatOf_eq_readNat hm.1,
+        stringNatOf_eq_readNat hd.1, trivial⟩
   | some tp =>
       rcases tp with ⟨⟨hours, minutes, seconds⟩, millis, zone⟩
       rcases h with ⟨⟨hy, hm, hd⟩, ⟨⟨hh, hmin, hs⟩, hmillis, hzone⟩⟩
       have hbase :
-          Cedar.Thm.Datetime.fieldValue year = readNat year ∧
-          Cedar.Thm.Datetime.fieldValue month = readNat month ∧
-          Cedar.Thm.Datetime.fieldValue day = readNat day ∧
-          Cedar.Thm.Datetime.fieldValue hours = readNat hours ∧
-          Cedar.Thm.Datetime.fieldValue minutes = readNat minutes ∧
-          Cedar.Thm.Datetime.fieldValue seconds = readNat seconds :=
-        ⟨fieldValue_eq_readNat hy.1, fieldValue_eq_readNat hm.1,
-          fieldValue_eq_readNat hd.1, fieldValue_eq_readNat hh.1,
-          fieldValue_eq_readNat hmin.1, fieldValue_eq_readNat hs.1⟩
+          String.natOf year = readNat year ∧
+          String.natOf month = readNat month ∧
+          String.natOf day = readNat day ∧
+          String.natOf hours = readNat hours ∧
+          String.natOf minutes = readNat minutes ∧
+          String.natOf seconds = readNat seconds :=
+        ⟨stringNatOf_eq_readNat hy.1, stringNatOf_eq_readNat hm.1,
+          stringNatOf_eq_readNat hd.1, stringNatOf_eq_readNat hh.1,
+          stringNatOf_eq_readNat hmin.1, stringNatOf_eq_readNat hs.1⟩
       cases millis with
       | none =>
           cases zone with
@@ -131,16 +131,16 @@ theorem cedarFieldValuesAgree {c : Cedar.Thm.Datetime.DatetimeComponents}
           | offset offset =>
               exact ⟨hbase.1, hbase.2.1, hbase.2.2.1, hbase.2.2.2.1,
                 hbase.2.2.2.2.1, hbase.2.2.2.2.2, trivial,
-                fieldValue_eq_readNat hzone.1.1, fieldValue_eq_readNat hzone.2.1⟩
+                stringNatOf_eq_readNat hzone.1.1, stringNatOf_eq_readNat hzone.2.1⟩
       | some millis =>
-          have hmillisValue := fieldValue_eq_readNat hmillis.1
+          have hmillisValue := stringNatOf_eq_readNat hmillis.1
           cases zone with
           | utc => exact ⟨hbase.1, hbase.2.1, hbase.2.2.1, hbase.2.2.2.1,
               hbase.2.2.2.2.1, hbase.2.2.2.2.2, hmillisValue, trivial⟩
           | offset offset =>
               exact ⟨hbase.1, hbase.2.1, hbase.2.2.1, hbase.2.2.2.1,
                 hbase.2.2.2.2.1, hbase.2.2.2.2.2, hmillisValue,
-                fieldValue_eq_readNat hzone.1.1, fieldValue_eq_readNat hzone.2.1⟩
+                stringNatOf_eq_readNat hzone.1.1, stringNatOf_eq_readNat hzone.2.1⟩
 
 theorem view_denotation_eq_toMillis {v : Datetime.View}
     {c : Cedar.Thm.Datetime.DatetimeComponents}
@@ -153,7 +153,7 @@ theorem view_denotation_eq_toMillis {v : Datetime.View}
     simp [Datetime.View.toCedarComponents?] at hc
   all_goals subst c
   all_goals
-    have hvalues := cedarFieldValuesAgree hsyn
+    have hvalues := cedarNatValuesAgree hsyn
   all_goals
     simp only [Datetime.View.denotation, Datetime.value, epochMillis,
       Cedar.Thm.Datetime.DatetimeComponents.syntaxWf,
@@ -170,7 +170,7 @@ theorem view_denotation_eq_toMillis {v : Datetime.View}
       Cedar.Thm.Datetime.OffsetComponents.seconds,
       cedarDate, cedarTime, cedarOffset] at hsyn ⊢
   all_goals
-    simp [CedarFieldValuesAgree, cedarDate, cedarTime, cedarOffset] at hvalues
+    simp [CedarNatValuesAgree, cedarDate, cedarTime, cedarOffset] at hvalues
   all_goals
     simp [hvalues, daysFromCivil_eq_epochDays, Triptych.natOf, Triptych.signOf,
       Triptych.readNat] at hsyn ⊢
@@ -187,7 +187,7 @@ theorem view_valid_iff_constraintsWf {v : Datetime.View}
     simp [Datetime.View.toCedarComponents?] at hc
   all_goals subst c
   all_goals
-    have hvalues := cedarFieldValuesAgree hsyn
+    have hvalues := cedarNatValuesAgree hsyn
   all_goals
     simp only [Datetime.View.Valid, Datetime.View.WfConstraints, Datetime.WfConstraints,
       Cedar.Thm.Datetime.DatetimeComponents.constraintsWf,
@@ -198,7 +198,7 @@ theorem view_valid_iff_constraintsWf {v : Datetime.View}
       Cedar.Thm.Datetime.OffsetComponents.constraintsWf,
       cedarDate, cedarTime, cedarOffset]
   all_goals
-    simp [CedarFieldValuesAgree, cedarDate, cedarTime, cedarOffset] at hvalues
+    simp [CedarNatValuesAgree, cedarDate, cedarTime, cedarOffset] at hvalues
   all_goals
     simp [dayBound, hvalues, daysInMonth_eq, Triptych.natOf, Triptych.readNat,
       Bool.and_eq_true, decide_eq_true_eq] at hsyn ⊢

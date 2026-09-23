@@ -36,11 +36,11 @@ private def decimalRootCandidates (input : String) : List (CaptureMap × String)
           (result.1, String.ofList result.2)
 ```
 
-Triptych has two parsing implementations with different jobs. The archived reference decoder is
-small and proof-oriented. The scanner is the runtime engine used by every generated parser. The
-switch did not replace one trusted implementation with another: Triptych proves that the scanner
-returns exactly the reference result, then proves that the generated parser has the same public
-contract as before.
+Triptych has three execution layers with different jobs. The archived reference decoder is small
+and proof-oriented. The generic scanner is the complete executable engine. For an eligible
+deterministic grammar, the generator stages that scanner into a straight-line cursor parser. Each
+transition is justified by a checked equivalence theorem, so specialization does not change the
+public parser contract.
 
 # Why the decoder came first
 
@@ -68,6 +68,45 @@ For grammars accepted by the conservative {name}`Triptych.Grammar.staticUnique` 
 scanner first attempts a boundary-driven path. Fixed widths and following literals determine
 field boundaries without enumerating every prefix. Unsupported shapes fall back to the complete
 continuation scanner, not to the archived decoder.
+
+# Certified scan plans
+
+{name}`Triptych.ScanPlan` specializes an eligible grammar into a straight-line cursor program.
+The {lit}`triptych` command checks {name}`Triptych.ScanPlan.certifiedFor` while compiling the
+plan, emits the plan as a literal value, and constructs a
+{name}`Triptych.ScanPlan.MirrorsGrammar` witness that Lean checks against the generated grammar.
+It then lowers each operation to {name}`Triptych.CursorOp` and emits one direct Lean call per
+operation. The generated function does not traverse a grammar or an instruction list at runtime.
+
+Its direct {name}`Triptych.CursorProgram.decode` operation is a fast path: Triptych proves that
+every successful result agrees with the grammar, but a direct rejection is not exposed as the
+final answer.
+
+{name}`Triptych.ScanPlan.decodeCertified` continues with {name}`Triptych.scanSearch` only when
+the direct path returns {name}`Option.none`. Successful direct parses therefore retain the
+straight-line path, while the complete scanner rules out false rejection:
+
+```lean (name := certifiedScanPlanEquivalence)
+#check @Triptych.ScanPlan.decodeCertified_eq_decode
+#check @Triptych.ScanPlan.decodeCertified_eq_none_iff
+#check @Triptych.ScanPlan.decodeCertified_eq_some_iff
+#check @Triptych.ScanPlan.decodeCertified_eq_decode_of_mirrors
+#check @Triptych.CursorProgram.decodeCertified_eq_decode
+#check @Triptych.CursorProgram.decodeCertified_eq_none_iff
+#check @Triptych.CursorProgram.decodeCertified_eq_some_iff
+#check @Triptych.CursorProgram.decodeCertified_eq_decode_of_mirrors
+#check @Triptych.compileScanPlan_decodeCertified_eq_decode
+#check @Triptych.compileCursorProgram_decodeCertified_eq_decode
+#check @Triptych.compileCursorProgram_decodeCertified_eq_none_iff
+#check @Triptych.compileCursorProgram_decodeCertified_eq_some_iff
+```
+
+The generic certificate theorems apply to every plan that passes
+{name}`Triptych.ScanPlan.certifiedFor`, regardless of how that plan was built. Generated Lean
+parsers use the more explicit structural route: the emitted
+{name}`Triptych.ScanPlan.MirrorsGrammar` witness plus the generated capture-functionality theorem
+justify the direct path. The archive remains proof-facing: the executable fallback is the
+continuation scanner whose equality with that decoder is proved separately.
 
 # A concrete Decimal trace
 
@@ -130,9 +169,10 @@ This is the same ordered search, but failed choices are discarded as soon as the
 fails, and the successful choice stops the search.
 
 Decimal also passes {name}`Triptych.Grammar.staticUnique`, so its normal runtime path is even
-more direct. The scanner sees that {lit}`Natural` is followed by the literal dot, consumes the
-digit run up to that dot, and then consumes the final fraction to the end of the input. It obtains
-the successful captures without complete-candidate backtracking.
+more direct. Generation resolves the boundary after {lit}`Natural` from the following literal
+dot and emits the corresponding cursor operations. At runtime the specialized parser executes
+those known operations and obtains the captures without grammar traversal or complete-candidate
+backtracking.
 
 The two implementations therefore return exactly the same observable result:
 
@@ -180,9 +220,9 @@ complete parse matters.
 # One scan per generated parser
 
 The former generated implementation first decided {name}`Decimal.IsValid`, then called
-{name}`Decimal.computeValue`. Both operations could scan the same input. The current parser scans
-once, checks every constraint against that capture map, and computes the result from those same
-captures:
+{name}`Decimal.computeValue`. Both operations could scan the same input. The current parser
+executes one specialized capture pass on successful deterministic inputs, checks every constraint
+against that capture map, and computes the result from those same captures:
 
 ```lean (name := generatedParserDefinition)
 #print Decimal.parse
@@ -192,6 +232,7 @@ The generated {name}`Decimal.parse_eq_gated` theorem proves that this implementa
 extensionally equal to the old, readable gated presentation:
 
 ```lean (name := generatedParserEquivalence)
+#check @Decimal.parse_eq_scanner
 #check @Decimal.parse_eq_gated
 #check @Triptych.scannerParseMap_eq_gatedParseOfSpec
 ```
@@ -273,26 +314,28 @@ combined view and derivation artifacts for that general case.
 
 # Tradeoff
 
-The two implementations are intentionally retained:
+The three layers are intentionally retained:
 
 - The *reference decoder* favors semantic transparency. It materializes candidates, which makes
   induction and ordering arguments direct, but is allocation-heavy.
-- The *scanner* favors execution. It performs the same ordered search lazily and has a certified
-  deterministic path, but its continuation structure is less pleasant as the primary proof
-  semantics.
+- The *generic scanner* favors complete execution. It performs the same ordered search lazily,
+  including for grammars that cannot be specialized.
+- The *staged cursor parser* favors generated runtime code. It removes grammar and instruction-list
+  traversal for certified plans, while retaining the scanner as its rejection fallback.
 
 Keeping the decoder as an archived model gives the scanner a simple independent specification.
-Generated applications import and execute the scanner; proof and benchmark modules may import
-{lit}`Triptych.Archive` when they need the reference model or cost profile.
+Generated applications execute the staged parser when available and otherwise the scanner. Proof
+and benchmark modules may import {lit}`Triptych.Archive` when they need the reference model or
+cost profile.
 
 # Measured evidence
 
-The repository includes paired scanner/reference benchmarks for Graph, Decimal, and IPv6, plus
-the Cedar conformance suite. In one local development build, the generated one-scan parser was
-*2.8x* faster than the old gated parser for Decimal, *2.7x* faster for a full IPv6 address, and
-*2.9x* faster for a compressed IPv6 address. The lower-level scanner/reference comparison ranged
-from *1.2x* on compressed IPv6 to *270x* on the largest Graph case;
-that wider range reflects how much candidate materialization each grammar triggers.
+The repository includes staged-parser/scanner and scanner/reference benchmarks, plus the Cedar
+conformance suite. Repeated local development builds put the staged Decimal-shaped parser around
+*1.2x-1.3x* faster than the generic scanner on a valid input and around parity on an invalid input
+that used the complete fallback. Earlier scanner work made the generated one-scan parser about
+*2.8x-3.0x* faster than the old gated Decimal parser. Timings for other grammars depend on how much
+grammar interpretation, backtracking, and candidate materialization each path avoids.
 
 Run the same comparisons locally:
 

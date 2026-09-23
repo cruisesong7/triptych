@@ -13,7 +13,7 @@ lake build
 lake exe parser_benchmark
 ```
 
-Cedar-backed examples and validation proofs live in `../cedar-examples/`. The benchmark runs
-the verified scanner and archived reference decoder on the same graph inputs, checks equal
-acceptance counts, and reports their relative time. It is a smoke measurement with no fixed
-timing threshold.
+Cedar-backed examples and validation proofs live in `../cedar-examples/`. The benchmark compares
+the staged direct parser with the generic scanner on a deterministic Decimal-shaped format. It
+also runs the verified scanner and archived reference decoder on the same graph inputs. Every
+pair checks equal acceptance counts; timings are smoke measurements with no fixed threshold.

@@ -19,7 +19,9 @@ set_option linter.unusedVariables false
 The more readable specification. Each production of the input grammar becomes an
 inlined well-formedness predicate `IsWf.*` written as a plain existential over the
 named captures, so you can read it side-by-side with the grammar and check that it
-says the same thing. When present, `WfConstraints` contains capture-derived format
+says the same thing. The start rule is named `Production`; `IsWf.<Start>` and
+top-level `IsWf` reuse it. When a value is present, `Denotes` combines valid syntax
+with the readable value function. `WfConstraints` contains capture-derived format
 conditions and `Constraints` contains conditions that explicitly mention the final
 `value`. Empty phases are omitted; `IsWf` and `IsValid` specialize accordingly.
 This file is proof-free — it is what you cite. -/
@@ -71,8 +73,11 @@ def Graph.IsWf.Order (s : String) : Prop :=
 def Graph.IsWf.Cells (s : String) : Prop :=
   s = "" ∨ IsBits s
 
-def Graph.IsWf.Graph (s : String) : Prop :=
+def Graph.Production (s : String) : Prop :=
   ∃ order cells, (s = order ++ ":" ++ cells ∧ Graph.IsWf.Order order) ∧ Graph.IsWf.Cells cells
+
+abbrev Graph.IsWf.Graph (s : String) : Prop :=
+  Graph.Production s
 
 def Graph.value (order : String) (cells : String) :=
   toGraph order cells
@@ -84,10 +89,14 @@ def Graph.SatisfiesWfConstraints (s : String) : Prop :=
   Graph.WfConstraints (Triptych.component Graph.grammar s "Cells") (Triptych.component Graph.grammar s "Order")
 
 abbrev Graph.IsWf (s : String) : Prop :=
-  Graph.IsWf.Graph s ∧ Graph.SatisfiesWfConstraints s
+  Graph.Production s ∧ Graph.SatisfiesWfConstraints s
 
 abbrev Graph.IsValid (s : String) : Prop :=
   Graph.IsWf s
+
+def Graph.Denotes (s : String) (g : Graph) : Prop :=
+  Graph.IsValid s ∧
+    g = Graph.value (Triptych.component Graph.grammar s "Order") (Triptych.component Graph.grammar s "Cells")
 
 structure Graph.View where
   input : String

@@ -39,8 +39,8 @@ private def indent (source : String) (width : Nat := 4) : String :=
 private def prettyPrintTy : Ast.Ty → String
   | .bool => "bool"
   | .int => "int"
-  | .byte => "u8"
-  | .text => "Seq<u8>"
+  | .byte => "char"
+  | .text => "Seq<char>"
   | .option inner => s!"Option<{prettyPrintTy inner}>"
   | .named name => name
 
@@ -50,9 +50,12 @@ private def prettyPrintBinder (binder : Ast.Binder) : String :=
 private def prettyPrintParam (param : Ast.Param) : String :=
   s!"{param.name}: {prettyPrintTy param.ty}"
 
+private def characterLiteral (codePoint : Nat) : String :=
+  "'\\u{" ++ String.ofList (Nat.toDigits 16 codePoint) ++ "}'"
+
 private def textLiteral (literal : String) : String :=
-  let bytes := literal.toList.map Char.toNat
-  "seq![" ++ String.intercalate ", " (bytes.map fun byte => s!"{byte}u8") ++ "]"
+  let characters := literal.toList.map fun character => characterLiteral character.toNat
+  "seq![" ++ String.intercalate ", " characters ++ "]"
 
 private def parenthesize (condition : Bool) (source : String) : String :=
   if condition then "(" ++ source ++ ")" else source
@@ -67,7 +70,7 @@ private partial def prettyPrintExprAt (parentPrecedence : Nat) (expression : Ast
   | .var name => name
   | .boolLit literal => if literal then "true" else "false"
   | .intLit literal => s!"({literal})"
-  | .byteLit literal => s!"{literal}u8"
+  | .byteLit literal => characterLiteral literal
   | .textLit literal => textLiteral literal
   | .optionNone => "None"
   | .optionSome inner => s!"Some({prettyPrintExprAt 0 inner})"
@@ -211,7 +214,11 @@ private def prettyPrintDecl : Ast.Decl → String
 
 def prettyPrintModule (astModule : Ast.Module) : String :=
   let header := String.intercalate "\n" (astModule.header.map ("// " ++ ·))
-  let imports := String.intercalate "\n" (astModule.imports.map fun path => "use " ++ path ++ ";")
+  let imports := String.intercalate "\n" (astModule.imports.map fun path =>
+    if path == "vstd::std_specs::char::is_white_space" then
+      "#[cfg(verus_only)]\nuse " ++ path ++ ";"
+    else
+      "use " ++ path ++ ";")
   let declarations := String.intercalate "\n\n" (astModule.declarations.map prettyPrintDecl)
   header ++ "\n\n" ++ imports ++ "\n\nverus! " ++ leftBrace ++ "\n\n" ++ declarations ++
     "\n\n" ++ rightBrace ++ " // verus!\n"

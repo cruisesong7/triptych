@@ -1,0 +1,8 @@
+digit = u8 | '0'..'9'
+
+fraction = [digit; 4]
+
+decimal = {
+  natural: [digit; 2],
+  fraction: wrap(u8 = '.', fraction),
+}

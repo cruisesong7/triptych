@@ -1,0 +1,4499 @@
+use vstd::prelude::*;
+use vstd::seq_lib::*;
+use vstd::std_specs::char::is_white_space;
+use vstd::string::StrSliceExecFns;
+
+verus! {
+
+/// Character-position result used by every runtime matcher.
+#[derive(Structural, Copy, Clone, PartialEq, Eq)]
+pub struct MatchEnd {
+    pub end: usize,
+}
+
+#[derive(Structural, Copy, Clone, PartialEq, Eq)]
+pub enum TokenClass {
+    Digit,
+    HexDigit,
+    Bit,
+    AsciiRange { lower: u32, upper: u32 },
+}
+
+#[derive(Structural, Copy, Clone, PartialEq, Eq)]
+pub enum LengthSpec {
+    Exactly(usize),
+    Between { lower: usize, upper: usize },
+    AtLeastOne,
+}
+
+#[derive(Structural, Copy, Clone, PartialEq, Eq)]
+pub enum RuntimeNode {
+    Failure,
+    Empty,
+    Literal(usize),
+    StringLiteral,
+    Terminal(TokenClass, LengthSpec),
+    Concat { left: usize, right: usize },
+    Choice { first: usize, second: usize },
+    Capture {
+        child: usize,
+        primary: usize,
+        qualified: Option<usize>,
+    },
+    Repetition {
+        separator: usize,
+        item: usize,
+        lower: usize,
+        upper: Option<usize>,
+        count_capture: usize,
+    },
+}
+
+/// Source grammar symbol. This representation retains the Triptych grammar hierarchy and is the
+/// input to the direct scanner; unlike `RuntimeNode`, it is not parser control flow.
+#[derive(Copy, Clone)]
+pub enum GrammarSymbol {
+    Literal(&'static str),
+    StringLiteral,
+    Reference(usize),
+    Terminal(TokenClass, LengthSpec),
+    Repetition {
+        separator: &'static str,
+        item: usize,
+        lower: usize,
+        upper: Option<usize>,
+    },
+}
+
+#[derive(Structural, Copy, Clone, PartialEq, Eq)]
+pub struct GrammarItem {
+    pub symbol: usize,
+    pub optional: bool,
+}
+
+#[derive(Structural, Copy, Clone, PartialEq, Eq)]
+pub struct GrammarAlternative {
+    pub first_item: usize,
+    pub item_count: usize,
+}
+
+#[derive(Structural, Copy, Clone, PartialEq, Eq)]
+pub struct GrammarProduction {
+    pub first_alternative: usize,
+    pub alternative_count: usize,
+}
+
+pub struct GrammarInput<'a> {
+    pub start: usize,
+    pub symbols: &'a [GrammarSymbol],
+    pub items: &'a [GrammarItem],
+    pub alternatives: &'a [GrammarAlternative],
+    pub productions: &'a [GrammarProduction],
+}
+
+pub struct RuntimeProgram<'a> {
+    pub nodes: &'a [RuntimeNode],
+    pub literals: &'a [&'a str],
+    pub root: usize,
+    pub capture_count: usize,
+}
+
+#[derive(Structural, Copy, Clone, PartialEq, Eq)]
+pub enum CaptureKey {
+    Legacy(usize),
+    Production(usize),
+    Qualified { parent: usize, production: usize },
+    Repetition(usize),
+}
+
+#[derive(Structural, Copy, Clone, PartialEq, Eq)]
+pub struct RuntimeCapture {
+    pub key: CaptureKey,
+    pub start: usize,
+    pub end: usize,
+    pub count: usize,
+    pub is_count: bool,
+}
+
+#[verifier::ext_equal]
+pub struct CandidateSpec {
+    pub end: int,
+    pub captures: Seq<RuntimeCapture>,
+}
+
+pub struct Candidate {
+    pub end: usize,
+    pub captures: Vec<RuntimeCapture>,
+}
+
+impl DeepView for Candidate {
+    type V = CandidateSpec;
+
+    open spec fn deep_view(&self) -> CandidateSpec {
+        CandidateSpec {
+            end: self.end as int,
+            captures: self.captures@,
+        }
+    }
+}
+
+fn copy_captures(source: &Vec<RuntimeCapture>) -> (result: Vec<RuntimeCapture>)
+    ensures
+        result@ == source@,
+{
+    let mut result = Vec::new();
+    let mut index: usize = 0;
+    while index < source.len()
+        invariant
+            0 <= index <= source@.len(),
+            result@ == source@.subrange(0, index as int),
+        decreases source.len() - index,
+    {
+        result.push(source[index]);
+        index += 1;
+    }
+    result
+}
+
+fn append_captures(
+    left: &Vec<RuntimeCapture>,
+    right: &Vec<RuntimeCapture>,
+) -> (result: Vec<RuntimeCapture>)
+    ensures
+        result@ == left@ + right@,
+{
+    let mut result = copy_captures(left);
+    let mut index: usize = 0;
+    while index < right.len()
+        invariant
+            0 <= index <= right@.len(),
+            result@ == left@ + right@.subrange(0, index as int),
+        decreases right.len() - index,
+    {
+        result.push(right[index]);
+        index += 1;
+    }
+    result
+}
+
+fn copy_candidate(source: &Candidate) -> (result: Candidate)
+    ensures
+        result.deep_view() == source.deep_view(),
+{
+    Candidate {
+        end: source.end,
+        captures: copy_captures(&source.captures),
+    }
+}
+
+fn append_candidate_copies(
+    target: &mut Vec<Candidate>,
+    source: &Vec<Candidate>,
+    input_length: usize,
+)
+    requires
+        candidates_bounded(old(target).deep_view(), input_length as nat),
+        candidates_bounded(source.deep_view(), input_length as nat),
+    ensures
+        final(target).deep_view() == old(target).deep_view() + source.deep_view(),
+        candidates_bounded(final(target).deep_view(), input_length as nat),
+{
+    proof {
+        reveal(candidates_bounded);
+    }
+    let ghost old_target = target.deep_view();
+    let mut index: usize = 0;
+    while index < source.len()
+        invariant
+            0 <= index <= source@.len(),
+            target.deep_view()
+                == old_target + source.deep_view().take(index as int),
+            candidates_bounded(target.deep_view(), input_length as nat),
+            candidates_bounded(source.deep_view(), input_length as nat),
+        decreases source.len() - index,
+    {
+        let ghost before = target.deep_view();
+        let candidate = copy_candidate(&source[index]);
+        proof {
+            candidate_bounded_at(
+                source.deep_view(),
+                input_length as nat,
+                index as int,
+            );
+            assert(candidate.deep_view() == source.deep_view()[index as int]);
+            candidates_bounded_push(
+                target.deep_view(),
+                candidate.deep_view(),
+                input_length as nat,
+            );
+        }
+        target.push(candidate);
+        proof {
+            assert(target.deep_view() == before.push(source.deep_view()[index as int]));
+            source.deep_view().lemma_take_succ_push(index as int);
+            assert(candidates_bounded(target.deep_view(), input_length as nat));
+        }
+        index += 1;
+    }
+}
+
+pub open spec fn node_children_before(node: RuntimeNode, index: int) -> bool {
+    match node {
+        RuntimeNode::Concat { left, right } => left < index && right < index,
+        RuntimeNode::Choice { first, second } => first < index && second < index,
+        RuntimeNode::Capture { child, .. } => child < index,
+        RuntimeNode::Repetition { item, .. } => item < index,
+        _ => true,
+    }
+}
+
+pub open spec fn node_captures_in_bounds(node: RuntimeNode, capture_count: int) -> bool {
+    match node {
+        RuntimeNode::Capture { primary, qualified, .. } => {
+            &&& primary < capture_count
+            &&& match qualified {
+                Some(key) => key < capture_count,
+                None => true,
+            }
+        },
+        RuntimeNode::Repetition { count_capture, .. } => count_capture < capture_count,
+        _ => true,
+    }
+}
+
+pub open spec fn node_literals_in_bounds(node: RuntimeNode, literal_count: int) -> bool {
+    match node {
+        RuntimeNode::Literal(literal) => literal < literal_count,
+        RuntimeNode::Repetition { separator, .. } => separator < literal_count,
+        _ => true,
+    }
+}
+
+pub open spec fn node_well_formed_at(
+    program: &RuntimeProgram,
+    index: int,
+) -> bool
+    recommends
+        0 <= index < program.nodes@.len(),
+{
+    let node = program.nodes@[index];
+    &&& node_children_before(node, index)
+    &&& node_captures_in_bounds(node, program.capture_count as int)
+    &&& node_literals_in_bounds(node, program.literals@.len() as int)
+    &&& match node {
+        RuntimeNode::Repetition { separator, lower, .. } => {
+            program.literals@[separator as int]@.len() > 0 && lower >= 1
+        },
+        _ => true,
+    }
+}
+
+pub open spec fn program_well_formed(program: &RuntimeProgram) -> bool {
+    &&& program.root < program.nodes@.len()
+    &&& forall|index: int| 0 <= index < program.nodes@.len() ==>
+        #[trigger] node_well_formed_at(program, index)
+}
+
+fn node_children_before_exec(
+    node: RuntimeNode,
+    index: usize,
+) -> (result: bool)
+    ensures
+        result == node_children_before(node, index as int),
+{
+    match node {
+        RuntimeNode::Concat { left, right } => left < index && right < index,
+        RuntimeNode::Choice { first, second } => first < index && second < index,
+        RuntimeNode::Capture { child, .. } => child < index,
+        RuntimeNode::Repetition { item, .. } => item < index,
+        _ => true,
+    }
+}
+
+fn node_captures_in_bounds_exec(
+    node: RuntimeNode,
+    capture_count: usize,
+) -> (result: bool)
+    ensures
+        result == node_captures_in_bounds(node, capture_count as int),
+{
+    match node {
+        RuntimeNode::Capture { primary, qualified, .. } => {
+            primary < capture_count
+                && match qualified {
+                    Some(key) => key < capture_count,
+                    None => true,
+                }
+        },
+        RuntimeNode::Repetition { count_capture, .. } => count_capture < capture_count,
+        _ => true,
+    }
+}
+
+fn node_literals_in_bounds_exec(
+    node: RuntimeNode,
+    literal_count: usize,
+) -> (result: bool)
+    ensures
+        result == node_literals_in_bounds(node, literal_count as int),
+{
+    match node {
+        RuntimeNode::Literal(literal) => literal < literal_count,
+        RuntimeNode::Repetition { separator, .. } => separator < literal_count,
+        _ => true,
+    }
+}
+
+fn node_well_formed_at_exec(
+    program: &RuntimeProgram,
+    index: usize,
+) -> (result: bool)
+    requires
+        index < program.nodes@.len(),
+    ensures
+        result == node_well_formed_at(program, index as int),
+{
+    let node = program.nodes[index];
+    if !node_children_before_exec(node, index)
+        || !node_captures_in_bounds_exec(node, program.capture_count)
+        || !node_literals_in_bounds_exec(node, program.literals.len())
+    {
+        return false;
+    }
+    match node {
+        RuntimeNode::Repetition { separator, lower, .. } => {
+            let literal = program.literals[separator];
+            literal.unicode_len() > 0 && lower >= 1
+        },
+        _ => true,
+    }
+}
+
+pub fn check_program_well_formed(
+    program: &RuntimeProgram,
+) -> (result: bool)
+    ensures
+        result == program_well_formed(program),
+{
+    if program.root >= program.nodes.len() {
+        proof {
+            reveal(program_well_formed);
+        }
+        return false;
+    }
+
+    let mut index: usize = 0;
+    while index < program.nodes.len()
+        invariant
+            program.root < program.nodes@.len(),
+            0 <= index <= program.nodes@.len(),
+            forall|checked: int| 0 <= checked < index ==>
+                #[trigger] node_well_formed_at(program, checked),
+        decreases program.nodes.len() - index,
+    {
+        if !node_well_formed_at_exec(program, index) {
+            proof {
+                reveal(program_well_formed);
+                assert(!node_well_formed_at(program, index as int));
+                assert(!program_well_formed(program));
+            }
+            return false;
+        }
+        index += 1;
+    }
+    proof {
+        reveal(program_well_formed);
+        assert forall|checked: int|
+            0 <= checked < program.nodes@.len()
+        implies
+            #[trigger] node_well_formed_at(program, checked)
+        by {
+        }
+    }
+    true
+}
+
+pub open spec fn grammar_symbol_well_formed(
+    symbol: GrammarSymbol,
+    symbol_index: int,
+    symbol_count: int,
+    production_count: int,
+) -> bool {
+    match symbol {
+        GrammarSymbol::Reference(production) => production < production_count,
+        GrammarSymbol::Repetition { item, lower, separator, .. } => {
+            &&& item < symbol_index
+            &&& lower >= 1
+            &&& separator@.len() > 0
+        },
+        _ => true,
+    }
+}
+
+pub open spec fn grammar_alternative_well_formed(
+    alternative: GrammarAlternative,
+    item_count: int,
+) -> bool {
+    &&& alternative.first_item <= item_count
+    &&& alternative.item_count <= item_count - alternative.first_item
+}
+
+pub open spec fn grammar_production_well_formed(
+    production: GrammarProduction,
+    alternative_count: int,
+) -> bool {
+    &&& production.first_alternative <= alternative_count
+    &&& production.alternative_count
+        <= alternative_count - production.first_alternative
+}
+
+pub open spec fn grammar_well_formed(grammar: &GrammarInput) -> bool {
+    &&& grammar.start < grammar.productions@.len()
+    &&& forall|index: int| 0 <= index < grammar.symbols@.len() ==>
+        grammar_symbol_well_formed(
+            grammar.symbols@[index],
+            index,
+            grammar.symbols@.len() as int,
+            grammar.productions@.len() as int,
+        )
+    &&& forall|index: int| 0 <= index < grammar.items@.len() ==>
+        grammar.items@[index].symbol < grammar.symbols@.len()
+    &&& forall|index: int| 0 <= index < grammar.alternatives@.len() ==>
+        #[trigger] grammar_alternative_well_formed(
+            grammar.alternatives@[index],
+            grammar.items@.len() as int,
+        )
+    &&& forall|index: int| 0 <= index < grammar.productions@.len() ==>
+        #[trigger] grammar_production_well_formed(
+            grammar.productions@[index],
+            grammar.alternatives@.len() as int,
+        )
+}
+
+fn grammar_symbol_well_formed_exec(
+    symbol: GrammarSymbol,
+    symbol_index: usize,
+    symbol_count: usize,
+    production_count: usize,
+) -> (result: bool)
+    ensures
+        result == grammar_symbol_well_formed(
+            symbol,
+            symbol_index as int,
+            symbol_count as int,
+            production_count as int,
+        ),
+{
+    match symbol {
+        GrammarSymbol::Reference(production) => production < production_count,
+        GrammarSymbol::Repetition { item, lower, separator, .. } => {
+            item < symbol_index && lower >= 1 && separator.unicode_len() > 0
+        },
+        _ => true,
+    }
+}
+
+fn grammar_alternative_well_formed_exec(
+    alternative: GrammarAlternative,
+    item_count: usize,
+) -> (result: bool)
+    ensures
+        result == grammar_alternative_well_formed(alternative, item_count as int),
+{
+    alternative.first_item <= item_count
+        && alternative.item_count <= item_count - alternative.first_item
+}
+
+fn grammar_production_well_formed_exec(
+    production: GrammarProduction,
+    alternative_count: usize,
+) -> (result: bool)
+    ensures
+        result == grammar_production_well_formed(
+            production,
+            alternative_count as int,
+        ),
+{
+    production.first_alternative <= alternative_count
+        && production.alternative_count
+            <= alternative_count - production.first_alternative
+}
+
+/// Validate every source-grammar index and flattened source range before scanning.
+pub fn check_grammar_well_formed(
+    grammar: &GrammarInput,
+) -> (result: bool)
+    ensures
+        result == grammar_well_formed(grammar),
+{
+    if grammar.start >= grammar.productions.len() {
+        proof {
+            reveal(grammar_well_formed);
+        }
+        return false;
+    }
+    let mut symbol_index: usize = 0;
+    while symbol_index < grammar.symbols.len()
+        invariant
+            grammar.start < grammar.productions@.len(),
+            0 <= symbol_index <= grammar.symbols@.len(),
+            forall|checked: int| 0 <= checked < symbol_index ==>
+                grammar_symbol_well_formed(
+                    grammar.symbols@[checked],
+                    checked,
+                    grammar.symbols@.len() as int,
+                    grammar.productions@.len() as int,
+                ),
+        decreases grammar.symbols.len() - symbol_index,
+    {
+        if !grammar_symbol_well_formed_exec(
+            grammar.symbols[symbol_index],
+            symbol_index,
+            grammar.symbols.len(),
+            grammar.productions.len(),
+        ) {
+            proof {
+                reveal(grammar_well_formed);
+            }
+            return false;
+        }
+        symbol_index += 1;
+    }
+
+    let mut item_index: usize = 0;
+    while item_index < grammar.items.len()
+        invariant
+            grammar.start < grammar.productions@.len(),
+            forall|checked: int| 0 <= checked < grammar.symbols@.len() ==>
+                grammar_symbol_well_formed(
+                    grammar.symbols@[checked],
+                    checked,
+                    grammar.symbols@.len() as int,
+                    grammar.productions@.len() as int,
+                ),
+            0 <= item_index <= grammar.items@.len(),
+            forall|checked: int| 0 <= checked < item_index ==>
+                grammar.items@[checked].symbol < grammar.symbols@.len(),
+        decreases grammar.items.len() - item_index,
+    {
+        if grammar.items[item_index].symbol >= grammar.symbols.len() {
+            proof {
+                reveal(grammar_well_formed);
+            }
+            return false;
+        }
+        item_index += 1;
+    }
+
+    let mut alternative_index: usize = 0;
+    while alternative_index < grammar.alternatives.len()
+        invariant
+            grammar.start < grammar.productions@.len(),
+            forall|checked: int| 0 <= checked < grammar.symbols@.len() ==>
+                grammar_symbol_well_formed(
+                    grammar.symbols@[checked],
+                    checked,
+                    grammar.symbols@.len() as int,
+                    grammar.productions@.len() as int,
+                ),
+            forall|checked: int| 0 <= checked < grammar.items@.len() ==>
+                grammar.items@[checked].symbol < grammar.symbols@.len(),
+            0 <= alternative_index <= grammar.alternatives@.len(),
+            forall|checked: int| 0 <= checked < alternative_index ==>
+                grammar_alternative_well_formed(
+                    grammar.alternatives@[checked],
+                    grammar.items@.len() as int,
+                ),
+        decreases grammar.alternatives.len() - alternative_index,
+    {
+        if !grammar_alternative_well_formed_exec(
+            grammar.alternatives[alternative_index],
+            grammar.items.len(),
+        ) {
+            proof {
+                reveal(grammar_well_formed);
+            }
+            return false;
+        }
+        alternative_index += 1;
+    }
+
+    let mut production_index: usize = 0;
+    while production_index < grammar.productions.len()
+        invariant
+            grammar.start < grammar.productions@.len(),
+            forall|checked: int| 0 <= checked < grammar.symbols@.len() ==>
+                grammar_symbol_well_formed(
+                    grammar.symbols@[checked],
+                    checked,
+                    grammar.symbols@.len() as int,
+                    grammar.productions@.len() as int,
+                ),
+            forall|checked: int| 0 <= checked < grammar.items@.len() ==>
+                grammar.items@[checked].symbol < grammar.symbols@.len(),
+            forall|checked: int| 0 <= checked < grammar.alternatives@.len() ==>
+                grammar_alternative_well_formed(
+                    grammar.alternatives@[checked],
+                    grammar.items@.len() as int,
+                ),
+            0 <= production_index <= grammar.productions@.len(),
+            forall|checked: int| 0 <= checked < production_index ==>
+                grammar_production_well_formed(
+                    grammar.productions@[checked],
+                    grammar.alternatives@.len() as int,
+                ),
+        decreases grammar.productions.len() - production_index,
+    {
+        if !grammar_production_well_formed_exec(
+            grammar.productions[production_index],
+            grammar.alternatives.len(),
+        ) {
+            proof {
+                reveal(grammar_well_formed);
+            }
+            return false;
+        }
+        production_index += 1;
+    }
+
+    proof {
+        reveal(grammar_well_formed);
+    }
+    true
+}
+
+pub open spec fn token_accepts(token: TokenClass, character: char) -> bool {
+    let code = character as u32;
+    match token {
+        TokenClass::Digit => '0' <= character <= '9',
+        TokenClass::HexDigit => {
+            ||| '0' <= character <= '9'
+            ||| 'a' <= character <= 'f'
+            ||| 'A' <= character <= 'F'
+        },
+        TokenClass::Bit => character == '0' || character == '1',
+        TokenClass::AsciiRange { lower, upper } => lower <= code <= upper,
+    }
+}
+
+pub open spec fn length_accepts(length: LengthSpec, width: int) -> bool {
+    match length {
+        LengthSpec::Exactly(expected) => width == expected,
+        LengthSpec::Between { lower, upper } => lower <= width <= upper,
+        LengthSpec::AtLeastOne => 1 <= width,
+    }
+}
+
+pub open spec fn literal_matches_at(
+    input: Seq<char>,
+    start: int,
+    literal: Seq<char>,
+) -> bool {
+    &&& 0 <= start
+    &&& start + literal.len() <= input.len()
+    &&& input.subrange(start, start + literal.len()) == literal
+}
+
+pub open spec fn is_hex_character(character: char) -> bool {
+    ||| '0' <= character <= '9'
+    ||| 'a' <= character <= 'f'
+    ||| 'A' <= character <= 'F'
+}
+
+pub open spec fn whitespace_end(
+    input: Seq<char>,
+    index: int,
+    limit: int,
+) -> int
+    recommends
+        0 <= index < limit <= input.len(),
+        is_white_space(input[index]),
+    decreases limit - index,
+{
+    if index + 1 < limit && is_white_space(input[index + 1]) {
+        whitespace_end(input, index + 1, limit)
+    } else {
+        index + 1
+    }
+}
+
+pub open spec fn quoted_escape_target(
+    input: Seq<char>,
+    index: int,
+    limit: int,
+) -> Option<int>
+    recommends
+        0 <= index < limit <= input.len(),
+{
+    let character = input[index];
+    if character == '\\'
+        || character == '"'
+        || character == '\''
+        || character == 'r'
+        || character == 'n'
+        || character == 't'
+    {
+        Some(index + 1)
+    } else if character == 'x' {
+        if index + 2 < limit
+            && is_hex_character(input[index + 1])
+            && is_hex_character(input[index + 2])
+        {
+            Some(index + 3)
+        } else {
+            None
+        }
+    } else if character == 'u' {
+        if index + 4 < limit
+            && is_hex_character(input[index + 1])
+            && is_hex_character(input[index + 2])
+            && is_hex_character(input[index + 3])
+            && is_hex_character(input[index + 4])
+        {
+            Some(index + 5)
+        } else {
+            None
+        }
+    } else if is_white_space(character) {
+        Some(whitespace_end(input, index, limit))
+    } else {
+        None
+    }
+}
+
+pub open spec fn plain_string_tail_accepts(
+    input: Seq<char>,
+    index: int,
+    limit: int,
+) -> bool
+    recommends
+        0 <= index,
+        index <= limit <= input.len(),
+    decreases limit - index,
+{
+    if index >= limit {
+        false
+    } else {
+        let character = input[index];
+        let next = index + 1;
+        if character == '"' {
+            true
+        } else if next >= limit {
+            false
+        } else if character == '\\' {
+            match quoted_escape_target(input, next, limit) {
+                Some(target) => {
+                    if next < target && target <= limit {
+                        plain_string_tail_accepts(input, target, limit)
+                    } else {
+                        false
+                    }
+                },
+                None => false,
+            }
+        } else {
+            plain_string_tail_accepts(input, next, limit)
+        }
+    }
+}
+
+/// Exact acceptance behavior of `Lean.Syntax.decodeStrLit` on one candidate prefix.
+///
+/// Lean's decoder assumes parser-produced syntax. In particular, a candidate beginning with `r`
+/// takes the raw-string path immediately, and the plain path starts scanning at offset one.
+/// Mirroring that behavior here keeps the Rust backend aligned with Triptych's existing `str`
+/// grammar symbol rather than silently substituting a different string grammar.
+pub open spec fn string_literal_matches_at(
+    input: Seq<char>,
+    start: int,
+    width: int,
+) -> bool {
+    &&& 0 <= start
+    &&& 0 <= width
+    &&& start + width <= input.len()
+    &&& if width == 0 {
+        false
+    } else if input[start] == 'r' {
+        true
+    } else {
+        plain_string_tail_accepts(input, start + 1, start + width)
+    }
+}
+
+/// Match one literal at a Unicode character position.
+///
+/// This is the first generic runtime primitive. Its postcondition is independent of any
+/// particular Triptych format, so generated parsers reuse the same checked implementation.
+pub fn match_literal_at(
+    input: &str,
+    start: usize,
+    literal: &str,
+) -> (result: Option<MatchEnd>)
+    requires
+        start <= input@.len(),
+    ensures
+        match result {
+            Some(found) => {
+                &&& literal_matches_at(input@, start as int, literal@)
+                &&& found.end == start + literal@.len()
+            },
+            None => !literal_matches_at(input@, start as int, literal@),
+        },
+{
+    let input_length = input.unicode_len();
+    let literal_length = literal.unicode_len();
+    if literal_length > input_length - start {
+        return None;
+    }
+
+    let mut index: usize = 0;
+    while index < literal_length
+        invariant
+            start <= input@.len(),
+            input_length == input@.len(),
+            literal_length == literal@.len(),
+            literal_length <= input_length - start,
+            0 <= index <= literal_length,
+            forall|offset: int| 0 <= offset < index ==>
+                input@[start as int + offset] == literal@[offset],
+        decreases literal_length - index,
+    {
+        assert(start + index < input_length);
+        let input_character = input.get_char(start + index);
+        let literal_character = literal.get_char(index);
+        if input_character != literal_character {
+            assert(input@[start as int + index as int] != literal@[index as int]);
+            assert(!literal_matches_at(input@, start as int, literal@));
+            return None;
+        }
+        index += 1;
+    }
+
+    proof {
+        assert forall|offset: int| 0 <= offset < literal@.len() implies
+            input@[start as int + offset] == literal@[offset] by {
+        }
+        assert(
+            input@.subrange(start as int, start as int + literal@.len())
+                =~= literal@
+        );
+        assert(literal_matches_at(input@, start as int, literal@));
+    }
+    Some(MatchEnd { end: start + literal_length })
+}
+
+fn is_hex_character_exec(character: char) -> (result: bool)
+    ensures
+        result == is_hex_character(character),
+{
+    ('0' <= character && character <= '9')
+        || ('a' <= character && character <= 'f')
+        || ('A' <= character && character <= 'F')
+}
+
+fn whitespace_end_exec(
+    input: &str,
+    index: usize,
+    limit: usize,
+) -> (result: usize)
+    requires
+        index < limit <= input@.len(),
+        is_white_space(input@[index as int]),
+    ensures
+        result as int == whitespace_end(input@, index as int, limit as int),
+        index < result <= limit,
+    decreases limit - index,
+{
+    let next = index + 1;
+    if next < limit {
+        let character = input.get_char(next);
+        if character.is_whitespace() {
+            whitespace_end_exec(input, next, limit)
+        } else {
+            next
+        }
+    } else {
+        next
+    }
+}
+
+fn quoted_escape_target_exec(
+    input: &str,
+    index: usize,
+    limit: usize,
+) -> (result: Option<usize>)
+    requires
+        index < limit <= input@.len(),
+    ensures
+        match result {
+            Some(target) => {
+                &&& quoted_escape_target(input@, index as int, limit as int)
+                    == Some(target as int)
+                &&& index < target <= limit
+            },
+            None => quoted_escape_target(input@, index as int, limit as int).is_none(),
+        },
+{
+    let character = input.get_char(index);
+    if character == '\\'
+        || character == '"'
+        || character == '\''
+        || character == 'r'
+        || character == 'n'
+        || character == 't'
+    {
+        Some(index + 1)
+    } else if character == 'x' {
+        if 2 < limit - index {
+            let first = input.get_char(index + 1);
+            let second = input.get_char(index + 2);
+            if is_hex_character_exec(first) && is_hex_character_exec(second) {
+                Some(index + 3)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    } else if character == 'u' {
+        if 4 < limit - index {
+            let first = input.get_char(index + 1);
+            let second = input.get_char(index + 2);
+            let third = input.get_char(index + 3);
+            let fourth = input.get_char(index + 4);
+            if is_hex_character_exec(first)
+                && is_hex_character_exec(second)
+                && is_hex_character_exec(third)
+                && is_hex_character_exec(fourth)
+            {
+                Some(index + 5)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    } else if character.is_whitespace() {
+        Some(whitespace_end_exec(input, index, limit))
+    } else {
+        None
+    }
+}
+
+fn plain_string_tail_accepts_exec(
+    input: &str,
+    index: usize,
+    limit: usize,
+) -> (result: bool)
+    requires
+        index <= limit <= input@.len(),
+    ensures
+        result == plain_string_tail_accepts(input@, index as int, limit as int),
+    decreases limit - index,
+{
+    if index >= limit {
+        false
+    } else {
+        let character = input.get_char(index);
+        let next = index + 1;
+        if character == '"' {
+            true
+        } else if next >= limit {
+            false
+        } else if character == '\\' {
+            match quoted_escape_target_exec(input, next, limit) {
+                Some(target) => plain_string_tail_accepts_exec(input, target, limit),
+                None => false,
+            }
+        } else {
+            plain_string_tail_accepts_exec(input, next, limit)
+        }
+    }
+}
+
+pub fn match_string_literal_at_width(
+    input: &str,
+    start: usize,
+    width: usize,
+) -> (result: Option<MatchEnd>)
+    requires
+        start <= input@.len(),
+    ensures
+        match result {
+            Some(found) => {
+                &&& string_literal_matches_at(input@, start as int, width as int)
+                &&& found.end == start + width
+            },
+            None => !string_literal_matches_at(input@, start as int, width as int),
+        },
+{
+    let input_length = input.unicode_len();
+    if width > input_length - start {
+        return None;
+    }
+    if width == 0 {
+        return None;
+    }
+    let limit = start + width;
+    let first = input.get_char(start);
+    if first == 'r' {
+        return Some(MatchEnd { end: limit });
+    }
+    if plain_string_tail_accepts_exec(input, start + 1, limit) {
+        Some(MatchEnd { end: limit })
+    } else {
+        None
+    }
+}
+
+fn token_accepts_exec(token: TokenClass, character: char) -> (result: bool)
+    ensures
+        result == token_accepts(token, character),
+{
+    match token {
+        TokenClass::Digit => '0' <= character && character <= '9',
+        TokenClass::HexDigit => {
+            ('0' <= character && character <= '9')
+                || ('a' <= character && character <= 'f')
+                || ('A' <= character && character <= 'F')
+        },
+        TokenClass::Bit => character == '0' || character == '1',
+        TokenClass::AsciiRange { lower, upper } => {
+            lower <= character as u32 && character as u32 <= upper
+        },
+    }
+}
+
+fn length_accepts_exec(length: LengthSpec, width: usize) -> (result: bool)
+    ensures
+        result == length_accepts(length, width as int),
+{
+    match length {
+        LengthSpec::Exactly(expected) => width == expected,
+        LengthSpec::Between { lower, upper } => lower <= width && width <= upper,
+        LengthSpec::AtLeastOne => 1 <= width,
+    }
+}
+
+pub open spec fn terminal_matches_at(
+    input: Seq<char>,
+    start: int,
+    width: int,
+    token: TokenClass,
+    length: LengthSpec,
+) -> bool {
+    &&& 0 <= start
+    &&& 0 <= width
+    &&& start + width <= input.len()
+    &&& length_accepts(length, width)
+    &&& forall|offset: int| 0 <= offset < width ==>
+        #[trigger] token_accepts(token, input[start + offset])
+}
+
+pub open spec fn empty_candidate(end: int) -> CandidateSpec {
+    CandidateSpec {
+        end,
+        captures: seq![],
+    }
+}
+
+pub open spec fn combine_candidates(
+    left: CandidateSpec,
+    right: CandidateSpec,
+) -> CandidateSpec {
+    CandidateSpec {
+        end: right.end,
+        captures: left.captures + right.captures,
+    }
+}
+
+pub open spec fn span_capture(
+    key: int,
+    start: int,
+    end: int,
+) -> RuntimeCapture {
+    RuntimeCapture {
+        key: CaptureKey::Legacy(key as usize),
+        start: start as usize,
+        end: end as usize,
+        count: 0,
+        is_count: false,
+    }
+}
+
+pub open spec fn capture_candidate(
+    start: int,
+    primary: int,
+    qualified: Option<usize>,
+    child: CandidateSpec,
+) -> CandidateSpec {
+    let primary_capture = span_capture(primary, start, child.end);
+    let captures = match qualified {
+        Some(key) => seq![primary_capture, span_capture(key as int, start, child.end)],
+        None => seq![primary_capture],
+    };
+    CandidateSpec {
+        end: child.end,
+        captures: captures + child.captures,
+    }
+}
+
+pub open spec fn candidates_bounded(
+    candidates: Seq<CandidateSpec>,
+    input_length: nat,
+) -> bool {
+    forall|index: int| 0 <= index < candidates.len() ==>
+        0 <= #[trigger] candidates[index].end <= input_length as int
+}
+
+pub proof fn candidates_bounded_push(
+    candidates: Seq<CandidateSpec>,
+    candidate: CandidateSpec,
+    input_length: nat,
+)
+    requires
+        candidates_bounded(candidates, input_length),
+        0 <= candidate.end <= input_length as int,
+    ensures
+        candidates_bounded(candidates.push(candidate), input_length),
+{
+    assert forall|index: int|
+        0 <= index < candidates.push(candidate).len()
+    implies
+        0 <= #[trigger] candidates.push(candidate)[index].end <= input_length as int
+    by {
+        if index < candidates.len() {
+            assert(candidates.push(candidate)[index] == candidates[index]);
+        } else {
+            assert(index == candidates.len());
+            assert(candidates.push(candidate)[index] == candidate);
+        }
+    }
+}
+
+pub proof fn candidate_bounded_at(
+    candidates: Seq<CandidateSpec>,
+    input_length: nat,
+    index: int,
+)
+    requires
+        candidates_bounded(candidates, input_length),
+        0 <= index < candidates.len(),
+    ensures
+        0 <= candidates[index].end <= input_length as int,
+{
+    reveal(candidates_bounded);
+}
+
+fn combine_candidate_exec(
+    left: &Candidate,
+    right: &Candidate,
+) -> (result: Candidate)
+    ensures
+        result.deep_view() == combine_candidates(left.deep_view(), right.deep_view()),
+{
+    Candidate {
+        end: right.end,
+        captures: append_captures(&left.captures, &right.captures),
+    }
+}
+
+fn capture_candidate_exec(
+    start: usize,
+    primary: usize,
+    qualified: Option<usize>,
+    child: &Candidate,
+) -> (result: Candidate)
+    ensures
+        result.deep_view() == capture_candidate(
+            start as int,
+            primary as int,
+            qualified,
+            child.deep_view(),
+        ),
+{
+    let primary_capture = RuntimeCapture {
+        key: CaptureKey::Legacy(primary),
+        start,
+        end: child.end,
+        count: 0,
+        is_count: false,
+    };
+    let mut prefix = Vec::new();
+    prefix.push(primary_capture);
+    if let Some(key) = qualified {
+        prefix.push(RuntimeCapture {
+            key: CaptureKey::Legacy(key),
+            start,
+            end: child.end,
+            count: 0,
+            is_count: false,
+        });
+    }
+    Candidate {
+        end: child.end,
+        captures: append_captures(&prefix, &child.captures),
+    }
+}
+
+fn repetition_count_ok_exec(
+    lower: usize,
+    upper: Option<usize>,
+    count: usize,
+) -> (result: bool)
+    ensures
+        result == repetition_count_ok(lower as nat, upper, count as nat),
+{
+    lower <= count
+        && match upper {
+            Some(maximum) => count <= maximum,
+            None => true,
+        }
+}
+
+fn repetition_can_continue_exec(
+    upper: Option<usize>,
+    count: usize,
+) -> (result: bool)
+    ensures
+        result == repetition_can_continue(upper, count as nat),
+{
+    match upper {
+        Some(maximum) => count < maximum,
+        None => true,
+    }
+}
+
+fn finish_repetition_candidate_exec(
+    count_capture: usize,
+    count: usize,
+    current: &Candidate,
+) -> (result: Candidate)
+    ensures
+        result.deep_view()
+            == finish_repetition_candidate(
+                count_capture as int,
+                count as nat,
+                current.deep_view(),
+            ),
+{
+    let count_record = RuntimeCapture {
+        key: CaptureKey::Legacy(count_capture),
+        start: 0,
+        end: 0,
+        count,
+        is_count: true,
+    };
+    let mut prefix = Vec::new();
+    prefix.push(count_record);
+    Candidate {
+        end: current.end,
+        captures: append_captures(&prefix, &current.captures),
+    }
+}
+
+fn append_repetition_item_exec(
+    current: &Candidate,
+    next: &Candidate,
+) -> (result: Candidate)
+    ensures
+        result.deep_view()
+            == append_repetition_item(current.deep_view(), next.deep_view()),
+{
+    Candidate {
+        end: next.end,
+        captures: append_captures(&current.captures, &next.captures),
+    }
+}
+
+fn append_combined_candidates(
+    target: &mut Vec<Candidate>,
+    left: &Candidate,
+    rights: &Vec<Candidate>,
+    input_length: usize,
+)
+    requires
+        candidates_bounded(old(target).deep_view(), input_length as nat),
+        candidates_bounded(rights.deep_view(), input_length as nat),
+    ensures
+        final(target).deep_view()
+            == old(target).deep_view()
+                + rights.deep_view().map_values(
+                    |right: CandidateSpec| combine_candidates(left.deep_view(), right),
+                ),
+        candidates_bounded(final(target).deep_view(), input_length as nat),
+{
+    proof {
+        reveal(candidates_bounded);
+    }
+    let ghost old_target = target.deep_view();
+    let mut index: usize = 0;
+    while index < rights.len()
+        invariant
+            0 <= index <= rights@.len(),
+            target.deep_view()
+                == old_target
+                    + rights.deep_view().take(index as int).map_values(
+                        |right: CandidateSpec| combine_candidates(left.deep_view(), right),
+                    ),
+            candidates_bounded(target.deep_view(), input_length as nat),
+            candidates_bounded(rights.deep_view(), input_length as nat),
+        decreases rights.len() - index,
+    {
+        let ghost before = target.deep_view();
+        let candidate = combine_candidate_exec(left, &rights[index]);
+        proof {
+            candidate_bounded_at(
+                rights.deep_view(),
+                input_length as nat,
+                index as int,
+            );
+            assert(
+                candidate.deep_view().end
+                    == rights.deep_view()[index as int].end
+            );
+            rights.deep_view().lemma_map_take_succ(
+                |right: CandidateSpec| combine_candidates(left.deep_view(), right),
+                index as int,
+            );
+            assert(0 <= candidate.deep_view().end <= input_length as int);
+            candidates_bounded_push(
+                target.deep_view(),
+                candidate.deep_view(),
+                input_length as nat,
+            );
+        }
+        target.push(candidate);
+        proof {
+            assert(
+                target.deep_view()
+                    == before.push(
+                        combine_candidates(
+                            left.deep_view(),
+                            rights.deep_view()[index as int],
+                        ),
+                    )
+            );
+            assert(candidates_bounded(target.deep_view(), input_length as nat));
+        }
+        index += 1;
+    }
+}
+
+fn append_captured_candidates(
+    target: &mut Vec<Candidate>,
+    start: usize,
+    primary: usize,
+    qualified: Option<usize>,
+    children: &Vec<Candidate>,
+    input_length: usize,
+)
+    requires
+        start <= input_length,
+        candidates_bounded(old(target).deep_view(), input_length as nat),
+        candidates_bounded(children.deep_view(), input_length as nat),
+    ensures
+        final(target).deep_view()
+            == old(target).deep_view()
+                + children.deep_view().map_values(
+                    |child: CandidateSpec|
+                        capture_candidate(start as int, primary as int, qualified, child),
+                ),
+        candidates_bounded(final(target).deep_view(), input_length as nat),
+{
+    proof {
+        reveal(candidates_bounded);
+    }
+    let ghost old_target = target.deep_view();
+    let mut index: usize = 0;
+    while index < children.len()
+        invariant
+            0 <= index <= children@.len(),
+            target.deep_view()
+                == old_target
+                    + children.deep_view().take(index as int).map_values(
+                        |child: CandidateSpec|
+                            capture_candidate(start as int, primary as int, qualified, child),
+                    ),
+            candidates_bounded(target.deep_view(), input_length as nat),
+            candidates_bounded(children.deep_view(), input_length as nat),
+        decreases children.len() - index,
+    {
+        let ghost before = target.deep_view();
+        let candidate =
+            capture_candidate_exec(start, primary, qualified, &children[index]);
+        proof {
+            candidate_bounded_at(
+                children.deep_view(),
+                input_length as nat,
+                index as int,
+            );
+            assert(
+                candidate.deep_view().end
+                    == children.deep_view()[index as int].end
+            );
+            children.deep_view().lemma_map_take_succ(
+                |child: CandidateSpec|
+                    capture_candidate(start as int, primary as int, qualified, child),
+                index as int,
+            );
+            assert(0 <= candidate.deep_view().end <= input_length as int);
+            candidates_bounded_push(
+                target.deep_view(),
+                candidate.deep_view(),
+                input_length as nat,
+            );
+        }
+        target.push(candidate);
+        proof {
+            assert(
+                target.deep_view()
+                    == before.push(
+                        capture_candidate(
+                            start as int,
+                            primary as int,
+                            qualified,
+                            children.deep_view()[index as int],
+                        ),
+                    )
+            );
+            assert(candidates_bounded(target.deep_view(), input_length as nat));
+        }
+        index += 1;
+    }
+}
+
+pub open spec fn terminal_candidates_before(
+    input: Seq<char>,
+    start: int,
+    token: TokenClass,
+    length: LengthSpec,
+    next_width: nat,
+) -> Seq<CandidateSpec>
+    recommends
+        0 <= start <= input.len(),
+        next_width <= input.len() - start + 1,
+    decreases next_width,
+{
+    if next_width == 0 {
+        seq![]
+    } else {
+        let width: nat = (next_width - 1) as nat;
+        terminal_candidates_before(input, start, token, length, width)
+            + if terminal_matches_at(input, start, width as int, token, length) {
+                seq![empty_candidate(start + width as int)]
+            } else {
+                seq![]
+            }
+    }
+}
+
+pub open spec fn string_candidates_before(
+    input: Seq<char>,
+    start: int,
+    next_width: nat,
+) -> Seq<CandidateSpec>
+    recommends
+        0 <= start <= input.len(),
+        next_width <= input.len() - start + 1,
+    decreases next_width,
+{
+    if next_width == 0 {
+        seq![]
+    } else {
+        let width: nat = (next_width - 1) as nat;
+        string_candidates_before(input, start, width)
+            + if string_literal_matches_at(input, start, width as int) {
+                seq![empty_candidate(start + width as int)]
+            } else {
+                seq![]
+            }
+    }
+}
+
+pub open spec fn leaf_candidates(
+    program: &RuntimeProgram,
+    input: Seq<char>,
+    node_index: int,
+    start: int,
+) -> Seq<CandidateSpec>
+    recommends
+        program_well_formed(program),
+        0 <= node_index < program.nodes@.len(),
+        0 <= start <= input.len(),
+{
+    match program.nodes@[node_index] {
+        RuntimeNode::Failure => seq![],
+        RuntimeNode::Empty => seq![empty_candidate(start)],
+        RuntimeNode::Literal(literal_index) => {
+            let literal = program.literals@[literal_index as int]@;
+            if literal_matches_at(input, start, literal) {
+                seq![empty_candidate(start + literal.len())]
+            } else {
+                seq![]
+            }
+        },
+        RuntimeNode::Terminal(token, length) => {
+            terminal_candidates_before(
+                input,
+                start,
+                token,
+                length,
+                (input.len() - start + 1) as nat,
+            )
+        },
+        RuntimeNode::StringLiteral => {
+            string_candidates_before(
+                input,
+                start,
+                (input.len() - start + 1) as nat,
+            )
+        },
+        _ => seq![],
+    }
+}
+
+pub open spec fn concat_continuations(
+    program: &RuntimeProgram,
+    input: Seq<char>,
+    right: int,
+    left_candidates: Seq<CandidateSpec>,
+    index: int,
+    budget: nat,
+) -> Seq<CandidateSpec>
+    recommends
+        program_well_formed(program),
+        0 <= right < program.nodes@.len(),
+        0 <= index <= left_candidates.len(),
+    decreases right, budget, 1int, left_candidates.len() - index,
+{
+    if index < left_candidates.len() {
+        let left_candidate = left_candidates[index];
+        candidates_for_node(
+            program,
+            input,
+            right,
+            left_candidate.end,
+            program.nodes@[right],
+            budget,
+        ).map_values(
+            |right_candidate: CandidateSpec|
+                combine_candidates(left_candidate, right_candidate),
+        ) + concat_continuations(
+            program,
+            input,
+            right,
+            left_candidates,
+            index + 1,
+            budget,
+        )
+    } else {
+        seq![]
+    }
+}
+
+pub open spec fn repetition_count_ok(
+    lower: nat,
+    upper: Option<usize>,
+    count: nat,
+) -> bool {
+    &&& lower <= count
+    &&& match upper {
+        Some(maximum) => count <= maximum,
+        None => true,
+    }
+}
+
+pub open spec fn repetition_can_continue(
+    upper: Option<usize>,
+    count: nat,
+) -> bool {
+    match upper {
+        Some(maximum) => count < maximum,
+        None => true,
+    }
+}
+
+pub open spec fn count_capture_record(
+    key: int,
+    count: nat,
+) -> RuntimeCapture {
+    RuntimeCapture {
+        key: CaptureKey::Legacy(key as usize),
+        start: 0,
+        end: 0,
+        count: count as usize,
+        is_count: true,
+    }
+}
+
+pub open spec fn finish_repetition_candidate(
+    count_capture: int,
+    count: nat,
+    current: CandidateSpec,
+) -> CandidateSpec {
+    CandidateSpec {
+        end: current.end,
+        captures: seq![count_capture_record(count_capture, count)] + current.captures,
+    }
+}
+
+pub open spec fn append_repetition_item(
+    current: CandidateSpec,
+    next: CandidateSpec,
+) -> CandidateSpec {
+    CandidateSpec {
+        end: next.end,
+        captures: current.captures + next.captures,
+    }
+}
+
+pub open spec fn repetition_tail_candidates(
+    program: &RuntimeProgram,
+    input: Seq<char>,
+    item: int,
+    separator: int,
+    lower: nat,
+    upper: Option<usize>,
+    count_capture: int,
+    current: CandidateSpec,
+    count: nat,
+    budget: nat,
+) -> Seq<CandidateSpec>
+    recommends
+        program_well_formed(program),
+        0 <= item < program.nodes@.len(),
+        0 <= separator < program.literals@.len(),
+        0 <= current.end <= input.len(),
+    decreases item, budget, 2int, 0int,
+{
+    let stop =
+        if repetition_count_ok(lower, upper, count) {
+            seq![finish_repetition_candidate(count_capture, count, current)]
+        } else {
+            seq![]
+        };
+    if budget == 0 || !repetition_can_continue(upper, count) {
+        stop
+    } else {
+        let separator_text = program.literals@[separator]@;
+        if literal_matches_at(input, current.end, separator_text) {
+            let next_start = current.end + separator_text.len();
+            let next_candidates =
+                candidates_for_node(
+                    program,
+                    input,
+                    item,
+                    next_start,
+                    program.nodes@[item],
+                    (budget - 1) as nat,
+                );
+            stop + repetition_from_candidates(
+                program,
+                input,
+                item,
+                separator,
+                lower,
+                upper,
+                count_capture,
+                current,
+                count,
+                next_candidates,
+                0,
+                (budget - 1) as nat,
+            )
+        } else {
+            stop
+        }
+    }
+}
+
+pub open spec fn repetition_from_candidates(
+    program: &RuntimeProgram,
+    input: Seq<char>,
+    item: int,
+    separator: int,
+    lower: nat,
+    upper: Option<usize>,
+    count_capture: int,
+    current: CandidateSpec,
+    count: nat,
+    candidates: Seq<CandidateSpec>,
+    index: int,
+    budget: nat,
+) -> Seq<CandidateSpec>
+    recommends
+        program_well_formed(program),
+        0 <= item < program.nodes@.len(),
+        0 <= separator < program.literals@.len(),
+        0 <= current.end <= input.len(),
+        0 <= index <= candidates.len(),
+    decreases item, budget, 3int, candidates.len() - index,
+{
+    if index < candidates.len() {
+        let next = candidates[index];
+        repetition_tail_candidates(
+            program,
+            input,
+            item,
+            separator,
+            lower,
+            upper,
+            count_capture,
+            append_repetition_item(current, next),
+            count + 1,
+            budget,
+        ) + repetition_from_candidates(
+            program,
+            input,
+            item,
+            separator,
+            lower,
+            upper,
+            count_capture,
+            current,
+            count,
+            candidates,
+            index + 1,
+            budget,
+        )
+    } else {
+        seq![]
+    }
+}
+
+pub open spec fn candidates_for_node(
+    program: &RuntimeProgram,
+    input: Seq<char>,
+    node_index: int,
+    start: int,
+    node: RuntimeNode,
+    budget: nat,
+) -> Seq<CandidateSpec>
+    recommends
+        program_well_formed(program),
+        0 <= node_index < program.nodes@.len(),
+        0 <= start <= input.len(),
+    decreases node_index, budget, 0int, 0int,
+{
+    match node {
+        RuntimeNode::Concat { left, right } => {
+            if left < node_index && right < node_index {
+                concat_continuations(
+                    program,
+                    input,
+                    right as int,
+                    candidates_for_node(
+                        program,
+                        input,
+                        left as int,
+                        start,
+                        program.nodes@[left as int],
+                        budget,
+                    ),
+                    0,
+                    budget,
+                )
+            } else {
+                seq![]
+            }
+        },
+        RuntimeNode::Choice { first, second } => {
+            if first < node_index && second < node_index {
+                candidates_for_node(
+                    program,
+                    input,
+                    first as int,
+                    start,
+                    program.nodes@[first as int],
+                    budget,
+                ) + candidates_for_node(
+                    program,
+                    input,
+                    second as int,
+                    start,
+                    program.nodes@[second as int],
+                    budget,
+                )
+            } else {
+                seq![]
+            }
+        },
+        RuntimeNode::Capture { child, primary, qualified } => {
+            if child < node_index {
+                candidates_for_node(
+                    program,
+                    input,
+                    child as int,
+                    start,
+                    program.nodes@[child as int],
+                    budget,
+                )
+                    .map_values(|candidate: CandidateSpec|
+                        capture_candidate(start, primary as int, qualified, candidate)
+                    )
+            } else {
+                seq![]
+            }
+        },
+        RuntimeNode::Repetition {
+            separator,
+            item,
+            lower,
+            upper,
+            count_capture,
+        } => {
+            if item < node_index {
+                let first_candidates =
+                    candidates_for_node(
+                        program,
+                        input,
+                        item as int,
+                        start,
+                        program.nodes@[item as int],
+                        budget,
+                    );
+                repetition_from_candidates(
+                    program,
+                    input,
+                    item as int,
+                    separator as int,
+                    lower as nat,
+                    upper,
+                    count_capture as int,
+                    empty_candidate(start),
+                    0,
+                    first_candidates,
+                    0,
+                    budget,
+                )
+            } else {
+                seq![]
+            }
+        },
+        _ => leaf_candidates(program, input, node_index, start),
+    }
+}
+
+pub open spec fn composite_candidates(
+    program: &RuntimeProgram,
+    input: Seq<char>,
+    node_index: int,
+    start: int,
+) -> Seq<CandidateSpec>
+    recommends
+        program_well_formed(program),
+        0 <= node_index < program.nodes@.len(),
+        0 <= start <= input.len(),
+{
+    candidates_for_node(
+        program,
+        input,
+        node_index,
+        start,
+        program.nodes@[node_index],
+        input.len() as nat,
+    )
+}
+
+pub open spec fn first_complete_candidate(
+    candidates: Seq<CandidateSpec>,
+    index: int,
+    input_length: int,
+) -> Option<CandidateSpec>
+    recommends
+        0 <= index <= candidates.len(),
+    decreases candidates.len() - index,
+{
+    if index >= candidates.len() {
+        None
+    } else if candidates[index].end == input_length {
+        Some(candidates[index])
+    } else {
+        first_complete_candidate(candidates, index + 1, input_length)
+    }
+}
+
+pub open spec fn program_parse_candidate(
+    program: &RuntimeProgram,
+    input: Seq<char>,
+) -> Option<CandidateSpec>
+    recommends
+        program_well_formed(program),
+{
+    if (input.len() as int) + 1 < usize::MAX as int {
+        first_complete_candidate(
+            candidates_for_node(
+                program,
+                input,
+                program.root as int,
+                0,
+                program.nodes@[program.root as int],
+                input.len() as nat,
+            ),
+            0,
+            input.len() as int,
+        )
+    } else {
+        None
+    }
+}
+
+pub open spec fn checked_program_parse_candidate(
+    program: &RuntimeProgram,
+    input: Seq<char>,
+) -> Option<CandidateSpec> {
+    if program_well_formed(program) {
+        program_parse_candidate(program, input)
+    } else {
+        None
+    }
+}
+
+/// Check one candidate width for a terminal token run. The complete parser enumerates widths in
+/// source order and uses this certified primitive for every candidate.
+pub fn match_terminal_at_width(
+    input: &str,
+    start: usize,
+    width: usize,
+    token: TokenClass,
+    length: LengthSpec,
+) -> (result: Option<MatchEnd>)
+    requires
+        start <= input@.len(),
+    ensures
+        match result {
+            Some(found) => {
+                &&& terminal_matches_at(input@, start as int, width as int, token, length)
+                &&& found.end == start + width
+            },
+            None => !terminal_matches_at(input@, start as int, width as int, token, length),
+        },
+{
+    let input_length = input.unicode_len();
+    if width > input_length - start || !length_accepts_exec(length, width) {
+        return None;
+    }
+
+    let mut offset: usize = 0;
+    while offset < width
+        invariant
+            input_length == input@.len(),
+            start <= input_length,
+            width <= input_length - start,
+            length_accepts(length, width as int),
+            0 <= offset <= width,
+            forall|checked: int| 0 <= checked < offset ==>
+                #[trigger] token_accepts(token, input@[start as int + checked]),
+        decreases width - offset,
+    {
+        assert(start + offset < input_length);
+        let character = input.get_char(start + offset);
+        if !token_accepts_exec(token, character) {
+            assert(!token_accepts(token, input@[start as int + offset as int]));
+            assert(!terminal_matches_at(
+                input@,
+                start as int,
+                width as int,
+                token,
+                length,
+            ));
+            return None;
+        }
+        offset += 1;
+    }
+
+    proof {
+        assert forall|checked: int| 0 <= checked < width implies
+            #[trigger] token_accepts(token, input@[start as int + checked]) by {
+        }
+        assert(terminal_matches_at(input@, start as int, width as int, token, length));
+    }
+    Some(MatchEnd { end: start + width })
+}
+
+fn match_all_string_candidates(
+    input: &str,
+    start: usize,
+) -> (result: Vec<Candidate>)
+    requires
+        start <= input@.len(),
+    ensures
+        result.deep_view() == string_candidates_before(
+            input@,
+            start as int,
+            (input@.len() - start as int + 1) as nat,
+        ),
+        candidates_bounded(result.deep_view(), input@.len()),
+{
+    let input_length = input.unicode_len();
+    let remaining = input_length - start;
+    let mut result = Vec::new();
+    let mut width: usize = 0;
+    loop
+        invariant_except_break
+            result.deep_view() == string_candidates_before(
+                input@,
+                start as int,
+                width as nat,
+            ),
+        invariant
+            input_length == input@.len(),
+            start <= input_length,
+            remaining == input_length - start,
+            0 <= width <= remaining,
+            candidates_bounded(result.deep_view(), input@.len()),
+        ensures
+            result.deep_view() == string_candidates_before(
+                input@,
+                start as int,
+                (remaining as nat) + 1,
+            ),
+            candidates_bounded(result.deep_view(), input@.len()),
+        decreases remaining - width,
+    {
+        if let Some(found) = match_string_literal_at_width(input, start, width) {
+            let ghost before = result.deep_view();
+            let candidate = Candidate {
+                end: found.end,
+                captures: Vec::new(),
+            };
+            proof {
+                assert(0 <= candidate.deep_view().end <= input@.len());
+                candidates_bounded_push(
+                    result.deep_view(),
+                    candidate.deep_view(),
+                    input@.len(),
+                );
+            }
+            result.push(candidate);
+            proof {
+                assert(
+                    result.deep_view() == before.push(empty_candidate(found.end as int))
+                );
+                assert(candidates_bounded(result.deep_view(), input@.len()));
+            }
+        }
+        if width == remaining {
+            break;
+        }
+        width += 1;
+    }
+    result
+}
+
+fn match_all_terminal_candidates(
+    input: &str,
+    start: usize,
+    token: TokenClass,
+    length: LengthSpec,
+) -> (result: Vec<Candidate>)
+    requires
+        start <= input@.len(),
+    ensures
+        result.deep_view() == terminal_candidates_before(
+            input@,
+            start as int,
+            token,
+            length,
+            (input@.len() - start as int + 1) as nat,
+        ),
+        candidates_bounded(result.deep_view(), input@.len()),
+{
+    let input_length = input.unicode_len();
+    let remaining = input_length - start;
+    let mut result = Vec::new();
+    let mut width: usize = 0;
+    loop
+        invariant_except_break
+            result.deep_view() == terminal_candidates_before(
+                input@,
+                start as int,
+                token,
+                length,
+                width as nat,
+            ),
+        invariant
+            input_length == input@.len(),
+            start <= input_length,
+            remaining == input_length - start,
+            0 <= width <= remaining,
+            candidates_bounded(result.deep_view(), input@.len()),
+        ensures
+            result.deep_view() == terminal_candidates_before(
+                input@,
+                start as int,
+                token,
+                length,
+                (remaining as nat) + 1,
+            ),
+            candidates_bounded(result.deep_view(), input@.len()),
+        decreases remaining - width,
+    {
+        if let Some(found) =
+            match_terminal_at_width(input, start, width, token, length)
+        {
+            let ghost before = result.deep_view();
+            let candidate = Candidate {
+                end: found.end,
+                captures: Vec::new(),
+            };
+            proof {
+                assert(0 <= candidate.deep_view().end <= input@.len());
+                candidates_bounded_push(
+                    result.deep_view(),
+                    candidate.deep_view(),
+                    input@.len(),
+                );
+            }
+            result.push(candidate);
+            proof {
+                assert(
+                    result.deep_view() == before.push(empty_candidate(found.end as int))
+                );
+                assert(candidates_bounded(result.deep_view(), input@.len()));
+            }
+        }
+        if width == remaining {
+            break;
+        }
+        width += 1;
+    }
+    result
+}
+
+/// Interpret the leaf subset of a runtime program. Composite nodes are handled by the recursive
+/// matcher built on top of this exact ordered candidate sequence.
+pub fn match_leaf_node(
+    program: &RuntimeProgram,
+    input: &str,
+    node_index: usize,
+    start: usize,
+) -> (result: Vec<Candidate>)
+    requires
+        program_well_formed(program),
+        node_index < program.nodes@.len(),
+        start <= input@.len(),
+    ensures
+        result.deep_view() == leaf_candidates(program, input@, node_index as int, start as int),
+        candidates_bounded(result.deep_view(), input@.len()),
+{
+    let node = program.nodes[node_index];
+    proof {
+        reveal(program_well_formed);
+        assert(node_well_formed_at(program, node_index as int));
+        reveal(node_well_formed_at);
+        reveal(leaf_candidates);
+    }
+    match node {
+        RuntimeNode::Failure => Vec::new(),
+        RuntimeNode::Empty => {
+            let mut result = Vec::new();
+            result.push(Candidate {
+                end: start,
+                captures: Vec::new(),
+            });
+            result
+        },
+        RuntimeNode::Literal(literal_index) => {
+            let literal = program.literals[literal_index];
+            match match_literal_at(input, start, literal) {
+                Some(found) => {
+                    let mut result = Vec::new();
+                    result.push(Candidate {
+                        end: found.end,
+                        captures: Vec::new(),
+                    });
+                    result
+                },
+                None => Vec::new(),
+            }
+        },
+        RuntimeNode::StringLiteral => {
+            let input_length = input.unicode_len();
+            let remaining = input_length - start;
+            let mut result = Vec::new();
+            let mut width: usize = 0;
+            loop
+                invariant_except_break
+                    result.deep_view() == string_candidates_before(
+                        input@,
+                        start as int,
+                        width as nat,
+                    ),
+                invariant
+                    program_well_formed(program),
+                    node_index < program.nodes@.len(),
+                    program.nodes@[node_index as int] == node,
+                    input_length == input@.len(),
+                    start <= input_length,
+                    remaining == input_length - start,
+                    0 <= width <= remaining,
+                    candidates_bounded(result.deep_view(), input@.len()),
+                ensures
+                    result.deep_view() == string_candidates_before(
+                        input@,
+                        start as int,
+                        (remaining as nat) + 1,
+                    ),
+                    candidates_bounded(result.deep_view(), input@.len()),
+                decreases remaining - width,
+            {
+                if let Some(found) =
+                    match_string_literal_at_width(input, start, width)
+                {
+                    let ghost before = result.deep_view();
+                    let candidate = Candidate {
+                        end: found.end,
+                        captures: Vec::new(),
+                    };
+                    proof {
+                        assert(0 <= candidate.deep_view().end <= input@.len());
+                        candidates_bounded_push(
+                            result.deep_view(),
+                            candidate.deep_view(),
+                            input@.len(),
+                        );
+                    }
+                    result.push(candidate);
+                    proof {
+                        assert(
+                            result.deep_view()
+                                == before.push(empty_candidate(found.end as int))
+                        );
+                        assert(candidates_bounded(result.deep_view(), input@.len()));
+                    }
+                }
+                if width == remaining {
+                    proof {
+                        assert(
+                            result.deep_view()
+                                == string_candidates_before(
+                                    input@,
+                                    start as int,
+                                    (remaining as nat) + 1,
+                                )
+                        );
+                    }
+                    break;
+                }
+                width += 1;
+            }
+            result
+        },
+        RuntimeNode::Terminal(token, length) => {
+            let input_length = input.unicode_len();
+            let remaining = input_length - start;
+            let mut result = Vec::new();
+            let mut width: usize = 0;
+            loop
+                invariant_except_break
+                    result.deep_view() == terminal_candidates_before(
+                        input@,
+                        start as int,
+                        token,
+                        length,
+                        width as nat,
+                    ),
+                invariant
+                    program_well_formed(program),
+                    node_index < program.nodes@.len(),
+                    program.nodes@[node_index as int] == node,
+                    input_length == input@.len(),
+                    start <= input_length,
+                    remaining == input_length - start,
+                    0 <= width <= remaining,
+                    candidates_bounded(result.deep_view(), input@.len()),
+                ensures
+                    result.deep_view() == terminal_candidates_before(
+                        input@,
+                        start as int,
+                        token,
+                        length,
+                        (remaining as nat) + 1,
+                    ),
+                    candidates_bounded(result.deep_view(), input@.len()),
+                decreases remaining - width,
+            {
+                if let Some(found) =
+                    match_terminal_at_width(input, start, width, token, length)
+                {
+                    let ghost before = result.deep_view();
+                    let candidate = Candidate {
+                        end: found.end,
+                        captures: Vec::new(),
+                    };
+                    proof {
+                        assert(0 <= candidate.deep_view().end <= input@.len());
+                        candidates_bounded_push(
+                            result.deep_view(),
+                            candidate.deep_view(),
+                            input@.len(),
+                        );
+                    }
+                    result.push(candidate);
+                    proof {
+                        assert(
+                            result.deep_view()
+                                == before.push(empty_candidate(found.end as int))
+                        );
+                        assert(candidates_bounded(result.deep_view(), input@.len()));
+                    }
+                }
+                if width == remaining {
+                    proof {
+                        assert(
+                            result.deep_view()
+                                == terminal_candidates_before(
+                                    input@,
+                                    start as int,
+                                    token,
+                                    length,
+                                    (remaining as nat) + 1,
+                                )
+                        );
+                    }
+                    break;
+                }
+                width += 1;
+            }
+            result
+        },
+        _ => Vec::new(),
+    }
+}
+
+/// Execute the currently certified runtime-program subset. The postcondition is the exact ordered
+/// candidate sequence, not merely a recognition result, so later root selection inherits
+/// soundness, completeness, and first-result agreement from one theorem.
+pub fn match_composite_node(
+    program: &RuntimeProgram,
+    input: &str,
+    node_index: usize,
+    start: usize,
+    budget: usize,
+) -> (result: Vec<Candidate>)
+    requires
+        program_well_formed(program),
+        node_index < program.nodes@.len(),
+        start <= input@.len(),
+        (budget as int) + 1 < usize::MAX as int,
+    ensures
+        result.deep_view()
+            == candidates_for_node(
+                program,
+                input@,
+                node_index as int,
+                start as int,
+                program.nodes@[node_index as int],
+                budget as nat,
+            ),
+        candidates_bounded(result.deep_view(), input@.len()),
+    decreases node_index, budget, 0int, 0int,
+{
+    proof {
+        reveal(program_well_formed);
+        reveal_with_fuel(candidates_for_node, 2);
+        assert(node_well_formed_at(program, node_index as int));
+        reveal(node_well_formed_at);
+        assert(node_children_before(
+            program.nodes@[node_index as int],
+            node_index as int,
+        ));
+    }
+    match program.nodes[node_index] {
+        RuntimeNode::Concat { left, right } => {
+            proof {
+                assert(left < node_index);
+                assert(right < node_index);
+            }
+            let left_candidates = match_composite_node(program, input, left, start, budget);
+            let result =
+                match_concat_from(program, input, right, &left_candidates, 0, budget);
+            proof {
+                assert(
+                    left_candidates.deep_view()
+                        == candidates_for_node(
+                            program,
+                            input@,
+                            left as int,
+                            start as int,
+                            program.nodes@[left as int],
+                            budget as nat,
+                        )
+                );
+                assert(
+                    result.deep_view()
+                        == concat_continuations(
+                            program,
+                            input@,
+                            right as int,
+                            left_candidates.deep_view(),
+                            0,
+                            budget as nat,
+                        )
+                );
+                assert(
+                    program.nodes@[node_index as int]
+                        == (RuntimeNode::Concat { left, right })
+                );
+                assert((left as int) < (node_index as int));
+                assert((right as int) < (node_index as int));
+                assert(
+                    (left as int) < (node_index as int)
+                        && (right as int) < (node_index as int)
+                );
+                reveal_with_fuel(candidates_for_node, 2);
+                assert(
+                    result.deep_view()
+                        == candidates_for_node(
+                            program,
+                            input@,
+                            node_index as int,
+                            start as int,
+                            RuntimeNode::Concat { left, right },
+                            budget as nat,
+                        )
+                );
+                assert(
+                    candidates_for_node(
+                        program,
+                        input@,
+                        node_index as int,
+                        start as int,
+                        RuntimeNode::Concat { left, right },
+                        budget as nat,
+                    )
+                        == candidates_for_node(
+                            program,
+                            input@,
+                            node_index as int,
+                            start as int,
+                            program.nodes@[node_index as int],
+                            budget as nat,
+                        )
+                );
+            }
+            result
+        },
+        RuntimeNode::Choice { first, second } => {
+            proof {
+                assert(first < node_index);
+                assert(second < node_index);
+            }
+            let first_candidates =
+                match_composite_node(program, input, first, start, budget);
+            let second_candidates =
+                match_composite_node(program, input, second, start, budget);
+            let mut result = Vec::new();
+            append_candidate_copies(&mut result, &first_candidates, input.unicode_len());
+            append_candidate_copies(&mut result, &second_candidates, input.unicode_len());
+            result
+        },
+        RuntimeNode::Capture { child, primary, qualified } => {
+            proof {
+                assert(child < node_index);
+            }
+            let child_candidates =
+                match_composite_node(program, input, child, start, budget);
+            let mut result = Vec::new();
+            append_captured_candidates(
+                &mut result,
+                start,
+                primary,
+                qualified,
+                &child_candidates,
+                input.unicode_len(),
+            );
+            result
+        },
+        RuntimeNode::Repetition {
+            separator,
+            item,
+            lower,
+            upper,
+            count_capture,
+        } => {
+            proof {
+                assert(item < node_index);
+                assert(separator < program.literals@.len());
+            }
+            let first_candidates =
+                match_composite_node(program, input, item, start, budget);
+            let current = Candidate {
+                end: start,
+                captures: Vec::new(),
+            };
+            match_repetition_from(
+                program,
+                input,
+                item,
+                separator,
+                lower,
+                upper,
+                count_capture,
+                &current,
+                0,
+                &first_candidates,
+                0,
+                budget,
+            )
+        },
+        RuntimeNode::StringLiteral => match_leaf_node(program, input, node_index, start),
+        _ => match_leaf_node(program, input, node_index, start),
+    }
+}
+
+fn match_concat_from(
+    program: &RuntimeProgram,
+    input: &str,
+    right: usize,
+    left_candidates: &Vec<Candidate>,
+    index: usize,
+    budget: usize,
+) -> (result: Vec<Candidate>)
+    requires
+        program_well_formed(program),
+        right < program.nodes@.len(),
+        index <= left_candidates@.len(),
+        candidates_bounded(left_candidates.deep_view(), input@.len()),
+        (budget as int) + 1 < usize::MAX as int,
+    ensures
+        result.deep_view()
+            == concat_continuations(
+                program,
+                input@,
+                right as int,
+                left_candidates.deep_view(),
+                index as int,
+                budget as nat,
+            ),
+        candidates_bounded(result.deep_view(), input@.len()),
+    decreases right, budget, 1int, left_candidates.len() - index,
+{
+    if index >= left_candidates.len() {
+        proof {
+            reveal_with_fuel(concat_continuations, 1);
+        }
+        Vec::new()
+    } else {
+        proof {
+            candidate_bounded_at(
+                left_candidates.deep_view(),
+                input@.len(),
+                index as int,
+            );
+        }
+        let left_candidate = &left_candidates[index];
+        let right_candidates =
+            match_composite_node(program, input, right, left_candidate.end, budget);
+        let mut result = Vec::new();
+        append_combined_candidates(
+            &mut result,
+            left_candidate,
+            &right_candidates,
+            input.unicode_len(),
+        );
+        let tail =
+            match_concat_from(
+                program,
+                input,
+                right,
+                left_candidates,
+                index + 1,
+                budget,
+            );
+        append_candidate_copies(&mut result, &tail, input.unicode_len());
+        proof {
+            reveal_with_fuel(concat_continuations, 1);
+            assert(
+                left_candidate.deep_view()
+                    == left_candidates.deep_view()[index as int]
+            );
+        }
+        result
+    }
+}
+
+fn match_repetition_tail(
+    program: &RuntimeProgram,
+    input: &str,
+    item: usize,
+    separator: usize,
+    lower: usize,
+    upper: Option<usize>,
+    count_capture: usize,
+    current: &Candidate,
+    count: usize,
+    budget: usize,
+) -> (result: Vec<Candidate>)
+    requires
+        program_well_formed(program),
+        item < program.nodes@.len(),
+        separator < program.literals@.len(),
+        current.end <= input@.len(),
+        (count as int) + (budget as int) < usize::MAX as int,
+    ensures
+        result.deep_view()
+            == repetition_tail_candidates(
+                program,
+                input@,
+                item as int,
+                separator as int,
+                lower as nat,
+                upper,
+                count_capture as int,
+                current.deep_view(),
+                count as nat,
+                budget as nat,
+            ),
+        candidates_bounded(result.deep_view(), input@.len()),
+    decreases item, budget, 2int, 0int,
+{
+    let mut result = Vec::new();
+    if repetition_count_ok_exec(lower, upper, count) {
+        let candidate =
+            finish_repetition_candidate_exec(count_capture, count, current);
+        proof {
+            assert(0 <= candidate.deep_view().end <= input@.len());
+            candidates_bounded_push(
+                result.deep_view(),
+                candidate.deep_view(),
+                input@.len(),
+            );
+        }
+        result.push(candidate);
+    }
+
+    if budget == 0 || !repetition_can_continue_exec(upper, count) {
+        proof {
+            reveal_with_fuel(repetition_tail_candidates, 1);
+        }
+        return result;
+    }
+
+    let separator_text = program.literals[separator];
+    if let Some(found) = match_literal_at(input, current.end, separator_text) {
+        let next_candidates =
+            match_composite_node(program, input, item, found.end, budget - 1);
+        let continuation = match_repetition_from(
+            program,
+            input,
+            item,
+            separator,
+            lower,
+            upper,
+            count_capture,
+            current,
+            count,
+            &next_candidates,
+            0,
+            budget - 1,
+        );
+        append_candidate_copies(
+            &mut result,
+            &continuation,
+            input.unicode_len(),
+        );
+    }
+    proof {
+        reveal_with_fuel(repetition_tail_candidates, 1);
+    }
+    result
+}
+
+fn match_repetition_from(
+    program: &RuntimeProgram,
+    input: &str,
+    item: usize,
+    separator: usize,
+    lower: usize,
+    upper: Option<usize>,
+    count_capture: usize,
+    current: &Candidate,
+    count: usize,
+    candidates: &Vec<Candidate>,
+    index: usize,
+    budget: usize,
+) -> (result: Vec<Candidate>)
+    requires
+        program_well_formed(program),
+        item < program.nodes@.len(),
+        separator < program.literals@.len(),
+        current.end <= input@.len(),
+        index <= candidates@.len(),
+        candidates_bounded(candidates.deep_view(), input@.len()),
+        (count as int) + (budget as int) + 1 < usize::MAX as int,
+    ensures
+        result.deep_view()
+            == repetition_from_candidates(
+                program,
+                input@,
+                item as int,
+                separator as int,
+                lower as nat,
+                upper,
+                count_capture as int,
+                current.deep_view(),
+                count as nat,
+                candidates.deep_view(),
+                index as int,
+                budget as nat,
+            ),
+        candidates_bounded(result.deep_view(), input@.len()),
+    decreases item, budget, 3int, candidates.len() - index,
+{
+    if index >= candidates.len() {
+        proof {
+            reveal_with_fuel(repetition_from_candidates, 1);
+        }
+        Vec::new()
+    } else {
+        proof {
+            candidate_bounded_at(
+                candidates.deep_view(),
+                input@.len(),
+                index as int,
+            );
+        }
+        let combined =
+            append_repetition_item_exec(current, &candidates[index]);
+        let head = match_repetition_tail(
+            program,
+            input,
+            item,
+            separator,
+            lower,
+            upper,
+            count_capture,
+            &combined,
+            count + 1,
+            budget,
+        );
+        let tail = match_repetition_from(
+            program,
+            input,
+            item,
+            separator,
+            lower,
+            upper,
+            count_capture,
+            current,
+            count,
+            candidates,
+            index + 1,
+            budget,
+        );
+        let mut result = Vec::new();
+        append_candidate_copies(&mut result, &head, input.unicode_len());
+        append_candidate_copies(&mut result, &tail, input.unicode_len());
+        proof {
+            reveal_with_fuel(repetition_from_candidates, 1);
+            assert(
+                combined.deep_view()
+                    == append_repetition_item(
+                        current.deep_view(),
+                        candidates.deep_view()[index as int],
+                    )
+            );
+        }
+        result
+    }
+}
+
+fn select_complete_candidate(
+    candidates: &Vec<Candidate>,
+    index: usize,
+    input_length: usize,
+) -> (result: Option<Candidate>)
+    requires
+        index <= candidates@.len(),
+    ensures
+        match result {
+            Some(candidate) => {
+                first_complete_candidate(
+                    candidates.deep_view(),
+                    index as int,
+                    input_length as int,
+                ) == Some(candidate.deep_view())
+            },
+            None => {
+                first_complete_candidate(
+                    candidates.deep_view(),
+                    index as int,
+                    input_length as int,
+                ).is_none()
+            },
+        },
+    decreases candidates.len() - index,
+{
+    if index >= candidates.len() {
+        None
+    } else if candidates[index].end == input_length {
+        Some(copy_candidate(&candidates[index]))
+    } else {
+        select_complete_candidate(candidates, index + 1, input_length)
+    }
+}
+
+/// Execute one complete runtime program and return the first source-ordered full parse.
+///
+/// The length guard makes the executable total over Rust's bounded `usize`; every realizable
+/// parser input is far below that bound. It also isolates the only machine-integer concern from
+/// the grammar and matching proofs.
+pub fn parse_program_candidate(
+    program: &RuntimeProgram,
+    input: &str,
+) -> (result: Option<Candidate>)
+    requires
+        program_well_formed(program),
+    ensures
+        match result {
+            Some(candidate) => {
+                program_parse_candidate(program, input@) == Some(candidate.deep_view())
+            },
+            None => program_parse_candidate(program, input@).is_none(),
+        },
+{
+    let input_length = input.unicode_len();
+    if input_length >= usize::MAX - 1 {
+        proof {
+            reveal(program_parse_candidate);
+        }
+        return None;
+    }
+    let candidates =
+        match_composite_node(program, input, program.root, 0, input_length);
+    let result = select_complete_candidate(&candidates, 0, input_length);
+    proof {
+        reveal(program_parse_candidate);
+    }
+    result
+}
+
+/// Total proof-carrying entry point for emitted parser programs.
+///
+/// Generated modules need only serialize their runtime tables and call this function. The
+/// executable well-formedness check establishes every index and termination invariant before the
+/// matcher runs; no per-format parser proof or trusted fallback is required.
+pub fn parse_checked_program_candidate(
+    program: &RuntimeProgram,
+    input: &str,
+) -> (result: Option<Candidate>)
+    ensures
+        match result {
+            Some(candidate) => {
+                checked_program_parse_candidate(program, input@)
+                    == Some(candidate.deep_view())
+            },
+            None => checked_program_parse_candidate(program, input@).is_none(),
+        },
+{
+    if check_program_well_formed(program) {
+        parse_program_candidate(program, input)
+    } else {
+        None
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Direct source-grammar semantics
+// ---------------------------------------------------------------------------
+
+pub open spec fn grammar_capture_candidate(
+    grammar: &GrammarInput,
+    qualifier: Option<usize>,
+    production: int,
+    start: int,
+    candidate: CandidateSpec,
+) -> CandidateSpec {
+    let primary = RuntimeCapture {
+        key: CaptureKey::Production(production as usize),
+        start: start as usize,
+        end: candidate.end as usize,
+        count: 0,
+        is_count: false,
+    };
+    let qualified = match qualifier {
+        Some(parent) => seq![RuntimeCapture {
+            key: CaptureKey::Qualified {
+                parent,
+                production: production as usize,
+            },
+            start: start as usize,
+            end: candidate.end as usize,
+            count: 0,
+            is_count: false,
+        }],
+        None => seq![],
+    };
+    CandidateSpec {
+        end: candidate.end,
+        captures: seq![primary] + qualified + candidate.captures,
+    }
+}
+
+pub open spec fn grammar_finish_repetition_candidate(
+    grammar: &GrammarInput,
+    symbol: int,
+    count: nat,
+    current: CandidateSpec,
+) -> CandidateSpec {
+    CandidateSpec {
+        end: current.end,
+        captures: seq![RuntimeCapture {
+            key: CaptureKey::Repetition(symbol as usize),
+            start: 0,
+            end: 0,
+            count: count as usize,
+            is_count: true,
+        }] + current.captures,
+    }
+}
+
+pub open spec fn grammar_leaf_symbol_candidates(
+    grammar: &GrammarInput,
+    input: Seq<char>,
+    symbol_index: int,
+    start: int,
+) -> Seq<CandidateSpec>
+    recommends
+        grammar_well_formed(grammar),
+        0 <= symbol_index < grammar.symbols@.len(),
+        0 <= start <= input.len(),
+{
+    match grammar.symbols@[symbol_index] {
+        GrammarSymbol::Literal(literal) => {
+            if literal_matches_at(input, start, literal@) {
+                seq![empty_candidate(start + literal@.len())]
+            } else {
+                seq![]
+            }
+        },
+        GrammarSymbol::StringLiteral => {
+            string_candidates_before(
+                input,
+                start,
+                (input.len() - start + 1) as nat,
+            )
+        },
+        GrammarSymbol::Terminal(token, length) => {
+            terminal_candidates_before(
+                input,
+                start,
+                token,
+                length,
+                (input.len() - start + 1) as nat,
+            )
+        },
+        _ => seq![],
+    }
+}
+
+pub open spec fn grammar_sequence_from_candidates(
+    grammar: &GrammarInput,
+    input: Seq<char>,
+    qualifier: Option<usize>,
+    parent_item_count: nat,
+    first_item: int,
+    item_count: nat,
+    candidates: Seq<CandidateSpec>,
+    candidate_index: int,
+    production_fuel: nat,
+    repetition_budget: nat,
+) -> Seq<CandidateSpec>
+    recommends
+        grammar_well_formed(grammar),
+        0 <= first_item,
+        first_item + item_count <= grammar.items@.len(),
+        item_count < parent_item_count,
+        0 <= candidate_index <= candidates.len(),
+    decreases
+        production_fuel,
+        0nat,
+        parent_item_count + 1,
+        repetition_budget,
+        3int,
+        0int,
+        candidates.len() - candidate_index,
+{
+    if item_count >= parent_item_count {
+        seq![]
+    } else if candidate_index < candidates.len() {
+        let head = candidates[candidate_index];
+        grammar_sequence_candidates(
+            grammar,
+            input,
+            qualifier,
+            first_item,
+            item_count,
+            head.end,
+            production_fuel,
+            repetition_budget,
+        ).map_values(
+            |tail: CandidateSpec| combine_candidates(head, tail),
+        ) + grammar_sequence_from_candidates(
+            grammar,
+            input,
+            qualifier,
+            parent_item_count,
+            first_item,
+            item_count,
+            candidates,
+            candidate_index + 1,
+            production_fuel,
+            repetition_budget,
+        )
+    } else {
+        seq![]
+    }
+}
+
+pub open spec fn grammar_sequence_candidates(
+    grammar: &GrammarInput,
+    input: Seq<char>,
+    qualifier: Option<usize>,
+    first_item: int,
+    item_count: nat,
+    start: int,
+    production_fuel: nat,
+    repetition_budget: nat,
+) -> Seq<CandidateSpec>
+    recommends
+        grammar_well_formed(grammar),
+        0 <= first_item,
+        first_item + item_count <= grammar.items@.len(),
+    decreases
+        production_fuel,
+        0nat,
+        item_count + 1,
+        repetition_budget,
+        5int,
+        0int,
+        0int,
+{
+    if start < 0 || start > input.len() {
+        seq![]
+    } else if item_count == 0 {
+        seq![empty_candidate(start)]
+    } else {
+        let item = grammar.items@[first_item];
+        let present = grammar_sequence_from_candidates(
+            grammar,
+            input,
+            qualifier,
+            item_count,
+            first_item + 1,
+            (item_count - 1) as nat,
+            grammar_symbol_candidates(
+                grammar,
+                input,
+                qualifier,
+                item.symbol as int,
+                start,
+                production_fuel,
+                repetition_budget,
+            ),
+            0,
+            production_fuel,
+            repetition_budget,
+        );
+        if item.optional {
+            present + grammar_sequence_candidates(
+                grammar,
+                input,
+                qualifier,
+                first_item + 1,
+                (item_count - 1) as nat,
+                start,
+                production_fuel,
+                repetition_budget,
+            )
+        } else {
+            present
+        }
+    }
+}
+
+pub open spec fn grammar_alternatives_candidates(
+    grammar: &GrammarInput,
+    input: Seq<char>,
+    qualifier: Option<usize>,
+    first_alternative: int,
+    alternative_count: nat,
+    start: int,
+    production_fuel: nat,
+    repetition_budget: nat,
+) -> Seq<CandidateSpec>
+    recommends
+        grammar_well_formed(grammar),
+        0 <= first_alternative,
+        first_alternative + alternative_count <= grammar.alternatives@.len(),
+    decreases
+        production_fuel,
+        alternative_count + 1,
+        0nat,
+        repetition_budget,
+        6int,
+        0int,
+        0int,
+{
+    if start < 0 || start > input.len() {
+        seq![]
+    } else if alternative_count == 0 {
+        seq![]
+    } else {
+        let alternative = grammar.alternatives@[first_alternative];
+        grammar_sequence_candidates(
+            grammar,
+            input,
+            qualifier,
+            alternative.first_item as int,
+            alternative.item_count as nat,
+            start,
+            production_fuel,
+            repetition_budget,
+        ) + grammar_alternatives_candidates(
+            grammar,
+            input,
+            qualifier,
+            first_alternative + 1,
+            (alternative_count - 1) as nat,
+            start,
+            production_fuel,
+            repetition_budget,
+        )
+    }
+}
+
+pub open spec fn grammar_production_candidates(
+    grammar: &GrammarInput,
+    input: Seq<char>,
+    qualifier: Option<usize>,
+    production: int,
+    start: int,
+    production_fuel: nat,
+    repetition_budget: nat,
+) -> Seq<CandidateSpec>
+    recommends
+        grammar_well_formed(grammar),
+        0 <= production < grammar.productions@.len(),
+    decreases
+        production_fuel,
+        grammar.productions@[production].alternative_count as nat + 1,
+        0nat,
+        repetition_budget,
+        7int,
+        0int,
+        0int,
+{
+    if start < 0 || start > input.len() || production_fuel == 0 {
+        seq![]
+    } else {
+        let source = grammar.productions@[production];
+        grammar_alternatives_candidates(
+            grammar,
+            input,
+            qualifier,
+            source.first_alternative as int,
+            source.alternative_count as nat,
+            start,
+            production_fuel,
+            repetition_budget,
+        )
+    }
+}
+
+pub open spec fn grammar_repetition_tail_candidates(
+    grammar: &GrammarInput,
+    input: Seq<char>,
+    qualifier: Option<usize>,
+    repetition_symbol: int,
+    item_symbol: int,
+    separator: Seq<char>,
+    lower: nat,
+    upper: Option<usize>,
+    current: CandidateSpec,
+    count: nat,
+    production_fuel: nat,
+    repetition_budget: nat,
+) -> Seq<CandidateSpec>
+    recommends
+        grammar_well_formed(grammar),
+        0 <= item_symbol < repetition_symbol < grammar.symbols@.len(),
+        separator.len() > 0,
+    decreases
+        production_fuel,
+        0nat,
+        0nat,
+        repetition_budget,
+        1int,
+        repetition_symbol,
+        0int,
+{
+    if current.end < 0 || current.end > input.len() {
+        seq![]
+    } else {
+    let stop =
+        if repetition_count_ok(lower, upper, count) {
+            seq![grammar_finish_repetition_candidate(
+                grammar,
+                repetition_symbol,
+                count,
+                current,
+            )]
+        } else {
+            seq![]
+        };
+    if repetition_budget == 0 || !repetition_can_continue(upper, count) {
+        stop
+    } else if literal_matches_at(input, current.end, separator) {
+        let next_start = current.end + separator.len();
+        stop + grammar_repetition_from_candidates(
+            grammar,
+            input,
+            qualifier,
+            repetition_symbol,
+            item_symbol,
+            separator,
+            lower,
+            upper,
+            current,
+            count,
+            grammar_symbol_candidates(
+                grammar,
+                input,
+                qualifier,
+                item_symbol,
+                next_start,
+                production_fuel,
+                (repetition_budget - 1) as nat,
+            ),
+            0,
+            production_fuel,
+            (repetition_budget - 1) as nat,
+        )
+    } else {
+        stop
+    }
+    }
+}
+
+pub open spec fn grammar_repetition_from_candidates(
+    grammar: &GrammarInput,
+    input: Seq<char>,
+    qualifier: Option<usize>,
+    repetition_symbol: int,
+    item_symbol: int,
+    separator: Seq<char>,
+    lower: nat,
+    upper: Option<usize>,
+    current: CandidateSpec,
+    count: nat,
+    candidates: Seq<CandidateSpec>,
+    candidate_index: int,
+    production_fuel: nat,
+    repetition_budget: nat,
+) -> Seq<CandidateSpec>
+    recommends
+        grammar_well_formed(grammar),
+        0 <= item_symbol < repetition_symbol < grammar.symbols@.len(),
+        separator.len() > 0,
+        0 <= candidate_index <= candidates.len(),
+    decreases
+        production_fuel,
+        0nat,
+        0nat,
+        repetition_budget,
+        2int,
+        repetition_symbol,
+        candidates.len() - candidate_index,
+{
+    if current.end < 0 || current.end > input.len() {
+        seq![]
+    } else if candidate_index < candidates.len() {
+        let next = candidates[candidate_index];
+        grammar_repetition_tail_candidates(
+            grammar,
+            input,
+            qualifier,
+            repetition_symbol,
+            item_symbol,
+            separator,
+            lower,
+            upper,
+            append_repetition_item(current, next),
+            count + 1,
+            production_fuel,
+            repetition_budget,
+        ) + grammar_repetition_from_candidates(
+            grammar,
+            input,
+            qualifier,
+            repetition_symbol,
+            item_symbol,
+            separator,
+            lower,
+            upper,
+            current,
+            count,
+            candidates,
+            candidate_index + 1,
+            production_fuel,
+            repetition_budget,
+        )
+    } else {
+        seq![]
+    }
+}
+
+pub open spec fn grammar_symbol_candidates(
+    grammar: &GrammarInput,
+    input: Seq<char>,
+    qualifier: Option<usize>,
+    symbol_index: int,
+    start: int,
+    production_fuel: nat,
+    repetition_budget: nat,
+) -> Seq<CandidateSpec>
+    recommends
+        grammar_well_formed(grammar),
+        0 <= symbol_index < grammar.symbols@.len(),
+    decreases
+        production_fuel,
+        0nat,
+        0nat,
+        repetition_budget,
+        4int,
+        symbol_index + 1,
+        0int,
+{
+    if symbol_index < 0
+        || symbol_index >= grammar.symbols@.len()
+        || start < 0
+        || start > input.len()
+    {
+        seq![]
+    } else {
+    match grammar.symbols@[symbol_index] {
+        GrammarSymbol::Reference(production) => {
+            if production_fuel == 0 {
+                seq![]
+            } else {
+                grammar_production_candidates(
+                    grammar,
+                    input,
+                    Some(production),
+                    production as int,
+                    start,
+                    (production_fuel - 1) as nat,
+                    repetition_budget,
+                ).map_values(
+                    |candidate: CandidateSpec| grammar_capture_candidate(
+                        grammar,
+                        qualifier,
+                        production as int,
+                        start,
+                        candidate,
+                    ),
+                )
+            }
+        },
+        GrammarSymbol::Repetition { separator, item, lower, upper } => {
+            if item >= symbol_index {
+                seq![]
+            } else {
+            grammar_repetition_from_candidates(
+                grammar,
+                input,
+                qualifier,
+                symbol_index,
+                item as int,
+                separator@,
+                lower as nat,
+                upper,
+                empty_candidate(start),
+                0,
+                grammar_symbol_candidates(
+                    grammar,
+                    input,
+                    qualifier,
+                    item as int,
+                    start,
+                    production_fuel,
+                    repetition_budget,
+                ),
+                0,
+                production_fuel,
+                repetition_budget,
+            )
+            }
+        },
+        _ => grammar_leaf_symbol_candidates(grammar, input, symbol_index, start),
+    }
+    }
+}
+
+pub open spec fn grammar_parse_candidate(
+    grammar: &GrammarInput,
+    input: Seq<char>,
+) -> Option<CandidateSpec>
+    recommends
+        grammar_well_formed(grammar),
+{
+    if (input.len() as int) + 1 < usize::MAX as int
+        && grammar.productions@.len() < usize::MAX as int
+    {
+        first_complete_candidate(
+            grammar_production_candidates(
+                grammar,
+                input,
+                None,
+                grammar.start as int,
+                0,
+                grammar.productions@.len() as nat + 1,
+                input.len() as nat,
+            ),
+            0,
+            input.len() as int,
+        )
+    } else {
+        None
+    }
+}
+
+pub open spec fn checked_grammar_parse_candidate(
+    grammar: &GrammarInput,
+    input: Seq<char>,
+) -> Option<CandidateSpec> {
+    if grammar_well_formed(grammar) {
+        grammar_parse_candidate(grammar, input)
+    } else {
+        None
+    }
+}
+
+fn grammar_capture_candidate_exec(
+    grammar: &GrammarInput,
+    qualifier: Option<usize>,
+    production: usize,
+    start: usize,
+    child: &Candidate,
+) -> (result: Candidate)
+    requires
+        production < grammar.productions@.len(),
+        match qualifier {
+            Some(parent) => parent < grammar.productions@.len(),
+            None => true,
+        },
+    ensures
+        result.deep_view() == grammar_capture_candidate(
+            grammar,
+            qualifier,
+            production as int,
+            start as int,
+            child.deep_view(),
+        ),
+{
+    let primary_capture = RuntimeCapture {
+        key: CaptureKey::Production(production),
+        start,
+        end: child.end,
+        count: 0,
+        is_count: false,
+    };
+    let mut prefix = Vec::new();
+    prefix.push(primary_capture);
+    if let Some(parent) = qualifier {
+        prefix.push(RuntimeCapture {
+            key: CaptureKey::Qualified { parent, production },
+            start,
+            end: child.end,
+            count: 0,
+            is_count: false,
+        });
+    }
+    Candidate {
+        end: child.end,
+        captures: append_captures(&prefix, &child.captures),
+    }
+}
+
+fn grammar_finish_repetition_candidate_exec(
+    grammar: &GrammarInput,
+    symbol: usize,
+    count: usize,
+    current: &Candidate,
+) -> (result: Candidate)
+    requires
+        symbol < grammar.symbols@.len(),
+    ensures
+        result.deep_view() == grammar_finish_repetition_candidate(
+            grammar,
+            symbol as int,
+            count as nat,
+            current.deep_view(),
+        ),
+{
+    let record = RuntimeCapture {
+        key: CaptureKey::Repetition(symbol),
+        start: 0,
+        end: 0,
+        count,
+        is_count: true,
+    };
+    let mut prefix = Vec::new();
+    prefix.push(record);
+    Candidate {
+        end: current.end,
+        captures: append_captures(&prefix, &current.captures),
+    }
+}
+
+fn append_grammar_captured_candidates(
+    target: &mut Vec<Candidate>,
+    grammar: &GrammarInput,
+    qualifier: Option<usize>,
+    production: usize,
+    start: usize,
+    children: &Vec<Candidate>,
+    input_length: usize,
+)
+    requires
+        production < grammar.productions@.len(),
+        match qualifier {
+            Some(parent) => parent < grammar.productions@.len(),
+            None => true,
+        },
+        candidates_bounded(old(target).deep_view(), input_length as nat),
+        candidates_bounded(children.deep_view(), input_length as nat),
+    ensures
+        final(target).deep_view()
+            == old(target).deep_view()
+                + children.deep_view().map_values(
+                    |child: CandidateSpec| grammar_capture_candidate(
+                        grammar,
+                        qualifier,
+                        production as int,
+                        start as int,
+                        child,
+                    ),
+                ),
+        candidates_bounded(final(target).deep_view(), input_length as nat),
+{
+    proof {
+        reveal(candidates_bounded);
+    }
+    let ghost old_target = target.deep_view();
+    let mut index: usize = 0;
+    while index < children.len()
+        invariant
+            0 <= index <= children@.len(),
+            target.deep_view()
+                == old_target
+                    + children.deep_view().take(index as int).map_values(
+                        |child: CandidateSpec| grammar_capture_candidate(
+                            grammar,
+                            qualifier,
+                            production as int,
+                            start as int,
+                            child,
+                        ),
+                    ),
+            production < grammar.productions@.len(),
+            match qualifier {
+                Some(parent) => parent < grammar.productions@.len(),
+                None => true,
+            },
+            candidates_bounded(target.deep_view(), input_length as nat),
+            candidates_bounded(children.deep_view(), input_length as nat),
+        decreases children.len() - index,
+    {
+        let ghost before = target.deep_view();
+        let candidate = grammar_capture_candidate_exec(
+            grammar,
+            qualifier,
+            production,
+            start,
+            &children[index],
+        );
+        proof {
+            candidate_bounded_at(
+                children.deep_view(),
+                input_length as nat,
+                index as int,
+            );
+            assert(
+                candidate.deep_view().end
+                    == children.deep_view()[index as int].end
+            );
+            children.deep_view().lemma_map_take_succ(
+                |child: CandidateSpec| grammar_capture_candidate(
+                    grammar,
+                    qualifier,
+                    production as int,
+                    start as int,
+                    child,
+                ),
+                index as int,
+            );
+            assert(0 <= candidate.deep_view().end <= input_length as int);
+            candidates_bounded_push(
+                target.deep_view(),
+                candidate.deep_view(),
+                input_length as nat,
+            );
+        }
+        target.push(candidate);
+        proof {
+            assert(
+                target.deep_view()
+                    == before.push(grammar_capture_candidate(
+                        grammar,
+                        qualifier,
+                        production as int,
+                        start as int,
+                        children.deep_view()[index as int],
+                    ))
+            );
+        }
+        index += 1;
+    }
+}
+
+pub fn match_grammar_leaf_symbol(
+    grammar: &GrammarInput,
+    input: &str,
+    symbol_index: usize,
+    start: usize,
+) -> (result: Vec<Candidate>)
+    requires
+        grammar_well_formed(grammar),
+        symbol_index < grammar.symbols@.len(),
+        start <= input@.len(),
+    ensures
+        result.deep_view() == grammar_leaf_symbol_candidates(
+            grammar,
+            input@,
+            symbol_index as int,
+            start as int,
+        ),
+        candidates_bounded(result.deep_view(), input@.len()),
+{
+    let symbol = grammar.symbols[symbol_index];
+    proof {
+        reveal(grammar_leaf_symbol_candidates);
+    }
+    match symbol {
+        GrammarSymbol::Literal(literal) => {
+            match match_literal_at(input, start, literal) {
+                Some(found) => {
+                    let mut result = Vec::new();
+                    let candidate = Candidate {
+                        end: found.end,
+                        captures: Vec::new(),
+                    };
+                    proof {
+                        assert(0 <= candidate.deep_view().end <= input@.len());
+                    }
+                    result.push(candidate);
+                    result
+                },
+                None => Vec::new(),
+            }
+        },
+        GrammarSymbol::StringLiteral => {
+            match_all_string_candidates(input, start)
+        },
+        GrammarSymbol::Terminal(token, length) => {
+            match_all_terminal_candidates(input, start, token, length)
+        },
+        _ => Vec::new(),
+    }
+}
+
+fn match_grammar_sequence_from(
+    grammar: &GrammarInput,
+    input: &str,
+    qualifier: Option<usize>,
+    parent_item_count: usize,
+    first_item: usize,
+    item_count: usize,
+    candidates: &Vec<Candidate>,
+    candidate_index: usize,
+    production_fuel: usize,
+    repetition_budget: usize,
+) -> (result: Vec<Candidate>)
+    requires
+        grammar_well_formed(grammar),
+        first_item <= grammar.items@.len(),
+        item_count <= grammar.items@.len() - first_item,
+        item_count < parent_item_count,
+        candidate_index <= candidates@.len(),
+        candidates_bounded(candidates.deep_view(), input@.len()),
+        match qualifier {
+            Some(parent) => parent < grammar.productions@.len(),
+            None => true,
+        },
+        (repetition_budget as int) + 1 < usize::MAX as int,
+    ensures
+        result.deep_view() == grammar_sequence_from_candidates(
+            grammar,
+            input@,
+            qualifier,
+            parent_item_count as nat,
+            first_item as int,
+            item_count as nat,
+            candidates.deep_view(),
+            candidate_index as int,
+            production_fuel as nat,
+            repetition_budget as nat,
+        ),
+        candidates_bounded(result.deep_view(), input@.len()),
+    decreases
+        production_fuel,
+        0usize,
+        parent_item_count + 1,
+        repetition_budget,
+        3usize,
+        0usize,
+        candidates.len() - candidate_index,
+{
+    if candidate_index >= candidates.len() {
+        proof {
+            reveal_with_fuel(grammar_sequence_from_candidates, 1);
+        }
+        return Vec::new();
+    }
+    proof {
+        candidate_bounded_at(
+            candidates.deep_view(),
+            input@.len(),
+            candidate_index as int,
+        );
+    }
+    let head = &candidates[candidate_index];
+    let tails = match_grammar_sequence(
+        grammar,
+        input,
+        qualifier,
+        first_item,
+        item_count,
+        head.end,
+        production_fuel,
+        repetition_budget,
+    );
+    let mut result = Vec::new();
+    append_combined_candidates(
+        &mut result,
+        head,
+        &tails,
+        input.unicode_len(),
+    );
+    let remaining = match_grammar_sequence_from(
+        grammar,
+        input,
+        qualifier,
+        parent_item_count,
+        first_item,
+        item_count,
+        candidates,
+        candidate_index + 1,
+        production_fuel,
+        repetition_budget,
+    );
+    append_candidate_copies(&mut result, &remaining, input.unicode_len());
+    proof {
+        reveal_with_fuel(grammar_sequence_from_candidates, 1);
+        assert(
+            head.deep_view()
+                == candidates.deep_view()[candidate_index as int]
+        );
+    }
+    result
+}
+
+fn match_grammar_sequence(
+    grammar: &GrammarInput,
+    input: &str,
+    qualifier: Option<usize>,
+    first_item: usize,
+    item_count: usize,
+    start: usize,
+    production_fuel: usize,
+    repetition_budget: usize,
+) -> (result: Vec<Candidate>)
+    requires
+        grammar_well_formed(grammar),
+        first_item <= grammar.items@.len(),
+        item_count <= grammar.items@.len() - first_item,
+        start <= input@.len(),
+        match qualifier {
+            Some(parent) => parent < grammar.productions@.len(),
+            None => true,
+        },
+        (repetition_budget as int) + 1 < usize::MAX as int,
+    ensures
+        result.deep_view() == grammar_sequence_candidates(
+            grammar,
+            input@,
+            qualifier,
+            first_item as int,
+            item_count as nat,
+            start as int,
+            production_fuel as nat,
+            repetition_budget as nat,
+        ),
+        candidates_bounded(result.deep_view(), input@.len()),
+    decreases
+        production_fuel,
+        0usize,
+        item_count + 1,
+        repetition_budget,
+        5usize,
+        0usize,
+        0usize,
+{
+    if item_count == 0 {
+        let mut result = Vec::new();
+        let candidate = Candidate {
+            end: start,
+            captures: Vec::new(),
+        };
+        proof {
+            assert(0 <= candidate.deep_view().end <= input@.len());
+            candidates_bounded_push(
+                result.deep_view(),
+                candidate.deep_view(),
+                input@.len(),
+            );
+            reveal_with_fuel(grammar_sequence_candidates, 1);
+        }
+        result.push(candidate);
+        return result;
+    }
+
+    proof {
+        reveal(grammar_well_formed);
+        assert(first_item < grammar.items@.len());
+        assert(grammar.items@[first_item as int].symbol < grammar.symbols@.len());
+    }
+    let item = grammar.items[first_item];
+    let heads = match_grammar_symbol(
+        grammar,
+        input,
+        qualifier,
+        item.symbol,
+        start,
+        production_fuel,
+        repetition_budget,
+    );
+    let mut result = match_grammar_sequence_from(
+        grammar,
+        input,
+        qualifier,
+        item_count,
+        first_item + 1,
+        item_count - 1,
+        &heads,
+        0,
+        production_fuel,
+        repetition_budget,
+    );
+    if item.optional {
+        let absent = match_grammar_sequence(
+            grammar,
+            input,
+            qualifier,
+            first_item + 1,
+            item_count - 1,
+            start,
+            production_fuel,
+            repetition_budget,
+        );
+        append_candidate_copies(&mut result, &absent, input.unicode_len());
+    }
+    proof {
+        reveal_with_fuel(grammar_sequence_candidates, 1);
+    }
+    result
+}
+
+fn match_grammar_alternatives(
+    grammar: &GrammarInput,
+    input: &str,
+    qualifier: Option<usize>,
+    first_alternative: usize,
+    alternative_count: usize,
+    start: usize,
+    production_fuel: usize,
+    repetition_budget: usize,
+) -> (result: Vec<Candidate>)
+    requires
+        grammar_well_formed(grammar),
+        first_alternative <= grammar.alternatives@.len(),
+        alternative_count
+            <= grammar.alternatives@.len() - first_alternative,
+        start <= input@.len(),
+        match qualifier {
+            Some(parent) => parent < grammar.productions@.len(),
+            None => true,
+        },
+        (repetition_budget as int) + 1 < usize::MAX as int,
+    ensures
+        result.deep_view() == grammar_alternatives_candidates(
+            grammar,
+            input@,
+            qualifier,
+            first_alternative as int,
+            alternative_count as nat,
+            start as int,
+            production_fuel as nat,
+            repetition_budget as nat,
+        ),
+        candidates_bounded(result.deep_view(), input@.len()),
+    decreases
+        production_fuel,
+        alternative_count + 1,
+        0usize,
+        repetition_budget,
+        6usize,
+        0usize,
+        0usize,
+{
+    if alternative_count == 0 {
+        proof {
+            reveal_with_fuel(grammar_alternatives_candidates, 1);
+        }
+        return Vec::new();
+    }
+    proof {
+        reveal(grammar_well_formed);
+        assert(first_alternative < grammar.alternatives@.len());
+        assert(grammar_alternative_well_formed(
+            grammar.alternatives@[first_alternative as int],
+            grammar.items@.len() as int,
+        ));
+    }
+    let alternative = grammar.alternatives[first_alternative];
+    let mut result = match_grammar_sequence(
+        grammar,
+        input,
+        qualifier,
+        alternative.first_item,
+        alternative.item_count,
+        start,
+        production_fuel,
+        repetition_budget,
+    );
+    let remaining = match_grammar_alternatives(
+        grammar,
+        input,
+        qualifier,
+        first_alternative + 1,
+        alternative_count - 1,
+        start,
+        production_fuel,
+        repetition_budget,
+    );
+    append_candidate_copies(&mut result, &remaining, input.unicode_len());
+    proof {
+        reveal_with_fuel(grammar_alternatives_candidates, 1);
+    }
+    result
+}
+
+fn match_grammar_production(
+    grammar: &GrammarInput,
+    input: &str,
+    qualifier: Option<usize>,
+    production: usize,
+    start: usize,
+    production_fuel: usize,
+    repetition_budget: usize,
+) -> (result: Vec<Candidate>)
+    requires
+        grammar_well_formed(grammar),
+        production < grammar.productions@.len(),
+        start <= input@.len(),
+        match qualifier {
+            Some(parent) => parent < grammar.productions@.len(),
+            None => true,
+        },
+        (repetition_budget as int) + 1 < usize::MAX as int,
+    ensures
+        result.deep_view() == grammar_production_candidates(
+            grammar,
+            input@,
+            qualifier,
+            production as int,
+            start as int,
+            production_fuel as nat,
+            repetition_budget as nat,
+        ),
+        candidates_bounded(result.deep_view(), input@.len()),
+    decreases
+        production_fuel,
+        grammar.productions@[production as int].alternative_count + 1,
+        0usize,
+        repetition_budget,
+        7usize,
+        0usize,
+        0usize,
+{
+    if production_fuel == 0 {
+        proof {
+            reveal_with_fuel(grammar_production_candidates, 1);
+        }
+        return Vec::new();
+    }
+    proof {
+        reveal(grammar_well_formed);
+        assert(grammar_production_well_formed(
+            grammar.productions@[production as int],
+            grammar.alternatives@.len() as int,
+        ));
+    }
+    let source = grammar.productions[production];
+    let result = match_grammar_alternatives(
+        grammar,
+        input,
+        qualifier,
+        source.first_alternative,
+        source.alternative_count,
+        start,
+        production_fuel,
+        repetition_budget,
+    );
+    proof {
+        reveal_with_fuel(grammar_production_candidates, 1);
+    }
+    result
+}
+
+fn match_grammar_repetition_tail(
+    grammar: &GrammarInput,
+    input: &str,
+    qualifier: Option<usize>,
+    repetition_symbol: usize,
+    item_symbol: usize,
+    separator: &'static str,
+    lower: usize,
+    upper: Option<usize>,
+    current: &Candidate,
+    count: usize,
+    production_fuel: usize,
+    repetition_budget: usize,
+) -> (result: Vec<Candidate>)
+    requires
+        grammar_well_formed(grammar),
+        item_symbol < repetition_symbol,
+        repetition_symbol < grammar.symbols@.len(),
+        current.end <= input@.len(),
+        separator@.len() > 0,
+        match qualifier {
+            Some(parent) => parent < grammar.productions@.len(),
+            None => true,
+        },
+        (count as int) + (repetition_budget as int) < usize::MAX as int,
+    ensures
+        result.deep_view() == grammar_repetition_tail_candidates(
+            grammar,
+            input@,
+            qualifier,
+            repetition_symbol as int,
+            item_symbol as int,
+            separator@,
+            lower as nat,
+            upper,
+            current.deep_view(),
+            count as nat,
+            production_fuel as nat,
+            repetition_budget as nat,
+        ),
+        candidates_bounded(result.deep_view(), input@.len()),
+    decreases
+        production_fuel,
+        0usize,
+        0usize,
+        repetition_budget,
+        1usize,
+        repetition_symbol,
+        0usize,
+{
+    let mut result = Vec::new();
+    if repetition_count_ok_exec(lower, upper, count) {
+        let candidate = grammar_finish_repetition_candidate_exec(
+            grammar,
+            repetition_symbol,
+            count,
+            current,
+        );
+        proof {
+            assert(0 <= candidate.deep_view().end <= input@.len());
+            candidates_bounded_push(
+                result.deep_view(),
+                candidate.deep_view(),
+                input@.len(),
+            );
+        }
+        result.push(candidate);
+    }
+    if repetition_budget == 0
+        || !repetition_can_continue_exec(upper, count)
+    {
+        proof {
+            reveal_with_fuel(grammar_repetition_tail_candidates, 1);
+        }
+        return result;
+    }
+    if let Some(found) = match_literal_at(input, current.end, separator) {
+        let next = match_grammar_symbol(
+            grammar,
+            input,
+            qualifier,
+            item_symbol,
+            found.end,
+            production_fuel,
+            repetition_budget - 1,
+        );
+        let continuation = match_grammar_repetition_from(
+            grammar,
+            input,
+            qualifier,
+            repetition_symbol,
+            item_symbol,
+            separator,
+            lower,
+            upper,
+            current,
+            count,
+            &next,
+            0,
+            production_fuel,
+            repetition_budget - 1,
+        );
+        append_candidate_copies(
+            &mut result,
+            &continuation,
+            input.unicode_len(),
+        );
+    }
+    proof {
+        reveal_with_fuel(grammar_repetition_tail_candidates, 1);
+    }
+    result
+}
+
+fn match_grammar_repetition_from(
+    grammar: &GrammarInput,
+    input: &str,
+    qualifier: Option<usize>,
+    repetition_symbol: usize,
+    item_symbol: usize,
+    separator: &'static str,
+    lower: usize,
+    upper: Option<usize>,
+    current: &Candidate,
+    count: usize,
+    candidates: &Vec<Candidate>,
+    candidate_index: usize,
+    production_fuel: usize,
+    repetition_budget: usize,
+) -> (result: Vec<Candidate>)
+    requires
+        grammar_well_formed(grammar),
+        item_symbol < repetition_symbol,
+        repetition_symbol < grammar.symbols@.len(),
+        current.end <= input@.len(),
+        separator@.len() > 0,
+        candidate_index <= candidates@.len(),
+        candidates_bounded(candidates.deep_view(), input@.len()),
+        match qualifier {
+            Some(parent) => parent < grammar.productions@.len(),
+            None => true,
+        },
+        (count as int) + (repetition_budget as int) + 1 < usize::MAX as int,
+    ensures
+        result.deep_view() == grammar_repetition_from_candidates(
+            grammar,
+            input@,
+            qualifier,
+            repetition_symbol as int,
+            item_symbol as int,
+            separator@,
+            lower as nat,
+            upper,
+            current.deep_view(),
+            count as nat,
+            candidates.deep_view(),
+            candidate_index as int,
+            production_fuel as nat,
+            repetition_budget as nat,
+        ),
+        candidates_bounded(result.deep_view(), input@.len()),
+    decreases
+        production_fuel,
+        0usize,
+        0usize,
+        repetition_budget,
+        2usize,
+        repetition_symbol,
+        candidates.len() - candidate_index,
+{
+    if candidate_index >= candidates.len() {
+        proof {
+            reveal_with_fuel(grammar_repetition_from_candidates, 1);
+        }
+        return Vec::new();
+    }
+    proof {
+        candidate_bounded_at(
+            candidates.deep_view(),
+            input@.len(),
+            candidate_index as int,
+        );
+    }
+    let combined = append_repetition_item_exec(
+        current,
+        &candidates[candidate_index],
+    );
+    let head = match_grammar_repetition_tail(
+        grammar,
+        input,
+        qualifier,
+        repetition_symbol,
+        item_symbol,
+        separator,
+        lower,
+        upper,
+        &combined,
+        count + 1,
+        production_fuel,
+        repetition_budget,
+    );
+    let tail = match_grammar_repetition_from(
+        grammar,
+        input,
+        qualifier,
+        repetition_symbol,
+        item_symbol,
+        separator,
+        lower,
+        upper,
+        current,
+        count,
+        candidates,
+        candidate_index + 1,
+        production_fuel,
+        repetition_budget,
+    );
+    let mut result = Vec::new();
+    append_candidate_copies(&mut result, &head, input.unicode_len());
+    append_candidate_copies(&mut result, &tail, input.unicode_len());
+    proof {
+        reveal_with_fuel(grammar_repetition_from_candidates, 1);
+        assert(
+            combined.deep_view()
+                == append_repetition_item(
+                    current.deep_view(),
+                    candidates.deep_view()[candidate_index as int],
+                )
+        );
+    }
+    result
+}
+
+fn match_grammar_symbol(
+    grammar: &GrammarInput,
+    input: &str,
+    qualifier: Option<usize>,
+    symbol_index: usize,
+    start: usize,
+    production_fuel: usize,
+    repetition_budget: usize,
+) -> (result: Vec<Candidate>)
+    requires
+        grammar_well_formed(grammar),
+        symbol_index < grammar.symbols@.len(),
+        start <= input@.len(),
+        match qualifier {
+            Some(parent) => parent < grammar.productions@.len(),
+            None => true,
+        },
+        (repetition_budget as int) + 1 < usize::MAX as int,
+    ensures
+        result.deep_view() == grammar_symbol_candidates(
+            grammar,
+            input@,
+            qualifier,
+            symbol_index as int,
+            start as int,
+            production_fuel as nat,
+            repetition_budget as nat,
+        ),
+        candidates_bounded(result.deep_view(), input@.len()),
+    decreases
+        production_fuel,
+        0usize,
+        0usize,
+        repetition_budget,
+        4usize,
+        symbol_index + 1,
+        0usize,
+{
+    let symbol = grammar.symbols[symbol_index];
+    proof {
+        reveal(grammar_well_formed);
+        assert(grammar_symbol_well_formed(
+            grammar.symbols@[symbol_index as int],
+            symbol_index as int,
+            grammar.symbols@.len() as int,
+            grammar.productions@.len() as int,
+        ));
+        reveal_with_fuel(grammar_symbol_candidates, 1);
+    }
+    match symbol {
+        GrammarSymbol::Reference(production) => {
+            if production_fuel == 0 {
+                Vec::new()
+            } else {
+                proof {
+                    assert(production < grammar.productions@.len());
+                }
+                let children = match_grammar_production(
+                    grammar,
+                    input,
+                    Some(production),
+                    production,
+                    start,
+                    production_fuel - 1,
+                    repetition_budget,
+                );
+                let mut result = Vec::new();
+                append_grammar_captured_candidates(
+                    &mut result,
+                    grammar,
+                    qualifier,
+                    production,
+                    start,
+                    &children,
+                    input.unicode_len(),
+                );
+                result
+            }
+        },
+        GrammarSymbol::Repetition {
+            separator,
+            item,
+            lower,
+            upper,
+        } => {
+            proof {
+                assert(item < symbol_index);
+                assert(separator@.len() > 0);
+            }
+            let first = match_grammar_symbol(
+                grammar,
+                input,
+                qualifier,
+                item,
+                start,
+                production_fuel,
+                repetition_budget,
+            );
+            let current = Candidate {
+                end: start,
+                captures: Vec::new(),
+            };
+            match_grammar_repetition_from(
+                grammar,
+                input,
+                qualifier,
+                symbol_index,
+                item,
+                separator,
+                lower,
+                upper,
+                &current,
+                0,
+                &first,
+                0,
+                production_fuel,
+                repetition_budget,
+            )
+        },
+        _ => match_grammar_leaf_symbol(
+            grammar,
+            input,
+            symbol_index,
+            start,
+        ),
+    }
+}
+
+pub fn parse_grammar_candidate(
+    grammar: &GrammarInput,
+    input: &str,
+) -> (result: Option<Candidate>)
+    requires
+        grammar_well_formed(grammar),
+    ensures
+        match result {
+            Some(candidate) => {
+                grammar_parse_candidate(grammar, input@)
+                    == Some(candidate.deep_view())
+            },
+            None => grammar_parse_candidate(grammar, input@).is_none(),
+        },
+{
+    let input_length = input.unicode_len();
+    if input_length >= usize::MAX - 1
+        || grammar.productions.len() == usize::MAX
+    {
+        proof {
+            reveal(grammar_parse_candidate);
+        }
+        return None;
+    }
+    let candidates = match_grammar_production(
+        grammar,
+        input,
+        None,
+        grammar.start,
+        0,
+        grammar.productions.len() + 1,
+        input_length,
+    );
+    let result = select_complete_candidate(
+        &candidates,
+        0,
+        input_length,
+    );
+    proof {
+        reveal(grammar_parse_candidate);
+    }
+    result
+}
+
+pub fn parse_checked_grammar_candidate(
+    grammar: &GrammarInput,
+    input: &str,
+) -> (result: Option<Candidate>)
+    ensures
+        match result {
+            Some(candidate) => {
+                checked_grammar_parse_candidate(grammar, input@)
+                    == Some(candidate.deep_view())
+            },
+            None => checked_grammar_parse_candidate(grammar, input@).is_none(),
+        },
+{
+    if check_grammar_well_formed(grammar) {
+        parse_grammar_candidate(grammar, input)
+    } else {
+        None
+    }
+}
+
+} // verus!

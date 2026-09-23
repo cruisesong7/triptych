@@ -360,7 +360,7 @@ theorem BitVector.Internal.matchesRef.BinaryDigits (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold BitVector.IsWf.BinaryDigits
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsBits_matchesTerm,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsBits_matchesTerm,
     IsFixedBits_matchesTerm, IsBitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
@@ -378,7 +378,7 @@ theorem BitVector.Internal.matchesRef.Binary (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold BitVector.IsWf.Binary
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     BitVector.Internal.matchesRef.BinaryDigits]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
@@ -396,8 +396,8 @@ theorem BitVector.Internal.matchesRef.HexDigits (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold BitVector.IsWf.HexDigits
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsHexDigits_matchesTerm,
-    IsFixedHexDigits_matchesTerm, IsHexDigitsBetween_matchesTerm]
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    IsHexDigits_matchesTerm, IsFixedHexDigits_matchesTerm, IsHexDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
@@ -414,7 +414,7 @@ theorem BitVector.Internal.matchesRef.Hexadecimal (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold BitVector.IsWf.Hexadecimal
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     BitVector.Internal.matchesRef.HexDigits]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
@@ -432,8 +432,8 @@ theorem BitVector.Internal.matchesRef.Payload (fuel : Nat) (s : String) :
   dsimp only
   unfold matchesProd BitVector.IsWf.Payload
   simp (config := { maxSteps := 1000000 }) only [List.mem_cons, List.mem_singleton, List.not_mem_nil,
-    Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_or_imp, exists_eq_left, exists_eq_left, if_true,
-    if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_or_imp, exists_eq_left, exists_eq_left, ite_true,
+    ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     BitVector.Internal.matchesRef.Binary, BitVector.Internal.matchesRef.Hexadecimal]
   repeat'
     first
@@ -443,7 +443,7 @@ theorem BitVector.Internal.matchesRef.Payload (fuel : Nat) (s : String) :
         try grind [String.append_assoc, String.append_empty])
 
 theorem BitVector.Internal.matchesRef.BitVector (fuel : Nat) (s : String) :
-    matchesSym BitVector.grammar (fuel + 4) (Sym.ref "BitVector") s ↔ BitVector.IsWf.BitVector s :=
+    matchesSym BitVector.grammar (fuel + 4) (Sym.ref "BitVector") s ↔ BitVector.Production s :=
   by
   rw [matchesSym,
     show
@@ -452,15 +452,15 @@ theorem BitVector.Internal.matchesRef.BitVector (fuel : Nat) (s : String) :
       from rfl]
   dsimp only
   rw [matchesProd_single]
-  unfold BitVector.IsWf.BitVector
+  unfold BitVector.Production
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     BitVector.Internal.matchesRef.Payload]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
-theorem BitVector.IsWfGrammar_equiv (s : String) : Triptych.IsWf BitVector.grammar s ↔ BitVector.IsWf.BitVector s :=
+theorem BitVector.IsWfGrammar_equiv (s : String) : Triptych.IsWf BitVector.grammar s ↔ BitVector.Production s :=
   by
   rw [isWf_eq_isWfProd_start, IsWfProd,
     show
@@ -589,10 +589,12 @@ theorem BitVector.computeValue_view (s : String) :
     rfl
 
 /- ═══════════════════════════════ parser ══════════════════════════════
-The generated correct-by-construction parser `parse` scans once, checks constraints
-on that capture map, and computes the result from the same captures. `parse_eq_gated`
-proves equality with the readable validity-gated presentation. Its correctness and
-search-cost guarantees — `parse_sound`, `parse_complete`, `parse_reject`,
+The generated correct-by-construction parser `parse` uses a certified staged cursor
+program when the grammar supports one, checks constraints on its capture map, and
+computes the result from those captures. The complete scanner remains the checked
+fallback. `parse_eq_scanner` and `parse_eq_gated` prove equality with the generic
+scanner and readable validity-gated presentation. Its correctness and search-cost
+guarantees — `parse_sound`, `parse_complete`, `parse_reject`,
 `parse_profile_result`, `parse_candidateChecks_le`, `parse_view`, and typed
 `parse_eq_some_iff_view` / `parse_eq_none_iff_view` normal forms — are all
 AUTO-DISCHARGED here.
@@ -612,10 +614,15 @@ theorem BitVector.computeValue_isSome (s : String) : BitVector.IsValid s → (Bi
 def BitVector.parse (s : String) :=
   Triptych.scannerParseMap BitVector.grammar BitVector.constraints BitVector.valueFn id s
 
+theorem BitVector.parse_eq_scanner (s : String) :
+    BitVector.parse s = Triptych.scannerParseMap BitVector.grammar BitVector.constraints BitVector.valueFn id s := by
+  rfl
+
 theorem BitVector.parse_eq_gated (s : String) :
     BitVector.parse s = Triptych.gatedParse BitVector.IsValid BitVector.computeValue s :=
   by
-  unfold BitVector.parse BitVector.computeValue
+  rw [BitVector.parse_eq_scanner]
+  unfold BitVector.computeValue
   exact
     Triptych.scannerParseMap_eq_surfaceGated BitVector.grammar BitVector.constraints BitVector.valueFn BitVector.IsValid
       BitVector.IsValid_equiv s
@@ -624,8 +631,8 @@ theorem BitVector.parse_profile_result (s : String) :
     (Triptych.scannerParseMapProfile BitVector.grammar BitVector.constraints BitVector.valueFn id s).result =
       BitVector.parse s :=
   by
-  unfold BitVector.parse
-  exact Triptych.scannerParseMapProfile_result BitVector.grammar BitVector.constraints BitVector.valueFn id s
+  rw [Triptych.scannerParseMapProfile_result]
+  exact (BitVector.parse_eq_scanner s).symm
 
 theorem BitVector.parse_candidateChecks_le (s : String) :
     (Triptych.scannerParseMapProfile BitVector.grammar BitVector.constraints BitVector.valueFn id s).candidateChecks ≤

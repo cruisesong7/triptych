@@ -19,7 +19,9 @@ set_option linter.unusedVariables false
 The more readable specification. Each production of the input grammar becomes an
 inlined well-formedness predicate `IsWf.*` written as a plain existential over the
 named captures, so you can read it side-by-side with the grammar and check that it
-says the same thing. When present, `WfConstraints` contains capture-derived format
+says the same thing. The start rule is named `Production`; `IsWf.<Start>` and
+top-level `IsWf` reuse it. When a value is present, `Denotes` combines valid syntax
+with the readable value function. `WfConstraints` contains capture-derived format
 conditions and `Constraints` contains conditions that explicitly mention the final
 `value`. Empty phases are omitted; `IsWf` and `IsValid` specialize accordingly.
 This file is proof-free — it is what you cite. -/
@@ -235,7 +237,7 @@ def Datetime.IsWf.Offset (s : String) : Prop :=
   (∃ hh mm, (s = "+" ++ hh ++ mm ∧ Datetime.IsWf.hh hh) ∧ Datetime.IsWf.mm mm) ∨
     ∃ hh mm, (s = "-" ++ hh ++ mm ∧ Datetime.IsWf.hh hh) ∧ Datetime.IsWf.mm mm
 
-def Datetime.IsWf.Datetime (s : String) : Prop :=
+def Datetime.Production (s : String) : Prop :=
   (((Datetime.IsWf.Date s ∨
           ∃ date time, (s = date ++ "T" ++ time ++ "Z" ∧ Datetime.IsWf.Date date) ∧ Datetime.IsWf.Time time) ∨
         ∃ date time sss,
@@ -248,6 +250,9 @@ def Datetime.IsWf.Datetime (s : String) : Prop :=
       (((s = date ++ "T" ++ time ++ "." ++ sss ++ offset ∧ Datetime.IsWf.Date date) ∧ Datetime.IsWf.Time time) ∧
           Datetime.IsWf.SSS sss) ∧
         Datetime.IsWf.Offset offset
+
+abbrev Datetime.IsWf.Datetime (s : String) : Prop :=
+  Datetime.Production s
 
 def Datetime.value (yyyy : String) (mm : String) (dd : String) (time_hh : String) (time_mm : String) (ss : String)
     (sss : String) (offset_hh : String) (offset_mm : String) (offset : String) :=
@@ -269,10 +274,19 @@ def Datetime.SatisfiesWfConstraints (s : String) : Prop :=
     (Triptych.component Datetime.grammar s "YYYY") (Triptych.component Datetime.grammar s "DD")
 
 abbrev Datetime.IsWf (s : String) : Prop :=
-  Datetime.IsWf.Datetime s ∧ Datetime.SatisfiesWfConstraints s
+  Datetime.Production s ∧ Datetime.SatisfiesWfConstraints s
 
 abbrev Datetime.IsValid (s : String) : Prop :=
   Datetime.IsWf s
+
+def Datetime.Denotes (s : String) (i : Int) : Prop :=
+  Datetime.IsValid s ∧
+    i =
+      Datetime.value (Triptych.component Datetime.grammar s "YYYY") (Triptych.component Datetime.grammar s "MM")
+        (Triptych.component Datetime.grammar s "DD") (Triptych.component Datetime.grammar s "Time.hh")
+        (Triptych.component Datetime.grammar s "Time.mm") (Triptych.component Datetime.grammar s "ss")
+        (Triptych.component Datetime.grammar s "SSS") (Triptych.component Datetime.grammar s "Offset.hh")
+        (Triptych.component Datetime.grammar s "Offset.mm") (Triptych.component Datetime.grammar s "Offset")
 
 structure Datetime.View where
   input : String

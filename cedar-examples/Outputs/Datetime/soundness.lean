@@ -20,11 +20,11 @@ theorem Datetime.toSpec_ofSpec (s : String) (v : Int) :
   intro hvalid hvalue
   have hcedarWf := (Datetime.GrammarView.isValid_iff_cedarWf s).mp hvalid
   obtain ⟨components, hsyntax, hconstraints, hs⟩ := hcedarWf
+  have hcomponents :
+      Cedar.Thm.Datetime.IsDatetimeValue s components.toMillis :=
+    ⟨components, ⟨hsyntax, hconstraints, hs⟩, rfl⟩
   have hcompute :=
-    Datetime.GrammarView.computeValue_eq_cedar s
-      ⟨components, hsyntax, hconstraints, hs⟩
-  rw [hs, CedarSupport.Datetime.computeValue_asString hsyntax] at hcompute
-  rw [hs] at hvalue
+    Datetime.GrammarView.computeValue_eq_of_isDatetimeValue hcomponents
   have hv : v = components.toMillis :=
     Option.some.inj (hvalue.symm.trans hcompute)
   subst v

@@ -855,17 +855,17 @@ public theorem eqIntercalateOfSplitOnEq {s sep : String} {parts : List String}
   rw [← h]
   exact (intercalateSplitOn s sep hsep).symm
 
-public theorem noUnderscoreOfIsDigits {s : String} (h : _root_.IsDigits s) :
+public theorem noUnderscoreOfIsDigits {s : String} (h : String.IsDigits s) :
     s.contains '_' = false :=
-  _root_.no_underscore_of_isDigits h
+  String.no_underscore_of_isDigits h
 
-public theorem isNatOfIsDigits {s : String} (h : _root_.IsDigits s) :
+public theorem isNatOfIsDigits {s : String} (h : String.IsDigits s) :
     s.isNat = true :=
-  _root_.isNat_of_isDigits h
+  String.isNat_of_isDigits h
 
 public theorem isDigitsOfToNatIsSome {s : String} (h : (Cedar.Spec.Ext.toNat?' s).isSome = true) :
-    _root_.IsDigits s :=
-  _root_.isDigits_of_toNat?'_isSome h
+    String.IsDigits s :=
+  String.isDigits_of_toNat?'_isSome h
 
 public theorem splitToListEq4 (s₁ s₂ s₃ s₄ : String) (p : Char → Bool) (sep : Char)
     (hsep : p sep = true) (h₁ : ∀ c ∈ s₁.toList, p c = false)
@@ -889,6 +889,6 @@ public theorem splitToListEq (s₁ s₂ : String) (p : Char → Bool) (sep : Cha
 public theorem foldlEqOfDigitChars (l : List Char) (acc : Nat) :
     List.foldl (fun n c => n * 10 + (c.toNat - 48)) acc l =
       Nat.ofDigitChars 10 l acc :=
-  _root_.foldl_eq_ofDigitChars l acc
+  String.foldl_eq_ofDigitChars l acc
 
 end CedarSupport.StringInternals

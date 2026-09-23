@@ -474,7 +474,7 @@ theorem IPv4.Internal.matchesRef.Oct1 (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold IPv4.IsWf.Oct1
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
@@ -492,7 +492,7 @@ theorem IPv4.Internal.matchesRef.Oct2 (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold IPv4.IsWf.Oct2
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
@@ -510,7 +510,7 @@ theorem IPv4.Internal.matchesRef.Oct3 (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold IPv4.IsWf.Oct3
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
@@ -528,7 +528,7 @@ theorem IPv4.Internal.matchesRef.Oct4 (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold IPv4.IsWf.Oct4
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
@@ -550,7 +550,7 @@ theorem IPv4.Internal.matchesRef.V4Addr (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold IPv4.IsWf.V4Addr
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     IPv4.Internal.matchesRef.Oct1, IPv4.Internal.matchesRef.Oct2, IPv4.Internal.matchesRef.Oct3,
     IPv4.Internal.matchesRef.Oct4]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
@@ -569,14 +569,14 @@ theorem IPv4.Internal.matchesRef.Prefix (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold IPv4.IsWf.Prefix
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem IPv4.Internal.matchesRef.V4Net (fuel : Nat) (s : String) :
-    matchesSym IPv4.grammar (fuel + 3) (Sym.ref "V4Net") s ↔ IPv4.IsWf.V4Net s :=
+    matchesSym IPv4.grammar (fuel + 3) (Sym.ref "V4Net") s ↔ IPv4.Production s :=
   by
   rw [matchesSym,
     show
@@ -588,10 +588,10 @@ theorem IPv4.Internal.matchesRef.V4Net (fuel : Nat) (s : String) :
                 SymItem.mk (Sym.ref "Prefix") false]])
       from rfl]
   dsimp only
-  unfold matchesProd IPv4.IsWf.V4Net
+  unfold matchesProd IPv4.Production
   simp (config := { maxSteps := 1000000 }) only [List.mem_cons, List.mem_singleton, List.not_mem_nil,
-    Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_or_imp, exists_eq_left, exists_eq_left, if_true,
-    if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IPv4.Internal.matchesRef.V4Addr,
+    Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_or_imp, exists_eq_left, exists_eq_left, ite_true,
+    ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IPv4.Internal.matchesRef.V4Addr,
     IPv4.Internal.matchesRef.Prefix]
   repeat'
     first
@@ -600,7 +600,7 @@ theorem IPv4.Internal.matchesRef.V4Net (fuel : Nat) (s : String) :
           ← and_assoc, exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
         try grind [String.append_assoc, String.append_empty])
 
-theorem IPv4.IsWfGrammar_equiv (s : String) : Triptych.IsWf IPv4.grammar s ↔ IPv4.IsWf.V4Net s :=
+theorem IPv4.IsWfGrammar_equiv (s : String) : Triptych.IsWf IPv4.grammar s ↔ IPv4.Production s :=
   by
   rw [isWf_eq_isWfProd_start, IsWfProd,
     show
@@ -748,10 +748,12 @@ theorem IPv4.computeValue_view (s : String) : IPv4.computeValue s = (IPv4.decode
     rfl
 
 /- ═══════════════════════════════ parser ══════════════════════════════
-The generated correct-by-construction parser `parse` scans once, checks constraints
-on that capture map, and computes the result from the same captures. `parse_eq_gated`
-proves equality with the readable validity-gated presentation. Its correctness and
-search-cost guarantees — `parse_sound`, `parse_complete`, `parse_reject`,
+The generated correct-by-construction parser `parse` uses a certified staged cursor
+program when the grammar supports one, checks constraints on its capture map, and
+computes the result from those captures. The complete scanner remains the checked
+fallback. `parse_eq_scanner` and `parse_eq_gated` prove equality with the generic
+scanner and readable validity-gated presentation. Its correctness and search-cost
+guarantees — `parse_sound`, `parse_complete`, `parse_reject`,
 `parse_profile_result`, `parse_candidateChecks_le`, `parse_view`, and typed
 `parse_eq_some_iff_view` / `parse_eq_none_iff_view` normal forms — are all
 AUTO-DISCHARGED here.
@@ -771,9 +773,13 @@ theorem IPv4.computeValue_isSome (s : String) : IPv4.IsValid s → (IPv4.compute
 def IPv4.parse (s : String) :=
   Triptych.scannerParseMap IPv4.grammar IPv4.constraints IPv4.valueFn id s
 
+theorem IPv4.parse_eq_scanner (s : String) :
+    IPv4.parse s = Triptych.scannerParseMap IPv4.grammar IPv4.constraints IPv4.valueFn id s := by rfl
+
 theorem IPv4.parse_eq_gated (s : String) : IPv4.parse s = Triptych.gatedParse IPv4.IsValid IPv4.computeValue s :=
   by
-  unfold IPv4.parse IPv4.computeValue
+  rw [IPv4.parse_eq_scanner]
+  unfold IPv4.computeValue
   exact
     Triptych.scannerParseMap_eq_surfaceGated IPv4.grammar IPv4.constraints IPv4.valueFn IPv4.IsValid IPv4.IsValid_equiv
       s
@@ -781,8 +787,8 @@ theorem IPv4.parse_eq_gated (s : String) : IPv4.parse s = Triptych.gatedParse IP
 theorem IPv4.parse_profile_result (s : String) :
     (Triptych.scannerParseMapProfile IPv4.grammar IPv4.constraints IPv4.valueFn id s).result = IPv4.parse s :=
   by
-  unfold IPv4.parse
-  exact Triptych.scannerParseMapProfile_result IPv4.grammar IPv4.constraints IPv4.valueFn id s
+  rw [Triptych.scannerParseMapProfile_result]
+  exact (IPv4.parse_eq_scanner s).symm
 
 theorem IPv4.parse_candidateChecks_le (s : String) :
     (Triptych.scannerParseMapProfile IPv4.grammar IPv4.constraints IPv4.valueFn id s).candidateChecks ≤

@@ -1,0 +1,138 @@
+pub proof fn __COMPLETENESS_FUNCTION__(input: Seq<char>)
+    requires
+        __ROOT_WF__(input),
+    ensures
+        __PARSE_PLAN__(input).is_some(),
+{
+    reveal(__ROOT_WF__);
+    let (__SIGN__, __NATURAL__, __FRACTION__): (Seq<char>, Seq<char>, Seq<char>) =
+        choose|__SIGN__: Seq<char>, __NATURAL__: Seq<char>, __FRACTION__: Seq<char>|
+            input
+                == __SIGN__
+                    + __NATURAL__
+                    + seq![__SEPARATOR_CHAR_LITERAL__]
+                    + __FRACTION__
+                && __SIGN_WF__(__SIGN__)
+                && __NATURAL_WF__(__NATURAL__)
+                && __FRACTION_WF__(__FRACTION__);
+
+    reveal(__SIGN_WF__);
+    let sign_literal: Seq<char> = choose|literal: Seq<char>|
+        __SIGN__ == literal
+            && (literal.len() == 0
+                || literal == seq![__SIGN_CHAR_LITERAL__]);
+    reveal(__NATURAL_WF__);
+    let natural_digits: Seq<char> = choose|digits: Seq<char>|
+        __NATURAL__ == digits
+            && 1 <= digits.len()
+            && forall|i: int| #![auto]
+                0 <= i && i < digits.len() ==> triptych_is_digit(digits[i]);
+    reveal(__FRACTION_WF__);
+    let fraction_digits: Seq<char> = choose|digits: Seq<char>|
+        __FRACTION__ == digits
+            && __FRACTION_LOWER__ <= digits.len()
+            && digits.len() <= __FRACTION_UPPER__
+            && forall|i: int| #![auto]
+                0 <= i && i < digits.len() ==> triptych_is_digit(digits[i]);
+
+    assert(__SIGN__ == sign_literal);
+    assert(__NATURAL__ == natural_digits);
+    assert(__FRACTION__ == fraction_digits);
+
+    assert(is_ascii_chars(__SIGN__)) by {
+        assert forall|i: int| 0 <= i < __SIGN__.len() implies
+            '\0' <= #[trigger] __SIGN__[i] <= '\u{7f}' by {
+            assert(__SIGN__ == seq![__SIGN_CHAR_LITERAL__]);
+        }
+    }
+    assert(is_ascii_chars(__NATURAL__)) by {
+        assert forall|i: int| 0 <= i < __NATURAL__.len() implies
+            '\0' <= #[trigger] __NATURAL__[i] <= '\u{7f}' by {
+            assert(triptych_is_digit(__NATURAL__[i]));
+            reveal(triptych_is_digit);
+        }
+    }
+    assert(is_ascii_chars(__FRACTION__)) by {
+        assert forall|i: int| 0 <= i < __FRACTION__.len() implies
+            '\0' <= #[trigger] __FRACTION__[i] <= '\u{7f}' by {
+            assert(triptych_is_digit(__FRACTION__[i]));
+            reveal(triptych_is_digit);
+        }
+    }
+    assert(is_ascii_chars(seq![__SEPARATOR_CHAR_LITERAL__]));
+    broadcast use is_ascii_chars_concat;
+    assert(is_ascii_chars(__SIGN__ + __NATURAL__));
+    assert(
+        is_ascii_chars(
+            __SIGN__ + __NATURAL__ + seq![__SEPARATOR_CHAR_LITERAL__]
+        )
+    );
+    assert(
+        is_ascii_chars(
+            __SIGN__
+                + __NATURAL__
+                + seq![__SEPARATOR_CHAR_LITERAL__]
+                + __FRACTION__
+        )
+    );
+    assert(is_ascii_chars(input));
+
+    let sign_end: int = __SIGN__.len() as int;
+    let natural_end: int = sign_end + __NATURAL__.len() as int;
+    let fraction_start: int = natural_end + 1;
+    let fraction_end: int = fraction_start + __FRACTION__.len() as int;
+
+    assert(sign_end == 0 || sign_end == 1);
+    if sign_end == 0 {
+        assert(input[0] == __NATURAL__[0]);
+        assert(triptych_is_digit(input[0]));
+        reveal(triptych_is_digit);
+        assert(input[0] != __SIGN_CHAR_LITERAL__);
+    } else {
+        assert(__SIGN__ == seq![__SIGN_CHAR_LITERAL__]);
+        assert(input[0] == __SIGN_CHAR_LITERAL__);
+    }
+
+    assert forall|index: int| sign_end <= index < natural_end implies
+        #[trigger] plan_token_accepts(PlanTokenClass::Digit, input[index]) by {
+        let digit_index = index - sign_end;
+        assert(0 <= digit_index < __NATURAL__.len());
+        assert(input[index] == __NATURAL__[digit_index]);
+        assert(triptych_is_digit(__NATURAL__[digit_index]));
+        reveal(plan_token_accepts);
+        reveal(triptych_is_digit);
+    }
+    assert(input[natural_end] == __SEPARATOR_CHAR_LITERAL__);
+    assert(
+        !plan_token_accepts(PlanTokenClass::Digit, input[natural_end])
+    ) by {
+        reveal(plan_token_accepts);
+    }
+    plan_scan_token_end_at_boundary(
+        input,
+        sign_end,
+        natural_end,
+        input.len() as int,
+        PlanTokenClass::Digit,
+    );
+
+    assert forall|index: int| fraction_start <= index < fraction_end implies
+        #[trigger] plan_token_accepts(PlanTokenClass::Digit, input[index]) by {
+        let digit_index = index - fraction_start;
+        assert(0 <= digit_index < __FRACTION__.len());
+        assert(input[index] == __FRACTION__[digit_index]);
+        assert(triptych_is_digit(__FRACTION__[digit_index]));
+        reveal(plan_token_accepts);
+        reveal(triptych_is_digit);
+    }
+    assert(fraction_end == input.len());
+    plan_scan_token_end_at_boundary(
+        input,
+        fraction_start,
+        fraction_end,
+        input.len() as int,
+        PlanTokenClass::Digit,
+    );
+
+    reveal(__PARSE_PLAN__);
+}

@@ -8,7 +8,7 @@ use crate::spec::*;
 verus! {
 
 /** The input has a valid typed view whose denotation is this result. */
-pub open spec fn decimal_matches_result(input: Seq<u8>, value: int) -> bool
+pub open spec fn decimal_matches_result(input: Seq<char>, value: int) -> bool
 {
     exists|view: DecimalView|
         decimal_matches_view(input, view) && decimal_view_valid(view) && decimal_view_denotation(view) == value
@@ -17,10 +17,10 @@ pub open spec fn decimal_matches_result(input: Seq<u8>, value: int) -> bool
 /** Proof obligations for an external parser after mapping its output to Triptych's specification integer. */
 pub trait DecimalExternalParserContract {
     /** Specification view of the external parser result after its toSpec conversion. */
-    spec fn parse_to_spec(input: Seq<u8>) -> Option<int>;
+    spec fn parse_to_spec(input: Seq<char>) -> Option<int>;
 
     /** Every successful external parse is valid and has the specified value. */
-    proof fn extparse_sound(input: Seq<u8>, value: int)
+    proof fn extparse_sound(input: Seq<char>, value: int)
         requires
             match Self::parse_to_spec(input) {
                 Some(parsed) => parsed == value,
@@ -32,7 +32,7 @@ pub trait DecimalExternalParserContract {
     ;
 
     /** Every valid input with this value is accepted with that value. */
-    proof fn extparse_complete(input: Seq<u8>, value: int)
+    proof fn extparse_complete(input: Seq<char>, value: int)
         requires
             decimal_is_valid(input),
             decimal_matches_result(input, value),
@@ -44,7 +44,7 @@ pub trait DecimalExternalParserContract {
     ;
 
     /** The external parser rejects exactly the invalid inputs. */
-    proof fn extparse_reject(input: Seq<u8>)
+    proof fn extparse_reject(input: Seq<char>)
         ensures
             (match Self::parse_to_spec(input) {
                 Some(parsed) => false,

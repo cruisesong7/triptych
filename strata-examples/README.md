@@ -10,7 +10,7 @@ Triptych reference grammars for non-recursive fragments of Strata's SMT-LIB synt
 - `Proofs/SMT/` contains checked serializers and their parser-roundtrip proofs.
 
 The package pins Strata-DDM at the commit used for these examples and compiles it under Lean
-4.33. The lexical grammar remains explicit in Triptych; a later parser bridge can prove
+4.34. The lexical grammar remains explicit in Triptych; a later parser bridge can prove
 agreement with Strata's generated SMT parser.
 
 ```sh

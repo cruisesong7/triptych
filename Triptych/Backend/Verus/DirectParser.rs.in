@@ -1,0 +1,173 @@
+#![allow(unused_variables)]
+
+use vstd::prelude::*;
+#[cfg(verus_only)]
+use vstd::seq_lib::*;
+#[cfg(verus_only)]
+use vstd::string::{is_ascii, is_ascii_spec_bytes};
+#[cfg(verus_only)]
+use vstd::utf8::{is_ascii_chars, is_ascii_chars_concat};
+use vstd::string::StrSliceExecFns;
+#[cfg(verus_only)]
+use crate::spec::*;
+
+verus! {
+
+#[derive(Structural, Copy, Clone, PartialEq, Eq)]
+pub enum PlanTokenClass {
+    Digit,
+    HexDigit,
+    Bit,
+    AsciiRange { lower: u32, upper: u32 },
+}
+
+pub open spec fn plan_token_accepts(token: PlanTokenClass, character: char) -> bool {
+    match token {
+        PlanTokenClass::Digit => '0' <= character && character <= '9',
+        PlanTokenClass::HexDigit => {
+            ('0' <= character && character <= '9')
+                || ('a' <= character && character <= 'f')
+                || ('A' <= character && character <= 'F')
+        },
+        PlanTokenClass::Bit => character == '0' || character == '1',
+        PlanTokenClass::AsciiRange { lower, upper } => {
+            lower <= character as u32 && character as u32 <= upper
+        },
+    }
+}
+
+fn plan_token_accepts_at(
+    input: &str,
+    index: usize,
+    token: PlanTokenClass,
+) -> (result: bool)
+    requires
+        input.is_ascii(),
+        index < input@.len(),
+    ensures
+        result == plan_token_accepts(token, input@[index as int]),
+{
+    let byte = input.get_ascii(index);
+    match token {
+        PlanTokenClass::Digit => b'0' <= byte && byte <= b'9',
+        PlanTokenClass::HexDigit => {
+            (b'0' <= byte && byte <= b'9')
+                || (b'a' <= byte && byte <= b'f')
+                || (b'A' <= byte && byte <= b'F')
+        },
+        PlanTokenClass::Bit => byte == b'0' || byte == b'1',
+        PlanTokenClass::AsciiRange { lower, upper } => {
+            lower <= byte as u32 && byte as u32 <= upper
+        },
+    }
+}
+
+pub open spec fn plan_scan_token_end(
+    input: Seq<char>,
+    index: int,
+    limit: int,
+    token: PlanTokenClass,
+) -> int
+    recommends
+        0 <= index <= limit <= input.len(),
+    decreases limit - index,
+{
+    if index < limit && plan_token_accepts(token, input[index]) {
+        plan_scan_token_end(input, index + 1, limit, token)
+    } else {
+        index
+    }
+}
+
+pub proof fn plan_scan_token_end_at_boundary(
+    input: Seq<char>,
+    start: int,
+    end: int,
+    limit: int,
+    token: PlanTokenClass,
+)
+    requires
+        0 <= start <= end <= limit <= input.len(),
+        forall|index: int| start <= index < end ==>
+            #[trigger] plan_token_accepts(token, input[index]),
+        end == limit || !plan_token_accepts(token, input[end]),
+    ensures
+        plan_scan_token_end(input, start, limit, token) == end,
+    decreases end - start,
+{
+    if start < end {
+        assert(plan_token_accepts(token, input[start]));
+        assert(
+            plan_scan_token_end(input, start, limit, token)
+                == plan_scan_token_end(input, start + 1, limit, token)
+        );
+        plan_scan_token_end_at_boundary(input, start + 1, end, limit, token);
+    } else {
+        assert(start == end);
+        if start < limit {
+            assert(!plan_token_accepts(token, input[start]));
+        }
+        assert(plan_scan_token_end(input, start, limit, token) == start);
+    }
+}
+
+fn plan_scan_token_end_exec(
+    input: &str,
+    start: usize,
+    limit: usize,
+    token: PlanTokenClass,
+) -> (result: usize)
+    requires
+        input.is_ascii(),
+        start <= limit <= input@.len(),
+    ensures
+        result as int == plan_scan_token_end(input@, start as int, limit as int, token),
+        start <= result <= limit,
+        forall|checked: int| start <= checked < result ==>
+            #[trigger] plan_token_accepts(token, input@[checked]),
+{
+    let mut index = start;
+    while index < limit
+        invariant
+            input.is_ascii(),
+            start <= index <= limit <= input@.len(),
+            plan_scan_token_end(input@, start as int, limit as int, token)
+                == plan_scan_token_end(input@, index as int, limit as int, token),
+            forall|checked: int| start <= checked < index ==>
+                #[trigger] plan_token_accepts(token, input@[checked]),
+        decreases limit - index,
+    {
+        if !plan_token_accepts_at(input, index, token) {
+            assert(!plan_token_accepts(token, input@[index as int]));
+            assert(
+                plan_scan_token_end(input@, index as int, limit as int, token)
+                    == index as int
+            );
+            return index;
+        }
+        assert(
+            plan_scan_token_end(input@, index as int, limit as int, token)
+                == plan_scan_token_end(input@, index as int + 1, limit as int, token)
+        );
+        assert(plan_token_accepts(token, input@[index as int]));
+        index += 1;
+    }
+    assert(
+        plan_scan_token_end(input@, index as int, limit as int, token)
+            == index as int
+    );
+    index
+}
+
+fn plan_ascii_character_at(
+    input: &str,
+    index: usize,
+) -> (result: u8)
+    requires
+        input.is_ascii(),
+        index < input@.len(),
+    ensures
+        result == input@[index as int] as u8,
+{
+    input.get_ascii(index)
+}

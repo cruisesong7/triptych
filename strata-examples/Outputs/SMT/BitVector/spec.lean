@@ -19,7 +19,9 @@ set_option linter.unusedVariables false
 The more readable specification. Each production of the input grammar becomes an
 inlined well-formedness predicate `IsWf.*` written as a plain existential over the
 named captures, so you can read it side-by-side with the grammar and check that it
-says the same thing. When present, `WfConstraints` contains capture-derived format
+says the same thing. The start rule is named `Production`; `IsWf.<Start>` and
+top-level `IsWf` reuse it. When a value is present, `Denotes` combines valid syntax
+with the readable value function. `WfConstraints` contains capture-derived format
 conditions and `Constraints` contains conditions that explicitly mention the final
 `value`. Empty phases are omitted; `IsWf` and `IsValid` specialize accordingly.
 This file is proof-free — it is what you cite. -/
@@ -111,17 +113,26 @@ def BitVector.IsWf.Hexadecimal (s : String) : Prop :=
 def BitVector.IsWf.Payload (s : String) : Prop :=
   BitVector.IsWf.Binary s ∨ BitVector.IsWf.Hexadecimal s
 
-def BitVector.IsWf.BitVector (s : String) : Prop :=
+def BitVector.Production (s : String) : Prop :=
   ∃ payload, s = "#" ++ payload ∧ BitVector.IsWf.Payload payload
+
+abbrev BitVector.IsWf.BitVector (s : String) : Prop :=
+  BitVector.Production s
 
 def BitVector.value (binaryDigits : String) (hexDigits : String) :=
   toValue binaryDigits hexDigits
 
 abbrev BitVector.IsWf (s : String) : Prop :=
-  BitVector.IsWf.BitVector s
+  BitVector.Production s
 
 abbrev BitVector.IsValid (s : String) : Prop :=
   BitVector.IsWf s
+
+def BitVector.Denotes (s : String) (v : Value) : Prop :=
+  BitVector.IsValid s ∧
+    v =
+      BitVector.value (Triptych.component BitVector.grammar s "BinaryDigits")
+        (Triptych.component BitVector.grammar s "HexDigits")
 
 structure BitVector.View where
   input : String

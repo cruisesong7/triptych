@@ -17,7 +17,9 @@ set_option linter.unusedVariables false
 The more readable specification. Each production of the input grammar becomes an
 inlined well-formedness predicate `IsWf.*` written as a plain existential over the
 named captures, so you can read it side-by-side with the grammar and check that it
-says the same thing. When present, `WfConstraints` contains capture-derived format
+says the same thing. The start rule is named `Production`; `IsWf.<Start>` and
+top-level `IsWf` reuse it. When a value is present, `Denotes` combines valid syntax
+with the readable value function. `WfConstraints` contains capture-derived format
 conditions and `Constraints` contains conditions that explicitly mention the final
 `value`. Empty phases are omitted; `IsWf` and `IsValid` specialize accordingly.
 This file is proof-free — it is what you cite. -/
@@ -84,10 +86,13 @@ def Decimal.IsWf.Natural (s : String) : Prop :=
 def Decimal.IsWf.Fraction (s : String) : Prop :=
   IsDigitsBetween 1 4 s
 
-def Decimal.IsWf.Decimal (s : String) : Prop :=
+def Decimal.Production (s : String) : Prop :=
   ∃ «sign» natural fraction,
     ((s = «sign» ++ natural ++ "." ++ fraction ∧ Decimal.IsWf.Sign «sign») ∧ Decimal.IsWf.Natural natural) ∧
       Decimal.IsWf.Fraction fraction
+
+abbrev Decimal.IsWf.Decimal (s : String) : Prop :=
+  Decimal.Production s
 
 def Decimal.value («sign» : String) (natural : String) (fraction : String) : Int :=
   signOf «sign» *
@@ -99,7 +104,7 @@ def Decimal.Constraints («sign» : String) (natural : String) (fraction : Strin
     Decimal.value «sign» natural fraction ≤ (9223372036854775807 : Int)
 
 abbrev Decimal.IsWf (s : String) : Prop :=
-  Decimal.IsWf.Decimal s
+  Decimal.Production s
 
 def Decimal.SatisfiesConstraints (s : String) : Prop :=
   Decimal.Constraints (Triptych.component Decimal.grammar s "Sign") (Triptych.component Decimal.grammar s "Natural")
@@ -107,6 +112,12 @@ def Decimal.SatisfiesConstraints (s : String) : Prop :=
 
 abbrev Decimal.IsValid (s : String) : Prop :=
   Decimal.IsWf s ∧ Decimal.SatisfiesConstraints s
+
+def Decimal.Denotes (s : String) (i : Int) : Prop :=
+  Decimal.IsValid s ∧
+    i =
+      Decimal.value (Triptych.component Decimal.grammar s "Sign") (Triptych.component Decimal.grammar s "Natural")
+        (Triptych.component Decimal.grammar s "Fraction")
 
 structure Decimal.View where
   input : String

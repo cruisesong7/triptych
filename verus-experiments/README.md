@@ -1,160 +1,190 @@
-# Verus specification experiment
+# Verus backend experiment
 
-This experiment translates Triptych's elaborated grammar, value, and constraint ASTs into a
-readable Verus specification and an external-parser contract scaffold. The generated Decimal
-files are `cedar-ext/decimal/src/spec.rs` and `cedar-ext/decimal/src/soundness.rs`.
+Triptych can emit three Rust/Verus artifacts from the same elaborated declaration used by the
+Lean backend:
 
-## Generated specification
+- `spec.rs`: readable grammar, view, value, constraint, and validity specifications;
+- `parser.rs`: an executable proof-carrying grammar parser;
+- `soundness.rs`: a write-once contract for an optional external parser.
 
-The Verus surface deliberately follows the generated Lean specification:
+The `verus` clause emits `spec.rs` and `parser.rs` as one fail-closed result. Triptych validates
+both output paths before writing either file, never exposes a separate uncertified parser emitter,
+and never asks for a format-specific proof of the generated scanner.
 
-| Lean specification | Verus specification |
+## Generated parser
+
+The Rust backend has two verified execution paths.
+
+For eligible deterministic formats, the shared `Architecture/ScanPlan.lean` compiles the grammar
+ahead of time into a structured `ScanPattern`, then derives a linear cursor plan. The plan is
+compiled away: `parser.rs` contains direct branches and loops, capture start/end indices, and no
+grammar tables or runtime interpreter. Decimal currently uses this path.
+
+The first specialized fragment covers the fixed-point shape used by Decimal:
+
+- one optional ASCII sign literal;
+- one nonempty digit capture;
+- one required separator;
+- one bounded digit capture;
+- deterministic boundaries between every field.
+
+The emitted Verus proof establishes that execution agrees exactly with the generated plan
+semantics. On success it also constructs the captured-string witnesses required by the readable
+root grammar predicate, such as `decimal_is_wf_decimal`.
+
+Grammars outside that specialization use the existing source-faithful flattened grammar scanner:
+
+- arbitrary Unicode literals and Lean-style quoted string literals;
+- production references, source-ordered alternatives, and optional items;
+- `digit`, `hexDigit`, `bit`, and `asciiRange` token classes;
+- exact, bounded, and nonempty-unbounded token lengths;
+- bounded or unbounded separated repetition, including nested named repetitions.
+
+Recursive production graphs remain unsupported. Triptych rejects unresolved references, cycles,
+duplicate production names, and malformed repetition before emitting Rust.
+
+Both paths expose the same kind of entry point:
+
+```rust
+pub fn decimal_parse_candidate(input: &str) -> Option<DecimalParseResult>
+```
+
+`DecimalParseResult` contains the complete match position and capture spans. The specialized
+parser uses ASCII byte access after a checked `is_ascii` guard, so each cursor access is constant
+time. The generic fallback preserves source-order choice and complete capture behavior for the
+larger grammar fragment.
+
+This is a verified **grammar and capture parser**, not yet the full semantic
+`String -> Option<alpha>` parser emitted by Lean. It does not apply `value`, semantic constraints,
+or `ofSpec` at runtime. For example, the Decimal scanner accepts syntactically well-formed values
+outside `Int64`; `decimal_is_valid` in `spec.rs` rejects them. Keeping that boundary explicit
+avoids claiming that a capture candidate is already a Cedar Decimal value.
+
+The retired bytecode-style `RuntimeProgram` interpreter is archived under
+`Triptych/Archive/Verus/`. It is not used by either production path.
+
+## Readable specification
+
+The Verus surface follows the generated Lean specification:
+
+| Lean | Verus |
 | --- | --- |
 | `Decimal.IsWf.Sign` | `decimal_is_wf_sign` |
-| `Decimal.IsWf.Natural` | `decimal_is_wf_natural` |
 | `Decimal.IsWf.Decimal` | `decimal_is_wf_decimal` |
 | `Decimal.View` | `DecimalView` |
 | `Decimal.value` | `decimal_value` |
-| `Decimal.Constraints` | `decimal_constraints` |
 | `Decimal.SatisfiesConstraints` | `decimal_satisfies_constraints` |
 | `Decimal.IsValid` | `decimal_is_valid` |
 
-The grammar predicate also keeps the readable component structure. For example, the Decimal root
-quantifies `sign`, `natural`, and `fraction`, equates the input with their concatenation around the
-decimal-point literal, and applies each production predicate.
+Text is represented as `Seq<char>`, matching Lean strings by Unicode code point rather than
+silently narrowing them to bytes. Grammar predicates support the same shared grammar constructors
+as the scanner.
 
-`spec.rs` contains specification definitions only. It does not contain `decode_view`,
-`compute_value`, a functional parser contract, an executable Rust parser, `proof fn`
-declarations, or a proof about Cedar's production parser.
+Value and constraint emission currently supports scalar captures that are direct root references
+and the first-order `ValExpr`/`Constraint` fragment. Repeated-capture `count`, qualified or nested
+semantic captures, `value'`, and `constraints'` remain unsupported. `ofSpec` and `toSpec` names are
+recorded at the conversion boundary; their Lean implementations are not translated into Rust.
 
-`soundness.rs` is generated separately and contains:
+## External parser contract
 
-- `decimal_matches_result`, relating a valid typed view to its integer denotation;
-- `DecimalExternalParserContract::parse_to_spec`, the specification view of an external parser
-  after converting its result to Triptych's integer value;
-- `extparse_sound`, `extparse_complete`, and `extparse_reject` proof obligations.
+When a declaration has a `parser` clause, Triptych creates `soundness.rs` once. Its generated trait
+states soundness, completeness, and exact rejection for an adapter connected to that parser.
+Triptych does not overwrite this file because the adapter and its proofs are user-owned.
 
-The scaffold is a Verus trait, not an admitted proof. A concrete integration must connect
-`parse_to_spec` to the production parser and implement all three `proof fn` methods. Verus then
-checks those implementations. Triptych creates `soundness.rs` once and leaves it untouched so
-hand-written parser adapters and proofs are not overwritten.
+This contract is separate from the generated scanner certificate:
 
-## Cedar runtime conformance
+- `parser.rs` is regenerated and requires no per-format proof;
+- `soundness.rs` verifies another implementation, such as Cedar's existing regex parser.
 
-`cedar-ext/decimal/tests/cedar_runtime.rs` invokes the production Decimal parser through Cedar's
-public `Expression::new_decimal` and `eval_expression` APIs. It reuses the accepted and rejected
-inputs from Cedar's own `decimal_creation` unit test. Accepted inputs are additionally compared
-with their expected Decimal values using Cedar's equality operator.
+## Translation and checking
 
-The test depends on the sibling `cedar` checkout and therefore exercises its current
-`cedar-policy-core/src/extensions/decimal.rs`, including the private regex-based parser. Run it
-with:
+The DSL is parsed once into `Grammar`, `ValExpr`, and `Constraint` values shared with Lean
+generation.
 
-```sh
-cd verus-experiments/cedar-ext/decimal
-cargo test --test cedar_runtime
-```
+1. `Architecture/ScanPlan.lean` attempts a fail-closed compilation. Capture nesting is retained
+   in `ScanPattern`; `ScanPlan.decode_eq_decodePattern` proves that flattening it into operations
+   preserves the complete captured result. Before lowering, an independent executable certificate
+   checks source-grammar shape, unique capture slots, and deterministic local boundaries;
+   `compileScanPlan_certifiedFor` proves every successful compilation passed it.
+2. `Architecture/CursorProgram.lean` lowers the plan into fixed-width and greedy cursor
+   instructions. `CursorProgram.lowerScanPlan_run` and `lowerScanPlan_decodePattern` prove that
+   the composed lowering preserves complete results and captured strings for every input.
+3. `ScanPlan.decodeCertified_eq_decode` and
+   `CursorProgram.decodeCertified_eq_decode` prove generic completeness and exact rejection for
+   every plan that passes `certifiedFor`: a successful direct result is kept, while direct
+   rejection continues through the complete scanner.
+4. Eligible fixed-point cursor programs become specialized Rust control flow with generated
+   grammar-witness proofs; other certified plans and unsupported direct shapes use
+   `RuntimeModel.lean` and the complete checked scanner. Thus completeness is generic even though
+   the current straight-line Verus optimization covers a narrower shape.
+5. The specification translator maps the same grammar, value, and constraints into typed Verus IR.
+6. `Lowering.lean` converts specification operations into the Verus AST and selects only required
+   helpers.
+7. `PrettyPrint.lean` renders the AST to Verus source.
+8. Verus checks the scanner implementation and all emitted proof contracts with
+   `--no-cheating`.
 
-This is behavioral evidence, not a Verus proof of Cedar's parser. Implementing
-`DecimalExternalParserContract` remains the formal verification step.
+The IR is backend-neutral, but only the Rust/Verus emitter currently compiles it away into
+specialized source. The Lean runtime can execute either the structured pattern or the same flat
+plan; a direct Lean source lowering can be added without changing grammar analysis or semantics.
 
-## Translation pipeline
+Triptych's generator and pretty-printer are not formally verified. The safety model is
+proof-carrying generation: malformed Rust fails compilation, and an implementation that does not
+satisfy its emitted Verus contract fails verification. Lean also proves preservation for the
+supported value and arithmetic-constraint translations through the internal Verus AST.
 
-The `triptych` command parses the DSL once, then reuses the same semantic values for Lean and
-Verus generation:
+The specialized Decimal certificate proves exact agreement with `decimal_parse_plan` and both
+directions of the readable grammar contract. Success implies `decimal_is_wf_decimal`; the
+generated `decimal_is_wf_implies_parse_plan` theorem makes rejection imply its negation.
+Executable value computation, semantic-constraint checking, and conversion to the domain result
+type remain future work. The current Rust artifact is therefore a verified grammar-and-capture
+parser, not yet the full `String -> Option<Decimal>` parser emitted by Lean.
 
-1. Grammar declarations become a first-order `Grammar` containing productions, alternatives,
-   symbols, token classes, and length bounds.
-2. The value clause is parsed once into a `ValExpr`, rather than elaborated separately for Lean
-   and Verus.
-3. Each constraint is parsed once into a `Constraint` plus its acceptance phase. The parser records
-   whether the source mentioned `value` before substituting the shared value AST.
-4. The Lean emitter reifies these values into the readable specification and executable engine.
-5. `Verus.FormatInput` groups the grammar, value, phased constraints, and conversion names for
-   the Verus translator. It is a convenience record, not a separate semantic model.
-6. The Verus translator converts these source ASTs into `Triptych.Backend.Verus.IR`, which still
-   contains specification operations such as `natOf` and `intPow`.
-7. `Triptych.Backend.Verus.Lowering` converts that IR into
-   `Triptych.Backend.Verus.Ast`, selects only the required helpers, and replaces every IR-only
-   operation with concrete calls and expressions.
-8. `Triptych.Backend.Verus.PrettyPrint` emits Verus syntax from the AST. It does not
-   recognize a Decimal-specific shape or substitute a fixed template.
-9. The soundness emitter builds a separate AST containing the result relation and
-   external-parser contract trait.
+## Evidence
 
-The grammar translation emits one predicate per production. Literals become byte sequences,
-references become calls to sibling predicates, token runs become quantified byte predicates with
-length bounds, and alternatives become disjunctions.
+`grammar-coverage/` is generated from one declaration that combines every shared grammar
+constructor: Unicode literals, quoted strings, all token classes and length forms, references,
+alternatives, optionals, bounded and unbounded repetition, nested named repetition, and an
+ambiguous token alternative. Its Verus and Rust tests exercise accepted and rejected inputs.
 
-The value translation recursively maps literals, field readers, arithmetic, negation, and powers
-to structured `int` expressions. Constraint translation maps string conditions, cardinality,
-arithmetic comparisons, and conjunctions to structured `bool` expressions. A generated typed view
-keeps the captures used by these expressions attached to one grammar match. The Verus AST has no
-raw-code escape hatch.
+`cedar-ext/decimal/` contains:
 
-## Trust boundary
+- the generated Decimal specification and scanner;
+- Rust tests for grammar acceptance, including long inputs;
+- Cedar's production-parser corpus through Cedar's public API;
+- a benchmark harness comparing the generated grammar scanner with a Cedar-style regex path.
 
-This architecture genuinely narrows the trusted translation boundary:
+The optimized benchmark uses `"-1234567890.1234"` over five million iterations:
 
-- Lean and the Verus translator consume the same parsed `Grammar`, `ValExpr`, and `Constraint`
-  values.
-- Lean defines a denotation for the Verus IR subset and proves that translating a
-  `ValExpr` preserves `ValExpr.eval`, including the named-value optimization.
-- Lean proves that compiling a `Constraint` preserves `Constraint.eval`. For `strEq`, this theorem
-  requires the capture to be present; backend validation therefore requires that field to be a
-  non-optional direct reference in every root alternative.
-- Recovery theorems additionally show that supported source nodes can be reconstructed from their
-  translated Verus AST.
-- `lower_translateValExpr_preserves` composes translation and lowering for every supported value
-  expression. `lower_translateArithmeticConstraint_preserves` does the same for arithmetic
-  constraints, including Decimal's `Int64` bound.
-- `helperDeclaration_realizes` proves that every concrete helper declaration evaluates to its
-  canonical byte-level meaning. Separate theorems connect `natOf`, `intOf`, and `signOf` on
-  encoded strings to Triptych's audited Lean readers.
-- Both AST layers are typed by constructors, making translation and pretty-printing exhaustive
-  and preventing ad hoc source fragments from bypassing the pipeline.
-- The generated specification and soundness contract are accepted by
-  `cargo verus verify -- --no-cheating`.
+| implementation | ns/parse | relative to ScanPlan |
+| --- | ---: | ---: |
+| generated Triptych ScanPlan | 13.86 | 1.00x |
+| Cedar regex recognition | 79.87 | 5.76x slower |
+| Cedar-style regex plus value computation | 93.57 | 6.75x slower |
 
-This proves semantic preservation from supported Triptych value expressions and arithmetic
-constraints through Verus AST helper calls. The full high-level constraint theorem also
-covers string and cardinality constraints before lowering. It does not yet prove the grammar
-translation or source pretty-printer correct. The pretty-printer, Verus itself, and the generated
-grammar/view translation remain trusted. Parsing the emitted source back into an independently
-defined syntax, or validating it against Verus's frontend, would reduce that boundary further.
+The old generic candidate scanner measured about `5.7 us/parse` on the same development machine.
+The large improvement comes from eliminating candidate vectors, capture-map copying, grammar
+validation, and runtime grammar traversal.
 
-## Current boundary
-
-The current backend supports:
-
-- statically unique, acyclic grammars using ASCII literals, references, and
-  `digit`/`hexDigit`/`bit` token runs;
-- scalar captures that are direct references in the start production;
-- string equality only when its capture is required in every root alternative;
-- the arithmetic value AST except `count`;
-- both well-formedness and semantic constraint phases.
-
-It currently rejects `str`, separated repetition, repeated-capture counts, nested or qualified
-value captures, and opaque `value'` or `constraints'` escapes. `ofSpec` and `toSpec` names are
-recorded as conversion-boundary metadata; their Lean implementations are not translated into
-Rust.
-
-Verus type-checks the emitted specification and contract scaffold. Merely declaring the contract
-trait does not prove an executable Rust parser against it; that requires a concrete implementation
-of the trait's proof methods. The backend also does not yet prove the Verus pretty-printer correct
-or make Triptych's Lean emitter itself formally verified.
+The recognition comparison is the closest like-for-like row. The full Cedar-style path also
+computes an `i64`, while the generated function currently returns capture spans. These are
+wall-clock measurements, not a formal timing guarantee.
 
 ## Commands
 
-From the Triptych repository root:
+From the repository root:
 
 ```sh
 ./verus-experiments/setup-verus.sh
-cd cedar-examples
-lake build Inputs.Decimal
-cd ..
+lake build Triptych.Backend.VerusTests Triptych.Architecture.ScanPlanTests \
+  Triptych.Backend.Verus.RuntimeModelTests
+lake env lean verus-experiments/grammar-coverage/Input.lean
+(cd cedar-examples && lake build Inputs.Decimal)
 ./verus-experiments/verify.sh
+cargo test --manifest-path verus-experiments/grammar-coverage/Cargo.toml --offline --locked
+cargo test --manifest-path verus-experiments/cedar-ext/decimal/Cargo.toml --offline --locked
+cargo bench --manifest-path verus-experiments/cedar-ext/decimal/Cargo.toml \
+  --bench runtime --offline --locked
 ```
 
-The setup script pins Verus `0.2026.08.30.b432e82`, its required Rust toolchain, and the release
-archive checksum.
+The setup script pins Verus `0.2026.08.30.b432e82` and its required Rust toolchain.

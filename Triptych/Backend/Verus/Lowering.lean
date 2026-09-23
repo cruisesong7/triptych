@@ -53,10 +53,11 @@ def Helper.dependencies : Helper → List Helper
   | .signOf => [.minusConstant]
   | _ => []
 
-def tokenHelper : TokClass → Helper
-  | .digit => .isDigit
-  | .hexDigit => .isHexDigit
-  | .bit => .isBit
+def tokenHelper? : TokClass → Option Helper
+  | .digit => some .isDigit
+  | .hexDigit => some .isHexDigit
+  | .bit => some .isBit
+  | .asciiRange _ _ => none
 
 def expressionHelpers : IR.Expr → List Helper
   | .var _ | .capture _ _ | .boolLit _ | .intLit _ | .byteLit _ | .textLit _
@@ -86,7 +87,7 @@ def expressionHelpers : IR.Expr → List Helper
       expressionHelpers scrutinee ++ expressionHelpers someBranch ++
         expressionHelpers noneBranch
   | .isToken token expression =>
-      tokenHelper token :: expressionHelpers expression
+      (tokenHelper? token).toList ++ expressionHelpers expression
   | .natOf expression =>
       .natOf :: expressionHelpers expression
   | .intOf expression =>
@@ -115,11 +116,6 @@ def closeHelperDependencies : Nat → List Helper → List Helper
 def requiredHelpers (declarations : List IR.Decl) : List Helper :=
   closeHelperDependencies helperOrder.length
     (declarations.flatMap declarationHelpers).eraseDups
-
-private def tokenPredicateName : TokClass → String
-  | .digit => "triptych_is_digit"
-  | .hexDigit => "triptych_is_hex_digit"
-  | .bit => "triptych_is_bit"
 
 def lowerExpr : IR.Expr → Ast.Expr
   | .var name => .var name
@@ -166,8 +162,17 @@ def lowerExpr : IR.Expr → Ast.Expr
   | .matchOption scrutinee binder someBranch noneBranch =>
       .matchOption (lowerExpr scrutinee) binder (lowerExpr someBranch)
         (lowerExpr noneBranch)
-  | .isToken token expression =>
-      .call (tokenPredicateName token) [lowerExpr expression]
+  | .isToken .digit expression =>
+      .call "triptych_is_digit" [lowerExpr expression]
+  | .isToken .hexDigit expression =>
+      .call "triptych_is_hex_digit" [lowerExpr expression]
+  | .isToken .bit expression =>
+      .call "triptych_is_bit" [lowerExpr expression]
+  | .isToken (.asciiRange lower upper) expression =>
+      let byte := Ast.Expr.byteToInt (lowerExpr expression)
+      .boolAnd
+        (.intLe (.intLit (Int.ofNat lower)) byte)
+        (.intLe byte (.intLit (Int.ofNat upper)))
   | .natOf expression =>
       .call "triptych_nat_of" [lowerExpr expression]
   | .intOf expression =>

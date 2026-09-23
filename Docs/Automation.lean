@@ -208,6 +208,7 @@ triptych SignedInteger where
 #guard SignedInteger.toString 42 = "42"
 #guard SignedInteger.toString (-42) = "-42"
 #guard SignedInteger.parse (SignedInteger.toString (-42)) = some (-42)
+#guard decide (SignedInteger.Production "-42")
 ```
 
 Its current proved rule covers total signed decimal integers with no constraints or domain

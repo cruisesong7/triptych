@@ -586,8 +586,8 @@ theorem IPv6.Internal.matchesRef.H16 (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold IPv6.IsWf.H16
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsHexDigits_matchesTerm,
-    IsFixedHexDigits_matchesTerm, IsHexDigitsBetween_matchesTerm]
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    IsHexDigits_matchesTerm, IsFixedHexDigits_matchesTerm, IsHexDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
@@ -604,7 +604,7 @@ theorem IPv6.Internal.matchesRef.Full (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold IPv6.IsWf.Full
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     IPv6.Internal.matchesRef.H16]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
@@ -622,8 +622,8 @@ theorem IPv6.Internal.matchesRef.H16L (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold IPv6.IsWf.H16L
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsHexDigits_matchesTerm,
-    IsFixedHexDigits_matchesTerm, IsHexDigitsBetween_matchesTerm]
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    IsHexDigits_matchesTerm, IsFixedHexDigits_matchesTerm, IsHexDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
@@ -640,7 +640,7 @@ theorem IPv6.Internal.matchesRef.Left (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold IPv6.IsWf.Left
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     IPv6.Internal.matchesRef.H16L]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
@@ -658,8 +658,8 @@ theorem IPv6.Internal.matchesRef.H16R (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold IPv6.IsWf.H16R
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsHexDigits_matchesTerm,
-    IsFixedHexDigits_matchesTerm, IsHexDigitsBetween_matchesTerm]
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    IsHexDigits_matchesTerm, IsFixedHexDigits_matchesTerm, IsHexDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
@@ -676,7 +676,7 @@ theorem IPv6.Internal.matchesRef.Right (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold IPv6.IsWf.Right
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     IPv6.Internal.matchesRef.H16R]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
@@ -696,7 +696,7 @@ theorem IPv6.Internal.matchesRef.Compressed (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold IPv6.IsWf.Compressed
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     IPv6.Internal.matchesRef.Left, IPv6.Internal.matchesRef.Right]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
@@ -713,8 +713,8 @@ theorem IPv6.Internal.matchesRef.V6Addr (fuel : Nat) (s : String) :
   dsimp only
   unfold matchesProd IPv6.IsWf.V6Addr
   simp (config := { maxSteps := 1000000 }) only [List.mem_cons, List.mem_singleton, List.not_mem_nil,
-    Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_or_imp, exists_eq_left, exists_eq_left, if_true,
-    if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IPv6.Internal.matchesRef.Full,
+    Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_or_imp, exists_eq_left, exists_eq_left, ite_true,
+    ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IPv6.Internal.matchesRef.Full,
     IPv6.Internal.matchesRef.Compressed]
   repeat'
     first
@@ -735,14 +735,14 @@ theorem IPv6.Internal.matchesRef.Prefix (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold IPv6.IsWf.Prefix
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem IPv6.Internal.matchesRef.V6Net (fuel : Nat) (s : String) :
-    matchesSym IPv6.grammar (fuel + 5) (Sym.ref "V6Net") s ↔ IPv6.IsWf.V6Net s :=
+    matchesSym IPv6.grammar (fuel + 5) (Sym.ref "V6Net") s ↔ IPv6.Production s :=
   by
   rw [matchesSym,
     show
@@ -754,10 +754,10 @@ theorem IPv6.Internal.matchesRef.V6Net (fuel : Nat) (s : String) :
                 SymItem.mk (Sym.ref "Prefix") false]])
       from rfl]
   dsimp only
-  unfold matchesProd IPv6.IsWf.V6Net
+  unfold matchesProd IPv6.Production
   simp (config := { maxSteps := 1000000 }) only [List.mem_cons, List.mem_singleton, List.not_mem_nil,
-    Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_or_imp, exists_eq_left, exists_eq_left, if_true,
-    if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IPv6.Internal.matchesRef.V6Addr,
+    Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_or_imp, exists_eq_left, exists_eq_left, ite_true,
+    ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IPv6.Internal.matchesRef.V6Addr,
     IPv6.Internal.matchesRef.Prefix]
   repeat'
     first
@@ -766,7 +766,7 @@ theorem IPv6.Internal.matchesRef.V6Net (fuel : Nat) (s : String) :
           ← and_assoc, exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
         try grind [String.append_assoc, String.append_empty])
 
-theorem IPv6.IsWfGrammar_equiv (s : String) : Triptych.IsWf IPv6.grammar s ↔ IPv6.IsWf.V6Net s :=
+theorem IPv6.IsWfGrammar_equiv (s : String) : Triptych.IsWf IPv6.grammar s ↔ IPv6.Production s :=
   by
   rw [isWf_eq_isWfProd_start, IsWfProd,
     show
@@ -911,10 +911,12 @@ theorem IPv6.computeValue_view (s : String) : IPv6.computeValue s = (IPv6.decode
     rfl
 
 /- ═══════════════════════════════ parser ══════════════════════════════
-The generated correct-by-construction parser `parse` scans once, checks constraints
-on that capture map, and computes the result from the same captures. `parse_eq_gated`
-proves equality with the readable validity-gated presentation. Its correctness and
-search-cost guarantees — `parse_sound`, `parse_complete`, `parse_reject`,
+The generated correct-by-construction parser `parse` uses a certified staged cursor
+program when the grammar supports one, checks constraints on its capture map, and
+computes the result from those captures. The complete scanner remains the checked
+fallback. `parse_eq_scanner` and `parse_eq_gated` prove equality with the generic
+scanner and readable validity-gated presentation. Its correctness and search-cost
+guarantees — `parse_sound`, `parse_complete`, `parse_reject`,
 `parse_profile_result`, `parse_candidateChecks_le`, `parse_view`, and typed
 `parse_eq_some_iff_view` / `parse_eq_none_iff_view` normal forms — are all
 AUTO-DISCHARGED here.
@@ -934,9 +936,13 @@ theorem IPv6.computeValue_isSome (s : String) : IPv6.IsValid s → (IPv6.compute
 def IPv6.parse (s : String) :=
   Triptych.scannerParseMap IPv6.grammar IPv6.constraints IPv6.valueFn id s
 
+theorem IPv6.parse_eq_scanner (s : String) :
+    IPv6.parse s = Triptych.scannerParseMap IPv6.grammar IPv6.constraints IPv6.valueFn id s := by rfl
+
 theorem IPv6.parse_eq_gated (s : String) : IPv6.parse s = Triptych.gatedParse IPv6.IsValid IPv6.computeValue s :=
   by
-  unfold IPv6.parse IPv6.computeValue
+  rw [IPv6.parse_eq_scanner]
+  unfold IPv6.computeValue
   exact
     Triptych.scannerParseMap_eq_surfaceGated IPv6.grammar IPv6.constraints IPv6.valueFn IPv6.IsValid IPv6.IsValid_equiv
       s
@@ -944,8 +950,8 @@ theorem IPv6.parse_eq_gated (s : String) : IPv6.parse s = Triptych.gatedParse IP
 theorem IPv6.parse_profile_result (s : String) :
     (Triptych.scannerParseMapProfile IPv6.grammar IPv6.constraints IPv6.valueFn id s).result = IPv6.parse s :=
   by
-  unfold IPv6.parse
-  exact Triptych.scannerParseMapProfile_result IPv6.grammar IPv6.constraints IPv6.valueFn id s
+  rw [Triptych.scannerParseMapProfile_result]
+  exact (IPv6.parse_eq_scanner s).symm
 
 theorem IPv6.parse_candidateChecks_le (s : String) :
     (Triptych.scannerParseMapProfile IPv6.grammar IPv6.constraints IPv6.valueFn id s).candidateChecks ≤

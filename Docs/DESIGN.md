@@ -21,10 +21,14 @@ gated on the decidable acceptance predicate) and discharges that parser's
 sound/complete/reject contracts for free — so every generated spec ships a verified
 parser, not merely an obligation surface.
 
-The generated parser uses a continuation scanner proved extensionally equal to the archived
-list decoder. The tool does not claim streaming or error recovery. Its formal performance model
-bounds completed root-candidate checks for every grammar and records zero such backtracking when
-the certified fast path succeeds; ambiguous grammars can still have exponential candidate trees.
+The generated parser emits a staged cursor program for grammars that pass the scan-plan
+certificate, and otherwise uses the continuation scanner. It also emits a structural
+`MirrorsGrammar` witness, so Lean checks that the specialized program represents the generated
+grammar. The staged parser is proved equal to the scanner, which is proved extensionally equal to
+the archived list decoder. The tool does not claim streaming or error recovery. Its formal
+performance model bounds completed root-candidate checks for every grammar and records zero such
+backtracking when the certified fast path succeeds; ambiguous grammars can still have exponential
+candidate trees.
 The tool's distinctive job is also to validate a
 *separate, external, hand-written* parser (e.g. the `Std.Time`-based `Datetime.parse`,
 or the `splitToList`-based `Decimal.parse`) against the generated spec, via the
@@ -539,12 +543,14 @@ Novelty = "occupies an empty, practically-important niche," not "new metatheory.
 
 Triptych supports **verify what is shipped**: keep Cedar's hand-written extension parsers,
 generate an independent parser and specification, and prove the external implementations agree.
-The generated parser now runs the continuation-based scanner; the list decoder is retained only
-as an executable reference semantics, with `scan_eq_decode` proving exact agreement. A project
-that wants to replace a production parser should still benchmark its workloads and integration
-requirements. Triptych does not claim streaming or error recovery. Its generic complexity
-theorem bounds completed candidate checks by the finite candidate tree; it deliberately does
-not claim a polynomial bound for ambiguous grammars.
+For eligible deterministic grammars, the generated parser now runs emitted straight-line cursor
+code and falls back to the continuation scanner on direct rejection. Other grammars run the
+scanner directly. The generated `parse_eq_scanner` theorem proves that this specialization does
+not change behavior, while `scan_eq_decode` connects the scanner to the archived executable
+reference semantics. A project that wants to replace a production parser should still benchmark
+its workloads and integration requirements. Triptych does not claim streaming or error recovery.
+Its generic complexity theorem bounds completed candidate checks by the finite candidate tree; it
+deliberately does not claim a polynomial bound for ambiguous grammars.
 
 ## 16. The implemented `triptych` DSL
 
@@ -555,21 +561,26 @@ not claim a polynomial bound for ambiguous grammars.
 Constraints are split by whether they explicitly reference the final `value`:
 
 ```lean
+Production            s : Prop  -- readable root grammar production
 IsWf                  s : Prop  -- grammar plus capture-only constraints
 SatisfiesConstraints  s : Prop  -- final-value constraints, when present
 IsValid               s : Prop  -- IsWf, or IsWf ∧ SatisfiesConstraints
+Denotes             s v : Prop  -- valid syntax whose readable value is v
 computeValue          s : Option β
 ```
 
-Empty phases are omitted. Without capture constraints, `IsWf` aliases the start-production
-predicate. Without final-value constraints, `IsValid` aliases `IsWf`. The generated parser is
-the executable `IsValid` guard applied to `computeValue`, with an optional `ofSpec` conversion.
+The start production's inlined grammar equation is emitted once as `Production`;
+`IsWf.<Start>` is a compatibility alias. Empty constraint phases are omitted. Without capture
+constraints, `IsWf` aliases `Production`. Without final-value constraints, `IsValid` aliases
+`IsWf`. `Denotes` reuses `IsValid` and the readable value function. The generated parser is the
+executable `IsValid` guard applied to `computeValue`, with an optional `ofSpec` conversion.
 `IsValid_equiv` connects that public predicate directly to the generic interpreter expression;
 `computeValue_eq` and the parser contracts connect the remaining readable and engine layers.
 
-`Denotes g accept valFn s v` is the value/string relation: some full parse of `s` has capture
-map `m`, `accept m` holds, and `valFn m = v`. When static capture functionality succeeds, the
-DSL emits `parse_iff_denotes`; with `ofSpec`, its relational reader is `ofSpec ∘ valFn`.
+The lower-level `Triptych.Denotes g accept valFn s v` relation says that some full parse of `s`
+has capture map `m`, `accept m` holds, and `valFn m = v`. When static capture functionality
+succeeds, the DSL emits `parse_iff_denotes`; with `ofSpec`, its relational reader is
+`ofSpec ∘ valFn`.
 
 ### 16.2 Decidability
 

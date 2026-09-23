@@ -991,7 +991,7 @@ theorem Datetime.Internal.matchesRef.YYYY (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold Datetime.IsWf.YYYY
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
@@ -1009,7 +1009,7 @@ theorem Datetime.Internal.matchesRef.MM (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold Datetime.IsWf.MM
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
@@ -1027,7 +1027,7 @@ theorem Datetime.Internal.matchesRef.DD (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold Datetime.IsWf.DD
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
@@ -1048,7 +1048,7 @@ theorem Datetime.Internal.matchesRef.Date (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold Datetime.IsWf.Date
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     Datetime.Internal.matchesRef.YYYY, Datetime.Internal.matchesRef.MM, Datetime.Internal.matchesRef.DD]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
@@ -1066,7 +1066,7 @@ theorem Datetime.Internal.matchesRef.hh (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold Datetime.IsWf.hh
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
@@ -1084,7 +1084,7 @@ theorem Datetime.Internal.matchesRef.mm (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold Datetime.IsWf.mm
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
@@ -1102,7 +1102,7 @@ theorem Datetime.Internal.matchesRef.ss (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold Datetime.IsWf.ss
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
@@ -1123,7 +1123,7 @@ theorem Datetime.Internal.matchesRef.Time (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold Datetime.IsWf.Time
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     Datetime.Internal.matchesRef.hh, Datetime.Internal.matchesRef.mm, Datetime.Internal.matchesRef.ss]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
@@ -1141,7 +1141,7 @@ theorem Datetime.Internal.matchesRef.SSS (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold Datetime.IsWf.SSS
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
@@ -1161,8 +1161,8 @@ theorem Datetime.Internal.matchesRef.Offset (fuel : Nat) (s : String) :
   dsimp only
   unfold matchesProd Datetime.IsWf.Offset
   simp (config := { maxSteps := 1000000 }) only [List.mem_cons, List.mem_singleton, List.not_mem_nil,
-    Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_or_imp, exists_eq_left, exists_eq_left, if_true,
-    if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, Datetime.Internal.matchesRef.hh,
+    Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_or_imp, exists_eq_left, exists_eq_left, ite_true,
+    ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, Datetime.Internal.matchesRef.hh,
     Datetime.Internal.matchesRef.mm]
   repeat'
     first
@@ -1172,7 +1172,7 @@ theorem Datetime.Internal.matchesRef.Offset (fuel : Nat) (s : String) :
         try grind [String.append_assoc, String.append_empty])
 
 theorem Datetime.Internal.matchesRef.Datetime (fuel : Nat) (s : String) :
-    matchesSym Datetime.grammar (fuel + 3) (Sym.ref "Datetime") s ↔ Datetime.IsWf.Datetime s :=
+    matchesSym Datetime.grammar (fuel + 3) (Sym.ref "Datetime") s ↔ Datetime.Production s :=
   by
   rw [matchesSym,
     show
@@ -1190,11 +1190,12 @@ theorem Datetime.Internal.matchesRef.Datetime (fuel : Nat) (s : String) :
                 SymItem.mk (Sym.lit ".") false, SymItem.mk (Sym.ref "SSS") false, SymItem.mk (Sym.ref "Offset") false]])
       from rfl]
   dsimp only
-  unfold matchesProd Datetime.IsWf.Datetime
+  unfold matchesProd Datetime.Production
   simp (config := { maxSteps := 1000000 }) only [List.mem_cons, List.mem_singleton, List.not_mem_nil,
-    Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_or_imp, exists_eq_left, exists_eq_left, if_true,
-    if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, Datetime.Internal.matchesRef.Date,
-    Datetime.Internal.matchesRef.Time, Datetime.Internal.matchesRef.SSS, Datetime.Internal.matchesRef.Offset]
+    Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_or_imp, exists_eq_left, exists_eq_left, ite_true,
+    ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    Datetime.Internal.matchesRef.Date, Datetime.Internal.matchesRef.Time, Datetime.Internal.matchesRef.SSS,
+    Datetime.Internal.matchesRef.Offset]
   repeat'
     first
     | apply or_congr
@@ -1202,7 +1203,7 @@ theorem Datetime.Internal.matchesRef.Datetime (fuel : Nat) (s : String) :
           ← and_assoc, exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
         try grind [String.append_assoc, String.append_empty])
 
-theorem Datetime.IsWfGrammar_equiv (s : String) : Triptych.IsWf Datetime.grammar s ↔ Datetime.IsWf.Datetime s :=
+theorem Datetime.IsWfGrammar_equiv (s : String) : Triptych.IsWf Datetime.grammar s ↔ Datetime.Production s :=
   by
   rw [isWf_eq_isWfProd_start, IsWfProd,
     show
@@ -1387,10 +1388,12 @@ theorem Datetime.computeValue_view (s : String) :
     rfl
 
 /- ═══════════════════════════════ parser ══════════════════════════════
-The generated correct-by-construction parser `parse` scans once, checks constraints
-on that capture map, and computes the result from the same captures. `parse_eq_gated`
-proves equality with the readable validity-gated presentation. Its correctness and
-search-cost guarantees — `parse_sound`, `parse_complete`, `parse_reject`,
+The generated correct-by-construction parser `parse` uses a certified staged cursor
+program when the grammar supports one, checks constraints on its capture map, and
+computes the result from those captures. The complete scanner remains the checked
+fallback. `parse_eq_scanner` and `parse_eq_gated` prove equality with the generic
+scanner and readable validity-gated presentation. Its correctness and search-cost
+guarantees — `parse_sound`, `parse_complete`, `parse_reject`,
 `parse_profile_result`, `parse_candidateChecks_le`, `parse_view`, and typed
 `parse_eq_some_iff_view` / `parse_eq_none_iff_view` normal forms — are all
 AUTO-DISCHARGED here.
@@ -1410,10 +1413,16 @@ theorem Datetime.computeValue_isSome (s : String) : Datetime.IsValid s → (Date
 def Datetime.parse (s : String) :=
   Triptych.scannerParseMap Datetime.grammar Datetime.constraints Datetime.valueFn millisToDatetime s
 
+theorem Datetime.parse_eq_scanner (s : String) :
+    Datetime.parse s =
+      Triptych.scannerParseMap Datetime.grammar Datetime.constraints Datetime.valueFn millisToDatetime s :=
+  by rfl
+
 theorem Datetime.parse_eq_gated (s : String) :
     Datetime.parse s = Triptych.gatedParseOfSpec Datetime.IsValid Datetime.computeValue millisToDatetime s :=
   by
-  unfold Datetime.parse Datetime.computeValue
+  rw [Datetime.parse_eq_scanner]
+  unfold Datetime.computeValue
   exact
     Triptych.scannerParseMap_eq_surfaceGatedParseOfSpec Datetime.grammar Datetime.constraints Datetime.valueFn
       millisToDatetime Datetime.IsValid Datetime.IsValid_equiv s
@@ -1422,8 +1431,8 @@ theorem Datetime.parse_profile_result (s : String) :
     (Triptych.scannerParseMapProfile Datetime.grammar Datetime.constraints Datetime.valueFn millisToDatetime s).result =
       Datetime.parse s :=
   by
-  unfold Datetime.parse
-  exact Triptych.scannerParseMapProfile_result Datetime.grammar Datetime.constraints Datetime.valueFn millisToDatetime s
+  rw [Triptych.scannerParseMapProfile_result]
+  exact (Datetime.parse_eq_scanner s).symm
 
 theorem Datetime.parse_candidateChecks_le (s : String) :
     (Triptych.scannerParseMapProfile Datetime.grammar Datetime.constraints Datetime.valueFn millisToDatetime

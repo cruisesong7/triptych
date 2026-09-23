@@ -20,6 +20,9 @@ import Triptych.Architecture.Denote
 import Triptych.Architecture.Value
 import Triptych.Architecture.Constraint
 import Triptych.Architecture.Scanner
+import Triptych.Architecture.ScanPlan
+import Triptych.Architecture.CursorProgram
+import Triptych.Theorems.ScanPlan
 import Triptych.Architecture.Derivation
 import Triptych.Architecture.Dependent
 import Triptych.Architecture.Unambiguity

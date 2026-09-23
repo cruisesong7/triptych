@@ -136,8 +136,34 @@ def RejectStmt (accepted : String → Prop) (parse : String → Option α) : Pro
 
 /-! ## The generated single-scan parser -/
 
+/-- Validate and interpret a capture map supplied by an arbitrary verified decoder. Generated
+    specialized parsers use this after their direct cursor path has been reconciled with `scan`. -/
+def decodedParseMap {β δ : Type} (decodeCaptures : String → Option CaptureMap)
+    (constraints : List ConstraintEntry) (valueFn : CaptureMap → β)
+    (ofSpec : β → δ) (s : String) : Option δ :=
+  match decodeCaptures s with
+  | none => none
+  | some captures =>
+      if CaptureAccepts constraints captures then
+        some (ofSpec (valueFn captures))
+      else
+        none
+
+/-- Environment-reader specialization of `decodedParseMap`. -/
+def decodedParseF {β δ : Type} (decodeCaptures : String → Option CaptureMap)
+    (constraints : List ConstraintEntry) (valueFn : Env → β)
+    (ofSpec : β → δ) (s : String) : Option δ :=
+  decodedParseMap decodeCaptures constraints
+    (fun captures => valueFn captures.toEnv) ofSpec s
+
+/-- Analyzable `ValExpr` specialization of `decodedParseMap`. -/
+def decodedParse (decodeCaptures : String → Option CaptureMap)
+    (constraints : List ConstraintEntry) (valueExpr : ValExpr)
+    (ofSpec : Int → δ) (s : String) : Option δ :=
+  decodedParseF decodeCaptures constraints valueExpr.eval ofSpec s
+
 /-- Scan once, validate every constraint against that capture map, and compute the converted
-    value. This is the runtime primitive used by generated parsers. -/
+    value. Generated staged parsers are proved extensionally equal to this generic engine. -/
 def scannerParseMap {β δ : Type} (g : Grammar) (constraints : List ConstraintEntry)
     (valueFn : CaptureMap → β) (ofSpec : β → δ) (s : String) : Option δ :=
   match scan g s with
@@ -157,6 +183,41 @@ def scannerParseF {β δ : Type} (g : Grammar) (constraints : List ConstraintEnt
 def scannerParse (g : Grammar) (constraints : List ConstraintEntry)
     (valueExpr : ValExpr) (ofSpec : Int → δ) (s : String) : Option δ :=
   scannerParseF g constraints valueExpr.eval ofSpec s
+
+/-- Replacing `scan` by an extensionally equal capture decoder preserves the parser result. -/
+theorem decodedParseMap_eq_scannerParseMap {β δ : Type}
+    (decodeCaptures : String → Option CaptureMap)
+    (g : Grammar) (constraints : List ConstraintEntry)
+    (valueFn : CaptureMap → β) (ofSpec : β → δ)
+    (hdecode : ∀ input, decodeCaptures input = scan g input)
+    (s : String) :
+    decodedParseMap decodeCaptures constraints valueFn ofSpec s =
+      scannerParseMap g constraints valueFn ofSpec s := by
+  simp [decodedParseMap, scannerParseMap, hdecode]
+
+/-- Environment-reader specialization of `decodedParseMap_eq_scannerParseMap`. -/
+theorem decodedParseF_eq_scannerParseF {β δ : Type}
+    (decodeCaptures : String → Option CaptureMap)
+    (g : Grammar) (constraints : List ConstraintEntry)
+    (valueFn : Env → β) (ofSpec : β → δ)
+    (hdecode : ∀ input, decodeCaptures input = scan g input)
+    (s : String) :
+    decodedParseF decodeCaptures constraints valueFn ofSpec s =
+      scannerParseF g constraints valueFn ofSpec s :=
+  decodedParseMap_eq_scannerParseMap decodeCaptures g constraints
+    (fun captures => valueFn captures.toEnv) ofSpec hdecode s
+
+/-- Analyzable `ValExpr` specialization of `decodedParseMap_eq_scannerParseMap`. -/
+theorem decodedParse_eq_scannerParse
+    (decodeCaptures : String → Option CaptureMap)
+    (g : Grammar) (constraints : List ConstraintEntry)
+    (valueExpr : ValExpr) (ofSpec : Int → δ)
+    (hdecode : ∀ input, decodeCaptures input = scan g input)
+    (s : String) :
+    decodedParse decodeCaptures constraints valueExpr ofSpec s =
+      scannerParse g constraints valueExpr ofSpec s :=
+  decodedParseF_eq_scannerParseF decodeCaptures g constraints
+    valueExpr.eval ofSpec hdecode s
 
 /-- Once scanning succeeds, the two surface constraint phases are exactly the combined
     capture-level check used by the single-scan parser. -/

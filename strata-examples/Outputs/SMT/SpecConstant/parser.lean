@@ -416,7 +416,7 @@ theorem SpecConstant.Internal.matchesRef.StringLiteral (fuel : Nat) (s : String)
   rw [matchesProd_single]
   unfold SpecConstant.IsWf.StringLiteral
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym]
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
@@ -430,7 +430,7 @@ theorem SpecConstant.Internal.matchesRef.Sign (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold SpecConstant.IsWf.Sign
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym]
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
@@ -447,7 +447,7 @@ theorem SpecConstant.Internal.matchesRef.Natural (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold SpecConstant.IsWf.Natural
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
@@ -465,7 +465,7 @@ theorem SpecConstant.Internal.matchesRef.Fraction (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold SpecConstant.IsWf.Fraction
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
@@ -483,7 +483,7 @@ theorem SpecConstant.Internal.matchesRef.DecimalPart (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold SpecConstant.IsWf.DecimalPart
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     SpecConstant.Internal.matchesRef.Fraction]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
@@ -504,7 +504,7 @@ theorem SpecConstant.Internal.matchesRef.NumericLiteral (fuel : Nat) (s : String
   rw [matchesProd_single]
   unfold SpecConstant.IsWf.NumericLiteral
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     SpecConstant.Internal.matchesRef.Sign, SpecConstant.Internal.matchesRef.Natural,
     SpecConstant.Internal.matchesRef.DecimalPart]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
@@ -512,7 +512,7 @@ theorem SpecConstant.Internal.matchesRef.NumericLiteral (fuel : Nat) (s : String
   try grind [String.append_assoc, String.append_empty]
 
 theorem SpecConstant.Internal.matchesRef.SpecConstant (fuel : Nat) (s : String) :
-    matchesSym SpecConstant.grammar (fuel + 4) (Sym.ref "SpecConstant") s ↔ SpecConstant.IsWf.SpecConstant s :=
+    matchesSym SpecConstant.grammar (fuel + 4) (Sym.ref "SpecConstant") s ↔ SpecConstant.Production s :=
   by
   rw [matchesSym,
     show
@@ -522,10 +522,10 @@ theorem SpecConstant.Internal.matchesRef.SpecConstant (fuel : Nat) (s : String) 
             [[SymItem.mk (Sym.ref "StringLiteral") false], [SymItem.mk (Sym.ref "NumericLiteral") false]])
       from rfl]
   dsimp only
-  unfold matchesProd SpecConstant.IsWf.SpecConstant
+  unfold matchesProd SpecConstant.Production
   simp (config := { maxSteps := 1000000 }) only [List.mem_cons, List.mem_singleton, List.not_mem_nil,
-    Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_or_imp, exists_eq_left, exists_eq_left, if_true,
-    if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_or_imp, exists_eq_left, exists_eq_left, ite_true,
+    ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     SpecConstant.Internal.matchesRef.StringLiteral, SpecConstant.Internal.matchesRef.NumericLiteral]
   repeat'
     first
@@ -535,7 +535,7 @@ theorem SpecConstant.Internal.matchesRef.SpecConstant (fuel : Nat) (s : String) 
         try grind [String.append_assoc, String.append_empty])
 
 theorem SpecConstant.IsWfGrammar_equiv (s : String) :
-    Triptych.IsWf SpecConstant.grammar s ↔ SpecConstant.IsWf.SpecConstant s :=
+    Triptych.IsWf SpecConstant.grammar s ↔ SpecConstant.Production s :=
   by
   rw [isWf_eq_isWfProd_start, IsWfProd,
     show
@@ -677,10 +677,12 @@ theorem SpecConstant.computeValue_view (s : String) :
     rfl
 
 /- ═══════════════════════════════ parser ══════════════════════════════
-The generated correct-by-construction parser `parse` scans once, checks constraints
-on that capture map, and computes the result from the same captures. `parse_eq_gated`
-proves equality with the readable validity-gated presentation. Its correctness and
-search-cost guarantees — `parse_sound`, `parse_complete`, `parse_reject`,
+The generated correct-by-construction parser `parse` uses a certified staged cursor
+program when the grammar supports one, checks constraints on its capture map, and
+computes the result from those captures. The complete scanner remains the checked
+fallback. `parse_eq_scanner` and `parse_eq_gated` prove equality with the generic
+scanner and readable validity-gated presentation. Its correctness and search-cost
+guarantees — `parse_sound`, `parse_complete`, `parse_reject`,
 `parse_profile_result`, `parse_candidateChecks_le`, `parse_view`, and typed
 `parse_eq_some_iff_view` / `parse_eq_none_iff_view` normal forms — are all
 AUTO-DISCHARGED here.
@@ -700,10 +702,16 @@ theorem SpecConstant.computeValue_isSome (s : String) : SpecConstant.IsValid s �
 def SpecConstant.parse (s : String) :=
   Triptych.scannerParseMap SpecConstant.grammar SpecConstant.constraints SpecConstant.valueFn id s
 
+theorem SpecConstant.parse_eq_scanner (s : String) :
+    SpecConstant.parse s =
+      Triptych.scannerParseMap SpecConstant.grammar SpecConstant.constraints SpecConstant.valueFn id s :=
+  by rfl
+
 theorem SpecConstant.parse_eq_gated (s : String) :
     SpecConstant.parse s = Triptych.gatedParse SpecConstant.IsValid SpecConstant.computeValue s :=
   by
-  unfold SpecConstant.parse SpecConstant.computeValue
+  rw [SpecConstant.parse_eq_scanner]
+  unfold SpecConstant.computeValue
   exact
     Triptych.scannerParseMap_eq_surfaceGated SpecConstant.grammar SpecConstant.constraints SpecConstant.valueFn
       SpecConstant.IsValid SpecConstant.IsValid_equiv s
@@ -712,8 +720,8 @@ theorem SpecConstant.parse_profile_result (s : String) :
     (Triptych.scannerParseMapProfile SpecConstant.grammar SpecConstant.constraints SpecConstant.valueFn id s).result =
       SpecConstant.parse s :=
   by
-  unfold SpecConstant.parse
-  exact Triptych.scannerParseMapProfile_result SpecConstant.grammar SpecConstant.constraints SpecConstant.valueFn id s
+  rw [Triptych.scannerParseMapProfile_result]
+  exact (SpecConstant.parse_eq_scanner s).symm
 
 theorem SpecConstant.parse_candidateChecks_le (s : String) :
     (Triptych.scannerParseMapProfile SpecConstant.grammar SpecConstant.constraints SpecConstant.valueFn id

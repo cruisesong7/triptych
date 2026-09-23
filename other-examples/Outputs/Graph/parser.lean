@@ -245,7 +245,7 @@ theorem Graph.Internal.matchesRef.Order (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold Graph.IsWf.Order
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
@@ -264,8 +264,8 @@ theorem Graph.Internal.matchesRef.Cells (fuel : Nat) (s : String) :
   dsimp only
   unfold matchesProd Graph.IsWf.Cells
   simp (config := { maxSteps := 1000000 }) only [List.mem_cons, List.mem_singleton, List.not_mem_nil,
-    Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_or_imp, exists_eq_left, exists_eq_left, if_true,
-    if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsBits_matchesTerm,
+    Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_or_imp, exists_eq_left, exists_eq_left, ite_true,
+    ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsBits_matchesTerm,
     IsFixedBits_matchesTerm, IsBitsBetween_matchesTerm]
   repeat'
     first
@@ -275,7 +275,7 @@ theorem Graph.Internal.matchesRef.Cells (fuel : Nat) (s : String) :
         try grind [String.append_assoc, String.append_empty])
 
 theorem Graph.Internal.matchesRef.Graph (fuel : Nat) (s : String) :
-    matchesSym Graph.grammar (fuel + 2) (Sym.ref "Graph") s ↔ Graph.IsWf.Graph s :=
+    matchesSym Graph.grammar (fuel + 2) (Sym.ref "Graph") s ↔ Graph.Production s :=
   by
   rw [matchesSym,
     show
@@ -286,15 +286,15 @@ theorem Graph.Internal.matchesRef.Graph (fuel : Nat) (s : String) :
       from rfl]
   dsimp only
   rw [matchesProd_single]
-  unfold Graph.IsWf.Graph
+  unfold Graph.Production
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     Graph.Internal.matchesRef.Order, Graph.Internal.matchesRef.Cells]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
-theorem Graph.IsWfGrammar_equiv (s : String) : Triptych.IsWf Graph.grammar s ↔ Graph.IsWf.Graph s :=
+theorem Graph.IsWfGrammar_equiv (s : String) : Triptych.IsWf Graph.grammar s ↔ Graph.Production s :=
   by
   rw [isWf_eq_isWfProd_start, IsWfProd,
     show
@@ -432,10 +432,12 @@ theorem Graph.computeValue_view (s : String) : Graph.computeValue s = (Graph.dec
     rfl
 
 /- ═══════════════════════════════ parser ══════════════════════════════
-The generated correct-by-construction parser `parse` scans once, checks constraints
-on that capture map, and computes the result from the same captures. `parse_eq_gated`
-proves equality with the readable validity-gated presentation. Its correctness and
-search-cost guarantees — `parse_sound`, `parse_complete`, `parse_reject`,
+The generated correct-by-construction parser `parse` uses a certified staged cursor
+program when the grammar supports one, checks constraints on its capture map, and
+computes the result from those captures. The complete scanner remains the checked
+fallback. `parse_eq_scanner` and `parse_eq_gated` prove equality with the generic
+scanner and readable validity-gated presentation. Its correctness and search-cost
+guarantees — `parse_sound`, `parse_complete`, `parse_reject`,
 `parse_profile_result`, `parse_candidateChecks_le`, `parse_view`, and typed
 `parse_eq_some_iff_view` / `parse_eq_none_iff_view` normal forms — are all
 AUTO-DISCHARGED here.
@@ -455,9 +457,13 @@ theorem Graph.computeValue_isSome (s : String) : Graph.IsValid s → (Graph.comp
 def Graph.parse (s : String) :=
   Triptych.scannerParseMap Graph.grammar Graph.constraints Graph.valueFn id s
 
+theorem Graph.parse_eq_scanner (s : String) :
+    Graph.parse s = Triptych.scannerParseMap Graph.grammar Graph.constraints Graph.valueFn id s := by rfl
+
 theorem Graph.parse_eq_gated (s : String) : Graph.parse s = Triptych.gatedParse Graph.IsValid Graph.computeValue s :=
   by
-  unfold Graph.parse Graph.computeValue
+  rw [Graph.parse_eq_scanner]
+  unfold Graph.computeValue
   exact
     Triptych.scannerParseMap_eq_surfaceGated Graph.grammar Graph.constraints Graph.valueFn Graph.IsValid
       Graph.IsValid_equiv s
@@ -465,8 +471,8 @@ theorem Graph.parse_eq_gated (s : String) : Graph.parse s = Triptych.gatedParse 
 theorem Graph.parse_profile_result (s : String) :
     (Triptych.scannerParseMapProfile Graph.grammar Graph.constraints Graph.valueFn id s).result = Graph.parse s :=
   by
-  unfold Graph.parse
-  exact Triptych.scannerParseMapProfile_result Graph.grammar Graph.constraints Graph.valueFn id s
+  rw [Triptych.scannerParseMapProfile_result]
+  exact (Graph.parse_eq_scanner s).symm
 
 theorem Graph.parse_candidateChecks_le (s : String) :
     (Triptych.scannerParseMapProfile Graph.grammar Graph.constraints Graph.valueFn id s).candidateChecks ≤

@@ -20,8 +20,9 @@ import Triptych.Backend.Verus.Lowering
 # Semantics of the generated Verus AST
 
 This module interprets the first-order `Verus.Ast` fragment used by generated helper functions.
-Text values are lists of bytes, matching Verus `Seq<u8>`. Calls are interpreted by a canonical
-environment whose definitions are connected to Triptych's audited Lean readers.
+Text values are lists of Unicode code points, matching the emitted Verus `Seq<char>`. Calls are
+interpreted by a canonical environment whose definitions are connected to Triptych's audited Lean
+readers.
 
 The helper-realization theorems evaluate the bodies returned by `helperDeclaration`; they do not
 merely restate the intended meaning of the higher-level IR.

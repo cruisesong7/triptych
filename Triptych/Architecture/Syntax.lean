@@ -171,9 +171,10 @@ syntax "printer" term : fmtPrinter
     semantic obligations are required. -/
 syntax fmtTo := "to " str
 
-/-- `verus "path"` asks the experimental backend to emit a Verus specification at `path` and a
-    write-once `soundness.rs` scaffold beside it. Unsupported grammar/value/constraint
-    combinations are rejected rather than approximated. -/
+/-- `verus "path"` emits a Verus specification at `path` and a proof-carrying executable
+    `parser.rs`. The executable returns the source-ordered capture candidate selected by the
+    emitted source grammar. A write-once `soundness.rs` beside them contains obligations only for
+    an external parser. Unsupported semantic escapes are rejected. -/
 syntax fmtVerus := "verus " str
 
 /-- Defines a Triptych format. `grammar` is required; optional sections must follow the order
@@ -652,7 +653,8 @@ private def callerModuleForOutput : CommandElabM String := do
 
     The generated file is ONE module in four `═══`-banner sections (dependency order):
     * **spec** (`emitSpec`) — the reader-facing spec: `grammar`, readable per-production
-      `IsWf.*` predicates, `value`, present constraint phases, and `IsValid`.
+      `IsWf.*` predicates, root `Production`, `value`, present constraint phases, `IsValid`,
+      and `Denotes`.
     * **engine** (`emitEngine`) — the analyzable/executable machinery: deep `valueExpr`/
       `valueFn`/`constraints` ASTs, `computeValue`, and typed decoding support.
     * **soundness** (`emitSound`) — the guarantees tying the two together: the surface⟺engine
@@ -667,8 +669,9 @@ def elabTriptych : CommandElab := fun stx => do
   | `($[#show%$sh]? triptych $name:ident where grammar $prods:fmtProd* $[$v:fmtValue]? $[$ve:fmtValueEsc]? $[$cs:fmtConstraints]? $[$cse:fmtConstraintsEsc]? $[$pr:fmtParser]? $[$pp:fmtPrinter]? $[$verus?:fmtVerus]? $[$to?:fmtTo]?) => do
       let showing := sh.isSome
       -- Buffers, one per GENERATED FILE (the output is split three ways by audience):
-      --   spec.lean     ← bufS: the readable surface (cite) — grammar, `IsWf.*`, `value`,
-      --                   present constraint phases, `IsValid`. Proof-free.
+      --   spec.lean     ← bufS: the readable surface (cite) — grammar, `IsWf.*`, root
+      --                   `Production`, `value`, present constraint phases, `IsValid`, and
+      --                   `Denotes`. Proof-free.
       --   parser.lean   ← bufE ++ bufP ++ bufR: the runnable + trusted artifact (run + trust)
       --                   — engine bundle, ALL auto-discharged proofs (`IsWf_equiv`,
       --                   `computeValue_eq`, decidability), and the generated verified `parse`
@@ -861,7 +864,12 @@ def elabTriptych : CommandElab := fun stx => do
         let pIdent := mkIdentFrom name (name.getId ++ `IsWf ++ prod.name.toName)
         let sVar ← `(s)
         let body ← Triptych.prodPred name.getId prod sVar
-        emitSpec (← `(def $pIdent (s : String) : Prop := $body))
+        if prod.name == gval.start then
+          let productionIdent := mkIdentFrom name (name.getId ++ `Production)
+          emitSpec (← `(def $productionIdent (s : String) : Prop := $body))
+          emitSpec (← `(abbrev $pIdent (s : String) : Prop := $productionIdent s))
+        else
+          emitSpec (← `(def $pIdent (s : String) : Prop := $body))
       -- Reconcile grammar layout, full well-formedness, and final-value validity independently.
       -- `IsWf.<start>` is grammar-only; top-level `IsWf` additionally contains every constraint
       -- that does not mention the final `value`, and is proved equivalent to the generic
@@ -871,7 +879,9 @@ def elabTriptych : CommandElab := fun stx => do
         let fuelBound := gval.prods.length
         for prod in Triptych.topoOrder gval do
           let depth := Triptych.subtreeDepth gval prod.name fuelBound
-          emitSound (← Triptych.matchesRefProof name.getId grammarIdent prod depth)
+          emitSound (←
+            Triptych.matchesRefProof name.getId grammarIdent prod depth
+              (prod.name == gval.start))
         if let some startProd := gval.prods.find? (·.name == gval.start) then
           emitSound (← Triptych.isWfGrammarEquivProof name.getId grammarIdent startProd)
           emitSound (← Triptych.isWfEquivProof name.getId hasWfConstraints)
@@ -1157,11 +1167,12 @@ def elabTriptych : CommandElab := fun stx => do
         let vfnIdent := mkIdentFrom name (name.getId ++ `valueFn)
         emitEngine (← `(def $cvIdent (s : String) :=
                       Triptych.scannerComputeValueMap $grammarIdent $vfnIdent s))
-      -- SPEC bundle (capitalized): `IsWf.<start>` remains the per-production grammar layout.
-      -- Top-level `IsWf` adds every capture-only format constraint; only constraints that
-      -- explicitly mention the final `value` remain in `SatisfiesConstraints`.
+      -- SPEC bundle (capitalized): `Production` is the start rule's readable grammar layout,
+      -- and `IsWf.<start>` is its per-production alias. Top-level `IsWf` adds every capture-only
+      -- format constraint; only constraints that explicitly mention the final `value` remain in
+      -- `SatisfiesConstraints`.
       let startName : Name := (gval.prods.head?.map (·.name.toName)).getD name.getId
-      let grammarWf := mkIdentFrom name (name.getId ++ `IsWf ++ startName)
+      let grammarWf := mkIdentFrom name (name.getId ++ `Production)
       let wfScSurf := mkIdentFrom name (name.getId ++ `SatisfiesWfConstraints)
       let wfSurf := mkIdentFrom name (name.getId ++ `IsWf)
       let scSurf := mkIdentFrom name (name.getId ++ `SatisfiesConstraints)
@@ -1188,6 +1199,21 @@ def elabTriptych : CommandElab := fun stx => do
       let hasGeneratedValue := veIdent?.isSome || hasValueEsc
       let resolvedValueCaps : List (String × Bool) :=
         if veIdent?.isSome then valueCaps.map (·, false) else valueCapArgs
+      if hasGeneratedValue then
+        let cvIdent := mkIdentFrom name (name.getId ++ `computeValue)
+        let valueIdent := mkIdentFrom name (name.getId ++ `value)
+        let denotesIdent := mkIdentFrom name (name.getId ++ `Denotes)
+        let (valueType, valueBinderName) ← Triptych.optionPayloadBinder cvIdent
+        let valueBinder := mkIdent valueBinderName
+        let args : Array (TSyntax `term) ← resolvedValueCaps.toArray.mapM
+          (fun (capture, isList) =>
+            if isList then
+              `(Triptych.componentList $grammarIdent s $(Syntax.mkStrLit capture))
+            else
+              `(Triptych.component $grammarIdent s $(Syntax.mkStrLit capture)))
+        emitSpec (←
+          `(def $denotesIdent (s : String) ($valueBinder : $valueType) : Prop :=
+              $accSurf s ∧ $valueBinder = $valueIdent $args*))
       let viewCaps :=
         resolvedValueCaps ++
           wfConstrCaps.getD [] ++ valueConstrCaps.getD []
@@ -1279,7 +1305,16 @@ def elabTriptych : CommandElab := fun stx => do
       let ofSpecTerm? := valueOfSpecTerm?.orElse fun _ => escapeOfSpecTerm?
       let toSpecTerm? := valueToSpecTerm?.orElse fun _ => escapeToSpecTerm?
       if veIdent?.isSome || hasValueEsc then
-        for cmd in ← Triptych.parserContractsProof name.getId veIdent?.isSome ofSpecTerm? do
+        let directPlan? :=
+          match compileScanPlan gval with
+          | .ok plan => some plan
+          | .error _ => none
+        if let some plan := directPlan? then
+          for cmd in ← Triptych.directLeanParserCommands name.getId gval plan do
+            emitParser cmd
+        for cmd in ←
+            Triptych.parserContractsProof name.getId veIdent?.isSome ofSpecTerm?
+              directPlan?.isSome do
           emitParser cmd
         emitParser (← Triptych.parseViewProof name.getId ofSpecTerm?)
         emitParser (← Triptych.parseEqSomeIffViewProof name.getId ofSpecTerm?)
@@ -1588,12 +1623,10 @@ def elabTriptych : CommandElab := fun stx => do
                     $parseT s = $parseT s' :=
                 Triptych.normalize_eq_iff_parse_eq $xRtId s s'))
             | none => pure ()
-      -- EXPERIMENTAL VERUS OUTPUT: emit a readable Rust specification plus a sibling,
-      -- write-once `soundness.rs` contract scaffold. The latter states the external-parser
-      -- soundness/completeness/rejection obligations as trait methods; a concrete integration
-      -- connects the trait's `parse_to_spec` model to the production parser and supplies proofs.
-      -- The backend checks the first-order grammar/value/constraint AST and rejects unsupported
-      -- shapes or opaque Lean escapes.
+      -- EXPERIMENTAL VERUS OUTPUT: emit a readable specification and a direct source-grammar
+      -- `parser.rs` whose exact ordered-candidate contract is checked by Verus.
+      -- The write-once `soundness.rs` is separate: it states obligations for an external parser.
+      -- Opaque semantic escapes are rejected before any file is written.
       if let some verusStx := verus? then
         if let `(fmtVerus| verus $pathStx:str) := verusStx then
           if hasValueEsc || hasOpaque then
@@ -1610,33 +1643,51 @@ def elabTriptych : CommandElab := fun stx => do
                     "the experimental Verus backend requires a named `{kind}` conversion"
           let ofSpecName ← conversionName "ofSpec" valueOfSpecTerm?
           let toSpecName ← conversionName "toSpec" valueToSpecTerm?
-          let specContents ← match Triptych.Verus.emitSpec name.getId.toString gval valueAst
-              wfConstraintAsts.toList valueConstraintAsts.toList ofSpecName toSpecName with
-            | .ok source => pure source
+          let certifiedOutput ←
+            match Triptych.Verus.emitCertifiedRust name.getId.toString gval valueAst
+                wfConstraintAsts.toList valueConstraintAsts.toList ofSpecName toSpecName with
+            | .ok output => pure output
             | .error message => throwErrorAt verusStx message
-          let soundnessContents ← match Triptych.Verus.emitSoundness name.getId.toString gval
-              valueAst wfConstraintAsts.toList valueConstraintAsts.toList ofSpecName toSpecName with
-            | .ok source => pure source
-            | .error message => throwErrorAt verusStx message
+          let specContents := certifiedOutput.spec
+          let parserContents := certifiedOutput.parser
+          let soundnessContents? ← match pr with
+            | none => pure none
+            | some _ =>
+                match Triptych.Verus.emitSoundness name.getId.toString gval valueAst
+                    wfConstraintAsts.toList valueConstraintAsts.toList ofSpecName toSpecName with
+                | .ok source => pure (some source)
+                | .error message => throwErrorAt verusStx message
           let path := pathStx.getString
+          let specPath := System.FilePath.mk path
+          let parserPath := match specPath.parent with
+            | some parent => parent / "parser.rs"
+            | none => System.FilePath.mk "parser.rs"
           let sentinel := "// Generated by Triptych"
-          if ← System.FilePath.pathExists path then
-            let firstLine := ((← IO.FS.readFile path).splitOn "\n").headD ""
+          if ← System.FilePath.pathExists specPath then
+            let firstLine := ((← IO.FS.readFile specPath).splitOn "\n").headD ""
             unless firstLine.startsWith sentinel do
               throwErrorAt pathStx "Triptych: refusing to overwrite {path} — it was not generated \
                 by this tool (missing the `{sentinel} …` header)"
-          IO.FS.writeFile path specContents
-          logInfo m!"Triptych: wrote experimental Verus spec → {path}"
-          let specPath := System.FilePath.mk path
-          let soundnessPath := match specPath.parent with
-            | some parent => parent / "soundness.rs"
-            | none => System.FilePath.mk "soundness.rs"
-          if ← System.FilePath.pathExists soundnessPath then
-            logInfo m!"Triptych: {soundnessPath} exists — left untouched (it holds your Verus \
-              parser proofs; delete it to re-scaffold)"
-          else
-            IO.FS.writeFile soundnessPath soundnessContents
-            logInfo m!"Triptych: wrote experimental Verus soundness scaffold → {soundnessPath}"
+          if ← System.FilePath.pathExists parserPath then
+            let firstLine := ((← IO.FS.readFile parserPath).splitOn "\n").headD ""
+            unless firstLine.startsWith sentinel do
+              throwErrorAt pathStx "Triptych: refusing to overwrite {parserPath} — it was not \
+                generated by this tool (missing the `{sentinel} …` header)"
+          -- Preflight both regenerated paths before writing either member of the certified pair.
+          IO.FS.writeFile specPath specContents
+          logInfo m!"Triptych: wrote experimental Verus spec → {specPath}"
+          IO.FS.writeFile parserPath parserContents
+          logInfo m!"Triptych: wrote executable Rust parser → {parserPath}"
+          if let some soundnessContents := soundnessContents? then
+            let soundnessPath := match specPath.parent with
+              | some parent => parent / "soundness.rs"
+              | none => System.FilePath.mk "soundness.rs"
+            if ← System.FilePath.pathExists soundnessPath then
+              logInfo m!"Triptych: {soundnessPath} exists — left untouched (it holds your Verus \
+                external-parser proofs; delete it to re-scaffold)"
+            else
+              IO.FS.writeFile soundnessPath soundnessContents
+              logInfo m!"Triptych: wrote experimental Verus soundness scaffold → {soundnessPath}"
       -- WRITE (optional `to "<dir>"` clause): emit up to THREE generated modules into
       -- `<dir>` (default `.`, must pre-exist), split by audience:
       --   `spec.lean`     — the readable surface (cite): grammar, `IsWf.*`, `value`,
@@ -1715,7 +1766,9 @@ def elabTriptych : CommandElab := fun stx => do
             The more readable specification. Each production of the input grammar becomes an\n\
             inlined well-formedness predicate `IsWf.*` written as a plain existential over the\n\
             named captures, so you can read it side-by-side with the grammar and check that it\n\
-            says the same thing. When present, `WfConstraints` contains capture-derived format\n\
+            says the same thing. The start rule is named `Production`; `IsWf.<Start>` and\n\
+            top-level `IsWf` reuse it. When a value is present, `Denotes` combines valid syntax\n\
+            with the readable value function. `WfConstraints` contains capture-derived format\n\
             conditions and `Constraints` contains conditions that explicitly mention the final\n\
             `value`. Empty phases are omitted; `IsWf` and `IsValid` specialize accordingly.\n\
             This file is proof-free — it is what you cite. -/"
@@ -1723,8 +1776,13 @@ def elabTriptych : CommandElab := fun stx => do
           guardedWrite specPath
             (specHeader ++ "\n" ++ specBanner ++ "\n\n" ++ joinDecls specDecls ++ "\n")
           -- ── parser.lean ── engine + all auto-discharged proofs + the generated verified parser.
+          let directParserImports :=
+            match compileScanPlan gval with
+            | .ok _ => ["Triptych.Architecture.CursorProgram", "Triptych.Theorems.ScanPlan"]
+            | .error _ => []
           let parserImports := ["Triptych.Architecture.GeneratedLinter"]
             ++ libImports
+            ++ directParserImports
             ++ ["Triptych.Archive.DecodeLemmas", "Triptych.Theorems.Derivation",
               "Triptych.Theorems.Scanner"]
             ++ (if grammarStaticallyUnique then
@@ -1754,10 +1812,12 @@ def elabTriptych : CommandElab := fun stx => do
             parse view. Derived `DecidablePred` instances make the surface predicates executable\n\
             via the engine. No `sorry`. -/"
           let parserBanner := "/- ═══════════════════════════════ parser ══════════════════════════════\n\
-            The generated correct-by-construction parser `parse` scans once, checks constraints\n\
-            on that capture map, and computes the result from the same captures. `parse_eq_gated`\n\
-            proves equality with the readable validity-gated presentation. Its correctness and\n\
-            search-cost guarantees — `parse_sound`, `parse_complete`, `parse_reject`,\n\
+            The generated correct-by-construction parser `parse` uses a certified staged cursor\n\
+            program when the grammar supports one, checks constraints on its capture map, and\n\
+            computes the result from those captures. The complete scanner remains the checked\n\
+            fallback. `parse_eq_scanner` and `parse_eq_gated` prove equality with the generic\n\
+            scanner and readable validity-gated presentation. Its correctness and search-cost\n\
+            guarantees — `parse_sound`, `parse_complete`, `parse_reject`,\n\
             `parse_profile_result`, `parse_candidateChecks_le`, `parse_view`, and typed\n\
             `parse_eq_some_iff_view` / `parse_eq_none_iff_view` normal forms — are all\n\
             AUTO-DISCHARGED here.\n\
@@ -1962,11 +2022,12 @@ from analysis and put correctness on you).
                           presentations of the same value.
                           If a `parser` clause is present, derived
                           acceptance/value projections also prove the EXTERNAL parser's trio.
-── verus ──  (experimental) verus \"<path>\" emits a Verus specification at `<path>` and a
-                          write-once `soundness.rs` beside it. The scaffold states external-parser
-                          soundness, completeness, and rejection as proof obligations. The grammar,
-                          value AST, and phased constraints must fit the translated first-order
-                          fragment; unsupported nodes and opaque escapes are rejected.
+── verus ──  (experimental) verus \"<path>\" emits a Verus specification and a proof-carrying
+                          executable `parser.rs`. Verus checks the direct scanner against the exact
+                          source-ordered candidate semantics of the emitted grammar.
+                          No format-specific parser proof is required.
+                          A write-once `soundness.rs` contains obligations only for an external
+                          parser. Opaque value and constraint escapes are rejected.
 ── to ──      (optional)  to \"<dir>\"                        writes <dir>/{spec,parser,soundness}.lean.
                           spec/parser are regenerated every elaboration; soundness is a
                           WRITE-ONCE scaffold (it holds your proofs) — delete it to re-scaffold.
