@@ -146,14 +146,20 @@ syntax fmtOfSpec := "ofSpec" term
 /-- `toSpec f` maps a parser or printer domain value back to the specification value. -/
 syntax fmtToSpec := "toSpec" term
 
-/-- Optional value formula, followed by optional `ofSpec` and `toSpec` conversions. -/
+/-- Explicit proof that the domain conversion is a retraction. When omitted and no printer can
+    derive the law, Triptych first tries to synthesize it by reduction and simplification. -/
+syntax fmtOfSpecToSpec := "ofSpec_toSpec" term
+
+/-- Optional value formula, followed by optional domain conversions and their inverse proof. -/
 syntax fmtValue :=
-  withPosition("value" colGt valExpr (colGt fmtOfSpec)? (colGt fmtToSpec)?)
+  withPosition("value" colGt valExpr (colGt fmtOfSpec)? (colGt fmtToSpec)?
+    (colGt fmtOfSpecToSpec)?)
 
 /-- Escape value section for Lean computations that are not expressible in the value DSL,
     followed by optional domain conversions. -/
 syntax fmtValueEsc :=
-  withPosition("value'" fmtEscEntry (colGt fmtOfSpec)? (colGt fmtToSpec)?)
+  withPosition("value'" fmtEscEntry (colGt fmtOfSpec)? (colGt fmtToSpec)?
+    (colGt fmtOfSpecToSpec)?)
 
 /-- `parser p` names an existing parser to validate against the generated specification.
     It emits agreement obligations and a checked wrapper. -/
@@ -199,6 +205,65 @@ syntax (name := triptychCmd)
 private def termName? : TSyntax `term → Option Name
   | `(term| $id:ident) => some id.getId
   | _ => none
+
+/-- Parsed conversion sub-clauses shared by `value` and `value'`. -/
+private structure DomainConversions where
+  ofSpec? : Option (TSyntax `term)
+  toSpec? : Option (TSyntax `term)
+  inverseProof? : Option (TSyntax `term)
+
+private def parseDomainConversions
+    (ofClause? : Option (TSyntax `Triptych.fmtOfSpec))
+    (toClause? : Option (TSyntax `Triptych.fmtToSpec))
+    (inverseClause? : Option (TSyntax `Triptych.fmtOfSpecToSpec)) :
+    CommandElabM DomainConversions := do
+  let ofSpec? ← ofClause?.mapM fun clause =>
+    match clause with
+    | `(fmtOfSpec| ofSpec $term:term) => pure term
+    | _ => throwUnsupportedSyntax
+  let toSpec? ← toClause?.mapM fun clause =>
+    match clause with
+    | `(fmtToSpec| toSpec $term:term) => pure term
+    | _ => throwUnsupportedSyntax
+  let inverseProof? ← inverseClause?.mapM fun clause =>
+    match clause with
+    | `(fmtOfSpecToSpec| ofSpec_toSpec $proof:term) => pure proof
+    | _ => throwUnsupportedSyntax
+  if let some proof := inverseProof? then
+    unless ofSpec?.isSome && toSpec?.isSome do
+      throwErrorAt proof "`ofSpec_toSpec` requires both `ofSpec` and `toSpec`"
+  return { ofSpec?, toSpec?, inverseProof? }
+
+private def parseValueDomainConversions
+    (value? : Option (TSyntax `Triptych.fmtValue)) : CommandElabM DomainConversions := do
+  let some valueStx := value? | return ⟨none, none, none⟩
+  match valueStx with
+  | `(fmtValue|
+      value $_:valExpr $[$ofClause:fmtOfSpec]? $[$toClause:fmtToSpec]?
+        $[$inverseClause:fmtOfSpecToSpec]?) =>
+    parseDomainConversions ofClause toClause inverseClause
+  | _ => throwUnsupportedSyntax
+
+private def parseEscapeValueDomainConversions
+    (value? : Option (TSyntax `Triptych.fmtValueEsc)) : CommandElabM DomainConversions := do
+  let some valueStx := value? | return ⟨none, none, none⟩
+  match valueStx with
+  | `(fmtValueEsc|
+      value' $_:fmtEscEntry $[$ofClause:fmtOfSpec]? $[$toClause:fmtToSpec]?
+        $[$inverseClause:fmtOfSpecToSpec]?) =>
+    parseDomainConversions ofClause toClause inverseClause
+  | _ => throwUnsupportedSyntax
+
+/-- Probe a generated proof term without leaking its diagnostics or modifying elaborator state. -/
+private def proofTermElaborates
+    (type proof : TSyntax `term) : CommandElabM Bool := do
+  let result ← liftTermElabM do
+    Term.commitIfNoErrors? do
+      let expectedType ← Term.elabType type
+      let proof ← Term.elabTermEnsuringType proof (some expectedType)
+      Term.synthesizeSyntheticMVarsNoPostponing
+      pure proof
+  return result.isSome
 
 /-- One capture-dependent exact-width terminal from the public grammar syntax. The first
     implementation deliberately supports a final, delimiter-bounded field, which can be
@@ -976,7 +1041,9 @@ def elabTriptych : CommandElab := fun stx => do
       else if let some veStx := ve then
         -- `value'` escape section: `value' f X Y …` — author fn applied to captures.
         match veStx with
-        | `(fmtValueEsc| value' $e:fmtEscEntry $[$_:fmtOfSpec]? $[$_:fmtToSpec]?) =>
+        | `(fmtValueEsc|
+            value' $e:fmtEscEntry $[$_:fmtOfSpec]? $[$_:fmtToSpec]?
+              $[$_:fmtOfSpecToSpec]?) =>
           let (f, args) ← parseEscEntryArgs e
           hasValueEsc := true
           let vfnIdent := mkIdentFrom name (name.getId ++ `valueFn)
@@ -1275,39 +1342,42 @@ def elabTriptych : CommandElab := fun stx => do
       -- obligations below are the SEPARATE translation-validation surface. An `ofSpec <f>`
       -- clause converts the output to the domain type `δ` (so `parse : String → Option δ`);
       -- otherwise it returns `β`.
-      let (valueOfSpecTerm?, valueToSpecTerm?) :
-          Option (TSyntax `term) × Option (TSyntax `term) ←
-        match v with
-        | some vStx =>
-          match vStx with
-          | `(fmtValue| value $_:valExpr ofSpec $ofSpecT:term toSpec $toSpecT:term) =>
-            pure (some ofSpecT, some toSpecT)
-          | `(fmtValue| value $_:valExpr ofSpec $ofSpecT:term) =>
-            pure (some ofSpecT, none)
-          | `(fmtValue| value $_:valExpr toSpec $toSpecT:term) =>
-            pure (none, some toSpecT)
-          | `(fmtValue| value $_:valExpr) =>
-            pure (none, none)
-          | _ => throwUnsupportedSyntax
-        | none => pure (none, none)
-      let (escapeOfSpecTerm?, escapeToSpecTerm?) :
-          Option (TSyntax `term) × Option (TSyntax `term) ←
-        match ve with
-        | some veStx =>
-          match veStx with
-          | `(fmtValueEsc|
-              value' $_:fmtEscEntry ofSpec $ofSpecT:term toSpec $toSpecT:term) =>
-            pure (some ofSpecT, some toSpecT)
-          | `(fmtValueEsc| value' $_:fmtEscEntry ofSpec $ofSpecT:term) =>
-            pure (some ofSpecT, none)
-          | `(fmtValueEsc| value' $_:fmtEscEntry toSpec $toSpecT:term) =>
-            pure (none, some toSpecT)
-          | `(fmtValueEsc| value' $_:fmtEscEntry) =>
-            pure (none, none)
-          | _ => throwUnsupportedSyntax
-        | none => pure (none, none)
-      let ofSpecTerm? := valueOfSpecTerm?.orElse fun _ => escapeOfSpecTerm?
-      let toSpecTerm? := valueToSpecTerm?.orElse fun _ => escapeToSpecTerm?
+      let valueConversions ← parseValueDomainConversions v
+      let escapeValueConversions ← parseEscapeValueDomainConversions ve
+      let ofSpecTerm? :=
+        valueConversions.ofSpec?.orElse fun _ => escapeValueConversions.ofSpec?
+      let toSpecTerm? :=
+        valueConversions.toSpec?.orElse fun _ => escapeValueConversions.toSpec?
+      let ofSpecToSpecProof? :=
+        valueConversions.inverseProof?.orElse fun _ => escapeValueConversions.inverseProof?
+      -- A total printer can derive this retraction from its `encode_view` witness. Without one,
+      -- synthesize the law immediately so parser agreement never depends on an ad hoc theorem in
+      -- the caller. An explicit clause is also accepted with a printer and takes precedence.
+      let mut emittedOfSpecToSpec := false
+      if let some ofSpecT := ofSpecTerm? then
+        if let some toSpecT := toSpecTerm? then
+          if pp.isNone || ofSpecToSpecProof?.isSome then
+            let inverseId := mkIdentFrom name (name.getId ++ `ofSpec_toSpec)
+            let (dTy, dNm) ← Triptych.ofSpecCodomainBinder ofSpecT
+            let dId := mkIdent dNm
+            let inverseType ← `(∀ $dId : $dTy, $ofSpecT ($toSpecT $dId) = $dId)
+            match ofSpecToSpecProof? with
+            | some proof =>
+              emitSound (← `(theorem $inverseId : $inverseType := $proof))
+            | none =>
+              let ofSpecSimp :
+                  TSyntax `Lean.Parser.Tactic.simpLemma ←
+                `(Lean.Parser.Tactic.simpLemma| $ofSpecT:term)
+              let toSpecSimp :
+                  TSyntax `Lean.Parser.Tactic.simpLemma ←
+                `(Lean.Parser.Tactic.simpLemma| $toSpecT:term)
+              let autoProof ← `(by simp [$ofSpecSimp, $toSpecSimp])
+              unless ← proofTermElaborates inverseType autoProof do
+                throwErrorAt toSpecT "Triptych could not synthesize `ofSpec_toSpec`. Add \
+                  `ofSpec_toSpec <proof>` after `toSpec`; the proof must establish \
+                  `∀ d, ofSpec (toSpec d) = d`."
+              emitSound (← `(theorem $inverseId : $inverseType := $autoProof))
+            emittedOfSpecToSpec := true
       if veIdent?.isSome || hasValueEsc then
         let directPlan? :=
           match compileScanPlan gval with
@@ -1566,18 +1636,19 @@ def elabTriptych : CommandElab := fun stx => do
                 rw [hresult] at hinverse
                 rw [hvalue]
                 exact congrArg some hinverse.symm))
-              emitGeneratedPrinter (← `(theorem $ofSpecToSpecId ($dId : $dTy) :
-                  $ofSpecT ($toSpecT $dId) = $dId := by
-                obtain ⟨v, hview, _, hresult⟩ := $encodeViewId $dId
-                have hvalue :
-                    $cvIdent ($toStrT $dId) = some ($denotationId v) := by
-                  rw [$computeValueViewRw, hview]
-                  rfl
-                have hinverse :=
-                  $toSpecOfSpecId
-                    ($toStrT $dId) ($denotationId v) ($encAccId $dId) hvalue
-                rw [hresult] at hinverse
-                rw [hinverse, hresult]))
+              unless emittedOfSpecToSpec do
+                emitGeneratedPrinter (← `(theorem $ofSpecToSpecId ($dId : $dTy) :
+                    $ofSpecT ($toSpecT $dId) = $dId := by
+                  obtain ⟨v, hview, _, hresult⟩ := $encodeViewId $dId
+                  have hvalue :
+                      $cvIdent ($toStrT $dId) = some ($denotationId v) := by
+                    rw [$computeValueViewRw, hview]
+                    rfl
+                  have hinverse :=
+                    $toSpecOfSpecId
+                      ($toStrT $dId) ($denotationId v) ($encAccId $dId) hvalue
+                  rw [hresult] at hinverse
+                  rw [hinverse, hresult]))
             | some ofSpecT, none =>
               emitGeneratedPrinter (← `(theorem $encValId ($dId : $dTy) :
                   ($cvIdent ($toStrT $dId)).map $ofSpecT = some $dId := by
@@ -1645,8 +1716,8 @@ def elabTriptych : CommandElab := fun stx => do
                 | some name => pure name
                 | none => throwErrorAt verusStx
                     "the experimental Verus backend requires a named `{kind}` conversion"
-          let ofSpecName ← conversionName "ofSpec" valueOfSpecTerm?
-          let toSpecName ← conversionName "toSpec" valueToSpecTerm?
+          let ofSpecName ← conversionName "ofSpec" ofSpecTerm?
+          let toSpecName ← conversionName "toSpec" toSpecTerm?
           let certifiedOutput ←
             match Triptych.Verus.emitCertifiedRust name.getId.toString gval valueAst
                 wfConstraintAsts.toList valueConstraintAsts.toList ofSpecName toSpecName with
@@ -1972,9 +2043,13 @@ from analysis and put correctness on you).
   toSpec <g>  (optional trailing sub-clause)  g : δ → Int converts a domain value back to
               its readable-spec denotation. With both directions, Triptych asks for
               `toSpec_ofSpec : g (f v) = v` on accepted values. A printer's `encode_view`
-              witness derives `ofSpec_toSpec : f (g d) = d`. The accepted-value law is provable
-              for a lossy conversion only when constraints pin values to its faithful domain.
-              A lint warns when `ofSpec` appears with no value constraint.
+              witness derives `ofSpec_toSpec : f (g d) = d`. Without a printer, Triptych first
+              tries to synthesize this retraction by reduction and simplification.
+  ofSpec_toSpec <proof>
+              optional explicit proof of `∀ d, f (g d) = d`, required when automatic synthesis
+              fails and no printer can derive it. The accepted-value law is provable for a lossy
+              conversion only when constraints pin values to its faithful domain. A lint warns
+              when `ofSpec` appears with no value constraint.
 
 ── value' ──  (optional ESCAPE, for values outside the analyzable integer DSL)
   value' f X Y …   with  def f (x y … : String) : α := …    (`f` applied to capture STRINGS;
@@ -1988,6 +2063,9 @@ from analysis and put correctness on you).
   toSpec <g>      optionally maps a domain or external-parser result δ back to α. With both
                   directions, Triptych emits the same accepted-value `toSpec_ofSpec` obligation
                   as for `value`; omission defaults to `id`.
+  ofSpec_toSpec <proof>
+                  optional explicit proof of the domain retraction, with the same synthesis and
+                  fallback behavior as for `value`.
 
 ── constraints ──  (optional; one per line; may refer to `value`)
   capture/string predicates (fold into IsWf):
@@ -2050,7 +2128,7 @@ from analysis and put correctness on you).
                           `/- Generated by Triptych` header) is never overwritten — hard error.
 
 Section order:  grammar · value · value' · constraints · constraints' · parser · printer · verus · to
-(`ofSpec`/`toSpec` are semantic sub-clauses of either value form).
+(`ofSpec`/`toSpec`/`ofSpec_toSpec` are semantic sub-clauses of either value form).
 When a format needs something not listed here, use the matching escape section for Lean-only
 generation, or extend the analyzable vocabulary before targeting Verus. Do not hand-write a
 second backend specification."
