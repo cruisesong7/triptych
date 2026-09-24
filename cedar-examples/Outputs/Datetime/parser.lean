@@ -1547,6 +1547,9 @@ theorem Datetime.computeValue_view (s : String) :
     simp only [Option.map_some]
     rfl
 
+theorem Datetime.ofSpec_toSpec : ∀ d : Cedar.Spec.Ext.Datetime, millisToDatetime (datetimeMillis d) = d := by
+  simp [millisToDatetime, datetimeMillis]
+
 /- ═══════════════════════════════ parser ══════════════════════════════
 The generated correct-by-construction parser `parse` uses a certified staged cursor
 program when the grammar supports one, checks constraints on its capture map, and

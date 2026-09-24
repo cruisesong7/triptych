@@ -191,6 +191,7 @@ end AutoPrinterExample
 namespace OfSpecParserExample
 
 private def asDomainInt (i : Int) : Int := i
+private def fromDomainInt (i : Int) : Int := i
 
 triptych BoundedInteger where
   grammar
@@ -205,6 +206,57 @@ triptych BoundedInteger where
 
 #guard BoundedInteger.parse "42" = some 42
 #guard BoundedInteger.parse "101" = none
+
+triptych AutoInverseInteger where
+  grammar
+    Root   ::= Digits
+    Digits ::= digit+
+  value
+    nat Digits
+    ofSpec asDomainInt
+    toSpec fromDomainInt
+  constraints
+    value ∈ [0, 100]
+
+example (i : Int) : asDomainInt (fromDomainInt i) = i :=
+  AutoInverseInteger.ofSpec_toSpec i
+
+private def shiftedToDomain (i : Int) : Int := i + 1
+private def shiftedFromDomain (i : Int) : Int := i - 1
+
+private theorem shiftedToDomain_shiftedFromDomain (i : Int) :
+    shiftedToDomain (shiftedFromDomain i) = i := by
+  simp [shiftedToDomain, shiftedFromDomain]
+
+triptych ExplicitInverseInteger where
+  grammar
+    Root   ::= Digits
+    Digits ::= digit+
+  value
+    nat Digits
+    ofSpec shiftedToDomain
+    toSpec shiftedFromDomain
+    ofSpec_toSpec shiftedToDomain_shiftedFromDomain
+  constraints
+    value ∈ [0, 100]
+
+example (i : Int) : shiftedToDomain (shiftedFromDomain i) = i :=
+  ExplicitInverseInteger.ofSpec_toSpec i
+
+private def nonInverseToDomain (i : Int) : Int := i + 1
+
+/--
+error: Triptych could not synthesize `ofSpec_toSpec`. Add `ofSpec_toSpec <proof>` after `toSpec`; the proof must establish `∀ d, ofSpec (toSpec d) = d`.
+-/
+#guard_msgs in
+triptych MissingInverseInteger where
+  grammar
+    Root   ::= Digits
+    Digits ::= digit+
+  value
+    nat Digits
+    ofSpec nonInverseToDomain
+    toSpec fromDomainInt
 
 end OfSpecParserExample
 

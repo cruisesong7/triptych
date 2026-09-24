@@ -41,11 +41,6 @@ def datetimeMillis (d : Cedar.Spec.Ext.Datetime) : Int := d.val.toInt
 def millisToDatetime (i : Int) : Cedar.Spec.Ext.Datetime :=
   ⟨Int64.ofInt i⟩
 
-theorem millisToDatetime_datetimeMillis (d : Cedar.Spec.Ext.Datetime) :
-    millisToDatetime (datetimeMillis d) = d := by
-  cases d
-  simp [millisToDatetime, datetimeMillis, Int64.ofInt_toInt]
-
 triptych Datetime where
   grammar
     Datetime ::= Date

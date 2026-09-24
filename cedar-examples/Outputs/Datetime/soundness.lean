@@ -87,7 +87,7 @@ theorem Datetime.parse_eq_extparse (s : String) :
   exact Triptych.gatedParseOfSpec_eq_external
     Datetime.IsValid Datetime.computeValue millisToDatetime datetimeMillis
       Cedar.Spec.Ext.Datetime.parse Datetime.extparse_sound Datetime.extparse_reject
-      millisToDatetime_datetimeMillis s
+      Datetime.ofSpec_toSpec s
 
 theorem Datetime.extparse_eq_some_iff_view (s : String) (d : Cedar.Spec.Ext.Datetime) :
     Cedar.Spec.Ext.Datetime.parse s = some d ↔
