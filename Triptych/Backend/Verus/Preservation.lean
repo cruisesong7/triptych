@@ -61,7 +61,19 @@ theorem lower_translateValExpr_preserves (sourceEnv : Env) (fieldName : FieldNam
   | «count» source =>
       simp [translateValExpr, lowerExpr, captureExpr, Ast.Expr.evaluate,
         hagrees (source ++ "#count"), ValExpr.eval]
+  | «hex» source =>
+      simp [translateValExpr, lowerExpr, captureExpr, Ast.Expr.evaluate, hagrees source,
+        ValExpr.eval, hexOfBytes_encodeString]
+  | «hexSeq» source =>
+      simp [translateValExpr, lowerExpr, captureExpr, Ast.Expr.evaluate, hagrees source,
+        ValExpr.eval, hexSequenceBytes_encodeString]
+  | «segments» source =>
+      simp [translateValExpr, lowerExpr, captureExpr, Ast.Expr.evaluate, hagrees source,
+        ValExpr.eval, segmentsBytes_encodeString]
   | signOf source =>
+      simp [translateValExpr, lowerExpr, captureExpr, Ast.Expr.evaluate, hagrees source,
+        ValExpr.eval]
+  | «prefixSign» source =>
       simp [translateValExpr, lowerExpr, captureExpr, Ast.Expr.evaluate, hagrees source,
         ValExpr.eval]
   | add left right left_ih right_ih =>
@@ -73,12 +85,34 @@ theorem lower_translateValExpr_preserves (sourceEnv : Env) (fieldName : FieldNam
   | mul left right left_ih right_ih =>
       simp [translateValExpr, lowerExpr, Ast.Expr.evaluate, ValExpr.eval,
         left_ih, right_ih]
+  | «tdiv» left right left_ih right_ih =>
+      simp [translateValExpr, lowerExpr, Ast.Expr.evaluate, ValExpr.eval,
+        left_ih, right_ih]
+  | «mod» left right left_ih right_ih =>
+      simp [translateValExpr, lowerExpr, Ast.Expr.evaluate, ValExpr.eval,
+        left_ih, right_ih]
   | pow base exponent base_ih exponent_ih =>
       simp [translateValExpr, lowerExpr, Ast.Expr.evaluate, ValExpr.eval,
         base_ih, exponent_ih, intPowModel]
   | neg expression expression_ih =>
       simp [translateValExpr, lowerExpr, Ast.Expr.evaluate, ValExpr.eval,
         expression_ih]
+  | iteEq left right thenBranch elseBranch left_ih right_ih then_ih else_ih =>
+      simp [translateValExpr, lowerExpr, Ast.Expr.evaluate, ValExpr.eval,
+        left_ih, right_ih, then_ih, else_ih]
+      split <;> simp_all
+  | iteLt left right thenBranch elseBranch left_ih right_ih then_ih else_ih =>
+      simp [translateValExpr, lowerExpr, Ast.Expr.evaluate, ValExpr.eval,
+        left_ih, right_ih, then_ih, else_ih]
+      split <;> simp_all
+  | iteLe left right thenBranch elseBranch left_ih right_ih then_ih else_ih =>
+      simp [translateValExpr, lowerExpr, Ast.Expr.evaluate, ValExpr.eval,
+        left_ih, right_ih, then_ih, else_ih]
+      split <;> simp_all
+  | iteEmpty source thenBranch elseBranch then_ih else_ih =>
+      simp [translateValExpr, lowerExpr, captureExpr, Ast.Expr.evaluate, ValExpr.eval,
+        hagrees source, then_ih, else_ih, encodeString_inj_iff]
+      split <;> simp_all
 
 private theorem string_eq_of_toList_eq {a b : String} (h : a.toList = b.toList) : a = b :=
   String.ext (by simpa using h)

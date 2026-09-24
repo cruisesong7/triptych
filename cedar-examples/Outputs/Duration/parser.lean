@@ -961,7 +961,8 @@ theorem Duration.IsWf_equiv (s : String) : Duration.IsWf s ↔ Triptych.isWf Dur
   simp only [Triptych.component, Triptych.componentList, Triptych.envOf, Triptych.captureMapOf, Triptych.scan_eq_decode,
     List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const, ConstraintEntry.wfPart,
     Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD,
-    Env.countVal, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
+    hexOf_getD, hexSeqOf_getD, segmentsOf_getD, Env.countVal, and_true, true_and, false_implies, implies_true,
+    Bool.false_eq_true]
   try grind
 
 theorem Duration.SatisfiesConstraints_equiv (s : String) :
@@ -971,8 +972,8 @@ theorem Duration.SatisfiesConstraints_equiv (s : String) :
   unfold Duration.SatisfiesConstraints Duration.Constraints Duration.constraints Duration.value Duration.valueExpr
   simp only [Triptych.component, Triptych.envOf, Triptych.captureMapOf, Triptych.scan_eq_decode, List.forall_mem_cons,
     List.forall_mem_singleton, List.not_mem_nil, forall_const, ConstraintEntry.valPart, Constraint.eval, ValExpr.eval,
-    presentCount, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, Env.countVal, and_true, true_and,
-    false_implies, implies_true, Bool.false_eq_true]
+    presentCount, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, hexOf_getD, hexSeqOf_getD,
+    segmentsOf_getD, Env.countVal, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
   try grind
 
 theorem Duration.IsValid_equiv (s : String) :
@@ -1050,7 +1051,10 @@ theorem Duration.computeValue_eq (s : String) :
   rw [Triptych.scan_eq_decode]
   cases h : decode Duration.grammar s with
   | none => simp [h]
-  | some m => simp [h, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, Env.countVal, ValExpr.eval]
+  | some m =>
+    simp [h, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, hexOf_getD, hexSeqOf_getD, segmentsOf_getD,
+        Env.countVal, ValExpr.eval] <;>
+      ac_rfl
 
 theorem Duration.computeValue_of_decode {s : String} {m : Triptych.CaptureMap}
     (h : decode Duration.grammar s = some m) :

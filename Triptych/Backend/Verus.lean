@@ -50,7 +50,7 @@ fallback. Eligible deterministic fixed-point grammars compile through the shared
 whose verified lowering produces `CursorProgram`, and then to direct single-cursor code with
 generated grammar-witness proofs. Other constructors in the shared acyclic `Grammar` AST use the
 complete proof-carrying source-grammar scanner. A separate write-once `soundness.rs` states
-obligations only for an optional external parser.
+the obligations implemented by the optimized external parser.
 -/
 
 namespace Triptych.Backend.Verus
@@ -66,6 +66,7 @@ structure FormatInput where
   valueConstraints : List Constraint := []
   ofSpec : String := "id"
   toSpec : String := "id"
+  hasPrinter : Bool := false
   deriving Repr, Inhabited, DecidableEq
 
 private structure FieldSpec where
@@ -108,7 +109,10 @@ private def functionName (formatName suffix : String) : String :=
   snakeCase formatName ++ "_" ++ suffix
 
 private def productionName (formatName production : String) : String :=
-  functionName formatName ("is_wf_" ++ snakeCase production)
+  functionName formatName "is_wf" ++ "_" ++ sanitizeIdent production
+
+private def productionViewName (formatName production : String) : String :=
+  functionName formatName "matches" ++ "_" ++ sanitizeIdent production
 
 private def directRefs (sequence : Triptych.Seq) : List String :=
   sequence.filterMap fun item =>
@@ -139,8 +143,48 @@ private partial def stringEqualityCaptures : Constraint → List String
   | .and left right => (stringEqualityCaptures left ++ stringEqualityCaptures right).eraseDups
   | _ => []
 
-private def fieldsFor (grammar : Grammar) : List FieldSpec :=
-  (rootCaptures grammar).map fun capture =>
+private def constraintCaptures : List Constraint → List String
+  | [] => []
+  | constraint :: rest => constraint.captures ++ constraintCaptures rest
+
+private def constraintStringEqualityCaptures : List Constraint → List String
+  | [] => []
+  | constraint :: rest =>
+      stringEqualityCaptures constraint ++ constraintStringEqualityCaptures rest
+
+private def productionQualifier (grammar : Grammar) (production : Production) : String :=
+  if production.name == grammar.start then "" else production.name
+
+private def captureKeys (qual name : String) : List String :=
+  if qual.isEmpty then [name] else [name, qual ++ "." ++ name]
+
+private def referencesInSymbolAux (grammar : Grammar) : Nat → String → Sym → List String
+  | 0, _, _ => []
+  | fuel + 1, qual, .ref name =>
+      let descendants := match grammar.prod? name with
+        | some production =>
+            (production.alts.map fun alternative =>
+              (alternative.map fun item =>
+                referencesInSymbolAux grammar fuel name item.sym).flatten).flatten
+        | none => []
+      captureKeys qual name ++ descendants
+  | fuel + 1, qual, .rep _ item _ _ => referencesInSymbolAux grammar fuel qual item
+  | _ + 1, _, _ => []
+
+private def referencesInSymbol (grammar : Grammar) (qual : String) (symbol : Sym) : List String :=
+  referencesInSymbolAux grammar (grammar.prods.length + 1) qual symbol
+
+private def availableCaptures (grammar : Grammar) : List String :=
+  (grammar.prods.flatMap fun production =>
+    production.alts.flatMap fun alternative =>
+      alternative.flatMap fun item =>
+        referencesInSymbol grammar (productionQualifier grammar production) item.sym).eraseDups
+
+private def fieldsFor (format : FormatInput) : List FieldSpec :=
+  let required :=
+    (format.valueExpr.captures ++
+      constraintCaptures (format.wfConstraints ++ format.valueConstraints)).eraseDups
+  required.map fun capture =>
     { capture, ident := snakeCase (Triptych.surfaceBinder capture) }
 
 private def allSymbols (grammar : Grammar) : List Sym :=
@@ -171,7 +215,7 @@ private def validateCaptureShape (grammar : Grammar) : Except String Unit := do
     if duplicate? captures then
       throw "Verus backend: each root alternative may capture a production at most once"
 
-private def validateReadableSpecInput (format : FormatInput) : Except String Unit := do
+def validateReadableSpecInput (format : FormatInput) : Except String Unit := do
   let names := format.grammar.prods.map (·.name)
   if duplicate? names then
     throw "Verus backend: production names must be unique"
@@ -187,16 +231,15 @@ private def validateReadableSpecInput (format : FormatInput) : Except String Uni
         (·.countCaptures.isEmpty) then
     throw "Verus backend: repeated-capture `count` expressions are not yet supported"
   validateCaptureShape format.grammar
-  let available := rootCaptures format.grammar
+  let available := availableCaptures format.grammar
   let required :=
     (format.valueExpr.captures ++
-      (format.wfConstraints ++ format.valueConstraints).flatMap Constraint.captures).eraseDups
+      constraintCaptures (format.wfConstraints ++ format.valueConstraints)).eraseDups
   for capture in required do
     if !available.contains capture then
-      throw s!"Verus backend: capture `{capture}` must be a direct reference in the root \
-        production"
+      throw s!"Verus backend: capture `{capture}` does not occur in the grammar"
   let equalityCaptures :=
-    (format.wfConstraints ++ format.valueConstraints).flatMap stringEqualityCaptures
+    constraintStringEqualityCaptures (format.wfConstraints ++ format.valueConstraints)
   for capture in equalityCaptures.eraseDups do
     if !requiredInEveryRootAlternative format.grammar capture then
       throw s!"Verus backend: string equality on `{capture}` requires that capture to be a \
@@ -279,7 +322,6 @@ private def instantiateRuntimeParser (format : FormatInput) (grammar : FlatGramm
 {productionTableComment grammar}
 
 {runtimeParserTemplate}
-
 verus! {leftBrace}
 
 /// Parse one complete input using the source grammar emitted from `triptych {format.name}`.
@@ -321,8 +363,9 @@ private def emitCertifiedParserSource (format : FormatInput) : Except String Str
 
 /-! ## Grammar-specialized direct parser -/
 
-/-- Verified runtime primitives shared by specialized plans. The template deliberately leaves
-    its `verus!` block open so generated plan declarations are checked in the same module. -/
+/-- Verified runtime primitives shared by specialized plans. The rustfmt-stable template
+    deliberately leaves its `verus!` block open so generated plan declarations are checked in
+    the same module. -/
 private def directParserTemplate : String :=
   include_str "Verus/DirectParser.rs.in"
 
@@ -349,11 +392,20 @@ private def parsePlanFunction (format : FormatInput) : String :=
 private def parseCandidateFunction (format : FormatInput) : String :=
   functionName format.name "parse_candidate"
 
+private def parseViewFunction (format : FormatInput) : String :=
+  functionName format.name "parse_view"
+
 private def parsePlanCompletenessFunction (format : FormatInput) : String :=
   functionName format.name "is_wf_implies_parse_plan"
 
 private def grammarWfFunction (format : FormatInput) : String :=
   productionName format.name format.grammar.start
+
+private def viewType (format : FormatInput) : String :=
+  typeName format.name ++ "View"
+
+private def matchesViewFunction (format : FormatInput) : String :=
+  functionName format.name "matches_view"
 
 private def positionName (index : Nat) : String :=
   s!"position_{index}"
@@ -387,6 +439,8 @@ private structure FixedPointPlan where
   fractionLower : Nat
   fractionUpper : Nat
 
+private structure FixedPointDecimalPlan extends FixedPointPlan
+
 private def fixedPointPlan? : List CursorOp → Option FixedPointPlan
   | [ .beginCapture signCapture _,
       .consumeOptional signCharacter,
@@ -413,6 +467,27 @@ private def fixedPointPlan? : List CursorOp → Option FixedPointPlan
         none
   | _ => none
 
+private def fixedPointDecimalPlan? (format : FormatInput)
+    (program : CursorProgram) : Option FixedPointDecimalPlan := do
+  let shape ← fixedPointPlan? program.operations
+  guard <| shape.signCharacter == '-'
+  guard <| shape.separatorCharacter == '.'
+  guard <| shape.fractionLower == 1 && shape.fractionUpper == 4
+  guard <| format.wfConstraints.isEmpty
+  guard <| format.ofSpec == "Int64.ofInt" && format.toSpec == "Int64.toInt"
+  let expectedValue :=
+    .mul (.signOf shape.signCapture)
+      (.add
+        (.mul (.nat shape.naturalCapture) (.pow (.lit 10) (.lit 4)))
+        (.mul (.nat shape.fractionCapture)
+          (.pow (.lit 10) (.sub (.lit 4) (.len shape.fractionCapture)))))
+  guard <| format.valueExpr == expectedValue
+  guard <| format.valueConstraints ==
+    [.and
+      (.le (.lit (-9223372036854775808)) expectedValue)
+      (.le expectedValue (.lit 9223372036854775807))]
+  pure { shape with }
+
 private def verusCharacterLiteral (character : Char) : String :=
   "'\\u{" ++ String.ofList (Nat.toDigits 16 character.toNat) ++ "}'"
 
@@ -422,6 +497,15 @@ private def fixedPointProofTemplate : String :=
 private def fixedPointCompletenessTemplate : String :=
   include_str "Verus/FixedPointPlanCompleteness.rs.in"
 
+/-- Verified semantic proof core for the first supported fixed-point `Int64` value shape.
+    Keep the arithmetic bridge in this template so regeneration preserves the Verus proof. -/
+private def fixedPointDecimalParserTemplate : String :=
+  include_str "Verus/FixedPointDecimalParser.rs.in"
+
+/-- Capture/view uniqueness certificate used by the fixed-point semantic parser. -/
+private def fixedPointViewPlanProofTemplate : String :=
+  include_str "Verus/FixedPointViewPlanProof.rs.in"
+
 private def fixedPointReplacements (format : FormatInput) (shape : FixedPointPlan) :
     List (String × String) :=
   let sign := captureField shape.signCapture
@@ -429,6 +513,10 @@ private def fixedPointReplacements (format : FormatInput) (shape : FixedPointPla
   let fraction := captureField shape.fractionCapture
   [ ("__COMPLETENESS_FUNCTION__", parsePlanCompletenessFunction format),
     ("__PARSE_PLAN__", parsePlanFunction format),
+    ("__PARSE_VIEW__", parseViewFunction format),
+    ("__PARSE_SPEC_TYPE__", parseSpecType format),
+    ("__VIEW_TYPE__", viewType format),
+    ("__MATCHES_VIEW__", matchesViewFunction format),
     ("__SIGN_WF__", productionName format.name shape.signCapture),
     ("__NATURAL_WF__", productionName format.name shape.naturalCapture),
     ("__FRACTION_WF__", productionName format.name shape.fractionCapture),
@@ -446,6 +534,33 @@ private def instantiateFixedPointTemplate (format : FormatInput) (shape : FixedP
     (template : String) : String :=
   (fixedPointReplacements format shape).foldl (fun source replacement =>
     source.replace replacement.1 replacement.2) template
+
+private def fixedPointDecimalReplacements (format : FormatInput)
+    (shape : FixedPointDecimalPlan) : List (String × String) :=
+  fixedPointReplacements format shape.toFixedPointPlan ++
+    [ ("__PARSE_CANDIDATE__", parseCandidateFunction format),
+      ("__SEMANTIC_PARSE_PLAN__", functionName format.name "semantic_parse_plan"),
+      ("__SEMANTIC_PARSE_PLAN_IFF_VALID__",
+        functionName format.name "semantic_parse_plan_iff_valid"),
+      ("__SEMANTIC_PARSE__", functionName format.name "parse"),
+      ("__MATCHES_VIEW_PLAN__", functionName format.name "matches_view_parse_plan"),
+      ("__VALUE__", functionName format.name "value"),
+      ("__VIEW_VALID__", functionName format.name "view_valid"),
+      ("__VIEW_CONSTRAINTS__", functionName format.name "view_constraints"),
+      ("__VIEW_DENOTATION__", functionName format.name "view_denotation"),
+      ("__IS_VALID__", functionName format.name "is_valid"),
+      ("__IS_WF__", functionName format.name "is_wf"),
+      ("__SATISFIES_CONSTRAINTS__", functionName format.name "satisfies_constraints") ]
+
+private def renderFixedPointDecimalParser? (format : FormatInput)
+    (program : CursorProgram) : Option String := do
+  let shape ← fixedPointDecimalPlan? format program
+  let replacements := fixedPointDecimalReplacements format shape
+  let instantiate (template : String) :=
+    replacements.foldl
+      (fun source replacement => source.replace replacement.1 replacement.2) template
+  pure <| instantiate fixedPointViewPlanProofTemplate ++ "\n\n" ++
+    instantiate fixedPointDecimalParserTemplate
 
 private def renderSuccessProof? (format : FormatInput) (program : CursorProgram) :
     Option String := do
@@ -577,6 +692,7 @@ private def renderExecOps (format : FormatInput) (program : CursorProgram) :
 private def renderParseStructures (format : FormatInput) (program : CursorProgram) : String :=
   let leftBrace := "{"
   let rightBrace := "}"
+  let fields := fieldsFor format
   let specFields := program.captures.flatMap fun capture =>
     let field := captureField capture
     [s!"pub {field}_start: int", s!"pub {field}_end: int"]
@@ -587,6 +703,9 @@ private def renderParseStructures (format : FormatInput) (program : CursorProgra
     let field := captureField capture
     [s!"{field}_start: self.{field}_start as int",
      s!"{field}_end: self.{field}_end as int"]
+  let parsedViewFields := fields.map fun fieldSpec =>
+    let field := captureField fieldSpec.capture
+    s!"{field}: input.subrange(parsed.{field}_start, parsed.{field}_end)"
   "#[verifier::ext_equal]\n" ++
     s!"pub struct {parseSpecType format} " ++ leftBrace ++ "\n" ++
     indentText 1 (String.intercalate ",\n" (["pub end: int"] ++ specFields)) ++ "\n" ++
@@ -602,12 +721,20 @@ private def renderParseStructures (format : FormatInput) (program : CursorProgra
     indentText 3 (String.intercalate ",\n" (["end: self.end as int"] ++ viewFields)) ++ "\n" ++
     "        " ++ rightBrace ++ "\n" ++
     "    " ++ rightBrace ++ "\n" ++
+    rightBrace ++ "\n\n" ++
+    s!"pub open spec fn {parseViewFunction format}(" ++
+      s!"input: Seq<char>, parsed: {parseSpecType format}) -> {viewType format} " ++
+      leftBrace ++ "\n" ++
+    s!"    {viewType format} " ++ leftBrace ++ "\n" ++
+    indentText 2 (String.intercalate ",\n" (["input: input"] ++ parsedViewFields)) ++ "\n" ++
+    "    " ++ rightBrace ++ "\n" ++
     rightBrace
 
 private def instantiateDirectParser (format : FormatInput) (program : CursorProgram) : String :=
   let leftBrace := "{"
   let rightBrace := "}"
   let completenessProof := (renderCompletenessProof? format program).getD ""
+  let semanticParser := (renderFixedPointDecimalParser? format program).getD ""
   let specBody :=
     "if !is_ascii_chars(input) {\n    None\n} else {\n" ++
       indentText 1
@@ -648,7 +775,11 @@ pub fn {parseCandidateFunction format}(input: &str)
         match result {leftBrace}
             Some(parsed) =>
                 {parsePlanFunction format}(input@) == Some(parsed.deep_view())
-                    && {grammarWfFunction format}(input@),
+                    && {grammarWfFunction format}(input@)
+                    && {matchesViewFunction format}(
+                        input@,
+                        {parseViewFunction format}(input@, parsed.deep_view()),
+                    ),
             None =>
                 {parsePlanFunction format}(input@).is_none()
                     && !{grammarWfFunction format}(input@),
@@ -656,6 +787,8 @@ pub fn {parseCandidateFunction format}(input: &str)
 {leftBrace}
 {indentText 1 execBody}
 {rightBrace}
+
+{semanticParser}
 
 {rightBrace} // verus!
 "
@@ -900,46 +1033,89 @@ private def itemCondition (formatName : String) (repetitions : List Sym) (item :
       else
         some present
 
-private def directCaptureBindings (fields : List FieldSpec)
-    (items : List SymItem) (binders : List (Option String)) : List (String × String) :=
-  (items.zip binders).filterMap fun (item, binder?) =>
-    match item.sym, binder? with
-    | .ref capture, some binder =>
-        if fields.any (·.capture == capture) then some (capture, binder) else none
-    | _, _ => none
+private def fieldsInSymbol (grammar : Grammar) (fields : List FieldSpec)
+    (qual : String) (symbol : Sym) : List FieldSpec :=
+  let captures := referencesInSymbol grammar qual symbol
+  fields.filter fun field => captures.contains field.capture
 
-private def sequenceCondition (formatName : String) (repetitions : List Sym)
-    (fields : List FieldSpec)
+private def fieldsInSequence (grammar : Grammar) (fields : List FieldSpec)
+    (qual : String) (items : List SymItem) : List FieldSpec :=
+  let captures := (items.map fun item => referencesInSymbol grammar qual item.sym).flatten
+  fields.filter fun field => captures.contains field.capture
+
+private def fieldsInProduction (grammar : Grammar) (fields : List FieldSpec)
+    (production : Production) : List FieldSpec :=
+  let qual := productionQualifier grammar production
+  let captures := (production.alts.map fun alternative =>
+    (alternative.map fun item => referencesInSymbol grammar qual item.sym).flatten).flatten
+  fields.filter fun field => captures.contains field.capture
+
+private def emptyFieldConditions (fields : List FieldSpec) (view : IR.Expr) : List IR.Expr :=
+  fields.map fun field => .textEq (.field view field.ident) (.textLit "")
+
+private def referenceViewCondition (formatName : String) (grammar : Grammar)
+    (fields : List FieldSpec) (qual : String) (item : SymItem) (binder : String) (view : IR.Expr) :
+    Option IR.Expr :=
+  match item.sym with
+  | .ref capture =>
+      let input : IR.Expr := .var binder
+      let directField :=
+        fields.filterMap fun field =>
+          if (captureKeys qual capture).contains field.capture then
+            some (.textEq (.field view field.ident) input)
+          else
+            none
+      let nested :=
+        .call (productionViewName formatName capture) [input, view]
+      let present := .andAll (directField ++ [nested])
+      if item.optional then
+        let absent :=
+          .andAll
+            (.intEq (textLength input) (.intLit 0) ::
+              emptyFieldConditions (fieldsInSymbol grammar fields qual item.sym) view)
+        some (.boolOr absent present)
+      else
+        some present
+  | _ => none
+
+private def sequenceCondition (formatName : String) (grammar : Grammar)
+    (repetitions : List Sym) (fields scopeFields : List FieldSpec) (qual : String)
     (input : IR.Expr) (items : List SymItem) (view? : Option IR.Expr := none) : IR.Expr :=
   let binders := assignBinders items
   let pieces := (items.zip binders).map fun (item, binder?) =>
     itemExpression item binder?
   let itemConditions := (items.zip binders).filterMap fun (item, binder?) =>
-    itemCondition formatName repetitions item binder?
+    match view?, binder? with
+    | some view, some binder =>
+        (referenceViewCondition formatName grammar fields qual item binder view).orElse fun _ =>
+          itemCondition formatName repetitions item binder?
+    | _, _ => itemCondition formatName repetitions item binder?
   let decomposition := .textEq input (.concatAll pieces)
   let viewConditions := match view? with
     | none => []
     | some view =>
-        let bindings := directCaptureBindings fields items binders
-        fields.map fun field =>
-          let captured := match bindings.find? (·.1 == field.capture) with
-            | some (_, binder) => IR.Expr.var binder
-            | none => .textLit ""
-          .textEq (.field view field.ident) captured
+        let presentFields := fieldsInSequence grammar fields qual items
+        let absentFields := scopeFields.filter fun field =>
+          !(presentFields.any (·.capture == field.capture))
+        emptyFieldConditions absentFields view
   let body := .andAll (decomposition :: itemConditions ++ viewConditions)
   let quantified := binders.filterMap (·.map fun name => IR.Binder.mk name .text)
   if quantified.isEmpty then body else .existsE quantified body
 
-private def productionCondition (formatName : String) (repetitions : List Sym)
-    (fields : List FieldSpec)
+private def productionCondition (formatName : String) (grammar : Grammar)
+    (repetitions : List Sym) (fields : List FieldSpec)
     (input : IR.Expr) (production : Production) : IR.Expr :=
-  .orAll (production.alts.map (sequenceCondition formatName repetitions fields input ·))
-
-private def rootViewCondition (formatName : String) (repetitions : List Sym)
-    (fields : List FieldSpec)
-    (input view : IR.Expr) (production : Production) : IR.Expr :=
   .orAll (production.alts.map
-    (sequenceCondition formatName repetitions fields input · (some view)))
+    (sequenceCondition formatName grammar repetitions fields []
+      (productionQualifier grammar production) input ·))
+
+private def productionViewCondition (formatName : String) (grammar : Grammar)
+    (repetitions : List Sym) (fields : List FieldSpec)
+    (input view : IR.Expr) (production : Production) : IR.Expr :=
+  let scopeFields := fieldsInProduction grammar fields production
+  .orAll (production.alts.map
+    (sequenceCondition formatName grammar repetitions fields scopeFields
+      (productionQualifier grammar production) input · (some view)))
 
 private def captureParams (fields : List FieldSpec) (captures : List String) : List IR.Param :=
   captures.map fun capture =>
@@ -964,8 +1140,18 @@ private def productionDeclarations (format : FormatInput) (repetitions : List Sy
   format.grammar.prods.map fun production =>
     boolFunction (productionName format.name production.name)
       [{ name := "input", ty := .text }]
-      (productionCondition format.name repetitions fields (.var "input") production)
+      (productionCondition format.name format.grammar repetitions fields (.var "input") production)
       (some s!"Lean counterpart: `{format.name}.IsWf.{production.name}`.")
+
+private def productionViewDeclarations (format : FormatInput) (repetitions : List Sym)
+    (fields : List FieldSpec) : List IR.Decl :=
+  let viewType := typeName format.name ++ "View"
+  format.grammar.prods.map fun production =>
+    boolFunction (productionViewName format.name production.name)
+      [{ name := "input", ty := .text }, { name := "view", ty := .named viewType }]
+      (productionViewCondition format.name format.grammar repetitions fields
+        (.var "input") (.var "view") production)
+      (some s!"Capture relation for `{format.name}.IsWf.{production.name}`.")
 
 private def constraintDeclarations (format : FormatInput) (fields : List FieldSpec)
     (formatPrefix viewType : String) : List IR.Decl :=
@@ -1044,8 +1230,7 @@ private def formatDeclarations (format : FormatInput) (repetitions : List Sym)
         [{ name := "input", ty := .text }, { name := "view", ty := .named viewType }]
         (.boolAnd
           (.textEq (.field (.var "view") "input") (.var "input"))
-          (rootViewCondition format.name repetitions fields
-            (.var "input") (.var "view") root)),
+          (.call (productionViewName format.name root.name) [.var "input", .var "view"])),
       intFunction valueFunction (captureParams fields valueCaptures)
         (translateValExpr (fieldIdent fields) format.valueExpr)
         (some s!"Lean counterpart: `{format.name}.value`.") ] ++
@@ -1065,23 +1250,26 @@ private def formatDeclarations (format : FormatInput) (repetitions : List Sym)
 /-- Validate and translate one elaborated Triptych format into the Verus specification IR. -/
 def translateSpecToIR (format : FormatInput) : Except String IR.Module := do
   validateReadableSpecInput format
-  let fields := fieldsFor format.grammar
+  let fields := fieldsFor format
   let repetitions := repetitionsFor format.grammar
   let formatDecls ← formatDeclarations format repetitions fields
   let declarations :=
     grammarSupportDeclarations format repetitions ++
-      productionDeclarations format repetitions fields ++ formatDecls
+      productionDeclarations format repetitions fields ++
+      productionViewDeclarations format repetitions fields ++
+      formatDecls
   pure
     { header :=
         [s!"Generated by Triptych from `triptych {format.name}`.",
          "Source ASTs: Grammar -> IsWf, ValExpr -> value, Constraint -> constraint phases.",
          s!"Lean conversion boundary: ofSpec `{format.ofSpec}`, toSpec `{format.toSpec}`."]
       imports :=
-        ["vstd::prelude::*"] ++
-          if (allSymbols format.grammar).any containsStringSymbol then
+        ["vstd::arithmetic::div_mod::rust_div"] ++
+          (if (allSymbols format.grammar).any containsStringSymbol then
             ["vstd::std_specs::char::is_white_space"]
           else
-            []
+            []) ++
+          ["vstd::prelude::*"]
       declarations }
 
 /-- Generate the readable Verus specification for one elaborated Triptych format. -/
@@ -1108,6 +1296,7 @@ private def soundnessDeclarations (format : FormatInput) : List Ast.Decl :=
   let viewType := typeName format.name ++ "View"
   let contractTrait := typeName format.name ++ "ExternalParserContract"
   let resultPredicate := formatPrefix ++ "_matches_result"
+  let hasResultPredicate := formatPrefix ++ "_has_result"
   let input : Ast.Expr := .var "input"
   let result : Ast.Expr := .var "value"
   let view : Ast.Expr := .var "view"
@@ -1122,43 +1311,109 @@ private def soundnessDeclarations (format : FormatInput) : List Ast.Decl :=
         [ .call (formatPrefix ++ "_matches_view") [input, view],
           .call (formatPrefix ++ "_view_valid") [view],
           .intEq (.call (formatPrefix ++ "_view_denotation") [view]) result ])
-  [ .function
+  let hasResultBody :=
+    Ast.Expr.existsE [{ name := "input", ty := .text }]
+      (.call resultPredicate [.var "input", result])
+  let baseItems : List Ast.TraitItem :=
+    [ .specMethod
+        { name := "parse_to_spec"
+          params := [{ name := "input", ty := .text }]
+          returnType := .option .int
+          doc := some
+            "Specification view of the external parser result after its toSpec conversion." },
+      .proofMethod
+        { name := "extparse_sound"
+          params := [{ name := "input", ty := .text }, { name := "value", ty := .int }]
+          requires := [parsesValue]
+          ensures := [isValid, matchesResult]
+          doc := some "Every successful external parse is valid and has the specified value." },
+      .proofMethod
+        { name := "extparse_complete"
+          params := [{ name := "input", ty := .text }, { name := "value", ty := .int }]
+          requires := [isValid, matchesResult]
+          ensures := [parsesValue]
+          doc := some "Every valid input with this value is accepted with that value." },
+      .proofMethod
+        { name := "extparse_reject"
+          params := [{ name := "input", ty := .text }]
+          ensures :=
+            [ .boolImplies rejects (boolNot isValid),
+              .boolImplies (boolNot isValid) rejects ]
+          doc := some "The external parser rejects exactly the invalid inputs." } ]
+  let printerItems : List Ast.TraitItem :=
+    if format.hasPrinter then
+      let serializer (valueExpr : Ast.Expr) :=
+        Ast.Expr.call "Self::to_string_to_spec" [valueExpr]
+      let parserResult (source : Ast.Expr) :=
+        Ast.Expr.call "Self::parse_to_spec" [source]
+      let normalized (source : Ast.Expr) :=
+        Ast.Expr.matchOption (parserResult source) { name := "parsed", ty := .int }
+          (.optionSome (serializer (.var "parsed")))
+          .optionNone
+      let left := Ast.Expr.var "left"
+      let right := Ast.Expr.var "right"
+      let leftParse := parserResult left
+      let rightParse := parserResult right
+      let normalizedEqual := Ast.Expr.textEq (normalized left) (normalized right)
+      let parseEqual := Ast.Expr.textEq leftParse rightParse
+      [ .specMethod
+          { name := "to_string_to_spec"
+            params := [{ name := "value", ty := .int }]
+            returnType := .text
+            doc := some "Specification characters emitted by the external canonical serializer." },
+        .proofMethod
+          { name := "extparse_to_string_roundtrip"
+            params := [{ name := "value", ty := .int }]
+            requires := [.call hasResultPredicate [.var "value"]]
+            ensures :=
+              [optionEqualsSome
+                (parserResult (serializer (.var "value")))
+                (.var "value")]
+            doc := some "Parsing the external serializer returns the original representable value." },
+        .proofMethod
+          { name := "extparse_to_string_injective"
+            params := [{ name := "left", ty := .int }, { name := "right", ty := .int }]
+            requires :=
+              [ .call hasResultPredicate [left],
+                .call hasResultPredicate [right],
+                .textEq (serializer left) (serializer right) ]
+            ensures := [.intEq left right]
+            doc := some "The external serializer is injective on representable values." },
+        .proofMethod
+          { name := "extparse_normalize_eq_iff_parse_eq"
+            params := [{ name := "left", ty := .text }, { name := "right", ty := .text }]
+            ensures :=
+              [ .boolImplies normalizedEqual parseEqual,
+                .boolImplies parseEqual normalizedEqual ]
+            doc := some
+              "Canonicalized external parses are equal exactly when their parse results are equal." } ]
+    else
+      []
+  let resultDecl : Ast.Decl :=
+    .function
       { name := resultPredicate
         params := [{ name := "input", ty := .text }, { name := "value", ty := .int }]
         returnType := .bool
         body := resultBody
-        doc := some "The input has a valid typed view whose denotation is this result." },
+        doc := some "The input has a valid typed view whose denotation is this result." }
+  let hasResultDecl : Ast.Decl :=
+    .function
+      { name := hasResultPredicate
+        params := [{ name := "value", ty := .int }]
+        returnType := .bool
+        body := hasResultBody
+        doc := some "Some valid external-parser input denotes this representable value." }
+  let traitDecl : Ast.Decl :=
     .trait
       { name := contractTrait
         doc := some
           "Proof obligations for an external parser after mapping its output to Triptych's \
           specification integer."
-        items :=
-          [ .specMethod
-              { name := "parse_to_spec"
-                params := [{ name := "input", ty := .text }]
-                returnType := .option .int
-                doc := some
-                  "Specification view of the external parser result after its toSpec conversion." },
-            .proofMethod
-              { name := "extparse_sound"
-                params := [{ name := "input", ty := .text }, { name := "value", ty := .int }]
-                requires := [parsesValue]
-                ensures := [isValid, matchesResult]
-                doc := some "Every successful external parse is valid and has the specified value." },
-            .proofMethod
-              { name := "extparse_complete"
-                params := [{ name := "input", ty := .text }, { name := "value", ty := .int }]
-                requires := [isValid, matchesResult]
-                ensures := [parsesValue]
-                doc := some "Every valid input with this value is accepted with that value." },
-            .proofMethod
-              { name := "extparse_reject"
-                params := [{ name := "input", ty := .text }]
-                ensures :=
-                  [ .boolImplies rejects (boolNot isValid),
-                    .boolImplies (boolNot isValid) rejects ]
-                doc := some "The external parser rejects exactly the invalid inputs." } ] } ]
+        items := baseItems ++ printerItems }
+  if format.hasPrinter then
+    [resultDecl, hasResultDecl, traitDecl]
+  else
+    [resultDecl, traitDecl]
 
 /-- Build the Verus AST for the external-parser proof obligations. -/
 def buildSoundnessAst (format : FormatInput) : Except String Ast.Module := do
@@ -1167,8 +1422,8 @@ def buildSoundnessAst (format : FormatInput) : Except String Ast.Module := do
     { header :=
         [s!"Generated by Triptych from `triptych {format.name}`.",
          "External-parser proof obligations; no parser implementation or proof is assumed.",
-         "Implement the generated trait for an adapter connected to the production parser."]
-      imports := ["vstd::prelude::*", "crate::spec::*"]
+         "Implement the generated trait for the optimized production parser."]
+      imports := ["super::spec::*", "vstd::prelude::*"]
       declarations := soundnessDeclarations format }
 
 /-- Generate the Verus external-parser soundness-contract scaffold. -/
@@ -1209,7 +1464,8 @@ def emitSpec (name : String) (grammar : Grammar) (valueExpr : ValExpr)
 
 /-- DSL-facing adapter for the sibling Verus `soundness.rs` scaffold. -/
 def emitSoundness (name : String) (grammar : Grammar) (valueExpr : ValExpr)
-    (wfConstraints valueConstraints : List Constraint) (ofSpec toSpec : Lean.Name) :
+    (wfConstraints valueConstraints : List Constraint) (ofSpec toSpec : Lean.Name)
+    (hasPrinter : Bool := false) :
     Except String String := do
   Backend.Verus.emitSoundness
     { name
@@ -1218,7 +1474,8 @@ def emitSoundness (name : String) (grammar : Grammar) (valueExpr : ValExpr)
       wfConstraints
       valueConstraints
       ofSpec := ofSpec.toString
-      toSpec := toSpec.toString }
+      toSpec := toSpec.toString
+      hasPrinter }
 
 /-- DSL-facing adapter for one proof-carrying Rust parser artifact. -/
 def emitCertifiedRust (name : String) (grammar : Grammar) (valueExpr : ValExpr)

@@ -69,7 +69,7 @@ private partial def prettyPrintExprAt (parentPrecedence : Nat) (expression : Ast
   match expression with
   | .var name => name
   | .boolLit literal => if literal then "true" else "false"
-  | .intLit literal => s!"({literal})"
+  | .intLit literal => s!"({literal}int)"
   | .byteLit literal => characterLiteral literal
   | .textLit literal => textLiteral literal
   | .optionNone => "None"
@@ -81,6 +81,9 @@ private partial def prettyPrintExprAt (parentPrecedence : Nat) (expression : Ast
   | .intAdd left right => binary 60 "+" left right
   | .intSub left right => binary 60 "-" left right
   | .intMul left right => binary 70 "*" left right
+  | .intTDiv left right =>
+      s!"rust_div({prettyPrintExprAt 0 left}, {prettyPrintExprAt 0 right})"
+  | .intMod left right => binary 70 "%" left right
   | .intNeg operand =>
       parenthesize (80 < parentPrecedence) ("-" ++ prettyPrintExprAt 80 operand)
   | .textLen operand => s!"({prettyPrintExprAt 90 operand}.len() as int)"
@@ -215,7 +218,9 @@ private def prettyPrintDecl : Ast.Decl → String
 def prettyPrintModule (astModule : Ast.Module) : String :=
   let header := String.intercalate "\n" (astModule.header.map ("// " ++ ·))
   let imports := String.intercalate "\n" (astModule.imports.map fun path =>
-    if path == "vstd::std_specs::char::is_white_space" then
+    if path == "vstd::std_specs::char::is_white_space" ||
+        path == "vstd::arithmetic::div_mod::rust_div" ||
+        path == "super::spec::*" then
       "#[cfg(verus_only)]\nuse " ++ path ++ ";"
     else
       "use " ++ path ++ ";")

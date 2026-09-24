@@ -64,6 +64,8 @@ inductive Expr where
   | intAdd (left right : Expr)
   | intSub (left right : Expr)
   | intMul (left right : Expr)
+  | intTDiv (left right : Expr)
+  | intMod (left right : Expr)
   | intNeg (expression : Expr)
   | intPow (base exponent : Expr)
   | textLen (expression : Expr)
@@ -91,7 +93,11 @@ inductive Expr where
   | isToken (token : Triptych.TokClass) (expression : Expr)
   | natOf (expression : Expr)
   | intOf (expression : Expr)
+  | hexOf (expression : Expr)
+  | hexSeqOf (expression : Expr)
+  | segmentsOf (expression : Expr)
   | signOf (expression : Expr)
+  | prefixSignOf (expression : Expr)
   | countOf (source : String) (expression : Expr)
   | noLeadingZero (expression : Expr)
   | card (operation : Triptych.CardOp) (k : Nat) (expressions : List Expr)
@@ -127,11 +133,29 @@ def toValExpr? : Expr → Option Triptych.ValExpr
   | .textLen expression => return .len (← expression.captureSource?)
   | .countOf source _ => Option.some (.count source)
   | .signOf expression => return .signOf (← expression.captureSource?)
+  | .prefixSignOf expression => return .prefixSign (← expression.captureSource?)
   | .intAdd left right => return .add (← left.toValExpr?) (← right.toValExpr?)
   | .intSub left right => return .sub (← left.toValExpr?) (← right.toValExpr?)
   | .intMul left right => return .mul (← left.toValExpr?) (← right.toValExpr?)
+  | .intTDiv left right => return .tdiv (← left.toValExpr?) (← right.toValExpr?)
+  | .intMod left right => return .mod (← left.toValExpr?) (← right.toValExpr?)
   | .intPow base exponent => return .pow (← base.toValExpr?) (← exponent.toValExpr?)
   | .intNeg expression => return .neg (← expression.toValExpr?)
+  | .hexOf expression => return .hex (← expression.captureSource?)
+  | .hexSeqOf expression => return .hexSeq (← expression.captureSource?)
+  | .segmentsOf expression => return .segments (← expression.captureSource?)
+  | .ifThenElse (.intEq left right) thenBranch elseBranch =>
+      return .iteEq (← left.toValExpr?) (← right.toValExpr?)
+        (← thenBranch.toValExpr?) (← elseBranch.toValExpr?)
+  | .ifThenElse (.intLt left right) thenBranch elseBranch =>
+      return .iteLt (← left.toValExpr?) (← right.toValExpr?)
+        (← thenBranch.toValExpr?) (← elseBranch.toValExpr?)
+  | .ifThenElse (.intLe left right) thenBranch elseBranch =>
+      return .iteLe (← left.toValExpr?) (← right.toValExpr?)
+        (← thenBranch.toValExpr?) (← elseBranch.toValExpr?)
+  | .ifThenElse (.textEq expression (.textLit "")) thenBranch elseBranch =>
+      return .iteEmpty (← expression.captureSource?)
+        (← thenBranch.toValExpr?) (← elseBranch.toValExpr?)
   | .valueRef _ source _ => Option.some source
   | _ => Option.none
 

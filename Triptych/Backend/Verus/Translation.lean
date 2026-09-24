@@ -70,12 +70,36 @@ def translateValExpr (fieldName : FieldName) : ValExpr → IR.Expr
   | .int source => .intOf (captureExpr fieldName source)
   | .len source => .textLen (captureExpr fieldName source)
   | .count source => .countOf source (captureExpr fieldName (source ++ "#count"))
+  | .hex source => .hexOf (captureExpr fieldName source)
+  | .hexSeq source => .hexSeqOf (captureExpr fieldName source)
+  | .segments source => .segmentsOf (captureExpr fieldName source)
   | .signOf source => .signOf (captureExpr fieldName source)
+  | .prefixSign source => .prefixSignOf (captureExpr fieldName source)
   | .add left right => .intAdd (translateValExpr fieldName left) (translateValExpr fieldName right)
   | .sub left right => .intSub (translateValExpr fieldName left) (translateValExpr fieldName right)
   | .mul left right => .intMul (translateValExpr fieldName left) (translateValExpr fieldName right)
+  | .tdiv left right =>
+      .intTDiv (translateValExpr fieldName left) (translateValExpr fieldName right)
+  | .mod left right =>
+      .intMod (translateValExpr fieldName left) (translateValExpr fieldName right)
   | .pow base exponent => .intPow (translateValExpr fieldName base) (translateValExpr fieldName exponent)
   | .neg expression => .intNeg (translateValExpr fieldName expression)
+  | .iteEq left right thenBranch elseBranch =>
+      .ifThenElse
+        (.intEq (translateValExpr fieldName left) (translateValExpr fieldName right))
+        (translateValExpr fieldName thenBranch) (translateValExpr fieldName elseBranch)
+  | .iteLt left right thenBranch elseBranch =>
+      .ifThenElse
+        (.intLt (translateValExpr fieldName left) (translateValExpr fieldName right))
+        (translateValExpr fieldName thenBranch) (translateValExpr fieldName elseBranch)
+  | .iteLe left right thenBranch elseBranch =>
+      .ifThenElse
+        (.intLe (translateValExpr fieldName left) (translateValExpr fieldName right))
+        (translateValExpr fieldName thenBranch) (translateValExpr fieldName elseBranch)
+  | .iteEmpty source thenBranch elseBranch =>
+      .ifThenElse
+        (.textEq (captureExpr fieldName source) (.textLit ""))
+        (translateValExpr fieldName thenBranch) (translateValExpr fieldName elseBranch)
 
 private def namedOr (source expression : ValExpr) (name : String) (args : List IR.Expr)
     (otherwise : IR.Expr) : IR.Expr :=
@@ -95,8 +119,16 @@ def translateValExprNamed (fieldName : FieldName) (source : ValExpr) (name : Str
   | expression@(.count captureName) =>
       namedOr source expression name args
         (.countOf captureName (captureExpr fieldName (captureName ++ "#count")))
+  | expression@(.hex captureName) =>
+      namedOr source expression name args (.hexOf (captureExpr fieldName captureName))
+  | expression@(.hexSeq captureName) =>
+      namedOr source expression name args (.hexSeqOf (captureExpr fieldName captureName))
+  | expression@(.segments captureName) =>
+      namedOr source expression name args (.segmentsOf (captureExpr fieldName captureName))
   | expression@(.signOf captureName) =>
       namedOr source expression name args (.signOf (captureExpr fieldName captureName))
+  | expression@(.prefixSign captureName) =>
+      namedOr source expression name args (.prefixSignOf (captureExpr fieldName captureName))
   | expression@(.add left right) =>
       namedOr source expression name args
         (.intAdd
@@ -112,6 +144,16 @@ def translateValExprNamed (fieldName : FieldName) (source : ValExpr) (name : Str
         (.intMul
           (translateValExprNamed fieldName source name args left)
           (translateValExprNamed fieldName source name args right))
+  | expression@(.tdiv left right) =>
+      namedOr source expression name args
+        (.intTDiv
+          (translateValExprNamed fieldName source name args left)
+          (translateValExprNamed fieldName source name args right))
+  | expression@(.mod left right) =>
+      namedOr source expression name args
+        (.intMod
+          (translateValExprNamed fieldName source name args left)
+          (translateValExprNamed fieldName source name args right))
   | expression@(.pow base exponent) =>
       namedOr source expression name args
         (.intPow
@@ -120,6 +162,36 @@ def translateValExprNamed (fieldName : FieldName) (source : ValExpr) (name : Str
   | expression@(.neg operand) =>
       namedOr source expression name args
         (.intNeg (translateValExprNamed fieldName source name args operand))
+  | expression@(.iteEq left right thenBranch elseBranch) =>
+      namedOr source expression name args
+        (.ifThenElse
+          (.intEq
+            (translateValExprNamed fieldName source name args left)
+            (translateValExprNamed fieldName source name args right))
+          (translateValExprNamed fieldName source name args thenBranch)
+          (translateValExprNamed fieldName source name args elseBranch))
+  | expression@(.iteLt left right thenBranch elseBranch) =>
+      namedOr source expression name args
+        (.ifThenElse
+          (.intLt
+            (translateValExprNamed fieldName source name args left)
+            (translateValExprNamed fieldName source name args right))
+          (translateValExprNamed fieldName source name args thenBranch)
+          (translateValExprNamed fieldName source name args elseBranch))
+  | expression@(.iteLe left right thenBranch elseBranch) =>
+      namedOr source expression name args
+        (.ifThenElse
+          (.intLe
+            (translateValExprNamed fieldName source name args left)
+            (translateValExprNamed fieldName source name args right))
+          (translateValExprNamed fieldName source name args thenBranch)
+          (translateValExprNamed fieldName source name args elseBranch))
+  | expression@(.iteEmpty captureName thenBranch elseBranch) =>
+      namedOr source expression name args
+        (.ifThenElse
+          (.textEq (captureExpr fieldName captureName) (.textLit ""))
+          (translateValExprNamed fieldName source name args thenBranch)
+          (translateValExprNamed fieldName source name args elseBranch))
 
 /-- Translate a Triptych constraint into the Verus IR. -/
 def translateConstraint (fieldName : FieldName) : Constraint → IR.Expr
@@ -183,7 +255,8 @@ theorem denoteInt_translateValExpr (env : Env) (fieldName : FieldName) (expressi
     (translateValExpr fieldName expression).denoteInt env = some (expression.eval env) := by
   induction expression <;>
     simp [translateValExpr, captureExpr, IR.Expr.denoteInt, IR.Expr.denoteText,
-      ValExpr.eval, *]
+      ValExpr.eval, *] <;>
+    split <;> simp_all
 
 @[simp]
 theorem denoteInt_translateValExprNamed (env : Env) (fieldName : FieldName)
@@ -195,7 +268,8 @@ theorem denoteInt_translateValExprNamed (env : Env) (fieldName : FieldName)
     split <;> rename_i h
     · subst source
       simp [IR.Expr.denoteInt, ValExpr.eval]
-    · simp_all [captureExpr, IR.Expr.denoteInt, IR.Expr.denoteText, ValExpr.eval]
+    · simp_all [captureExpr, IR.Expr.denoteInt, IR.Expr.denoteText, ValExpr.eval] <;>
+        split <;> simp_all
 
 @[simp]
 theorem denoteProp_translateConstraint (env : Env) (fieldName : FieldName)

@@ -108,4 +108,29 @@ proof {
     assert(__ROOT_WF__(input@)) by {
         reveal(__ROOT_WF__);
     }
+    let parsed_view = __VIEW_TYPE__ {
+        input: input@,
+        __SIGN__: __SIGN__,
+        __NATURAL__: __NATURAL__,
+        __FRACTION__: __FRACTION__,
+    };
+    assert(__MATCHES_VIEW__(input@, parsed_view)) by {
+        reveal(__MATCHES_VIEW__);
+    }
+    assert(
+        __PARSE_VIEW__(
+            input@,
+            __PARSE_SPEC_TYPE__ {
+                end: input@.len() as int,
+                __SIGN___start: __SIGN___start as int,
+                __SIGN___end: __SIGN___end as int,
+                __NATURAL___start: __NATURAL___start as int,
+                __NATURAL___end: __NATURAL___end as int,
+                __FRACTION___start: __FRACTION___start as int,
+                __FRACTION___end: __FRACTION___end as int,
+            },
+        ) == parsed_view
+    ) by {
+        reveal(__PARSE_VIEW__);
+    }
 }

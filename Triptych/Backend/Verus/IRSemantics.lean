@@ -45,14 +45,36 @@ def IR.Expr.denoteInt (env : Env) : IR.Expr → Option Int
   | .intAdd left right => return (← left.denoteInt env) + (← right.denoteInt env)
   | .intSub left right => return (← left.denoteInt env) - (← right.denoteInt env)
   | .intMul left right => return (← left.denoteInt env) * (← right.denoteInt env)
+  | .intTDiv left right => return (← left.denoteInt env).tdiv (← right.denoteInt env)
+  | .intMod left right => return (← left.denoteInt env).tmod (← right.denoteInt env)
   | .intNeg expression => return -(← expression.denoteInt env)
   | .intPow base exponent =>
       return (← base.denoteInt env) ^ (← exponent.denoteInt env).toNat
   | .textLen expression => return Triptych.lenOf (← expression.denoteText env)
   | .natOf expression => return Triptych.natOf (← expression.denoteText env)
   | .intOf expression => return Triptych.intOf (← expression.denoteText env)
+  | .hexOf expression => return Triptych.hexOf (← expression.denoteText env)
+  | .hexSeqOf expression => return Triptych.hexSeqOf (← expression.denoteText env)
+  | .segmentsOf expression => return Triptych.segmentsOf (← expression.denoteText env)
   | .signOf expression => return Triptych.signOf (← expression.denoteText env)
+  | .prefixSignOf expression => return Triptych.signOf (← expression.denoteText env)
   | .countOf _ expression => return Triptych.countOf (← expression.denoteText env)
+  | .ifThenElse (.intEq left right) thenBranch elseBranch => do
+      let left ← left.denoteInt env
+      let right ← right.denoteInt env
+      if left = right then thenBranch.denoteInt env else elseBranch.denoteInt env
+  | .ifThenElse (.intLt left right) thenBranch elseBranch => do
+      let left ← left.denoteInt env
+      let right ← right.denoteInt env
+      if left < right then thenBranch.denoteInt env else elseBranch.denoteInt env
+  | .ifThenElse (.intLe left right) thenBranch elseBranch => do
+      let left ← left.denoteInt env
+      let right ← right.denoteInt env
+      if left ≤ right then thenBranch.denoteInt env else elseBranch.denoteInt env
+  | .ifThenElse (.textEq left right) thenBranch elseBranch => do
+      let left ← left.denoteText env
+      let right ← right.denoteText env
+      if left = right then thenBranch.denoteInt env else elseBranch.denoteInt env
   | _ => none
 
 /-- The proposition represented by the Verus IR subset. -/
@@ -123,5 +145,32 @@ theorem countOf_capture (env : Env) (source : String) :
     Triptych.countOf ((env (source ++ "#count")).getD "") = env.countVal source := by
   cases h : env (source ++ "#count") <;>
     simp [Env.countVal, Env.natVal, Triptych.countOf, readNat, h]
+
+@[simp]
+theorem hexOf_capture (env : Env) (source : String) :
+    Triptych.hexOf ((env source).getD "") = env.hexVal source := by
+  cases h : env source with
+  | none =>
+      simp [Env.hexVal, Triptych.hexOf, Triptych.hexOfChars, h]
+  | some text =>
+      simp [Env.hexVal, h]
+
+@[simp]
+theorem hexSeqOf_capture (env : Env) (source : String) :
+    Triptych.hexSeqOf ((env source).getD "") = env.hexSeqVal source := by
+  cases h : env source with
+  | none =>
+      simp [Env.hexSeqVal, Triptych.hexSeqOf, Triptych.hexSeqOfChars, h]
+  | some text =>
+      simp [Env.hexSeqVal, h]
+
+@[simp]
+theorem segmentsOf_capture (env : Env) (source : String) :
+    Triptych.segmentsOf ((env source).getD "") = env.segmentVal source := by
+  cases h : env source with
+  | none =>
+      simp [Env.segmentVal, Triptych.segmentsOf, h]
+  | some text =>
+      simp [Env.segmentVal, h]
 
 end Triptych.Backend.Verus

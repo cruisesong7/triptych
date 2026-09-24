@@ -537,13 +537,13 @@ theorem rep_iter (g : Grammar) (q : String) (fuel : Nat) (sep : String) (item : 
   simp only [matchSym, matchesSym]
   constructor
   · intro hmem
-    obtain ⟨n, hex, hb⟩ :=
+    obtain ⟨n, hrep, hb⟩ :=
       (repFilter_mem (item.refName?.getD q) lo hi r₂
         (matchRep (fun cs' => matchSym g q fuel item cs') sep.toList cs)).mp hmem
     rw [inBounds_iff] at hb
     obtain ⟨parts, hne, hlenn, hcs, hPall⟩ :=
       (matchRep_iter (fun cs' => matchSym g q fuel item cs') sep.toList hsepL
-        (fun r₁ => matchesSym g fuel item (String.ofList r₁)) hitem cs r₂ n).mp hex
+        (fun r₁ => matchesSym g fuel item (String.ofList r₁)) hitem cs r₂ n).mp hrep
     refine ⟨sep.toList.intercalate parts, hcs, parts.map String.ofList, ?_, ?_, ?_, ?_⟩
     · rw [List.length_map, hlenn]; exact hb.1
     · intro h hh; rw [List.length_map, hlenn]; exact hb.2 h hh

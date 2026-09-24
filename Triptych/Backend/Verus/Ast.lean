@@ -46,6 +46,8 @@ inductive Expr where
   | intAdd (left right : Expr)
   | intSub (left right : Expr)
   | intMul (left right : Expr)
+  | intTDiv (left right : Expr)
+  | intMod (left right : Expr)
   | intNeg (expression : Expr)
   | textLen (expression : Expr)
   | textIndex (expression index : Expr)
