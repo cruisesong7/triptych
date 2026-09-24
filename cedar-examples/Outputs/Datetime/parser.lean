@@ -171,12 +171,116 @@ def Datetime.Derivation.Datetime.capturesWith (qual : String) : Datetime.Derivat
                   Datetime.Derivation.Offset.capturesWith "Offset" part5 ++
                 []))))))
 
-def Datetime.valueFn := fun m : Triptych.CaptureMap =>
-  epochMillis ((Triptych.CaptureMap.toEnv m "YYYY").getD "") ((Triptych.CaptureMap.toEnv m "MM").getD "")
-    ((Triptych.CaptureMap.toEnv m "DD").getD "") ((Triptych.CaptureMap.toEnv m "Time.hh").getD "")
-    ((Triptych.CaptureMap.toEnv m "Time.mm").getD "") ((Triptych.CaptureMap.toEnv m "ss").getD "")
-    ((Triptych.CaptureMap.toEnv m "SSS").getD "") ((Triptych.CaptureMap.toEnv m "Offset.hh").getD "")
-    ((Triptych.CaptureMap.toEnv m "Offset.mm").getD "") ((Triptych.CaptureMap.toEnv m "Offset").getD "")
+def Datetime.valueExpr : ValExpr :=
+  ValExpr.sub
+    (ValExpr.add
+      (ValExpr.mul
+        (ValExpr.add
+          (ValExpr.add
+            (ValExpr.add
+              (ValExpr.mul
+                (ValExpr.sub
+                  (ValExpr.add
+                    (ValExpr.mul
+                      (ValExpr.iteLe (ValExpr.lit 0)
+                        (ValExpr.iteLt (ValExpr.lit 2) (ValExpr.nat "MM") (ValExpr.nat "YYYY")
+                          (ValExpr.sub (ValExpr.nat "YYYY") (ValExpr.lit 1)))
+                        (ValExpr.tdiv
+                          (ValExpr.iteLt (ValExpr.lit 2) (ValExpr.nat "MM") (ValExpr.nat "YYYY")
+                            (ValExpr.sub (ValExpr.nat "YYYY") (ValExpr.lit 1)))
+                          (ValExpr.lit 400))
+                        (ValExpr.tdiv
+                          (ValExpr.sub
+                            (ValExpr.iteLt (ValExpr.lit 2) (ValExpr.nat "MM") (ValExpr.nat "YYYY")
+                              (ValExpr.sub (ValExpr.nat "YYYY") (ValExpr.lit 1)))
+                            (ValExpr.lit 399))
+                          (ValExpr.lit 400)))
+                      (ValExpr.lit 146097))
+                    (ValExpr.add
+                      (ValExpr.sub
+                        (ValExpr.add
+                          (ValExpr.mul
+                            (ValExpr.sub
+                              (ValExpr.iteLt (ValExpr.lit 2) (ValExpr.nat "MM") (ValExpr.nat "YYYY")
+                                (ValExpr.sub (ValExpr.nat "YYYY") (ValExpr.lit 1)))
+                              (ValExpr.mul
+                                (ValExpr.iteLe (ValExpr.lit 0)
+                                  (ValExpr.iteLt (ValExpr.lit 2) (ValExpr.nat "MM") (ValExpr.nat "YYYY")
+                                    (ValExpr.sub (ValExpr.nat "YYYY") (ValExpr.lit 1)))
+                                  (ValExpr.tdiv
+                                    (ValExpr.iteLt (ValExpr.lit 2) (ValExpr.nat "MM") (ValExpr.nat "YYYY")
+                                      (ValExpr.sub (ValExpr.nat "YYYY") (ValExpr.lit 1)))
+                                    (ValExpr.lit 400))
+                                  (ValExpr.tdiv
+                                    (ValExpr.sub
+                                      (ValExpr.iteLt (ValExpr.lit 2) (ValExpr.nat "MM") (ValExpr.nat "YYYY")
+                                        (ValExpr.sub (ValExpr.nat "YYYY") (ValExpr.lit 1)))
+                                      (ValExpr.lit 399))
+                                    (ValExpr.lit 400)))
+                                (ValExpr.lit 400)))
+                            (ValExpr.lit 365))
+                          (ValExpr.tdiv
+                            (ValExpr.sub
+                              (ValExpr.iteLt (ValExpr.lit 2) (ValExpr.nat "MM") (ValExpr.nat "YYYY")
+                                (ValExpr.sub (ValExpr.nat "YYYY") (ValExpr.lit 1)))
+                              (ValExpr.mul
+                                (ValExpr.iteLe (ValExpr.lit 0)
+                                  (ValExpr.iteLt (ValExpr.lit 2) (ValExpr.nat "MM") (ValExpr.nat "YYYY")
+                                    (ValExpr.sub (ValExpr.nat "YYYY") (ValExpr.lit 1)))
+                                  (ValExpr.tdiv
+                                    (ValExpr.iteLt (ValExpr.lit 2) (ValExpr.nat "MM") (ValExpr.nat "YYYY")
+                                      (ValExpr.sub (ValExpr.nat "YYYY") (ValExpr.lit 1)))
+                                    (ValExpr.lit 400))
+                                  (ValExpr.tdiv
+                                    (ValExpr.sub
+                                      (ValExpr.iteLt (ValExpr.lit 2) (ValExpr.nat "MM") (ValExpr.nat "YYYY")
+                                        (ValExpr.sub (ValExpr.nat "YYYY") (ValExpr.lit 1)))
+                                      (ValExpr.lit 399))
+                                    (ValExpr.lit 400)))
+                                (ValExpr.lit 400)))
+                            (ValExpr.lit 4)))
+                        (ValExpr.tdiv
+                          (ValExpr.sub
+                            (ValExpr.iteLt (ValExpr.lit 2) (ValExpr.nat "MM") (ValExpr.nat "YYYY")
+                              (ValExpr.sub (ValExpr.nat "YYYY") (ValExpr.lit 1)))
+                            (ValExpr.mul
+                              (ValExpr.iteLe (ValExpr.lit 0)
+                                (ValExpr.iteLt (ValExpr.lit 2) (ValExpr.nat "MM") (ValExpr.nat "YYYY")
+                                  (ValExpr.sub (ValExpr.nat "YYYY") (ValExpr.lit 1)))
+                                (ValExpr.tdiv
+                                  (ValExpr.iteLt (ValExpr.lit 2) (ValExpr.nat "MM") (ValExpr.nat "YYYY")
+                                    (ValExpr.sub (ValExpr.nat "YYYY") (ValExpr.lit 1)))
+                                  (ValExpr.lit 400))
+                                (ValExpr.tdiv
+                                  (ValExpr.sub
+                                    (ValExpr.iteLt (ValExpr.lit 2) (ValExpr.nat "MM") (ValExpr.nat "YYYY")
+                                      (ValExpr.sub (ValExpr.nat "YYYY") (ValExpr.lit 1)))
+                                    (ValExpr.lit 399))
+                                  (ValExpr.lit 400)))
+                              (ValExpr.lit 400)))
+                          (ValExpr.lit 100)))
+                      (ValExpr.add
+                        (ValExpr.tdiv
+                          (ValExpr.add
+                            (ValExpr.mul (ValExpr.lit 153)
+                              (ValExpr.add (ValExpr.nat "MM")
+                                (ValExpr.iteLt (ValExpr.lit 2) (ValExpr.nat "MM") (ValExpr.lit (-3)) (ValExpr.lit 9))))
+                            (ValExpr.lit 2))
+                          (ValExpr.lit 5))
+                        (ValExpr.sub (ValExpr.nat "DD") (ValExpr.lit 1)))))
+                  (ValExpr.lit 719468))
+                (ValExpr.lit 86400))
+              (ValExpr.mul (ValExpr.nat "Time.hh") (ValExpr.lit 3600)))
+            (ValExpr.mul (ValExpr.nat "Time.mm") (ValExpr.lit 60)))
+          (ValExpr.nat "ss"))
+        (ValExpr.lit 1000))
+      (ValExpr.nat "SSS"))
+    (ValExpr.mul (ValExpr.prefixSign "Offset")
+      (ValExpr.add (ValExpr.mul (ValExpr.nat "Offset.hh") (ValExpr.lit 3600000))
+        (ValExpr.mul (ValExpr.nat "Offset.mm") (ValExpr.lit 60000))))
+
+def Datetime.valueFn : Env → Int :=
+  (Datetime.valueExpr).eval
 
 def Datetime.constraints : List ConstraintEntry :=
   [ConstraintEntry.dsl ConstraintPhase.wellFormed
@@ -197,19 +301,36 @@ def Datetime.constraints : List ConstraintEntry :=
     ConstraintEntry.dsl ConstraintPhase.wellFormed
       (Constraint.and (Constraint.le (ValExpr.lit 0) (ValExpr.nat "Offset.mm"))
         (Constraint.le (ValExpr.nat "Offset.mm") (ValExpr.lit 59))),
-    ConstraintEntry.opaqueMap ConstraintPhase.wellFormed fun m : Triptych.CaptureMap =>
-      dayBound ((Triptych.CaptureMap.toEnv m "YYYY").getD "") ((Triptych.CaptureMap.toEnv m "MM").getD "")
-        ((Triptych.CaptureMap.toEnv m "DD").getD "")]
+    ConstraintEntry.dsl ConstraintPhase.wellFormed
+      (Constraint.and (Constraint.le (ValExpr.lit 1) (ValExpr.nat "DD"))
+        (Constraint.le (ValExpr.nat "DD")
+          (ValExpr.iteEq (ValExpr.nat "MM") (ValExpr.lit 4) (ValExpr.lit 30)
+            (ValExpr.iteEq (ValExpr.nat "MM") (ValExpr.lit 6) (ValExpr.lit 30)
+              (ValExpr.iteEq (ValExpr.nat "MM") (ValExpr.lit 9) (ValExpr.lit 30)
+                (ValExpr.iteEq (ValExpr.nat "MM") (ValExpr.lit 11) (ValExpr.lit 30)
+                  (ValExpr.iteEq (ValExpr.nat "MM") (ValExpr.lit 2)
+                    (ValExpr.iteEq
+                      (ValExpr.iteEq (ValExpr.mod (ValExpr.nat "YYYY") (ValExpr.lit 4)) (ValExpr.lit 0)
+                        (ValExpr.iteEq (ValExpr.mod (ValExpr.nat "YYYY") (ValExpr.lit 100)) (ValExpr.lit 0)
+                          (ValExpr.iteEq (ValExpr.mod (ValExpr.nat "YYYY") (ValExpr.lit 400)) (ValExpr.lit 0)
+                            (ValExpr.lit 1) (ValExpr.lit 0))
+                          (ValExpr.lit 1))
+                        (ValExpr.lit 0))
+                      (ValExpr.lit 1) (ValExpr.lit 29) (ValExpr.lit 28))
+                    (ValExpr.lit 31)))))))),
+    ConstraintEntry.dsl ConstraintPhase.value
+      (Constraint.and (Constraint.le (ValExpr.lit (-9223372036854775808)) Datetime.valueExpr)
+        (Constraint.le Datetime.valueExpr (ValExpr.lit 9223372036854775807)))]
 
-def Datetime.computeValue (s : String) :=
-  Triptych.scannerComputeValueMap Datetime.grammar Datetime.valueFn s
+def Datetime.computeValue (s : String) : Option Int :=
+  Triptych.scannerComputeValue Datetime.grammar Datetime.valueExpr s
 
 def Datetime.View.ofMap (input : String) (m : Triptych.CaptureMap) : Datetime.View :=
-  Datetime.View.mk input ((Triptych.CaptureMap.toEnv m "YYYY").getD "") ((Triptych.CaptureMap.toEnv m "MM").getD "")
+  Datetime.View.mk input ((Triptych.CaptureMap.toEnv m "MM").getD "") ((Triptych.CaptureMap.toEnv m "YYYY").getD "")
     ((Triptych.CaptureMap.toEnv m "DD").getD "") (Triptych.CaptureMap.toEnv m "Time.hh")
     (Triptych.CaptureMap.toEnv m "Time.mm") (Triptych.CaptureMap.toEnv m "ss") (Triptych.CaptureMap.toEnv m "SSS")
-    (Triptych.CaptureMap.toEnv m "Offset.hh") (Triptych.CaptureMap.toEnv m "Offset.mm")
-    (Triptych.CaptureMap.toEnv m "Offset")
+    (Triptych.CaptureMap.toEnv m "Offset") (Triptych.CaptureMap.toEnv m "Offset.hh")
+    (Triptych.CaptureMap.toEnv m "Offset.mm")
 
 def Datetime.decodeView (s : String) : Option Datetime.View :=
   (scan Datetime.grammar s).map (Datetime.View.ofMap s)
@@ -970,14 +1091,30 @@ theorem Datetime.SatisfiesWfConstraints_of_decode {s : String} {m : Triptych.Cap
       Datetime.WfConstraints ((Triptych.CaptureMap.toEnv m "MM").getD "")
         ((Triptych.CaptureMap.toEnv m "Time.hh").getD "") ((Triptych.CaptureMap.toEnv m "Time.mm").getD "")
         ((Triptych.CaptureMap.toEnv m "ss").getD "") ((Triptych.CaptureMap.toEnv m "Offset.hh").getD "")
-        ((Triptych.CaptureMap.toEnv m "Offset.mm").getD "") ((Triptych.CaptureMap.toEnv m "YYYY").getD "")
-        ((Triptych.CaptureMap.toEnv m "DD").getD "") :=
+        ((Triptych.CaptureMap.toEnv m "Offset.mm").getD "") ((Triptych.CaptureMap.toEnv m "DD").getD "")
+        ((Triptych.CaptureMap.toEnv m "YYYY").getD "") :=
   by
   unfold Datetime.SatisfiesWfConstraints
   simp only [Triptych.component_eq_of_decode h "MM", Triptych.component_eq_of_decode h "Time.hh",
     Triptych.component_eq_of_decode h "Time.mm", Triptych.component_eq_of_decode h "ss",
     Triptych.component_eq_of_decode h "Offset.hh", Triptych.component_eq_of_decode h "Offset.mm",
-    Triptych.component_eq_of_decode h "YYYY", Triptych.component_eq_of_decode h "DD"]
+    Triptych.component_eq_of_decode h "DD", Triptych.component_eq_of_decode h "YYYY"]
+
+theorem Datetime.SatisfiesConstraints_of_decode {s : String} {m : Triptych.CaptureMap}
+    (h : decode Datetime.grammar s = some m) :
+    Datetime.SatisfiesConstraints s ↔
+      Datetime.Constraints ((Triptych.CaptureMap.toEnv m "MM").getD "") ((Triptych.CaptureMap.toEnv m "YYYY").getD "")
+        ((Triptych.CaptureMap.toEnv m "DD").getD "") ((Triptych.CaptureMap.toEnv m "Time.hh").getD "")
+        ((Triptych.CaptureMap.toEnv m "Time.mm").getD "") ((Triptych.CaptureMap.toEnv m "ss").getD "")
+        ((Triptych.CaptureMap.toEnv m "SSS").getD "") ((Triptych.CaptureMap.toEnv m "Offset").getD "")
+        ((Triptych.CaptureMap.toEnv m "Offset.hh").getD "") ((Triptych.CaptureMap.toEnv m "Offset.mm").getD "") :=
+  by
+  unfold Datetime.SatisfiesConstraints
+  simp only [Triptych.component_eq_of_decode h "MM", Triptych.component_eq_of_decode h "YYYY",
+    Triptych.component_eq_of_decode h "DD", Triptych.component_eq_of_decode h "Time.hh",
+    Triptych.component_eq_of_decode h "Time.mm", Triptych.component_eq_of_decode h "ss",
+    Triptych.component_eq_of_decode h "SSS", Triptych.component_eq_of_decode h "Offset",
+    Triptych.component_eq_of_decode h "Offset.hh", Triptych.component_eq_of_decode h "Offset.mm"]
 
 theorem Datetime.Internal.matchesRef.YYYY (fuel : Nat) (s : String) :
     matchesSym Datetime.grammar (fuel + 1) (Sym.ref "YYYY") s ↔ Datetime.IsWf.YYYY s :=
@@ -1279,7 +1416,19 @@ theorem Datetime.IsWf_equiv (s : String) : Datetime.IsWf s ↔ Triptych.isWf Dat
   simp only [Triptych.component, Triptych.componentList, Triptych.envOf, Triptych.captureMapOf, Triptych.scan_eq_decode,
     List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const, ConstraintEntry.wfPart,
     Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD,
-    Env.countVal, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
+    hexOf_getD, hexSeqOf_getD, segmentsOf_getD, Env.countVal, and_true, true_and, false_implies, implies_true,
+    Bool.false_eq_true]
+  try grind
+
+theorem Datetime.SatisfiesConstraints_equiv (s : String) :
+    Datetime.SatisfiesConstraints s ↔ Triptych.satisfiesConstraints Datetime.grammar Datetime.constraints s :=
+  by
+  unfold Triptych.satisfiesConstraints
+  unfold Datetime.SatisfiesConstraints Datetime.Constraints Datetime.constraints Datetime.value Datetime.valueExpr
+  simp only [Triptych.component, Triptych.envOf, Triptych.captureMapOf, Triptych.scan_eq_decode, List.forall_mem_cons,
+    List.forall_mem_singleton, List.not_mem_nil, forall_const, ConstraintEntry.valPart, Constraint.eval, ValExpr.eval,
+    presentCount, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, hexOf_getD, hexSeqOf_getD,
+    segmentsOf_getD, Env.countVal, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
   try grind
 
 theorem Datetime.IsValid_equiv (s : String) :
@@ -1288,20 +1437,16 @@ theorem Datetime.IsValid_equiv (s : String) :
         Triptych.satisfiesConstraints Datetime.grammar Datetime.constraints s :=
   by
   unfold Datetime.IsValid
-  rw [(Datetime.IsWf_equiv s)]
-  unfold Triptych.satisfiesConstraints Triptych.captureMapOf Datetime.constraints
-  simp only [List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, ConstraintEntry.valPart, false_implies,
-    true_and, and_true]
-  constructor
-  · intro h
-    exact ⟨h, fun _ => True.intro⟩
-  · exact And.left
+  rw [(Datetime.IsWf_equiv s), (Datetime.SatisfiesConstraints_equiv s)]
 
 instance Datetime.instDecidableGrammar : DecidablePred Datetime.IsWf.Datetime := fun s =>
   @decidable_of_iff _ _ (Datetime.IsWfGrammar_equiv s) (Triptych.decIsWfScanner Datetime.grammar (by decide) s)
 
 instance Datetime.instDecidableIsWf : DecidablePred Datetime.IsWf := fun s =>
   @decidable_of_iff _ _ (Datetime.IsWf_equiv s).symm inferInstance
+
+instance Datetime.instDecidableSatisfiesConstraints : DecidablePred Datetime.SatisfiesConstraints := fun s =>
+  @decidable_of_iff _ _ (Datetime.SatisfiesConstraints_equiv s).symm inferInstance
 
 instance Datetime.instDecidableIsValid : DecidablePred Datetime.IsValid := fun s => inferInstance
 
@@ -1310,6 +1455,13 @@ theorem Datetime.View.wfConstraints_of_decode {s : String} {m : Triptych.Capture
     Datetime.SatisfiesWfConstraints s ↔ Datetime.View.WfConstraints (Datetime.View.ofMap s m) :=
   by
   rw [Datetime.SatisfiesWfConstraints_of_decode h]
+  rfl
+
+theorem Datetime.View.constraints_of_decode {s : String} {m : Triptych.CaptureMap}
+    (h : decode Datetime.grammar s = some m) :
+    Datetime.SatisfiesConstraints s ↔ Datetime.View.Constraints (Datetime.View.ofMap s m) :=
+  by
+  rw [Datetime.SatisfiesConstraints_of_decode h]
   rfl
 
 theorem Datetime.IsValid_view (s : String) :
@@ -1324,7 +1476,10 @@ theorem Datetime.IsValid_view (s : String) :
     refine ⟨Datetime.View.ofMap s m, ?_, ?_⟩
     · unfold Datetime.decodeView
       simp [Triptych.scan_eq_decode, hmDecode]
-    · exact (Datetime.View.wfConstraints_of_decode hmDecode).mp hvalid.2
+    ·
+      exact
+        ⟨(Datetime.View.wfConstraints_of_decode hmDecode).mp hvalid.1.2,
+          (Datetime.View.constraints_of_decode hmDecode).mp hvalid.2⟩
   · rintro ⟨v, hview, hvalid⟩
     unfold Datetime.decodeView at hview
     rw [Option.map_eq_some_iff] at hview
@@ -1334,41 +1489,46 @@ theorem Datetime.IsValid_view (s : String) :
     have hdecoded : (decode Datetime.grammar s).isSome = true := by simp [hmDecode]
     have hgrammar :=
       (Datetime.IsWfGrammar_equiv s).mp ((decodeSome_iff_IsWf Datetime.grammar (by decide) s).mp hdecoded)
-    exact ⟨hgrammar, (Datetime.View.wfConstraints_of_decode hmDecode).mpr hvalid⟩
+    exact
+      ⟨⟨hgrammar, (Datetime.View.wfConstraints_of_decode hmDecode).mpr hvalid.1⟩,
+        (Datetime.View.constraints_of_decode hmDecode).mpr hvalid.2⟩
 
 theorem Datetime.computeValue_eq (s : String) :
     Datetime.computeValue s =
       (decode Datetime.grammar s).map
         (fun _ =>
-          Datetime.value (Triptych.component Datetime.grammar s "YYYY") (Triptych.component Datetime.grammar s "MM")
+          Datetime.value (Triptych.component Datetime.grammar s "MM") (Triptych.component Datetime.grammar s "YYYY")
             (Triptych.component Datetime.grammar s "DD") (Triptych.component Datetime.grammar s "Time.hh")
             (Triptych.component Datetime.grammar s "Time.mm") (Triptych.component Datetime.grammar s "ss")
-            (Triptych.component Datetime.grammar s "SSS") (Triptych.component Datetime.grammar s "Offset.hh")
-            (Triptych.component Datetime.grammar s "Offset.mm") (Triptych.component Datetime.grammar s "Offset")) :=
+            (Triptych.component Datetime.grammar s "SSS") (Triptych.component Datetime.grammar s "Offset")
+            (Triptych.component Datetime.grammar s "Offset.hh") (Triptych.component Datetime.grammar s "Offset.mm")) :=
   by
-  unfold Datetime.computeValue Triptych.scannerComputeValueMap Triptych.component Triptych.envOf Triptych.captureMapOf
-    Datetime.value Datetime.valueFn
+  unfold Datetime.computeValue Triptych.scannerComputeValue Triptych.component Triptych.envOf Triptych.captureMapOf
+    Datetime.value Datetime.valueExpr
   rw [Triptych.scan_eq_decode]
   cases h : decode Datetime.grammar s with
   | none => simp [h]
-  | some m => simp [h, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, Env.countVal, ValExpr.eval]
+  | some m =>
+    simp [h, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, hexOf_getD, hexSeqOf_getD, segmentsOf_getD,
+        Env.countVal, ValExpr.eval] <;>
+      ac_rfl
 
 theorem Datetime.computeValue_of_decode {s : String} {m : Triptych.CaptureMap}
     (h : decode Datetime.grammar s = some m) :
     Datetime.computeValue s =
       some
-        (Datetime.value ((Triptych.CaptureMap.toEnv m "YYYY").getD "") ((Triptych.CaptureMap.toEnv m "MM").getD "")
+        (Datetime.value ((Triptych.CaptureMap.toEnv m "MM").getD "") ((Triptych.CaptureMap.toEnv m "YYYY").getD "")
           ((Triptych.CaptureMap.toEnv m "DD").getD "") ((Triptych.CaptureMap.toEnv m "Time.hh").getD "")
           ((Triptych.CaptureMap.toEnv m "Time.mm").getD "") ((Triptych.CaptureMap.toEnv m "ss").getD "")
-          ((Triptych.CaptureMap.toEnv m "SSS").getD "") ((Triptych.CaptureMap.toEnv m "Offset.hh").getD "")
-          ((Triptych.CaptureMap.toEnv m "Offset.mm").getD "") ((Triptych.CaptureMap.toEnv m "Offset").getD "")) :=
+          ((Triptych.CaptureMap.toEnv m "SSS").getD "") ((Triptych.CaptureMap.toEnv m "Offset").getD "")
+          ((Triptych.CaptureMap.toEnv m "Offset.hh").getD "") ((Triptych.CaptureMap.toEnv m "Offset.mm").getD "")) :=
   by
   rw [Datetime.computeValue_eq, h]
-  simp only [Option.map_some, Triptych.component_eq_of_decode h "YYYY", Triptych.component_eq_of_decode h "MM",
+  simp only [Option.map_some, Triptych.component_eq_of_decode h "MM", Triptych.component_eq_of_decode h "YYYY",
     Triptych.component_eq_of_decode h "DD", Triptych.component_eq_of_decode h "Time.hh",
     Triptych.component_eq_of_decode h "Time.mm", Triptych.component_eq_of_decode h "ss",
-    Triptych.component_eq_of_decode h "SSS", Triptych.component_eq_of_decode h "Offset.hh",
-    Triptych.component_eq_of_decode h "Offset.mm", Triptych.component_eq_of_decode h "Offset"]
+    Triptych.component_eq_of_decode h "SSS", Triptych.component_eq_of_decode h "Offset",
+    Triptych.component_eq_of_decode h "Offset.hh", Triptych.component_eq_of_decode h "Offset.mm"]
 
 theorem Datetime.computeValue_view (s : String) :
     Datetime.computeValue s = (Datetime.decodeView s).map Datetime.View.denotation :=
@@ -1406,16 +1566,16 @@ theorem Datetime.computeValue_isSome (s : String) : Datetime.IsValid s → (Date
   intro h
   have hengine := (Datetime.IsValid_equiv s).mp h
   unfold Triptych.isWf at hengine
-  unfold Datetime.computeValue Triptych.scannerComputeValueMap
+  unfold Datetime.computeValue Triptych.scannerComputeValue
   rw [Option.isSome_map]
   exact hengine.1.1
 
 def Datetime.parse (s : String) :=
-  Triptych.scannerParseMap Datetime.grammar Datetime.constraints Datetime.valueFn millisToDatetime s
+  Triptych.scannerParse Datetime.grammar Datetime.constraints Datetime.valueExpr millisToDatetime s
 
 theorem Datetime.parse_eq_scanner (s : String) :
     Datetime.parse s =
-      Triptych.scannerParseMap Datetime.grammar Datetime.constraints Datetime.valueFn millisToDatetime s :=
+      Triptych.scannerParse Datetime.grammar Datetime.constraints Datetime.valueExpr millisToDatetime s :=
   by rfl
 
 theorem Datetime.parse_eq_gated (s : String) :
@@ -1424,29 +1584,29 @@ theorem Datetime.parse_eq_gated (s : String) :
   rw [Datetime.parse_eq_scanner]
   unfold Datetime.computeValue
   exact
-    Triptych.scannerParseMap_eq_surfaceGatedParseOfSpec Datetime.grammar Datetime.constraints Datetime.valueFn
+    Triptych.scannerParse_eq_surfaceGatedParseOfSpec Datetime.grammar Datetime.constraints Datetime.valueExpr
       millisToDatetime Datetime.IsValid Datetime.IsValid_equiv s
 
 theorem Datetime.parse_profile_result (s : String) :
-    (Triptych.scannerParseMapProfile Datetime.grammar Datetime.constraints Datetime.valueFn millisToDatetime s).result =
+    (Triptych.scannerParseProfile Datetime.grammar Datetime.constraints Datetime.valueExpr millisToDatetime s).result =
       Datetime.parse s :=
   by
-  rw [Triptych.scannerParseMapProfile_result]
+  rw [Triptych.scannerParseProfile_result]
   exact (Datetime.parse_eq_scanner s).symm
 
 theorem Datetime.parse_candidateChecks_le (s : String) :
-    (Triptych.scannerParseMapProfile Datetime.grammar Datetime.constraints Datetime.valueFn millisToDatetime
+    (Triptych.scannerParseProfile Datetime.grammar Datetime.constraints Datetime.valueExpr millisToDatetime
           s).candidateChecks ≤
       Triptych.scannerCandidateBudget Datetime.grammar s :=
-  Triptych.scannerParseMap_candidateChecks_le Datetime.grammar Datetime.constraints Datetime.valueFn millisToDatetime s
+  Triptych.scannerParse_candidateChecks_le Datetime.grammar Datetime.constraints Datetime.valueExpr millisToDatetime s
 
 theorem Datetime.parse_candidateChecks_eq_zero_of_fastScan (s : String)
     (hunique : (Datetime.grammar).staticUnique = true) {captures : Triptych.CaptureMap}
     (hscan : Triptych.fastScan Datetime.grammar s = some captures) :
-    (Triptych.scannerParseMapProfile Datetime.grammar Datetime.constraints Datetime.valueFn millisToDatetime
+    (Triptych.scannerParseProfile Datetime.grammar Datetime.constraints Datetime.valueExpr millisToDatetime
           s).candidateChecks =
       0 :=
-  Triptych.scannerParseMap_candidateChecks_eq_zero_of_fastScan Datetime.grammar Datetime.constraints Datetime.valueFn
+  Triptych.scannerParse_candidateChecks_eq_zero_of_fastScan Datetime.grammar Datetime.constraints Datetime.valueExpr
     millisToDatetime s hunique hscan
 
 theorem Datetime.parse_sound (s : String) (d : Cedar.Spec.Ext.Datetime) :

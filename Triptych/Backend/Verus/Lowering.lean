@@ -36,13 +36,21 @@ inductive Helper where
   | natOf
   | countOf
   | intOf
+  | hexDigitValue
+  | hexOfFrom
+  | hexOf
+  | hexSeqFrom
+  | hexSeqOf
+  | segmentsFrom
+  | segmentsOf
   | signOf
   | intPow
   deriving Repr, Inhabited, DecidableEq, BEq
 
 def helperOrder : List Helper :=
   [.minusConstant, .zeroConstant, .isDigit, .isHexDigit, .isBit,
-   .natOfFrom, .natOf, .countOf, .intOf, .signOf, .intPow]
+   .natOfFrom, .natOf, .countOf, .intOf, .hexDigitValue, .hexOfFrom, .hexOf,
+   .hexSeqFrom, .hexSeqOf, .segmentsFrom, .segmentsOf, .signOf, .intPow]
 
 def Helper.dependencies : Helper → List Helper
   | .isHexDigit => [.isDigit]
@@ -50,6 +58,11 @@ def Helper.dependencies : Helper → List Helper
   | .natOf => [.natOfFrom]
   | .countOf => [.natOf]
   | .intOf => [.minusConstant, .natOf]
+  | .hexOfFrom => [.hexDigitValue]
+  | .hexOf => [.hexOfFrom]
+  | .hexSeqFrom => [.hexDigitValue]
+  | .hexSeqOf => [.hexSeqFrom]
+  | .segmentsOf => [.segmentsFrom]
   | .signOf => [.minusConstant]
   | _ => []
 
@@ -68,7 +81,8 @@ def expressionHelpers : IR.Expr → List Helper
   | .call _ args | .valueRef _ _ args =>
       args.flatMap expressionHelpers
   | .textConcat left right | .intAdd left right | .intSub left right
-  | .intMul left right | .textIndex left right | .boolAnd left right
+  | .intMul left right | .intTDiv left right | .intMod left right
+  | .textIndex left right | .boolAnd left right
   | .boolOr left right | .boolImplies left right | .intEq left right
   | .intNe left right | .intLt left right | .intLe left right | .intGt left right
   | .intGe left right | .byteEq left right | .byteNe left right | .textEq left right
@@ -92,7 +106,15 @@ def expressionHelpers : IR.Expr → List Helper
       .natOf :: expressionHelpers expression
   | .intOf expression =>
       .intOf :: expressionHelpers expression
+  | .hexOf expression =>
+      .hexOf :: expressionHelpers expression
+  | .hexSeqOf expression =>
+      .hexSeqOf :: expressionHelpers expression
+  | .segmentsOf expression =>
+      .segmentsOf :: expressionHelpers expression
   | .signOf expression =>
+      .signOf :: expressionHelpers expression
+  | .prefixSignOf expression =>
       .signOf :: expressionHelpers expression
   | .countOf _ expression =>
       .countOf :: expressionHelpers expression
@@ -133,6 +155,8 @@ def lowerExpr : IR.Expr → Ast.Expr
   | .intAdd left right => .intAdd (lowerExpr left) (lowerExpr right)
   | .intSub left right => .intSub (lowerExpr left) (lowerExpr right)
   | .intMul left right => .intMul (lowerExpr left) (lowerExpr right)
+  | .intTDiv left right => .intTDiv (lowerExpr left) (lowerExpr right)
+  | .intMod left right => .intMod (lowerExpr left) (lowerExpr right)
   | .intNeg expression => .intNeg (lowerExpr expression)
   | .intPow base exponent =>
       .call "triptych_int_pow" [lowerExpr base, lowerExpr exponent]
@@ -177,7 +201,15 @@ def lowerExpr : IR.Expr → Ast.Expr
       .call "triptych_nat_of" [lowerExpr expression]
   | .intOf expression =>
       .call "triptych_int_of" [lowerExpr expression]
+  | .hexOf expression =>
+      .call "triptych_hex_of" [lowerExpr expression]
+  | .hexSeqOf expression =>
+      .call "triptych_hex_seq_of" [lowerExpr expression]
+  | .segmentsOf expression =>
+      .call "triptych_segments_of" [lowerExpr expression]
   | .signOf expression =>
+      .call "triptych_sign_of" [lowerExpr expression]
+  | .prefixSignOf expression =>
       .call "triptych_sign_of" [lowerExpr expression]
   | .countOf _ expression =>
       .call "triptych_count_of" [lowerExpr expression]
@@ -299,6 +331,106 @@ def helperDeclaration : Helper → Ast.Decl
             (.call "triptych_nat_of"
               [.textSubrange bytes (.intLit 1) (.textLen bytes)]))
           (.call "triptych_nat_of" [bytes]))
+  | .hexDigitValue =>
+      let byte : Ast.Expr := .var "byte"
+      let data := Ast.Expr.byteToInt byte
+      let between (lower upper : Int) :=
+        Ast.Expr.boolAnd (.intLe (.intLit lower) data) (.intLe data (.intLit upper))
+      helperIntFunction "triptych_hex_digit_value" [{ name := "byte", ty := .byte }]
+        (.ifThenElse (between 48 57)
+          (.intSub data (.intLit 48))
+          (.ifThenElse (between 97 102)
+            (.intAdd (.intSub data (.intLit 97)) (.intLit 10))
+            (.ifThenElse (between 65 70)
+              (.intAdd (.intSub data (.intLit 65)) (.intLit 10))
+              (.intLit 0))))
+  | .hexOfFrom =>
+      let bytes : Ast.Expr := .var "bytes"
+      let index : Ast.Expr := .var "index"
+      let accumulator : Ast.Expr := .var "accumulator"
+      .function
+        { name := "triptych_hex_of_from"
+          params :=
+            [{ name := "bytes", ty := .text },
+             { name := "index", ty := .int },
+             { name := "accumulator", ty := .int }]
+          returnType := .int
+          body :=
+            .ifThenElse
+              (.intLt index (.textLen bytes))
+              (.call "triptych_hex_of_from"
+                [bytes, .intAdd index (.intLit 1),
+                 .intAdd (.intMul accumulator (.intLit 16))
+                   (.call "triptych_hex_digit_value" [.textIndex bytes index])])
+              accumulator
+          recommends :=
+            [.boolAnd (.intLe (.intLit 0) index) (.intLe index (.textLen bytes))]
+          decreases := some (.intSub (.textLen bytes) index) }
+  | .hexOf =>
+      let bytes : Ast.Expr := .var "bytes"
+      helperIntFunction "triptych_hex_of" [{ name := "bytes", ty := .text }]
+        (.call "triptych_hex_of_from" [bytes, .intLit 0, .intLit 0])
+  | .hexSeqFrom =>
+      let bytes : Ast.Expr := .var "bytes"
+      let index : Ast.Expr := .var "index"
+      let accumulator : Ast.Expr := .var "accumulator"
+      let current : Ast.Expr := .var "current"
+      let byte := Ast.Expr.textIndex bytes index
+      .function
+        { name := "triptych_hex_seq_from"
+          params :=
+            [{ name := "bytes", ty := .text },
+             { name := "index", ty := .int },
+             { name := "accumulator", ty := .int },
+             { name := "current", ty := .int }]
+          returnType := .int
+          body :=
+            .ifThenElse
+              (.intLt index (.textLen bytes))
+              (.ifThenElse (.byteEq byte (.byteLit 58))
+                (.call "triptych_hex_seq_from"
+                  [bytes, .intAdd index (.intLit 1),
+                   .intAdd (.intMul accumulator (.intLit 65536)) current, .intLit 0])
+                (.call "triptych_hex_seq_from"
+                  [bytes, .intAdd index (.intLit 1), accumulator,
+                   .intAdd (.intMul current (.intLit 16))
+                     (.call "triptych_hex_digit_value" [byte])]))
+              (.intAdd (.intMul accumulator (.intLit 65536)) current)
+          recommends :=
+            [.boolAnd (.intLe (.intLit 0) index) (.intLe index (.textLen bytes))]
+          decreases := some (.intSub (.textLen bytes) index) }
+  | .hexSeqOf =>
+      let bytes : Ast.Expr := .var "bytes"
+      helperIntFunction "triptych_hex_seq_of" [{ name := "bytes", ty := .text }]
+        (.call "triptych_hex_seq_from" [bytes, .intLit 0, .intLit 0, .intLit 0])
+  | .segmentsFrom =>
+      let bytes : Ast.Expr := .var "bytes"
+      let index : Ast.Expr := .var "index"
+      let countValue : Ast.Expr := .var "count"
+      .function
+        { name := "triptych_segments_from"
+          params :=
+            [{ name := "bytes", ty := .text },
+             { name := "index", ty := .int },
+             { name := "count", ty := .int }]
+          returnType := .int
+          body :=
+            .ifThenElse
+              (.intLt index (.textLen bytes))
+              (.call "triptych_segments_from"
+                [bytes, .intAdd index (.intLit 1),
+                 .ifThenElse (.byteEq (.textIndex bytes index) (.byteLit 58))
+                   (.intAdd countValue (.intLit 1)) countValue])
+              countValue
+          recommends :=
+            [.boolAnd (.intLe (.intLit 0) index) (.intLe index (.textLen bytes))]
+          decreases := some (.intSub (.textLen bytes) index) }
+  | .segmentsOf =>
+      let bytes : Ast.Expr := .var "bytes"
+      helperIntFunction "triptych_segments_of" [{ name := "bytes", ty := .text }]
+        (.ifThenElse (.intEq (.textLen bytes) (.intLit 0))
+          (.intLit 0)
+          (.call "triptych_segments_from" [bytes, .intLit 0, .intLit 1]))
   | .signOf =>
       let bytes : Ast.Expr := .var "bytes"
       helperIntFunction "triptych_sign_of" [{ name := "bytes", ty := .text }]

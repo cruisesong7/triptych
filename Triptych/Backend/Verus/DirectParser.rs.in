@@ -1,15 +1,15 @@
 #![allow(unused_variables)]
 
+#[cfg(verus_only)]
+use super::spec::*;
 use vstd::prelude::*;
 #[cfg(verus_only)]
 use vstd::seq_lib::*;
+use vstd::string::StrSliceExecFns;
 #[cfg(verus_only)]
 use vstd::string::{is_ascii, is_ascii_spec_bytes};
 #[cfg(verus_only)]
 use vstd::utf8::{is_ascii_chars, is_ascii_chars_concat};
-use vstd::string::StrSliceExecFns;
-#[cfg(verus_only)]
-use crate::spec::*;
 
 verus! {
 

@@ -19,7 +19,7 @@ import Triptych.Theorems.Roundtrip
 import Cedar.Spec.Ext.IPAddr
 
 /-!
-# IPv4 example — CIDR grammar, a STRUCTURED `IPNet` value, against Cedar's real `ip` parser
+# IPv4 example — CIDR grammar and an injective integer value encoding
 
 Transcribes the IPv4 fragment of Cedar's `Cedar/Spec/Ext/IPAddr.lean` (`parseIPv4Net`). Beyond
 the bare dotted-quad it models the full Cedar surface:
@@ -29,9 +29,8 @@ the bare dotted-quad it models the full Cedar surface:
   strings Cedar's `parseIPv4Net` does;
 * the canonical-nat rules on every octet AND the prefix (`noLeadingZero`), plus numeric bounds
   (octet ≤ 255, prefix ≤ 32) — the `256.0.0.1` / `/33` / `/01` rejects;
-* a **structured value** — Cedar's `IPNet.V4 ⟨addr, pre⟩`, not just accept/reject — via the
-  `value'` escape (`toIPNet`), exactly as the Graph example produces a `Graph`. IPv4's value is
-  a 32-bit address + prefix, not an affine `Int`, so it lives in the escape tier;
+* a structured Cedar `CIDR` result represented inside the analyzable DSL by the injective code
+  `address·33 + prefix`, then converted at the generated parser boundary;
 * the `parser`/`printer` clauses validating Cedar's own parser (`ipv4Only`, a thin public wrapper
   over the real `Cedar.Spec.Ext.IPAddr.ip`) and serializer (`ToString IPNet`) against this spec —
   giving `soundness.lean` the translation-validation obligations, as in Decimal/Duration.
@@ -46,21 +45,16 @@ open Cedar.Spec.Ext.IPAddr
 
 abbrev IPv4Net := CIDR V4_WIDTH
 
-/-- Structured value (`value'` escape): the four octet strings plus the CIDR prefix string →
-    Cedar's V4 `CIDR`. An absent prefix (empty string, the bare-address alternative) means
-    Cedar's full `/32` (`ADDR_SIZE V4_WIDTH`, which `IPv4Prefix` encodes as `none`). Reuses
-    Cedar's own `IPv4Addr.mk`, `IPv4Prefix` coercion, and `readNat` — the same digit reader the
-    value/`IsWf` layer uses — so the reconstruction is Cedar's `parseSegsV4` / `parseIPv4Net` on
-    the already-validated components. -/
-def toIPv4Net (o1 o2 o3 o4 pre : String) : IPv4Net :=
-  let oct (s : String) : BitVec 8 := BitVec.ofNat 8 (readNat s)
-  let p : IPv4Prefix :=
-    if pre == "" then (ADDR_SIZE V4_WIDTH : IPv4Prefix) else (readNat pre : IPv4Prefix)
-  { addr := IPv4Addr.mk (oct o1) (oct o2) (oct o3) (oct o4), pre := p }
+/-- Decode the DSL code `address·33 + prefix` into Cedar's IPv4 CIDR domain. Grammar and
+    constraints guarantee `address < 2^32` and `prefix ≤ 32`. -/
+def ipv4CodeToNet (code : Int) : IPv4Net :=
+  let encoded := code.toNat
+  { addr := BitVec.ofNat 32 (encoded / 33)
+    pre := ((encoded % 33 : Nat) : IPv4Prefix) }
 
-/-- The corresponding Cedar family-tagged value, used by the executable parser bridge. -/
-def toIPNet (o1 o2 o3 o4 pre : String) : IPNet :=
-  .V4 (toIPv4Net o1 o2 o3 o4 pre)
+/-- Inject Cedar's IPv4 CIDR domain back into the DSL integer domain. -/
+def ipv4NetToCode (net : IPv4Net) : Int :=
+  (net.addr.toNat : Int) * 33 + net.pre.toNat
 
 /-- Canonical serializer for the V4-only domain; reuses Cedar's `ToString IPNet`. -/
 def ipNetToStr (n : IPv4Net) : String := toString (IPNet.V4 n)
@@ -83,8 +77,11 @@ def ipv4Only (s : String) : Option IPv4Net :=
     Oct3        ::= digit{1,3}
     Oct4        ::= digit{1,3}
     Prefix      ::= digit{1,2}
-  value'
-    toIPv4Net Oct1 Oct2 Oct3 Oct4 Prefix
+  value
+    ((((nat Oct1 * 256 + nat Oct2) * 256 + nat Oct3) * 256 + nat Oct4) * 33
+      + ifEmpty(Prefix, 32, nat Prefix))
+    ofSpec ipv4CodeToNet
+    toSpec ipv4NetToCode
   constraints
     -- canonical decimal per octet: no leading zeros (unless exactly "0"), and value ≤ 255.
     noLeadingZero Oct1     nat Oct1 ∈ [0, 255]
@@ -92,10 +89,12 @@ def ipv4Only (s : String) : Option IPv4Net :=
     noLeadingZero Oct3     nat Oct3 ∈ [0, 255]
     noLeadingZero Oct4     nat Oct4 ∈ [0, 255]
     -- The prefix, when present: no leading zeros ("/01" rejected) and ≤ 32.
-    -- An absent prefix (the bare-address alternative) is vacuous; `toIPNet` reads "" as /32.
+    -- An absent prefix (the bare-address alternative) is encoded as /32.
     noLeadingZero Prefix   nat Prefix ∈ [0, 32]
+    value ∈ [0, 2 ^ 32 * 33 - 1]
   parser ipv4Only
   printer ipNetToStr
+  verus "../verus-experiments/cedar-ext/ipaddr/src/ipv4/spec.rs"
   to "Outputs/IPv4"
 
 -- The generated verified parser (`String → Option IPNet`), run on sample strings:

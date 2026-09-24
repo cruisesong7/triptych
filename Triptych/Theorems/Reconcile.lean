@@ -143,5 +143,22 @@ theorem readInt_empty : readInt "" = 0 := by unfold readInt; simp [readNat]
   cases env key <;> simp [readNat]
 @[simp] theorem signOf_getD (env : Env) (f : String) : signOf ((env f).getD "") = env.signVal f := by
   unfold signOf Env.signVal; cases env f <;> simp
+@[simp] theorem hexOf_getD (env : Env) (f : String) : hexOf ((env f).getD "") = env.hexVal f := by
+  unfold Env.hexVal
+  cases h : env f with
+  | none => simp [hexOf, hexOfChars, h]
+  | some text => simp [h]
+@[simp] theorem hexSeqOf_getD (env : Env) (f : String) :
+    hexSeqOf ((env f).getD "") = env.hexSeqVal f := by
+  unfold Env.hexSeqVal
+  cases h : env f with
+  | none => simp [hexSeqOf, hexSeqOfChars, h]
+  | some text => simp [h]
+@[simp] theorem segmentsOf_getD (env : Env) (f : String) :
+    segmentsOf ((env f).getD "") = env.segmentVal f := by
+  unfold Env.segmentVal
+  cases h : env f with
+  | none => simp [segmentsOf, h]
+  | some text => simp [h]
 
 end Triptych

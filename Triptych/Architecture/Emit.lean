@@ -948,6 +948,7 @@ def isWfEquivProof (specName : Name) (hasWfConstraints : Bool) :
         List.forall_mem_cons, List.forall_mem_singleton,
         List.not_mem_nil, forall_const, ConstraintEntry.wfPart, Constraint.eval, ValExpr.eval,
         presentCount, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD,
+        hexOf_getD, hexSeqOf_getD, segmentsOf_getD,
         Env.countVal, and_true, true_and,
         false_implies, implies_true, Bool.false_eq_true]
       try grind)
@@ -975,6 +976,7 @@ def satisfiesConstraintsEquivProof (specName : Name)
         List.forall_mem_cons, List.forall_mem_singleton,
         List.not_mem_nil, forall_const, ConstraintEntry.valPart, Constraint.eval, ValExpr.eval,
         presentCount, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD,
+        hexOf_getD, hexSeqOf_getD, segmentsOf_getD,
         Env.countVal, and_true, true_and,
         false_implies, implies_true, Bool.false_eq_true]
       try grind)
@@ -1055,7 +1057,7 @@ def computeValueEqProof (specName : Name) (grammarId : TSyntax `ident)
       | none => simp [h]
       | some m =>
         simp [h, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD,
-          Env.countVal, ValExpr.eval])
+          hexOf_getD, hexSeqOf_getD, segmentsOf_getD, Env.countVal, ValExpr.eval] <;> ac_rfl)
 
 /-- Emit the decode-elimination specialization of `computeValue_eq`. Once an external-parser
     proof identifies the exact selected capture map, this theorem exposes the readable value
@@ -1442,7 +1444,9 @@ def optionPayloadBinder (fnId : TSyntax `term) : CommandElabM (TSyntax `term × 
     let cod ← Meta.whnf body
     unless cod.isAppOfArity ``Option 1 do return fallback
     let payload := cod.appArg!
-    let payloadStx ← Lean.PrettyPrinter.delab payload
+    let payloadStx ←
+      withOptions (Lean.pp.fullNames.set · true) <|
+        Lean.PrettyPrinter.delab payload
     -- Binder name = lowercased first letter of the payload type's head constant.
     let nm : Name :=
       match payload.getAppFn.constName? with
@@ -1485,7 +1489,9 @@ def ofSpecCodomainBinder (ofSpecId : TSyntax `term) : CommandElabM (TSyntax `ter
     let ty ← Meta.whnf (← Meta.inferType e)
     let .forallE _ _ body _ := ty | return fallback
     let cod ← Meta.whnf body
-    let codStx ← Lean.PrettyPrinter.delab cod
+    let codStx ←
+      withOptions (Lean.pp.fullNames.set · true) <|
+        Lean.PrettyPrinter.delab cod
     let nm : Name :=
       match cod.getAppFn.constName? with
       | some c =>
@@ -1509,7 +1515,9 @@ def serializerDomainBinder (toStrId : TSyntax `term) : CommandElabM (TSyntax `te
     let ty ← Meta.whnf (← Meta.inferType e)
     let .forallE _ dom _ _ := ty | return fallback
     let dom ← Meta.whnf dom
-    let domStx ← Lean.PrettyPrinter.delab dom
+    let domStx ←
+      withOptions (Lean.pp.fullNames.set · true) <|
+        Lean.PrettyPrinter.delab dom
     let nm : Name :=
       match dom.getAppFn.constName? with
       | some c =>

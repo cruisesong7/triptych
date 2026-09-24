@@ -86,8 +86,25 @@ example (sourceEnv : Env) (fieldName : Backend.Verus.FieldName)
   Backend.Verus.evaluateHelper .intPow [.int 10, .int 4] == some (.int 10000)
 
 #guard
+  Backend.Verus.evaluateHelper .hexOf [.text [49, 97, 70]] == some (.int 431)
+
+#guard
+  Backend.Verus.evaluateHelper .hexSeqOf [.text [49, 58, 50]] == some (.int 65538)
+
+#guard
+  Backend.Verus.evaluateHelper .segmentsOf [.text [49, 58, 50]] == some (.int 2)
+
+#guard
   Triptych.Backend.Verus.prettyPrintExpr
     (.textLen (.var "input")) == "(input.len() as int)"
+
+#guard
+  Triptych.Backend.Verus.prettyPrintExpr
+    (.intTDiv (.intLit (-9)) (.intLit 4)) == "rust_div((-9int), (4int))"
+
+#guard
+  Triptych.Backend.Verus.prettyPrintExpr
+    (.intMod (.intLit 9) (.intLit 4)) == "(9int) % (4int)"
 
 #guard
   (emitSpec "Decimal" decimalGrammar decimalValue [] decimalConstraints
@@ -97,10 +114,10 @@ example (sourceEnv : Env) (fieldName : Backend.Verus.FieldName)
       `Int64.ofInt `Int64.toInt with
   | .error _ => false
   | .ok source =>
-      [ "decimal_is_wf_sign",
-        "decimal_is_wf_natural",
-        "decimal_is_wf_fraction",
-        "decimal_is_wf_decimal",
+      [ "decimal_is_wf_Sign",
+        "decimal_is_wf_Natural",
+        "decimal_is_wf_Fraction",
+        "decimal_is_wf_Decimal",
         "triptych_is_digit",
         "triptych_nat_of",
         "triptych_sign_of",
@@ -124,20 +141,39 @@ example (sourceEnv : Env) (fieldName : Backend.Verus.FieldName)
 
 #guard
   match emitSoundness "Decimal" decimalGrammar decimalValue [] decimalConstraints
-      `Int64.ofInt `Int64.toInt with
+      `Int64.ofInt `Int64.toInt true with
   | .error _ => false
   | .ok source =>
-      [ "use crate::spec::*;",
+      [ "use super::spec::*;",
         "decimal_matches_result",
         "pub trait DecimalExternalParserContract",
         "spec fn parse_to_spec",
         "proof fn extparse_sound",
         "proof fn extparse_complete",
         "proof fn extparse_reject",
+        "decimal_has_result",
+        "spec fn to_string_to_spec",
+        "proof fn extparse_to_string_roundtrip",
+        "proof fn extparse_to_string_injective",
+        "proof fn extparse_normalize_eq_iff_parse_eq",
         "requires",
         "ensures" ].all (contains source) &&
       !contains source "external_body" &&
       !contains source "assume("
+
+#guard
+  match emitSoundness "Decimal" decimalGrammar decimalValue [] decimalConstraints
+      `Int64.ofInt `Int64.toInt with
+  | .error _ => false
+  | .ok source =>
+      [ "proof fn extparse_sound",
+        "proof fn extparse_complete",
+        "proof fn extparse_reject" ].all (contains source) &&
+      !contains source "decimal_has_result" &&
+      !contains source "to_string_to_spec" &&
+      !contains source "extparse_to_string_roundtrip" &&
+      !contains source "extparse_to_string_injective" &&
+      !contains source "extparse_normalize_eq_iff_parse_eq"
 
 #guard
   match emitCertifiedRust "Decimal" decimalGrammar decimalValue [] decimalConstraints
@@ -151,8 +187,12 @@ example (sourceEnv : Env) (fieldName : Backend.Verus.FieldName)
         "pub open spec fn decimal_parse_plan",
         "pub proof fn decimal_is_wf_implies_parse_plan",
         "pub fn decimal_parse_candidate(input: &str)",
-        "&& decimal_is_wf_decimal(input@)",
-        "&& !decimal_is_wf_decimal(input@)",
+        "pub open spec fn decimal_semantic_parse_plan",
+        "pub proof fn decimal_semantic_parse_plan_iff_valid",
+        "pub(crate) fn decimal_parse(input: &str) -> (result: Option<i64>)",
+        "decimal_is_valid(input@)",
+        "&& decimal_is_wf_Decimal(input@)",
+        "&& !decimal_is_wf_Decimal(input@)",
         "plan_scan_token_end_at_boundary",
         "plan_scan_token_end_exec",
         "PlanTokenClass::Digit",
@@ -203,6 +243,7 @@ private def moneyConstraints : List Constraint :=
         "cents_start",
         "== 45u8",
         "== 44u8" ].all (contains source) &&
+      !contains source "pub fn money_parse(input: &str)" &&
       !contains source "GrammarSymbol" &&
       !contains source "GrammarItem" &&
       !contains source "let program = RuntimeProgram" &&
@@ -214,12 +255,14 @@ private def moneyConstraints : List Constraint :=
       `Int64.ofInt `Int64.toInt with
   | .error _ => false
   | .ok output => contains output.parser "decimal_parse_candidate"
+      && !contains output.parser "pub fn decimal_parse(input: &str)"
 
 #guard
   match emitCertifiedRust "Decimal" decimalGrammar decimalValue [] decimalConstraints
       `id `id with
   | .error _ => false
   | .ok output => contains output.parser "decimal_parse_candidate"
+      && !contains output.parser "pub fn decimal_parse(input: &str)"
 
 private def quantityGrammar : Grammar :=
   { start := "Quantity"
@@ -246,8 +289,8 @@ private def quantityValue : ValExpr :=
       [.noLeadingZero "Digits"] [.le quantityValue (.lit 100)] `id `id with
   | .error _ => false
   | .ok source =>
-      [ "quantity_is_wf_quantity",
-        "quantity_is_wf_digits",
+      [ "quantity_is_wf_Quantity",
+        "quantity_is_wf_Digits",
         "quantity_wf_constraints",
         "quantity_satisfies_wf_constraints",
         "quantity_value",

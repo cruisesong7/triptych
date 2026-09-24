@@ -7,10 +7,8 @@ import Triptych.Architecture.Constraint
 import Triptych.Architecture.Assemble
 import Triptych.Theorems.Reconcile
 import Triptych.Theorems.Value
-import Inputs.IPv4
 
 open Triptych
-open CedarExamples.IPv4
 
 set_option linter.unusedSimpArgs false
 set_option linter.unusedVariables false
@@ -150,8 +148,9 @@ def IPv4.Production (s : String) : Prop :=
 abbrev IPv4.IsWf.V4Net (s : String) : Prop :=
   IPv4.Production s
 
-def IPv4.value (oct1 : String) (oct2 : String) (oct3 : String) (oct4 : String) («prefix» : String) :=
-  toIPv4Net oct1 oct2 oct3 oct4 «prefix»
+def IPv4.value (oct1 : String) (oct2 : String) (oct3 : String) (oct4 : String) («prefix» : String) : Int :=
+  (((natOf oct1 * (256 : Int) + natOf oct2) * (256 : Int) + natOf oct3) * (256 : Int) + natOf oct4) * (33 : Int) +
+    if «prefix» = "" then (32 : Int) else natOf «prefix»
 
 def IPv4.WfConstraints (oct1 : String) (oct2 : String) (oct3 : String) (oct4 : String) («prefix» : String) : Prop :=
   ((((((((((oct1).startsWith "0" → oct1 = "0") ∧ (0 : Int) ≤ natOf oct1 ∧ natOf oct1 ≤ (255 : Int)) ∧
@@ -164,6 +163,10 @@ def IPv4.WfConstraints (oct1 : String) (oct2 : String) (oct3 : String) (oct4 : S
       ((«prefix»).startsWith "0" → «prefix» = "0")) ∧
     (0 : Int) ≤ natOf «prefix» ∧ natOf «prefix» ≤ (32 : Int)
 
+def IPv4.Constraints (oct1 : String) (oct2 : String) (oct3 : String) (oct4 : String) («prefix» : String) : Prop :=
+  (0 : Int) ≤ IPv4.value oct1 oct2 oct3 oct4 «prefix» ∧
+    IPv4.value oct1 oct2 oct3 oct4 «prefix» ≤ (2 : Int) ^ ((32 : Int)).toNat * (33 : Int) - (1 : Int)
+
 def IPv4.SatisfiesWfConstraints (s : String) : Prop :=
   IPv4.WfConstraints (Triptych.component IPv4.grammar s "Oct1") (Triptych.component IPv4.grammar s "Oct2")
     (Triptych.component IPv4.grammar s "Oct3") (Triptych.component IPv4.grammar s "Oct4")
@@ -172,10 +175,15 @@ def IPv4.SatisfiesWfConstraints (s : String) : Prop :=
 abbrev IPv4.IsWf (s : String) : Prop :=
   IPv4.Production s ∧ IPv4.SatisfiesWfConstraints s
 
-abbrev IPv4.IsValid (s : String) : Prop :=
-  IPv4.IsWf s
+def IPv4.SatisfiesConstraints (s : String) : Prop :=
+  IPv4.Constraints (Triptych.component IPv4.grammar s "Oct1") (Triptych.component IPv4.grammar s "Oct2")
+    (Triptych.component IPv4.grammar s "Oct3") (Triptych.component IPv4.grammar s "Oct4")
+    (Triptych.component IPv4.grammar s "Prefix")
 
-def IPv4.Denotes (s : String) (i : IPv4Net) : Prop :=
+abbrev IPv4.IsValid (s : String) : Prop :=
+  IPv4.IsWf s ∧ IPv4.SatisfiesConstraints s
+
+def IPv4.Denotes (s : String) (i : Int) : Prop :=
   IPv4.IsValid s ∧
     i =
       IPv4.value (Triptych.component IPv4.grammar s "Oct1") (Triptych.component IPv4.grammar s "Oct2")
@@ -194,8 +202,12 @@ def IPv4.View.WfConstraints (v : IPv4.View) : Prop :=
   IPv4.WfConstraints (IPv4.View.oct1 v) (IPv4.View.oct2 v) (IPv4.View.oct3 v) (IPv4.View.oct4 v)
     ((IPv4.View.prefix v).getD "")
 
+def IPv4.View.Constraints (v : IPv4.View) : Prop :=
+  IPv4.Constraints (IPv4.View.oct1 v) (IPv4.View.oct2 v) (IPv4.View.oct3 v) (IPv4.View.oct4 v)
+    ((IPv4.View.prefix v).getD "")
+
 abbrev IPv4.View.Valid (v : IPv4.View) : Prop :=
-  IPv4.View.WfConstraints v
+  IPv4.View.WfConstraints v ∧ IPv4.View.Constraints v
 
 def IPv4.View.denotation (v : IPv4.View) :=
   IPv4.value (IPv4.View.oct1 v) (IPv4.View.oct2 v) (IPv4.View.oct3 v) (IPv4.View.oct4 v) ((IPv4.View.prefix v).getD "")

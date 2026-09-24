@@ -7,10 +7,8 @@ import Triptych.Architecture.Constraint
 import Triptych.Architecture.Assemble
 import Triptych.Theorems.Reconcile
 import Triptych.Theorems.Value
-import Inputs.Datetime
 
 open Triptych
-open CedarExamples.Datetime
 
 set_option linter.unusedSimpArgs false
 set_option linter.unusedVariables false
@@ -254,62 +252,152 @@ def Datetime.Production (s : String) : Prop :=
 abbrev Datetime.IsWf.Datetime (s : String) : Prop :=
   Datetime.Production s
 
-def Datetime.value (yyyy : String) (mm : String) (dd : String) (time_hh : String) (time_mm : String) (ss : String)
-    (sss : String) (offset_hh : String) (offset_mm : String) (offset : String) :=
-  epochMillis yyyy mm dd time_hh time_mm ss sss offset_hh offset_mm offset
+def Datetime.value (mm : String) (yyyy : String) (dd : String) (time_hh : String) (time_mm : String) (ss : String)
+    (sss : String) (offset : String) (offset_hh : String) (offset_mm : String) : Int :=
+  (((if (0 : Int) ≤ if (2 : Int) < natOf mm then natOf yyyy else natOf yyyy - (1 : Int) then
+                        Int.tdiv (if (2 : Int) < natOf mm then natOf yyyy else natOf yyyy - (1 : Int)) (400 : Int)
+                      else
+                        Int.tdiv ((if (2 : Int) < natOf mm then natOf yyyy else natOf yyyy - (1 : Int)) - (399 : Int))
+                          (400 : Int)) *
+                      (146097 : Int) +
+                    (((if (2 : Int) < natOf mm then natOf yyyy else natOf yyyy - (1 : Int)) -
+                              (if (0 : Int) ≤ if (2 : Int) < natOf mm then natOf yyyy else natOf yyyy - (1 : Int) then
+                                  Int.tdiv (if (2 : Int) < natOf mm then natOf yyyy else natOf yyyy - (1 : Int))
+                                    (400 : Int)
+                                else
+                                  Int.tdiv
+                                    ((if (2 : Int) < natOf mm then natOf yyyy else natOf yyyy - (1 : Int)) -
+                                      (399 : Int))
+                                    (400 : Int)) *
+                                (400 : Int)) *
+                            (365 : Int) +
+                          Int.tdiv
+                            ((if (2 : Int) < natOf mm then natOf yyyy else natOf yyyy - (1 : Int)) -
+                              (if (0 : Int) ≤ if (2 : Int) < natOf mm then natOf yyyy else natOf yyyy - (1 : Int) then
+                                  Int.tdiv (if (2 : Int) < natOf mm then natOf yyyy else natOf yyyy - (1 : Int))
+                                    (400 : Int)
+                                else
+                                  Int.tdiv
+                                    ((if (2 : Int) < natOf mm then natOf yyyy else natOf yyyy - (1 : Int)) -
+                                      (399 : Int))
+                                    (400 : Int)) *
+                                (400 : Int))
+                            (4 : Int) -
+                        Int.tdiv
+                          ((if (2 : Int) < natOf mm then natOf yyyy else natOf yyyy - (1 : Int)) -
+                            (if (0 : Int) ≤ if (2 : Int) < natOf mm then natOf yyyy else natOf yyyy - (1 : Int) then
+                                Int.tdiv (if (2 : Int) < natOf mm then natOf yyyy else natOf yyyy - (1 : Int))
+                                  (400 : Int)
+                              else
+                                Int.tdiv
+                                  ((if (2 : Int) < natOf mm then natOf yyyy else natOf yyyy - (1 : Int)) - (399 : Int))
+                                  (400 : Int)) *
+                              (400 : Int))
+                          (100 : Int) +
+                      (Int.tdiv
+                          ((153 : Int) * (natOf mm + if (2 : Int) < natOf mm then (-3 : Int) else (9 : Int)) +
+                            (2 : Int))
+                          (5 : Int) +
+                        (natOf dd - (1 : Int)))) -
+                  (719468 : Int)) *
+                (86400 : Int) +
+              natOf time_hh * (3600 : Int) +
+            natOf time_mm * (60 : Int) +
+          natOf ss) *
+        (1000 : Int) +
+      natOf sss -
+    signOf offset * (natOf offset_hh * (3600000 : Int) + natOf offset_mm * (60000 : Int))
 
 def Datetime.WfConstraints (mm : String) (time_hh : String) (time_mm : String) (ss : String) (offset_hh : String)
-    (offset_mm : String) (yyyy : String) (dd : String) : Prop :=
+    (offset_mm : String) (dd : String) (yyyy : String) : Prop :=
   (((((((1 : Int) ≤ natOf mm ∧ natOf mm ≤ (12 : Int)) ∧ (0 : Int) ≤ natOf time_hh ∧ natOf time_hh ≤ (23 : Int)) ∧
             (0 : Int) ≤ natOf time_mm ∧ natOf time_mm ≤ (59 : Int)) ∧
           (0 : Int) ≤ natOf ss ∧ natOf ss ≤ (59 : Int)) ∧
         (0 : Int) ≤ natOf offset_hh ∧ natOf offset_hh ≤ (23 : Int)) ∧
       (0 : Int) ≤ natOf offset_mm ∧ natOf offset_mm ≤ (59 : Int)) ∧
-    dayBound yyyy mm dd = true
+    (1 : Int) ≤ natOf dd ∧
+      natOf dd ≤
+        if natOf mm = (4 : Int) then (30 : Int)
+        else
+          if natOf mm = (6 : Int) then (30 : Int)
+          else
+            if natOf mm = (9 : Int) then (30 : Int)
+            else
+              if natOf mm = (11 : Int) then (30 : Int)
+              else
+                if natOf mm = (2 : Int) then
+                  if
+                      (if Int.tmod (natOf yyyy) (4 : Int) = (0 : Int) then
+                          if Int.tmod (natOf yyyy) (100 : Int) = (0 : Int) then
+                            if Int.tmod (natOf yyyy) (400 : Int) = (0 : Int) then (1 : Int) else (0 : Int)
+                          else (1 : Int)
+                        else (0 : Int)) =
+                        (1 : Int) then
+                    (29 : Int)
+                  else (28 : Int)
+                else (31 : Int)
+
+def Datetime.Constraints (mm : String) (yyyy : String) (dd : String) (time_hh : String) (time_mm : String) (ss : String)
+    (sss : String) (offset : String) (offset_hh : String) (offset_mm : String) : Prop :=
+  (-9223372036854775808 : Int) ≤ Datetime.value mm yyyy dd time_hh time_mm ss sss offset offset_hh offset_mm ∧
+    Datetime.value mm yyyy dd time_hh time_mm ss sss offset offset_hh offset_mm ≤ (9223372036854775807 : Int)
 
 def Datetime.SatisfiesWfConstraints (s : String) : Prop :=
   Datetime.WfConstraints (Triptych.component Datetime.grammar s "MM") (Triptych.component Datetime.grammar s "Time.hh")
     (Triptych.component Datetime.grammar s "Time.mm") (Triptych.component Datetime.grammar s "ss")
     (Triptych.component Datetime.grammar s "Offset.hh") (Triptych.component Datetime.grammar s "Offset.mm")
-    (Triptych.component Datetime.grammar s "YYYY") (Triptych.component Datetime.grammar s "DD")
+    (Triptych.component Datetime.grammar s "DD") (Triptych.component Datetime.grammar s "YYYY")
 
 abbrev Datetime.IsWf (s : String) : Prop :=
   Datetime.Production s ∧ Datetime.SatisfiesWfConstraints s
 
+def Datetime.SatisfiesConstraints (s : String) : Prop :=
+  Datetime.Constraints (Triptych.component Datetime.grammar s "MM") (Triptych.component Datetime.grammar s "YYYY")
+    (Triptych.component Datetime.grammar s "DD") (Triptych.component Datetime.grammar s "Time.hh")
+    (Triptych.component Datetime.grammar s "Time.mm") (Triptych.component Datetime.grammar s "ss")
+    (Triptych.component Datetime.grammar s "SSS") (Triptych.component Datetime.grammar s "Offset")
+    (Triptych.component Datetime.grammar s "Offset.hh") (Triptych.component Datetime.grammar s "Offset.mm")
+
 abbrev Datetime.IsValid (s : String) : Prop :=
-  Datetime.IsWf s
+  Datetime.IsWf s ∧ Datetime.SatisfiesConstraints s
 
 def Datetime.Denotes (s : String) (i : Int) : Prop :=
   Datetime.IsValid s ∧
     i =
-      Datetime.value (Triptych.component Datetime.grammar s "YYYY") (Triptych.component Datetime.grammar s "MM")
+      Datetime.value (Triptych.component Datetime.grammar s "MM") (Triptych.component Datetime.grammar s "YYYY")
         (Triptych.component Datetime.grammar s "DD") (Triptych.component Datetime.grammar s "Time.hh")
         (Triptych.component Datetime.grammar s "Time.mm") (Triptych.component Datetime.grammar s "ss")
-        (Triptych.component Datetime.grammar s "SSS") (Triptych.component Datetime.grammar s "Offset.hh")
-        (Triptych.component Datetime.grammar s "Offset.mm") (Triptych.component Datetime.grammar s "Offset")
+        (Triptych.component Datetime.grammar s "SSS") (Triptych.component Datetime.grammar s "Offset")
+        (Triptych.component Datetime.grammar s "Offset.hh") (Triptych.component Datetime.grammar s "Offset.mm")
 
 structure Datetime.View where
   input : String
-  yyyy : String
   mm : String
+  yyyy : String
   dd : String
   time_hh : Option String
   time_mm : Option String
   ss : Option String
   sss : Option String
+  offset : Option String
   offset_hh : Option String
   offset_mm : Option String
-  offset : Option String
 
 def Datetime.View.WfConstraints (v : Datetime.View) : Prop :=
   Datetime.WfConstraints (Datetime.View.mm v) ((Datetime.View.time_hh v).getD "") ((Datetime.View.time_mm v).getD "")
     ((Datetime.View.ss v).getD "") ((Datetime.View.offset_hh v).getD "") ((Datetime.View.offset_mm v).getD "")
-    (Datetime.View.yyyy v) (Datetime.View.dd v)
+    (Datetime.View.dd v) (Datetime.View.yyyy v)
+
+def Datetime.View.Constraints (v : Datetime.View) : Prop :=
+  Datetime.Constraints (Datetime.View.mm v) (Datetime.View.yyyy v) (Datetime.View.dd v)
+    ((Datetime.View.time_hh v).getD "") ((Datetime.View.time_mm v).getD "") ((Datetime.View.ss v).getD "")
+    ((Datetime.View.sss v).getD "") ((Datetime.View.offset v).getD "") ((Datetime.View.offset_hh v).getD "")
+    ((Datetime.View.offset_mm v).getD "")
 
 abbrev Datetime.View.Valid (v : Datetime.View) : Prop :=
-  Datetime.View.WfConstraints v
+  Datetime.View.WfConstraints v ∧ Datetime.View.Constraints v
 
 def Datetime.View.denotation (v : Datetime.View) :=
-  Datetime.value (Datetime.View.yyyy v) (Datetime.View.mm v) (Datetime.View.dd v) ((Datetime.View.time_hh v).getD "")
+  Datetime.value (Datetime.View.mm v) (Datetime.View.yyyy v) (Datetime.View.dd v) ((Datetime.View.time_hh v).getD "")
     ((Datetime.View.time_mm v).getD "") ((Datetime.View.ss v).getD "") ((Datetime.View.sss v).getD "")
-    ((Datetime.View.offset_hh v).getD "") ((Datetime.View.offset_mm v).getD "") ((Datetime.View.offset v).getD "")
+    ((Datetime.View.offset v).getD "") ((Datetime.View.offset_hh v).getD "") ((Datetime.View.offset_mm v).getD "")
