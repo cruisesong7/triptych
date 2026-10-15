@@ -24,11 +24,12 @@ grammar for the remaining input, and then scans that tail. This is the first dep
 primitive: a length, tag, or mode decoded by the header can determine the exact grammar used for
 the payload.
 
-The `triptych` surface supports one delimiter-bounded final field such as
-`Cells ::= bit{width Header}`. That restricted form lowers to an ordinary lexical grammar plus
-an automatically generated exact-width well-formedness condition. `scanDependent` handles the
-broader case where accepting a tail may require reconsidering a header candidate. Automatic
-surface lowering for those delimiter-free or internal dependent boundaries remains future work.
+The `triptych` surface supports several delimiter-bounded fields such as
+`Cells ::= bit{width Header}`. Internal fields require an immediate literal delimiter after the
+field. These forms lower to an ordinary lexical grammar plus automatically generated exact-width
+well-formedness conditions. `scanDependent` handles the broader case where accepting a tail may
+require reconsidering a header candidate. Automatic surface lowering for delimiter-free
+dependent boundaries remains future work.
 -/
 
 namespace Triptych

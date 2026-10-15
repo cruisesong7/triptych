@@ -164,8 +164,8 @@ def run (program : CursorProgram) (source : String) : Option ScanResult := do
 def decode (program : CursorProgram) (source : String) : Option CaptureMap :=
   (program.run source).map (·.captureMap)
 
-/-- Execute the lowered cursor program as a fast path, falling back to the complete scanner only
-    when the direct program rejects. -/
+/-- Compatibility wrapper retaining the former direct-path-plus-scanner behavior. Current
+    generated parsers use the directly complete `decode`. -/
 def decodeCertified (program : CursorProgram) (grammar : Grammar) (source : String) :
     Option CaptureMap :=
   (program.decode source).orElse fun _ => scanSearch grammar source
@@ -221,7 +221,7 @@ private theorem executeOperations_lower (input : List Char) (operations : List S
   rw [lowerScanPlan_run]
   congr 1
 
-/-- Lowering also preserves the complete fast-path-plus-fallback parser. -/
+/-- Lowering preserves the compatibility fast-path-plus-fallback wrapper. -/
 @[simp] theorem lowerScanPlan_decodeCertified (plan : ScanPlan) (grammar : Grammar)
     (source : String) :
     (lowerScanPlan plan).decodeCertified grammar source =

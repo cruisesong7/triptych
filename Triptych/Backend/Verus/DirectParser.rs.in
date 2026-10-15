@@ -7,6 +7,8 @@ use vstd::prelude::*;
 use vstd::seq_lib::*;
 use vstd::string::StrSliceExecFns;
 #[cfg(verus_only)]
+use vstd::seq::lemma_seq_subrange_index;
+#[cfg(verus_only)]
 use vstd::string::{is_ascii, is_ascii_spec_bytes};
 #[cfg(verus_only)]
 use vstd::utf8::{is_ascii_chars, is_ascii_chars_concat};

@@ -211,3 +211,17 @@ abbrev IPv4.View.Valid (v : IPv4.View) : Prop :=
 
 def IPv4.View.denotation (v : IPv4.View) :=
   IPv4.value (IPv4.View.oct1 v) (IPv4.View.oct2 v) (IPv4.View.oct3 v) (IPv4.View.oct4 v) ((IPv4.View.prefix v).getD "")
+
+def IPv4.View.ConstraintsWithValue (v : IPv4.View) (computed : Int) : Prop :=
+  let oct1 := IPv4.View.oct1 v;
+  let oct2 := IPv4.View.oct2 v;
+  let oct3 := IPv4.View.oct3 v;
+  let oct4 := IPv4.View.oct4 v;
+  let «prefix» := (IPv4.View.prefix v).getD "";
+  (0 : Int) ≤ computed ∧ computed ≤ (2 : Int) ^ ((32 : Int)).toNat * (33 : Int) - (1 : Int)
+
+theorem IPv4.View.ConstraintsWithValue_denotation (v : IPv4.View) :
+    IPv4.View.ConstraintsWithValue v (IPv4.View.denotation v) ↔ IPv4.View.Constraints v :=
+  by
+  unfold IPv4.View.ConstraintsWithValue IPv4.View.denotation IPv4.View.Constraints
+  rfl

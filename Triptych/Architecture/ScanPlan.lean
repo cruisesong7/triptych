@@ -207,7 +207,14 @@ private partial def compileSequence (grammar : Grammar) (qual : String) (fuel : 
               | none =>
                   throw "scan plan: literals must be one ASCII character"
           | .term token length =>
-              pure { pattern := .tokenRun token length .empty }
+              match token with
+              | .asciiRange _ upper =>
+                  if upper ≤ 127 then
+                    pure { pattern := .tokenRun token length .empty }
+                  else
+                    throw "scan plan: ASCII ranges must end at code point 127 or below"
+              | _ =>
+                  pure { pattern := .tokenRun token length .empty }
           | .ref name =>
               if fuel == 0 then
                 throw "scan plan: production nesting exceeded the grammar size"
@@ -363,16 +370,16 @@ theorem mirrorsSequence_of_matchesSequence {grammar : Grammar} {qual : String} {
 
 end ScanPattern
 
-private def consumingOps : List ScanOp → List ScanOp
+def consumingOps : List ScanOp → List ScanOp
   | [] => []
   | ((.beginCapture _ _) :: rest) => consumingOps rest
   | ((.endCapture _) :: rest) => consumingOps rest
   | operation :: rest => operation :: consumingOps rest
 
-private def tokenAccepts (token : TokClass) (character : Char) : Bool :=
+def tokenAccepts (token : TokClass) (character : Char) : Bool :=
   decide (token.mem character)
 
-private def greedyBoundarySafe (token : TokClass) (length : LenSpec)
+def greedyBoundarySafe (token : TokClass) (length : LenSpec)
     (remaining : List ScanOp) : Bool :=
   match length with
   | .exactly _ => true
@@ -382,7 +389,7 @@ private def greedyBoundarySafe (token : TokClass) (length : LenSpec)
       | .literal character :: _ => !tokenAccepts token character
       | _ => false
 
-private def optionalBoundarySafe (character : Char) (remaining : List ScanOp) : Bool :=
+def optionalBoundarySafe (character : Char) (remaining : List ScanOp) : Bool :=
   match consumingOps remaining with
   | [] => true
   | .literal next :: _ => character != next
@@ -390,7 +397,7 @@ private def optionalBoundarySafe (character : Char) (remaining : List ScanOp) : 
   | .optionalLiteral _ :: _ => false
   | _ => false
 
-private def boundariesSafe : List ScanOp → Bool
+def boundariesSafe : List ScanOp → Bool
   | [] => true
   | .tokenRun token length :: rest =>
       greedyBoundarySafe token length rest && boundariesSafe rest
@@ -398,7 +405,19 @@ private def boundariesSafe : List ScanOp → Bool
       optionalBoundarySafe character rest && boundariesSafe rest
   | _ :: rest => boundariesSafe rest
 
+def positiveTokenLengthsOps (operations : List ScanOp) : Bool :=
+  operations.all fun
+    | .tokenRun _ (.exactly width) => 0 < width
+    | .tokenRun _ (.between lower _) => 0 < lower
+    | .tokenRun _ .atLeastOne => true
+    | _ => true
+
 namespace ScanPlan
+
+/-- Every terminal in a direct plan consumes at least one character. This rules out a
+    zero-width terminal hidden between an optional literal and its actual boundary. -/
+def positiveTokenLengths (plan : ScanPlan) : Bool :=
+  positiveTokenLengthsOps plan.operations
 
 /-- No named capture slot occurs twice in the flattened plan. -/
 def captureNamesUnique (plan : ScanPlan) : Bool :=
@@ -410,7 +429,7 @@ def deterministicBoundaries (plan : ScanPlan) : Bool :=
 
 /-- Executable certificate required before a direct backend consumes a compiled plan. -/
 def certified (plan : ScanPlan) : Bool :=
-  plan.captureNamesUnique && plan.deterministicBoundaries
+  plan.captureNamesUnique && plan.positiveTokenLengths && plan.deterministicBoundaries
 
 /-- The structured plan exactly mirrors the start production and every inlined reference. -/
 def matchesGrammar (plan : ScanPlan) (grammar : Grammar) : Bool :=
@@ -483,11 +502,14 @@ private def compileUniqueScanPlan (grammar : Grammar) : Except String ScanPlan :
   let operations := compiled.pattern.operations
   let captureKeys := compiled.pattern.captureKeys
   let captures := captureKeys.map (·.1)
+  let plan : ScanPlan := { start := grammar.start, pattern := compiled.pattern }
   if duplicate? captures then
     throw "scan plan: each named capture may occur at most once"
+  if !plan.positiveTokenLengths then
+    throw "scan plan: direct token runs must consume at least one character"
   if !boundariesSafe operations then
     throw "scan plan: a variable-width or optional field has no deterministic character boundary"
-  pure { start := grammar.start, pattern := compiled.pattern }
+  pure plan
 
 /-- Compile a deterministic acyclic grammar into a direct single-cursor plan. -/
 def compileScanPlan (grammar : Grammar) : Except String ScanPlan := do
@@ -573,7 +595,15 @@ theorem compileScanPlan_mirrorsGrammar {grammar : Grammar} {plan : ScanPlan}
 theorem compileScanPlan_captureNamesUnique {grammar : Grammar} {plan : ScanPlan}
     (hcompile : compileScanPlan grammar = .ok plan) :
     plan.captureNamesUnique = true :=
-  (Bool.and_eq_true_iff.mp (compileScanPlan_certified hcompile)).1
+  (Bool.and_eq_true_iff.mp
+    (Bool.and_eq_true_iff.mp (compileScanPlan_certified hcompile)).1).1
+
+/-- Successful compilation guarantees that every direct token run advances the cursor. -/
+theorem compileScanPlan_positiveTokenLengths {grammar : Grammar} {plan : ScanPlan}
+    (hcompile : compileScanPlan grammar = .ok plan) :
+    plan.positiveTokenLengths = true :=
+  (Bool.and_eq_true_iff.mp
+    (Bool.and_eq_true_iff.mp (compileScanPlan_certified hcompile)).1).2
 
 /-- Successful compilation guarantees deterministic greedy and optional boundaries. -/
 theorem compileScanPlan_deterministicBoundaries {grammar : Grammar} {plan : ScanPlan}
@@ -769,9 +799,8 @@ def toCaptureMap (_plan : ScanPlan) (result : ScanResult) (_source : String) : C
 def decode (plan : ScanPlan) (source : String) : Option CaptureMap :=
   (plan.run source).map fun result => plan.toCaptureMap result source
 
-/-- Execute the direct plan as a fast path, then continue with the complete scanner if the
-    straight-line program rejects. Soundness of the fast result and completeness of the
-    fallback are proved in `Triptych.Theorems.ScanPlan`. -/
+/-- Compatibility wrapper for code generated before direct ScanPlan completeness was proved.
+    Current generated parsers use `decode`; this wrapper retains the former fallback behavior. -/
 def decodeCertified (plan : ScanPlan) (grammar : Grammar) (source : String) :
     Option CaptureMap :=
   (plan.decode source).orElse fun _ => scanSearch grammar source

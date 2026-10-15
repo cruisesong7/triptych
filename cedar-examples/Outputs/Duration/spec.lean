@@ -291,3 +291,18 @@ abbrev Duration.View.Valid (v : Duration.View) : Prop :=
 def Duration.View.denotation (v : Duration.View) :=
   Duration.value (Duration.View.sign v) ((Duration.View.dDays v).getD "") ((Duration.View.dHours v).getD "")
     ((Duration.View.dMinutes v).getD "") ((Duration.View.dSeconds v).getD "") ((Duration.View.dMillis v).getD "")
+
+def Duration.View.ConstraintsWithValue (v : Duration.View) (computed : Int) : Prop :=
+  let «sign» := Duration.View.sign v;
+  let dDays := (Duration.View.dDays v).getD "";
+  let dHours := (Duration.View.dHours v).getD "";
+  let dMinutes := (Duration.View.dMinutes v).getD "";
+  let dSeconds := (Duration.View.dSeconds v).getD "";
+  let dMillis := (Duration.View.dMillis v).getD "";
+  (-9223372036854775808 : Int) ≤ computed ∧ computed ≤ (9223372036854775807 : Int)
+
+theorem Duration.View.ConstraintsWithValue_denotation (v : Duration.View) :
+    Duration.View.ConstraintsWithValue v (Duration.View.denotation v) ↔ Duration.View.Constraints v :=
+  by
+  unfold Duration.View.ConstraintsWithValue Duration.View.denotation Duration.View.Constraints
+  rfl

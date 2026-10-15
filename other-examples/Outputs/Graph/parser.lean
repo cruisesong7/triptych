@@ -8,6 +8,9 @@ import Triptych.Architecture.Constraint
 import Triptych.Architecture.Assemble
 import Triptych.Theorems.Reconcile
 import Triptych.Theorems.Value
+import Triptych.Theorems.ParsePlan
+import Triptych.Theorems.ScanPlan
+import Triptych.Theorems.SearchPlan
 import Triptych.Archive.DecodeLemmas
 import Triptych.Theorems.Derivation
 import Triptych.Theorems.Scanner
@@ -72,6 +75,18 @@ def Graph.computeValue (s : String) :=
 
 def Graph.View.ofMap (input : String) (m : Triptych.CaptureMap) : Graph.View :=
   Graph.View.mk input ((Triptych.CaptureMap.toEnv m "Order").getD "") ((Triptych.CaptureMap.toEnv m "Cells").getD "")
+
+private def Graph.View.ofSpans (input : String) (chars : List Char) (spans : Triptych.LeanSpanCursor.SpanMap) :
+    Graph.View :=
+  Graph.View.mk input ((Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "Order").getD "")
+    ((Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "Cells").getD "")
+
+private theorem Graph.View.ofSpans_eq_ofMap (input : String) (chars : List Char)
+    (spans : Triptych.LeanSpanCursor.SpanMap) :
+    Graph.View.ofSpans input chars spans = Graph.View.ofMap input (spans.materialize chars) :=
+  by
+  unfold Graph.View.ofSpans Graph.View.ofMap
+  simp only [Triptych.LeanSpanCursor.SpanMap.captureMap_toEnv, Triptych.LeanSpanCursor.SpanMap.captureMap_toEnvList]
 
 def Graph.decodeView (s : String) : Option Graph.View :=
   (scan Graph.grammar s).map (Graph.View.ofMap s)
@@ -338,7 +353,8 @@ theorem Graph.IsWf_equiv (s : String) : Graph.IsWf s ↔ Triptych.isWf Graph.gra
   simp only [Triptych.component, Triptych.componentList, Triptych.envOf, Triptych.captureMapOf, Triptych.scan_eq_decode,
     List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const, ConstraintEntry.wfPart,
     Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD,
-    Env.countVal, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
+    hexOf_getD, hexSeqOf_getD, segmentsOf_getD, Env.countVal, and_true, true_and, false_implies, implies_true,
+    Bool.false_eq_true]
   try grind
 
 theorem Graph.IsValid_equiv (s : String) :
@@ -405,7 +421,10 @@ theorem Graph.computeValue_eq (s : String) :
   rw [Triptych.scan_eq_decode]
   cases h : decode Graph.grammar s with
   | none => simp [h]
-  | some m => simp [h, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, Env.countVal, ValExpr.eval]
+  | some m =>
+    simp [h, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, hexOf_getD, hexSeqOf_getD, segmentsOf_getD,
+        Env.countVal, ValExpr.eval] <;>
+      ac_rfl
 
 theorem Graph.computeValue_of_decode {s : String} {m : Triptych.CaptureMap} (h : decode Graph.grammar s = some m) :
     Graph.computeValue s =
@@ -433,9 +452,11 @@ theorem Graph.computeValue_view (s : String) : Graph.computeValue s = (Graph.dec
 
 /- ═══════════════════════════════ parser ══════════════════════════════
 The generated correct-by-construction parser `parse` uses a certified staged cursor
-program when the grammar supports one, checks constraints on its capture map, and
-computes the result from those captures. The complete scanner remains the checked
-fallback. `parse_eq_scanner` and `parse_eq_gated` prove equality with the generic
+program when the grammar supports one, projects its captures once into the typed
+`View`, checks `View.Valid`, and computes `View.denotation`. Certified cursor rejection
+is final; grammar
+shapes outside that fragment use the complete scanner. `parse_eq_scanner` and
+`parse_eq_gated` prove equality with the generic
 scanner and readable validity-gated presentation. Its correctness and search-cost
 guarantees — `parse_sound`, `parse_complete`, `parse_reject`,
 `parse_profile_result`, `parse_candidateChecks_le`, `parse_view`, and typed
@@ -444,6 +465,127 @@ AUTO-DISCHARGED here.
 When an external parser is declared, `checkedExtParse` additionally validates each
 external result against this parser and ships an AUTO-DISCHARGED soundness theorem.
 A verified parser, no `sorry`. -/
+
+private abbrev Graph.searchPlan : SearchPlan :=
+  ({ start := "Graph",
+      alternatives :=
+        [[SearchPattern.capture "Order" ["Order"] [[SearchPattern.tokenRun TokClass.digit LenSpec.atLeastOne]],
+            SearchPattern.literal ":",
+            SearchPattern.capture "Cells" ["Cells"]
+              [[SearchPattern.literal ""], [SearchPattern.tokenRun TokClass.bit LenSpec.atLeastOne]]]] } :
+    SearchPlan)
+
+private abbrev Graph.parsePlan : ParsePlan :=
+  ParsePlan.search Graph.searchPlan
+
+private theorem Graph.searchPlan_mirrorsGrammar : SearchPlan.MirrorsGrammar Graph.searchPlan Graph.grammar :=
+  SearchPlan.mirrorsGrammar_of_matchesGrammar (by native_decide)
+
+private abbrev Graph.searchProgram : SearchProgram :=
+  ({ start := "Graph",
+      code :=
+        SearchCode.capture ["Order"] (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+          (SearchCode.literal ":"
+            (SearchCode.capture ["Cells"]
+              (SearchCode.choice (SearchCode.literal "" SearchCode.accept)
+                (SearchCode.tokenRun TokClass.bit LenSpec.atLeastOne SearchCode.accept))
+              SearchCode.accept)) } :
+    SearchProgram)
+
+private theorem Graph.searchProgram_lowered : lowerSearchPlan Graph.searchPlan = Graph.searchProgram := by native_decide
+
+private def Graph.directDecode (source : String) : Option CaptureMap :=
+  let input := source.toList
+  (List.range ((input).length + 1)).findSome? fun width_rootb =>
+    if termPrefixOk TokClass.digit LenSpec.atLeastOne input width_rootb then
+      (fun (bodyCaptures_root : CaptureMap) (remaining_root : List Char) =>
+          let ownCaptures_root :=
+            (["Order"]).map fun key => (key, String.ofList ((input).take ((input).length - (remaining_root).length)))
+          let characters_roott := ":".toList
+          if (characters_roott).isPrefixOf remaining_root then
+            scanOrElse
+              (let characters_roottnbl := "".toList
+              if (characters_roottnbl).isPrefixOf ((remaining_root).drop (characters_roott).length) then
+                (fun (bodyCaptures_roottn : CaptureMap) (remaining_roottn : List Char) =>
+                    let ownCaptures_roottn :=
+                      (["Cells"]).map fun key =>
+                        (key,
+                          String.ofList
+                            (((remaining_root).drop (characters_roott).length).take
+                              (((remaining_root).drop (characters_roott).length).length - (remaining_roottn).length)))
+                    (fun (tailCaptures_roottn : CaptureMap) (suffix_roottn : List Char) =>
+                        (fun (tailCaptures_root : CaptureMap) (suffix_root : List Char) =>
+                            (fun (captures : CaptureMap) (remaining : List Char) =>
+                                if (remaining).isEmpty then some captures else none)
+                              (ownCaptures_root ++ bodyCaptures_root ++ tailCaptures_root) suffix_root)
+                          (ownCaptures_roottn ++ bodyCaptures_roottn ++ tailCaptures_roottn) suffix_roottn)
+                      ([] : CaptureMap) remaining_roottn)
+                  ([] : CaptureMap)
+                  (((remaining_root).drop (characters_roott).length).drop (characters_roottnbl).length)
+              else none)
+              fun _ =>
+              (List.range (((remaining_root).drop (characters_roott).length).length + 1)).findSome?
+                fun width_roottnbr =>
+                if
+                    termPrefixOk TokClass.bit LenSpec.atLeastOne ((remaining_root).drop (characters_roott).length)
+                      width_roottnbr then
+                  (fun (bodyCaptures_roottn : CaptureMap) (remaining_roottn : List Char) =>
+                      let ownCaptures_roottn :=
+                        (["Cells"]).map fun key =>
+                          (key,
+                            String.ofList
+                              (((remaining_root).drop (characters_roott).length).take
+                                (((remaining_root).drop (characters_roott).length).length - (remaining_roottn).length)))
+                      (fun (tailCaptures_roottn : CaptureMap) (suffix_roottn : List Char) =>
+                          (fun (tailCaptures_root : CaptureMap) (suffix_root : List Char) =>
+                              (fun (captures : CaptureMap) (remaining : List Char) =>
+                                  if (remaining).isEmpty then some captures else none)
+                                (ownCaptures_root ++ bodyCaptures_root ++ tailCaptures_root) suffix_root)
+                            (ownCaptures_roottn ++ bodyCaptures_roottn ++ tailCaptures_roottn) suffix_roottn)
+                        ([] : CaptureMap) remaining_roottn)
+                    ([] : CaptureMap) (((remaining_root).drop (characters_roott).length).drop width_roottnbr)
+                else none
+          else none)
+        ([] : CaptureMap) ((input).drop width_rootb)
+    else none
+
+private theorem Graph.directDecode_eq_searchProgram (source : String) :
+    Graph.directDecode source = SearchProgram.decode Graph.searchProgram source :=
+  by
+  unfold Graph.directDecode SearchProgram.decode Graph.searchProgram
+  simp only [SearchCode.runK]
+
+private def Graph.decodeCaptures (source : String) : Option CaptureMap :=
+  Graph.directDecode source
+
+private theorem Graph.decodeCaptures_eq_parsePlan (source : String) :
+    Graph.decodeCaptures source = ParsePlan.decode Graph.parsePlan Graph.grammar source := by
+  calc
+    Graph.decodeCaptures source = SearchProgram.decode Graph.searchProgram source := by
+      exact Graph.directDecode_eq_searchProgram source
+    _ = SearchProgram.decode (lowerSearchPlan Graph.searchPlan) source := by rw [Graph.searchProgram_lowered]
+    _ = ParsePlan.decode Graph.parsePlan Graph.grammar source := by rfl
+
+private theorem Graph.decodeCaptures_eq_scan (source : String) :
+    Graph.decodeCaptures source = scan Graph.grammar source := by
+  calc
+    Graph.decodeCaptures source = ParsePlan.decode Graph.parsePlan Graph.grammar source :=
+      Graph.decodeCaptures_eq_parsePlan source
+    _ = scan Graph.grammar source :=
+      ParsePlan.decode_eq_scan (ParsePlan.CertifiedFor.search Graph.searchPlan_mirrorsGrammar) source
+
+private def Graph.directView (source : String) : Option Graph.View :=
+  (Graph.directDecode source).map (Graph.View.ofMap source)
+
+private theorem Graph.directView_eq_decodeView (source : String) : Graph.directView source = Graph.decodeView source :=
+  by
+  unfold Graph.directView Graph.decodeView
+  rw [show Graph.directDecode source = scan Graph.grammar source by exact Graph.decodeCaptures_eq_scan source]
+
+private instance Graph.instDecidableViewValid : DecidablePred Graph.View.Valid := fun view =>
+  by
+  unfold Graph.View.Valid Graph.View.WfConstraints Graph.WfConstraints
+  infer_instance
 
 theorem Graph.computeValue_isSome (s : String) : Graph.IsValid s → (Graph.computeValue s).isSome :=
   by
@@ -455,10 +597,26 @@ theorem Graph.computeValue_isSome (s : String) : Graph.IsValid s → (Graph.comp
   exact hengine.1.1
 
 def Graph.parse (s : String) :=
-  Triptych.scannerParseMap Graph.grammar Graph.constraints Graph.valueFn id s
+  Triptych.decodedViewParse Graph.directView Graph.View.Valid Graph.View.denotation id s
 
 theorem Graph.parse_eq_scanner (s : String) :
-    Graph.parse s = Triptych.scannerParseMap Graph.grammar Graph.constraints Graph.valueFn id s := by rfl
+    Graph.parse s = Triptych.scannerParseMap Graph.grammar Graph.constraints Graph.valueFn id s := by
+  calc
+    Graph.parse s = Triptych.gatedParseOfSpec Graph.IsValid Graph.computeValue id s :=
+      by
+      unfold Graph.parse
+      exact
+        Triptych.decodedViewParse_eq_gatedParseOfSpec Graph.directView Graph.decodeView Graph.View.Valid
+          Graph.View.denotation id Graph.IsValid Graph.computeValue Graph.directView_eq_decodeView Graph.IsValid_view
+          Graph.computeValue_view s
+    _ = Triptych.gatedParse Graph.IsValid Graph.computeValue s := by simp [Triptych.gatedParseOfSpec]
+    _ = Triptych.scannerParseMap Graph.grammar Graph.constraints Graph.valueFn id s :=
+      by
+      symm
+      unfold Graph.computeValue
+      exact
+        Triptych.scannerParseMap_eq_surfaceGated Graph.grammar Graph.constraints Graph.valueFn Graph.IsValid
+          Graph.IsValid_equiv s
 
 theorem Graph.parse_eq_gated (s : String) : Graph.parse s = Triptych.gatedParse Graph.IsValid Graph.computeValue s :=
   by
@@ -485,13 +643,13 @@ theorem Graph.parse_candidateChecks_eq_zero_of_fastScan (s : String) (hunique : 
   Triptych.scannerParseMap_candidateChecks_eq_zero_of_fastScan Graph.grammar Graph.constraints Graph.valueFn id s
     hunique hscan
 
-theorem Graph.parse_sound (s : String) (g : Graph) :
+theorem Graph.parse_sound (s : String) (g : GraphExample.Graph) :
     Graph.parse s = some g → Graph.IsValid s ∧ Graph.computeValue s = some g :=
   by
   rw [Graph.parse_eq_gated]
   exact Triptych.gatedParse_sound _ _ s g
 
-theorem Graph.parse_complete (s : String) (g : Graph) :
+theorem Graph.parse_complete (s : String) (g : GraphExample.Graph) :
     Graph.IsValid s → Graph.computeValue s = some g → Graph.parse s = some g :=
   by
   rw [Graph.parse_eq_gated]
@@ -509,7 +667,7 @@ theorem Graph.parse_view (s : String) :
   unfold Triptych.gatedParse
   rw [Graph.computeValue_view]
 
-theorem Graph.parse_eq_some_iff_view (s : String) (g : Graph) :
+theorem Graph.parse_eq_some_iff_view (s : String) (g : GraphExample.Graph) :
     Graph.parse s = some g ↔
       ∃ decodedView : Graph.View,
         Graph.decodeView s = some decodedView ∧ Graph.View.Valid decodedView ∧ Graph.View.denotation decodedView = g :=

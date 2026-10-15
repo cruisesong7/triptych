@@ -1,0 +1,902 @@
+#[derive(Copy, Clone)]
+pub struct SemanticHexSequenceSummary {
+    pub value: SemanticNat,
+    pub segments: SemanticNat,
+}
+
+#[derive(Copy, Clone)]
+pub struct SemanticHexPrefixSummary {
+    pub end: usize,
+    pub value: u128,
+}
+
+/// Scan one hexadecimal token prefix and compute its value in the same source pass.
+#[inline(always)]
+pub fn semantic_hex_prefix_summary(
+    input: &str,
+    input_length: usize,
+    input_ascii: bool,
+    start: usize,
+    limit: usize,
+) -> (result: SemanticHexPrefixSummary)
+    requires
+        input_length == input@.len(),
+        input_ascii == input.is_ascii(),
+        start <= limit <= input_length,
+        (limit as int) - (start as int) <= 4,
+    ensures
+        result.end as int == search_token_prefix_end_spec(
+            input@,
+            start as int,
+            limit as int,
+            TokenClass::HexDigit,
+        ),
+        search_token_prefix_valid(
+            input@,
+            start as int,
+            limit as int,
+            result.end as int,
+            TokenClass::HexDigit,
+        ),
+        result.value as int == triptych_hex_seq_of(
+            input@.subrange(start as int, result.end as int),
+        ),
+        forall|index: int| start <= index < result.end ==>
+            #[trigger] input@[index] != ':',
+{
+    let ghost final_end = search_token_prefix_end_spec(
+        input@,
+        start as int,
+        limit as int,
+        TokenClass::HexDigit,
+    );
+    proof {
+        search_token_prefix_end_bounds(
+            input@,
+            start as int,
+            limit as int,
+            TokenClass::HexDigit,
+        );
+    }
+    let ghost text = input@.subrange(start as int, final_end);
+    let mut end = start;
+    let mut value = 0u128;
+    proof {
+        reveal(triptych_hex_seq_of);
+        assert(search_token_prefix_end_spec(
+            input@,
+            start as int,
+            limit as int,
+            TokenClass::HexDigit,
+        ) == search_token_prefix_end_spec(
+            input@,
+            end as int,
+            limit as int,
+            TokenClass::HexDigit,
+        ));
+    }
+    while end < limit
+        invariant
+            input_length == input@.len(),
+            input_ascii == input.is_ascii(),
+            start <= end <= final_end <= limit <= input_length,
+            (limit as int) - (start as int) <= 4,
+            final_end == search_token_prefix_end_spec(
+                input@,
+                start as int,
+                limit as int,
+                TokenClass::HexDigit,
+            ),
+            final_end == search_token_prefix_end_spec(
+                input@,
+                end as int,
+                limit as int,
+                TokenClass::HexDigit,
+            ),
+            forall|index: int| start <= index < end ==>
+                #[trigger] token_accepts(TokenClass::HexDigit, input@[index]),
+            text == input@.subrange(start as int, final_end),
+            end - start <= text.len(),
+            triptych_hex_seq_from(
+                text,
+                (end - start) as int,
+                0,
+                value as int,
+            ) == triptych_hex_seq_of(text),
+            end - start == 0 ==> value == 0,
+            end - start == 1 ==> value <= 15,
+            end - start == 2 ==> value <= 255,
+            end - start == 3 ==> value <= 4095,
+            end - start == 4 ==> value <= 65535,
+        decreases limit - end,
+    {
+        let code = semantic_character_code_at(input, input_ascii, end);
+        let accepted =
+            (48 <= code && code <= 57)
+                || (97 <= code && code <= 102)
+                || (65 <= code && code <= 70);
+        if !accepted {
+            proof {
+                reveal(token_accepts);
+                assert(!token_accepts(
+                    TokenClass::HexDigit,
+                    input@[end as int],
+                ));
+                reveal(search_token_prefix_valid);
+                assert forall|index: int| start <= index < end implies
+                    #[trigger] input@[index] != ':' by {
+                    assert(token_accepts(TokenClass::HexDigit, input@[index]));
+                    reveal(token_accepts);
+                }
+                reveal_with_fuel(search_token_prefix_end_spec, 1);
+                assert(final_end == end);
+                assert(text.len() == end - start);
+                reveal_with_fuel(triptych_hex_seq_from, 1);
+            }
+            return SemanticHexPrefixSummary { end, value };
+        }
+        let digit = if 48 <= code && code <= 57 {
+            (code - 48) as u128
+        } else if 97 <= code && code <= 102 {
+            (code - 97 + 10) as u128
+        } else if 65 <= code && code <= 70 {
+            (code - 65 + 10) as u128
+        } else {
+            0u128
+        };
+        proof {
+            reveal(token_accepts);
+            assert(token_accepts(
+                TokenClass::HexDigit,
+                input@[end as int],
+            ));
+            assert((end as int) - (start as int) < 4);
+            assert(end - start < 4);
+            assert(value <= 4095) by {
+                if end - start == 0 {
+                } else if end - start == 1 {
+                } else if end - start == 2 {
+                } else {
+                    assert(end - start == 3);
+                }
+            }
+            assert(digit <= 15);
+        }
+        let multiplied = value * 16u128;
+        let next = multiplied + digit;
+        proof {
+            assert(multiplied as int == value as int * 16);
+            assert(next as int == value as int * 16 + digit as int);
+        }
+        value = next;
+        proof {
+            reveal_with_fuel(search_token_prefix_end_spec, 1);
+            search_token_prefix_end_bounds(
+                input@,
+                end as int + 1,
+                limit as int,
+                TokenClass::HexDigit,
+            );
+            assert(end < final_end);
+            assert(text[(end - start) as int] == input@[end as int]);
+            assert(code as int == text[(end - start) as int] as int);
+            reveal(triptych_hex_digit_value);
+            reveal_with_fuel(triptych_hex_seq_from, 1);
+        }
+        end += 1;
+    }
+    proof {
+        reveal(search_token_prefix_valid);
+        assert forall|index: int| start <= index < end implies
+            #[trigger] input@[index] != ':' by {
+            assert(token_accepts(TokenClass::HexDigit, input@[index]));
+            reveal(token_accepts);
+        }
+        reveal_with_fuel(search_token_prefix_end_spec, 1);
+        assert(final_end == end);
+        assert(text.len() == end - start);
+        reveal_with_fuel(triptych_hex_seq_from, 1);
+    }
+    SemanticHexPrefixSummary { end, value }
+}
+
+proof fn triptych_hex_seq_from_suffix(
+    prefix: Seq<char>,
+    suffix: Seq<char>,
+    index: int,
+    accumulator: int,
+    current: int,
+)
+    requires
+        0 <= index <= suffix.len(),
+    ensures
+        triptych_hex_seq_from(
+            prefix + suffix,
+            prefix.len() + index,
+            accumulator,
+            current,
+        ) == triptych_hex_seq_from(suffix, index, accumulator, current),
+    decreases suffix.len() - index,
+{
+    reveal_with_fuel(triptych_hex_seq_from, 1);
+    if index < suffix.len() {
+        assert((prefix + suffix)[prefix.len() + index] == suffix[index]);
+        if suffix[index] == ':' {
+            triptych_hex_seq_from_suffix(
+                prefix,
+                suffix,
+                index + 1,
+                accumulator * 65536 + current,
+                0,
+            );
+        } else {
+            triptych_hex_seq_from_suffix(
+                prefix,
+                suffix,
+                index + 1,
+                accumulator,
+                current * 16 + triptych_hex_digit_value(suffix[index]),
+            );
+        }
+    }
+}
+
+proof fn triptych_hex_seq_append_colon_from(
+    left: Seq<char>,
+    right: Seq<char>,
+    index: int,
+    accumulator: int,
+    current: int,
+)
+    requires
+        0 <= index <= left.len(),
+    ensures
+        triptych_hex_seq_from(
+            left + seq![':'] + right,
+            index,
+            accumulator,
+            current,
+        ) == triptych_hex_seq_from(
+            right,
+            0,
+            triptych_hex_seq_from(left, index, accumulator, current),
+            0,
+        ),
+    decreases left.len() - index,
+{
+    reveal_with_fuel(triptych_hex_seq_from, 1);
+    if index < left.len() {
+        assert((left + seq![':'] + right)[index] == left[index]);
+        if left[index] == ':' {
+            triptych_hex_seq_append_colon_from(
+                left,
+                right,
+                index + 1,
+                accumulator * 65536 + current,
+                0,
+            );
+        } else {
+            triptych_hex_seq_append_colon_from(
+                left,
+                right,
+                index + 1,
+                accumulator,
+                current * 16 + triptych_hex_digit_value(left[index]),
+            );
+        }
+    } else {
+        assert((left + seq![':'] + right)[index] == ':');
+        triptych_hex_seq_from_suffix(
+            left + seq![':'],
+            right,
+            0,
+            accumulator * 65536 + current,
+            0,
+        );
+    }
+}
+
+proof fn triptych_hex_group_preserves_accumulator(
+    group: Seq<char>,
+    index: int,
+    accumulator: int,
+    current: int,
+)
+    requires
+        0 <= index <= group.len(),
+        forall|checked: int| index <= checked < group.len() ==>
+            #[trigger] group[checked] != ':',
+    ensures
+        triptych_hex_seq_from(group, index, accumulator, current)
+            == accumulator * 65536
+                + triptych_hex_seq_from(group, index, 0, current),
+    decreases group.len() - index,
+{
+    reveal_with_fuel(triptych_hex_seq_from, 1);
+    if index < group.len() {
+        assert(group[index] != ':');
+        triptych_hex_group_preserves_accumulator(
+            group,
+            index + 1,
+            accumulator,
+            current * 16 + triptych_hex_digit_value(group[index]),
+        );
+    }
+}
+
+proof fn triptych_hex_seq_append_group(
+    left: Seq<char>,
+    group: Seq<char>,
+)
+    requires
+        forall|index: int| 0 <= index < group.len() ==>
+            #[trigger] group[index] != ':',
+    ensures
+        triptych_hex_seq_of(left + seq![':'] + group)
+            == triptych_hex_seq_of(left) * 65536 + triptych_hex_seq_of(group),
+{
+    reveal(triptych_hex_seq_of);
+    triptych_hex_seq_append_colon_from(left, group, 0, 0, 0);
+    triptych_hex_group_preserves_accumulator(
+        group,
+        0,
+        triptych_hex_seq_from(left, 0, 0, 0),
+        0,
+    );
+}
+
+proof fn triptych_segments_from_suffix(
+    prefix: Seq<char>,
+    suffix: Seq<char>,
+    index: int,
+    count: int,
+)
+    requires
+        0 <= index <= suffix.len(),
+    ensures
+        triptych_segments_from(
+            prefix + suffix,
+            prefix.len() + index,
+            count,
+        ) == triptych_segments_from(suffix, index, count),
+    decreases suffix.len() - index,
+{
+    reveal_with_fuel(triptych_segments_from, 1);
+    if index < suffix.len() {
+        assert((prefix + suffix)[prefix.len() + index] == suffix[index]);
+        triptych_segments_from_suffix(
+            prefix,
+            suffix,
+            index + 1,
+            if suffix[index] == ':' { count + 1 } else { count },
+        );
+    }
+}
+
+proof fn triptych_segments_append_colon_from(
+    left: Seq<char>,
+    right: Seq<char>,
+    index: int,
+    count: int,
+)
+    requires
+        0 <= index <= left.len(),
+    ensures
+        triptych_segments_from(
+            left + seq![':'] + right,
+            index,
+            count,
+        ) == triptych_segments_from(
+            right,
+            0,
+            triptych_segments_from(left, index, count) + 1,
+        ),
+    decreases left.len() - index,
+{
+    reveal_with_fuel(triptych_segments_from, 1);
+    if index < left.len() {
+        assert((left + seq![':'] + right)[index] == left[index]);
+        triptych_segments_append_colon_from(
+            left,
+            right,
+            index + 1,
+            if left[index] == ':' { count + 1 } else { count },
+        );
+    } else {
+        assert((left + seq![':'] + right)[index] == ':');
+        triptych_segments_from_suffix(
+            left + seq![':'],
+            right,
+            0,
+            count + 1,
+        );
+    }
+}
+
+proof fn triptych_hex_group_preserves_segment_count(
+    group: Seq<char>,
+    index: int,
+    count: int,
+)
+    requires
+        0 <= index <= group.len(),
+        forall|checked: int| index <= checked < group.len() ==>
+            #[trigger] group[checked] != ':',
+    ensures
+        triptych_segments_from(group, index, count) == count,
+    decreases group.len() - index,
+{
+    reveal_with_fuel(triptych_segments_from, 1);
+    if index < group.len() {
+        assert(group[index] != ':');
+        triptych_hex_group_preserves_segment_count(group, index + 1, count);
+    }
+}
+
+proof fn triptych_segments_append_group(
+    left: Seq<char>,
+    group: Seq<char>,
+)
+    requires
+        left.len() > 0,
+        forall|index: int| 0 <= index < group.len() ==>
+            #[trigger] group[index] != ':',
+    ensures
+        triptych_segments_of(left + seq![':'] + group)
+            == triptych_segments_of(left) + 1,
+{
+    reveal(triptych_segments_of);
+    triptych_segments_append_colon_from(left, group, 0, 1);
+    triptych_hex_group_preserves_segment_count(
+        group,
+        0,
+        triptych_segments_from(left, 0, 1) + 1,
+    );
+}
+
+proof fn triptych_segments_single_group(group: Seq<char>)
+    requires
+        group.len() > 0,
+        forall|index: int| 0 <= index < group.len() ==>
+            #[trigger] group[index] != ':',
+    ensures
+        triptych_segments_of(group) == 1,
+{
+    reveal(triptych_segments_of);
+    triptych_hex_group_preserves_segment_count(group, 0, 1);
+}
+
+/// A semantic summary accumulated by the same pass that recognizes separated H16 groups.
+///
+/// The source is ghost state, so the executable representation contains only the span and two
+/// `SemanticNat` values.
+#[derive(Copy, Clone)]
+struct SemanticHexSequenceAccumulator {
+    source: Ghost<Seq<char>>,
+    start: usize,
+    end: usize,
+    summary: SemanticHexSequenceSummary,
+}
+
+impl SemanticHexSequenceAccumulator {
+    #[verifier::type_invariant]
+    spec fn well_formed(self) -> bool {
+        &&& self.start < self.end <= self.source@.len()
+        &&& self.summary.value@ as int == triptych_hex_seq_of(
+            self.source@.subrange(self.start as int, self.end as int),
+        )
+        &&& self.summary.segments@ as int == triptych_segments_of(
+            self.source@.subrange(self.start as int, self.end as int),
+        )
+    }
+
+    spec fn source_matches(&self, input: Seq<char>) -> bool {
+        self.source@ == input
+    }
+
+    #[inline(always)]
+    fn first(
+        input: Ghost<Seq<char>>,
+        start: usize,
+        prefix: SemanticHexPrefixSummary,
+    ) -> (result: Self)
+        requires
+            start < prefix.end <= input@.len(),
+            prefix.value as int == triptych_hex_seq_of(
+                input@.subrange(start as int, prefix.end as int),
+            ),
+            forall|index: int| start <= index < prefix.end ==>
+                #[trigger] input@[index] != ':',
+        ensures
+            result.source_matches(input@),
+            result.start == start,
+            result.end == prefix.end,
+    {
+        let ghost group = input@.subrange(start as int, prefix.end as int);
+        proof {
+            assert(group.len() == prefix.end - start);
+            assert(group.len() > 0);
+            assert forall|index: int| 0 <= index < group.len() implies
+                #[trigger] group[index] != ':' by {
+                assert(group[index] == input@[start as int + index]);
+            }
+            triptych_segments_single_group(group);
+        }
+        Self {
+            source: input,
+            start,
+            end: prefix.end,
+            summary: SemanticHexSequenceSummary {
+                value: SemanticNat::new(prefix.value),
+                segments: SemanticNat::new(1),
+            },
+        }
+    }
+
+    #[inline(always)]
+    fn push_group(
+        &mut self,
+        input: Ghost<Seq<char>>,
+        group_start: usize,
+        prefix: SemanticHexPrefixSummary,
+    )
+        requires
+            old(self).source_matches(input@),
+            group_start == old(self).end + 1,
+            old(self).end < input@.len(),
+            input@[old(self).end as int] == ':',
+            group_start < prefix.end <= input@.len(),
+            prefix.value as int == triptych_hex_seq_of(
+                input@.subrange(group_start as int, prefix.end as int),
+            ),
+            forall|index: int| group_start <= index < prefix.end ==>
+                #[trigger] input@[index] != ':',
+        ensures
+            final(self).source_matches(input@),
+            final(self).start == old(self).start,
+            final(self).end == prefix.end,
+    {
+        proof {
+            use_type_invariant(&*self);
+        }
+        let old_value = self.summary.value;
+        let old_segments = self.summary.segments;
+        let next_value = old_value
+            .mul(&SemanticNat::new(65536))
+            .add(&SemanticNat::new(prefix.value));
+        let next_segments = old_segments.add(&SemanticNat::new(1));
+        let ghost left = input@.subrange(self.start as int, self.end as int);
+        let ghost group = input@.subrange(group_start as int, prefix.end as int);
+        let ghost whole = input@.subrange(self.start as int, prefix.end as int);
+        proof {
+            assert(left.len() > 0);
+            assert(group.len() == prefix.end - group_start);
+            assert(group.len() > 0);
+            assert forall|index: int| 0 <= index < group.len() implies
+                #[trigger] group[index] != ':' by {
+                assert(group[index] == input@[group_start as int + index]);
+            }
+            assert(whole =~= left + seq![':'] + group) by {
+                assert_seqs_equal!(whole == left + seq![':'] + group);
+            }
+            triptych_hex_seq_append_group(left, group);
+            triptych_segments_append_group(left, group);
+        }
+        let start = self.start;
+        *self = Self {
+            source: input,
+            start,
+            end: prefix.end,
+            summary: SemanticHexSequenceSummary {
+                value: next_value,
+                segments: next_segments,
+            },
+        };
+    }
+}
+
+/// Interpret a colon-separated hexadecimal span and count its segments in one source pass.
+pub fn semantic_hex_sequence_summary_of_span(
+    input: &str,
+    input_ascii: bool,
+    span: SemanticSpan,
+) -> (result: SemanticHexSequenceSummary)
+    requires
+        input_ascii == input.is_ascii(),
+        span.start <= span.end <= input@.len(),
+        span.present || span.start == span.end,
+    ensures
+        result.value@ as int == triptych_hex_seq_of(semantic_span_text(input@, span)),
+        result.segments@ as int == triptych_segments_of(semantic_span_text(input@, span)),
+{
+    let ghost text = semantic_span_text(input@, span);
+    let mut accumulator = SemanticNat::new(0);
+    let mut current = SemanticNat::new(0);
+    let mut segments = if span.start == span.end {
+        SemanticNat::new(0)
+    } else {
+        SemanticNat::new(1)
+    };
+    let mut index = span.start;
+    proof {
+        reveal(triptych_hex_seq_of);
+        reveal(triptych_segments_of);
+        reveal_with_fuel(triptych_segments_from, 1);
+    }
+    while index < span.end
+        invariant
+            input_ascii == input.is_ascii(),
+            span.start <= index <= span.end <= input@.len(),
+            span.present || span.start == span.end,
+            text == semantic_span_text(input@, span),
+            span.present ==> text
+                == input@.subrange(span.start as int, span.end as int),
+            !span.present ==> text == seq![],
+            index - span.start <= text.len(),
+            triptych_hex_seq_from(
+                text,
+                (index - span.start) as int,
+                accumulator@ as int,
+                current@ as int,
+            ) == triptych_hex_seq_of(text),
+            triptych_segments_from(
+                text,
+                (index - span.start) as int,
+                segments@ as int,
+            ) == triptych_segments_of(text),
+        decreases span.end - index,
+    {
+        proof {
+            if !span.present {
+                assert(span.start == span.end);
+                assert(index < span.end);
+                assert(index >= span.start);
+                assert(false);
+            }
+            assert(span.present);
+        }
+        let code = semantic_character_code_at(input, input_ascii, index);
+        if code == 58 {
+            accumulator = accumulator.mul(&SemanticNat::new(65536)).add(&current);
+            current = SemanticNat::new(0);
+            segments = segments.add(&SemanticNat::new(1));
+        } else {
+            let digit = if 48 <= code && code <= 57 {
+                (code - 48) as u128
+            } else if 97 <= code && code <= 102 {
+                (code - 97 + 10) as u128
+            } else if 65 <= code && code <= 70 {
+                (code - 65 + 10) as u128
+            } else {
+                0u128
+            };
+            current = current.mul(&SemanticNat::new(16)).add(&SemanticNat::new(digit));
+        }
+        proof {
+            assert(text[(index - span.start) as int] == input@[index as int]);
+            assert(code as int == input@[index as int] as int);
+            assert(code as int == text[(index - span.start) as int] as int);
+            reveal(triptych_hex_digit_value);
+            reveal_with_fuel(triptych_hex_seq_from, 1);
+            reveal_with_fuel(triptych_segments_from, 1);
+        }
+        index += 1;
+    }
+    let value = accumulator.mul(&SemanticNat::new(65536)).add(&current);
+    proof {
+        reveal_with_fuel(triptych_hex_seq_from, 1);
+        reveal_with_fuel(triptych_segments_from, 1);
+    }
+    SemanticHexSequenceSummary { value, segments }
+}
+
+/// Primitive fast path for a hexadecimal sequence and its segment count. Overflow falls back to
+/// the exact `SemanticNat` implementation, preserving the same unbounded specification.
+#[inline(always)]
+pub fn semantic_hex_sequence_summary_of_span_fast(
+    input: &str,
+    input_ascii: bool,
+    span: SemanticSpan,
+) -> (result: SemanticHexSequenceSummary)
+    requires
+        input_ascii == input.is_ascii(),
+        span.start <= span.end <= input@.len(),
+        span.present || span.start == span.end,
+    ensures
+        result.value@ as int == triptych_hex_seq_of(semantic_span_text(input@, span)),
+        result.segments@ as int == triptych_segments_of(semantic_span_text(input@, span)),
+{
+    let ghost text = semantic_span_text(input@, span);
+    let mut accumulator = 0u128;
+    let mut current = 0u128;
+    let mut segments = if span.start == span.end { 0u128 } else { 1u128 };
+    let mut index = span.start;
+    proof {
+        reveal(triptych_hex_seq_of);
+        reveal(triptych_segments_of);
+        reveal_with_fuel(triptych_segments_from, 1);
+    }
+    while index < span.end
+        invariant
+            input_ascii == input.is_ascii(),
+            span.start <= index <= span.end <= input@.len(),
+            span.present || span.start == span.end,
+            text == semantic_span_text(input@, span),
+            span.present ==> text
+                == input@.subrange(span.start as int, span.end as int),
+            !span.present ==> text == seq![],
+            index - span.start <= text.len(),
+            triptych_hex_seq_from(
+                text,
+                (index - span.start) as int,
+                accumulator as int,
+                current as int,
+            ) == triptych_hex_seq_of(text),
+            triptych_segments_from(
+                text,
+                (index - span.start) as int,
+                segments as int,
+            ) == triptych_segments_of(text),
+        decreases span.end - index,
+    {
+        proof {
+            if !span.present {
+                assert(span.start == span.end);
+                assert(index < span.end);
+                assert(index >= span.start);
+                assert(false);
+            }
+            assert(span.present);
+        }
+        let code = semantic_character_code_at(input, input_ascii, index);
+        if code == 58 {
+            let multiplied = match accumulator.checked_mul(65536u128) {
+                Some(value) => value,
+                None => return semantic_hex_sequence_summary_of_span(input, input_ascii, span),
+            };
+            let next = match multiplied.checked_add(current) {
+                Some(value) => value,
+                None => return semantic_hex_sequence_summary_of_span(input, input_ascii, span),
+            };
+            let next_segments = match segments.checked_add(1u128) {
+                Some(value) => value,
+                None => return semantic_hex_sequence_summary_of_span(input, input_ascii, span),
+            };
+            proof {
+                assert(multiplied as int == accumulator as int * 65536);
+                assert(next as int == accumulator as int * 65536 + current as int);
+                assert(next_segments as int == segments as int + 1);
+            }
+            accumulator = next;
+            current = 0u128;
+            segments = next_segments;
+        } else {
+            let digit = if 48 <= code && code <= 57 {
+                (code - 48) as u128
+            } else if 97 <= code && code <= 102 {
+                (code - 97 + 10) as u128
+            } else if 65 <= code && code <= 70 {
+                (code - 65 + 10) as u128
+            } else {
+                0u128
+            };
+            let multiplied = match current.checked_mul(16u128) {
+                Some(value) => value,
+                None => return semantic_hex_sequence_summary_of_span(input, input_ascii, span),
+            };
+            let next = match multiplied.checked_add(digit) {
+                Some(value) => value,
+                None => return semantic_hex_sequence_summary_of_span(input, input_ascii, span),
+            };
+            proof {
+                assert(multiplied as int == current as int * 16);
+                assert(next as int == current as int * 16 + digit as int);
+            }
+            current = next;
+        }
+        proof {
+            assert(text[(index - span.start) as int] == input@[index as int]);
+            assert(code as int == input@[index as int] as int);
+            assert(code as int == text[(index - span.start) as int] as int);
+            reveal(triptych_hex_digit_value);
+            reveal_with_fuel(triptych_hex_seq_from, 1);
+            reveal_with_fuel(triptych_segments_from, 1);
+        }
+        index += 1;
+    }
+    let multiplied = match accumulator.checked_mul(65536u128) {
+        Some(value) => value,
+        None => return semantic_hex_sequence_summary_of_span(input, input_ascii, span),
+    };
+    let combined = match multiplied.checked_add(current) {
+        Some(value) => value,
+        None => return semantic_hex_sequence_summary_of_span(input, input_ascii, span),
+    };
+    let value = SemanticNat::new(combined);
+    let segment_count = SemanticNat::new(segments);
+    proof {
+        assert(multiplied as int == accumulator as int * 65536);
+        assert(combined as int == accumulator as int * 65536 + current as int);
+        reveal_with_fuel(triptych_hex_seq_from, 1);
+        reveal_with_fuel(triptych_segments_from, 1);
+    }
+    SemanticHexSequenceSummary { value, segments: segment_count }
+}
+
+pub fn semantic_hex_sequence_of_span(
+    input: &str,
+    input_ascii: bool,
+    span: SemanticSpan,
+) -> (result: SemanticNat)
+    requires
+        input_ascii == input.is_ascii(),
+        span.start <= span.end <= input@.len(),
+        span.present || span.start == span.end,
+    ensures
+        result@ as int == triptych_hex_seq_of(semantic_span_text(input@, span)),
+{
+    let ghost text = semantic_span_text(input@, span);
+    let mut accumulator = SemanticNat::new(0);
+    let mut current = SemanticNat::new(0);
+    let mut index = span.start;
+    proof {
+        reveal(triptych_hex_seq_of);
+    }
+    while index < span.end
+        invariant
+            input_ascii == input.is_ascii(),
+            span.start <= index <= span.end <= input@.len(),
+            span.present || span.start == span.end,
+            text == semantic_span_text(input@, span),
+            span.present ==> text
+                == input@.subrange(span.start as int, span.end as int),
+            !span.present ==> text == seq![],
+            index - span.start <= text.len(),
+            triptych_hex_seq_from(
+                text,
+                (index - span.start) as int,
+                accumulator@ as int,
+                current@ as int,
+            ) == triptych_hex_seq_of(text),
+        decreases span.end - index,
+    {
+        proof {
+            if !span.present {
+                assert(span.start == span.end);
+                assert(index < span.end);
+                assert(index >= span.start);
+                assert(false);
+            }
+            assert(span.present);
+        }
+        let code = semantic_character_code_at(input, input_ascii, index);
+        if code == 58 {
+            accumulator = accumulator.mul(&SemanticNat::new(65536)).add(&current);
+            current = SemanticNat::new(0);
+        } else {
+            let digit = if 48 <= code && code <= 57 {
+                (code - 48) as u128
+            } else if 97 <= code && code <= 102 {
+                (code - 97 + 10) as u128
+            } else if 65 <= code && code <= 70 {
+                (code - 65 + 10) as u128
+            } else {
+                0u128
+            };
+            current = current.mul(&SemanticNat::new(16)).add(&SemanticNat::new(digit));
+        }
+        proof {
+            assert(text[(index - span.start) as int] == input@[index as int]);
+            assert(code as int == input@[index as int] as int);
+            assert(code as int == text[(index - span.start) as int] as int);
+            reveal(triptych_hex_digit_value);
+            reveal_with_fuel(triptych_hex_seq_from, 1);
+        }
+        index += 1;
+    }
+    let result = accumulator.mul(&SemanticNat::new(65536)).add(&current);
+    proof {
+        reveal_with_fuel(triptych_hex_seq_from, 1);
+    }
+    result
+}

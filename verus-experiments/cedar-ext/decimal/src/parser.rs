@@ -4,16 +4,18 @@
 
 #![allow(unused_variables)]
 
+#[cfg(verus_only)]
+use super::spec::*;
 use vstd::prelude::*;
 #[cfg(verus_only)]
 use vstd::seq_lib::*;
+use vstd::string::StrSliceExecFns;
+#[cfg(verus_only)]
+use vstd::seq::lemma_seq_subrange_index;
 #[cfg(verus_only)]
 use vstd::string::{is_ascii, is_ascii_spec_bytes};
 #[cfg(verus_only)]
 use vstd::utf8::{is_ascii_chars, is_ascii_chars_concat};
-use vstd::string::StrSliceExecFns;
-#[cfg(verus_only)]
-use crate::spec::*;
 
 verus! {
 
@@ -215,6 +217,15 @@ impl DeepView for DecimalParseResult {
     }
 }
 
+pub open spec fn decimal_parse_view(input: Seq<char>, parsed: DecimalParseSpec) -> DecimalView {
+    DecimalView {
+        input,
+        sign: input.subrange(parsed.sign_start, parsed.sign_end),
+        natural: input.subrange(parsed.natural_start, parsed.natural_end),
+        fraction: input.subrange(parsed.fraction_start, parsed.fraction_end)
+    }
+}
+
 pub open spec fn decimal_parse_plan(input: Seq<char>)
     -> Option<DecimalParseSpec>
 {
@@ -266,136 +277,147 @@ pub open spec fn decimal_parse_plan(input: Seq<char>)
 
 pub proof fn decimal_is_wf_implies_parse_plan(input: Seq<char>)
     requires
-        decimal_is_wf_decimal(input),
+        decimal_is_wf_Decimal(input),
     ensures
         decimal_parse_plan(input).is_some(),
 {
-    reveal(decimal_is_wf_decimal);
+    reveal(decimal_is_wf_Decimal);
     let (sign, natural, fraction): (Seq<char>, Seq<char>, Seq<char>) =
-        choose|sign: Seq<char>, natural: Seq<char>, fraction: Seq<char>|
-            input
-                == sign
-                    + natural
-                    + seq!['\u{2e}']
-                    + fraction
-                && decimal_is_wf_sign(sign)
-                && decimal_is_wf_natural(natural)
-                && decimal_is_wf_fraction(fraction);
+        choose|sign: Seq<char>, natural: Seq<char>, fraction: Seq<char>| input == sign + natural + seq!['\u{2e}'] + fraction && decimal_is_wf_Sign(sign) && decimal_is_wf_Natural(natural) && decimal_is_wf_Fraction(fraction);
+    assert(input == sign + natural + seq!['\u{2e}'] + fraction && decimal_is_wf_Sign(sign) && decimal_is_wf_Natural(natural) && decimal_is_wf_Fraction(fraction));
+    assert(input == sign + natural + seq!['\u{2e}'] + fraction);
 
-    reveal(decimal_is_wf_sign);
-    let sign_literal: Seq<char> = choose|literal: Seq<char>|
-        sign == literal
-            && (literal.len() == 0
-                || literal == seq!['\u{2d}']);
-    reveal(decimal_is_wf_natural);
-    let natural_digits: Seq<char> = choose|digits: Seq<char>|
-        natural == digits
-            && 1 <= digits.len()
-            && forall|i: int| #![auto]
-                0 <= i && i < digits.len() ==> triptych_is_digit(digits[i]);
-    reveal(decimal_is_wf_fraction);
-    let fraction_digits: Seq<char> = choose|digits: Seq<char>|
-        fraction == digits
-            && 1 <= digits.len()
-            && digits.len() <= 4
-            && forall|i: int| #![auto]
-                0 <= i && i < digits.len() ==> triptych_is_digit(digits[i]);
-
+    reveal(decimal_is_wf_Sign);
+    let sign_literal: Seq<char> =
+        choose|sign_literal: Seq<char>| sign == sign_literal && ((sign_literal.len() as int) == (0int) || sign_literal == seq!['\u{2d}']);
+    assert(sign == sign_literal && ((sign_literal.len() as int) == (0int) || sign_literal == seq!['\u{2d}']));
     assert(sign == sign_literal);
+
+    reveal(decimal_is_wf_Natural);
+    let natural_digits: Seq<char> =
+        choose|natural_digits: Seq<char>| natural == natural_digits && ((1int) <= (natural_digits.len() as int) && (forall|i: int| #![auto] (0int) <= i && i < (natural_digits.len() as int) ==> triptych_is_digit(natural_digits[i])));
+    assert(natural == natural_digits && ((1int) <= (natural_digits.len() as int) && (forall|i: int| #![auto] (0int) <= i && i < (natural_digits.len() as int) ==> triptych_is_digit(natural_digits[i]))));
     assert(natural == natural_digits);
+
+    reveal(decimal_is_wf_Fraction);
+    let fraction_digits: Seq<char> =
+        choose|fraction_digits: Seq<char>| fraction == fraction_digits && ((1int) <= (fraction_digits.len() as int) && (fraction_digits.len() as int) <= (4int) && (forall|i: int| #![auto] (0int) <= i && i < (fraction_digits.len() as int) ==> triptych_is_digit(fraction_digits[i])));
+    assert(fraction == fraction_digits && ((1int) <= (fraction_digits.len() as int) && (fraction_digits.len() as int) <= (4int) && (forall|i: int| #![auto] (0int) <= i && i < (fraction_digits.len() as int) ==> triptych_is_digit(fraction_digits[i]))));
     assert(fraction == fraction_digits);
 
-    assert(is_ascii_chars(sign)) by {
-        assert forall|i: int| 0 <= i < sign.len() implies
-            '\0' <= #[trigger] sign[i] <= '\u{7f}' by {
-            assert(sign == seq!['\u{2d}']);
+    assert(is_ascii_chars(sign_literal)) by {
+        assert forall|i: int| 0 <= i < sign_literal.len() implies
+            '\u{0}' <= #[trigger] sign_literal[i] <= '\u{7f}' by {
+            assert(sign_literal == seq!['\u{2d}']);
         }
     }
-    assert(is_ascii_chars(natural)) by {
-        assert forall|i: int| 0 <= i < natural.len() implies
-            '\0' <= #[trigger] natural[i] <= '\u{7f}' by {
-            assert(triptych_is_digit(natural[i]));
-            reveal(triptych_is_digit);
-        }
-    }
-    assert(is_ascii_chars(fraction)) by {
-        assert forall|i: int| 0 <= i < fraction.len() implies
-            '\0' <= #[trigger] fraction[i] <= '\u{7f}' by {
-            assert(triptych_is_digit(fraction[i]));
+    assert(is_ascii_chars(natural_digits)) by {
+        assert forall|i: int| 0 <= i < natural_digits.len() implies
+            '\u{0}' <= #[trigger] natural_digits[i] <= '\u{7f}' by {
+            assert(triptych_is_digit(natural_digits[i]));
             reveal(triptych_is_digit);
         }
     }
     assert(is_ascii_chars(seq!['\u{2e}']));
+    assert(is_ascii_chars(fraction_digits)) by {
+        assert forall|i: int| 0 <= i < fraction_digits.len() implies
+            '\u{0}' <= #[trigger] fraction_digits[i] <= '\u{7f}' by {
+            assert(triptych_is_digit(fraction_digits[i]));
+            reveal(triptych_is_digit);
+        }
+    }
     broadcast use is_ascii_chars_concat;
-    assert(is_ascii_chars(sign + natural));
-    assert(
-        is_ascii_chars(
-            sign + natural + seq!['\u{2e}']
-        )
-    );
-    assert(
-        is_ascii_chars(
-            sign
-                + natural
-                + seq!['\u{2e}']
-                + fraction
-        )
-    );
+    assert(is_ascii_chars(sign_literal + natural_digits));
+    assert(is_ascii_chars(sign_literal + natural_digits + seq!['\u{2e}']));
+    assert(is_ascii_chars(sign_literal + natural_digits + seq!['\u{2e}'] + fraction_digits));
+    assert(input =~= sign_literal + natural_digits + seq!['\u{2e}'] + fraction_digits) by {
+        assert_seqs_equal!(input == sign_literal + natural_digits + seq!['\u{2e}'] + fraction_digits);
+    }
+    assert(input == sign_literal + natural_digits + seq!['\u{2e}'] + fraction_digits);
     assert(is_ascii_chars(input));
 
-    let sign_end: int = sign.len() as int;
-    let natural_end: int = sign_end + natural.len() as int;
-    let fraction_start: int = natural_end + 1;
-    let fraction_end: int = fraction_start + fraction.len() as int;
+    let proof_position_0: int = 0;
+    let proof_position_1: int = proof_position_0 + (sign_literal.len() as int);
+    let proof_position_2: int = proof_position_1 + (natural_digits.len() as int);
+    let proof_position_3: int = proof_position_2 + 1;
+    let proof_position_4: int = proof_position_3 + (fraction_digits.len() as int);
+    assert(proof_position_4 == input.len());
 
-    assert(sign_end == 0 || sign_end == 1);
-    if sign_end == 0 {
-        assert(input[0] == natural[0]);
-        assert(triptych_is_digit(input[0]));
-        reveal(triptych_is_digit);
-        assert(input[0] != '\u{2d}');
+    assert(sign_literal.len() == 0 || sign_literal == seq!['\u{2d}']);
+    if sign_literal.len() == 0 {
+        if natural_digits.len() == 0 {
+            assert(proof_position_0 < input.len());
+            assert(input[proof_position_0] == '\u{2e}');
+            assert(input[proof_position_0] != '\u{2d}');
+        } else {
+            assert(proof_position_0 < input.len());
+            assert(input[proof_position_0] == natural_digits[0]);
+            assert(triptych_is_digit(natural_digits[0]));
+            reveal(triptych_is_digit);
+            assert(plan_token_accepts(PlanTokenClass::Digit, input[proof_position_0])) by {
+                reveal(plan_token_accepts);
+            }
+            assert(!plan_token_accepts(PlanTokenClass::Digit, '\u{2d}'));
+            assert(input[proof_position_0] != '\u{2d}');
+        }
+        assert(proof_position_1 == proof_position_0);
     } else {
-        assert(sign == seq!['\u{2d}']);
-        assert(input[0] == '\u{2d}');
+        assert(sign_literal == seq!['\u{2d}']);
+        assert(sign_literal.len() == 1);
+        assert(proof_position_0 < input.len());
+        assert(input[proof_position_0] == '\u{2d}');
+        assert(proof_position_1 == proof_position_0 + 1);
     }
 
-    assert forall|index: int| sign_end <= index < natural_end implies
+    assert(1 <= natural_digits.len());
+    assert(proof_position_2 == proof_position_1 + (natural_digits.len() as int));
+    assert forall|index: int| proof_position_1 <= index < proof_position_2 implies
         #[trigger] plan_token_accepts(PlanTokenClass::Digit, input[index]) by {
-        let digit_index = index - sign_end;
-        assert(0 <= digit_index < natural.len());
-        assert(input[index] == natural[digit_index]);
-        assert(triptych_is_digit(natural[digit_index]));
-        reveal(plan_token_accepts);
+        let item_index = index - proof_position_1;
+        assert(0 <= item_index < natural_digits.len());
+        assert(input[index] == natural_digits[item_index]);
+        assert(triptych_is_digit(natural_digits[item_index]));
         reveal(triptych_is_digit);
+        assert(plan_token_accepts(PlanTokenClass::Digit, input[index])) by {
+            reveal(plan_token_accepts);
+        }
     }
-    assert(input[natural_end] == '\u{2e}');
-    assert(
-        !plan_token_accepts(PlanTokenClass::Digit, input[natural_end])
-    ) by {
+    assert(proof_position_2 < input.len());
+    assert(input[proof_position_2] == '\u{2e}');
+    assert(!plan_token_accepts(PlanTokenClass::Digit, input[proof_position_2])) by {
         reveal(plan_token_accepts);
     }
     plan_scan_token_end_at_boundary(
         input,
-        sign_end,
-        natural_end,
+        proof_position_1,
+        proof_position_2,
         input.len() as int,
         PlanTokenClass::Digit,
     );
 
-    assert forall|index: int| fraction_start <= index < fraction_end implies
+    assert(proof_position_2 < input.len());
+    assert(input[proof_position_2] == '\u{2e}');
+    assert(proof_position_3 == proof_position_2 + 1);
+
+    assert(1 <= fraction_digits.len());
+    assert(fraction_digits.len() <= 4);
+    assert(proof_position_4 == proof_position_3 + (fraction_digits.len() as int));
+    assert forall|index: int| proof_position_3 <= index < proof_position_4 implies
         #[trigger] plan_token_accepts(PlanTokenClass::Digit, input[index]) by {
-        let digit_index = index - fraction_start;
-        assert(0 <= digit_index < fraction.len());
-        assert(input[index] == fraction[digit_index]);
-        assert(triptych_is_digit(fraction[digit_index]));
-        reveal(plan_token_accepts);
+        let item_index = index - proof_position_3;
+        assert(0 <= item_index < fraction_digits.len());
+        assert(input[index] == fraction_digits[item_index]);
+        assert(triptych_is_digit(fraction_digits[item_index]));
         reveal(triptych_is_digit);
+        assert(plan_token_accepts(PlanTokenClass::Digit, input[index])) by {
+            reveal(plan_token_accepts);
+        }
     }
-    assert(fraction_end == input.len());
+    assert(proof_position_4 == input.len());
     plan_scan_token_end_at_boundary(
         input,
-        fraction_start,
-        fraction_end,
+        proof_position_3,
+        proof_position_4,
         input.len() as int,
         PlanTokenClass::Digit,
     );
@@ -403,22 +425,27 @@ pub proof fn decimal_is_wf_implies_parse_plan(input: Seq<char>)
     reveal(decimal_parse_plan);
 }
 
-
 /// Direct single-pass parser generated from the format's verified-lowered CursorProgram.
+#[inline(always)]
+#[verifier::rlimit(20)]
 pub fn decimal_parse_candidate(input: &str)
     -> (result: Option<DecimalParseResult>)
     ensures
         match result {
             Some(parsed) =>
                 decimal_parse_plan(input@) == Some(parsed.deep_view())
-                    && decimal_is_wf_decimal(input@),
+                    && decimal_is_wf_Decimal(input@)
+                    && decimal_matches_view(
+                        input@,
+                        decimal_parse_view(input@, parsed.deep_view()),
+                    ),
             None =>
                 decimal_parse_plan(input@).is_none()
-                    && !decimal_is_wf_decimal(input@),
+                    && !decimal_is_wf_Decimal(input@),
         },
 {
     proof {
-        if decimal_is_wf_decimal(input@) {
+        if decimal_is_wf_Decimal(input@) {
             decimal_is_wf_implies_parse_plan(input@);
         }
     }
@@ -449,117 +476,145 @@ pub fn decimal_parse_candidate(input: &str)
                 let fraction_end = position_4;
                 if position_4 == input_length {
                     proof {
-                        let sign = input@.subrange(sign_start as int, sign_end as int);
-                        let natural =
-                            input@.subrange(natural_start as int, natural_end as int);
-                        let fraction =
-                            input@.subrange(fraction_start as int, fraction_end as int);
+                        let sign = input@.subrange(position_0 as int, position_1 as int);
+                        let natural = input@.subrange(position_1 as int, position_2 as int);
+                        let fraction = input@.subrange(position_3 as int, position_4 as int);
+                        let sign_literal = input@.subrange(position_0 as int, position_1 as int);
+                        let natural_digits = input@.subrange(position_1 as int, position_2 as int);
+                        let fraction_digits = input@.subrange(position_3 as int, position_4 as int);
 
-                        assert(decimal_is_wf_sign(sign)) by {
-                            reveal(decimal_is_wf_sign);
-                            assert(
-                                sign.len()
-                                    == sign_end as int - sign_start as int
-                            );
-                            if sign_end == sign_start {
-                                assert(sign.len() == 0);
-                            } else {
-                                assert(sign_start == 0);
-                                assert(sign_end == 1);
-                                assert(input@[0] as int == 45);
-                                assert(sign =~= seq!['\u{2d}']) by {
-                                    assert_seqs_equal!(sign == seq!['\u{2d}']);
-                                }
-                            }
-                            assert(exists|literal: Seq<char>|
-                                sign == literal
-                                    && (literal.len() == 0
-                                        || literal == seq!['\u{2d}'])) by {
-                                assert(
-                                    sign == sign
-                                        && (sign.len() == 0
-                                            || sign == seq!['\u{2d}'])
-                                );
+                        assert(fraction_digits.len() == position_4 as int - position_3 as int);
+                        assert(1 <= fraction_digits.len());
+                        assert(fraction_digits.len() <= 4);
+                        assert forall|i: int| #![auto] 0 <= i < fraction_digits.len() implies
+                            triptych_is_digit(fraction_digits[i]) by {
+                            assert(fraction_digits[i] == input@[position_3 as int + i]);
+                            assert(plan_token_accepts(PlanTokenClass::Digit, input@[position_3 as int + i]));
+                            reveal(plan_token_accepts);
+                            reveal(triptych_is_digit);
+                        }
+                        assert(fraction =~= fraction_digits) by {
+                            assert_seqs_equal!(fraction == fraction_digits);
+                        }
+                        assert(fraction == fraction_digits);
+                        assert(decimal_is_wf_Fraction(fraction)) by {
+                            reveal(decimal_is_wf_Fraction);
+                            assert(exists|fraction_digits: Seq<char>|
+                            fraction == fraction_digits && ((1int) <= (fraction_digits.len() as int) && (fraction_digits.len() as int) <= (4int) && (forall|i: int| #![auto] (0int) <= i && i < (fraction_digits.len() as int) ==> triptych_is_digit(fraction_digits[i])))) by {
+                                assert(fraction == fraction_digits && ((1int) <= (fraction_digits.len() as int) && (fraction_digits.len() as int) <= (4int) && (forall|i: int| #![auto] (0int) <= i && i < (fraction_digits.len() as int) ==> triptych_is_digit(fraction_digits[i]))));
                             }
                         }
-                        assert(decimal_is_wf_natural(natural)) by {
-                            reveal(decimal_is_wf_natural);
-                            assert(
-                                natural.len()
-                                    == natural_end as int - natural_start as int
-                            );
-                            assert(1 <= natural.len());
-                            assert forall|i: int| 0 <= i < natural.len() implies
-                                #[trigger] triptych_is_digit(natural[i]) by {
-                                assert(
-                                    natural[i]
-                                        == input@[natural_start as int + i]
-                                );
-                                assert(plan_token_accepts(
-                                    PlanTokenClass::Digit,
-                                    input@[natural_start as int + i],
-                                ));
-                                reveal(plan_token_accepts);
-                            }
-                            assert(exists|digits: Seq<char>|
-                                natural == digits
-                                    && 1 <= digits.len()
-                                    && forall|i: int| #![auto]
-                                        0 <= i && i < digits.len()
-                                            ==> triptych_is_digit(digits[i])) by {
-                                assert(natural == natural);
+
+                        assert(natural_digits.len() == position_2 as int - position_1 as int);
+                        assert(1 <= natural_digits.len());
+                        assert forall|i: int| #![auto] 0 <= i < natural_digits.len() implies
+                            triptych_is_digit(natural_digits[i]) by {
+                            assert(natural_digits[i] == input@[position_1 as int + i]);
+                            assert(plan_token_accepts(PlanTokenClass::Digit, input@[position_1 as int + i]));
+                            reveal(plan_token_accepts);
+                            reveal(triptych_is_digit);
+                        }
+                        assert(natural =~= natural_digits) by {
+                            assert_seqs_equal!(natural == natural_digits);
+                        }
+                        assert(natural == natural_digits);
+                        assert(decimal_is_wf_Natural(natural)) by {
+                            reveal(decimal_is_wf_Natural);
+                            assert(exists|natural_digits: Seq<char>|
+                            natural == natural_digits && ((1int) <= (natural_digits.len() as int) && (forall|i: int| #![auto] (0int) <= i && i < (natural_digits.len() as int) ==> triptych_is_digit(natural_digits[i])))) by {
+                                assert(natural == natural_digits && ((1int) <= (natural_digits.len() as int) && (forall|i: int| #![auto] (0int) <= i && i < (natural_digits.len() as int) ==> triptych_is_digit(natural_digits[i]))));
                             }
                         }
-                        assert(decimal_is_wf_fraction(fraction)) by {
-                            reveal(decimal_is_wf_fraction);
-                            assert(
-                                fraction.len()
-                                    == fraction_end as int - fraction_start as int
-                            );
-                            assert(1 <= fraction.len());
-                            assert(fraction.len() <= 4);
-                            assert forall|i: int| 0 <= i < fraction.len() implies
-                                #[trigger] triptych_is_digit(fraction[i]) by {
-                                assert(
-                                    fraction[i]
-                                        == input@[fraction_start as int + i]
-                                );
-                                assert(plan_token_accepts(
-                                    PlanTokenClass::Digit,
-                                    input@[fraction_start as int + i],
-                                ));
-                                reveal(plan_token_accepts);
-                            }
-                            assert(exists|digits: Seq<char>|
-                                fraction == digits
-                                    && 1 <= digits.len()
-                                    && digits.len() <= 4
-                                    && forall|i: int| #![auto]
-                                        0 <= i && i < digits.len()
-                                            ==> triptych_is_digit(digits[i])) by {
-                                assert(fraction == fraction);
+
+                        assert(sign_literal.len() == position_1 as int - position_0 as int);
+                        if position_1 == position_0 {
+                            assert(sign_literal.len() == 0);
+                        } else {
+                            assert(position_1 == position_0 + 1);
+                            assert(input@[position_0 as int] == '\u{2d}');
+                            assert(sign_literal =~= seq!['\u{2d}']) by {
+                                assert_seqs_equal!(sign_literal == seq!['\u{2d}']);
                             }
                         }
-                        assert(
-                            input@
-                                =~= sign
-                                    + natural
-                                    + seq!['\u{2e}']
-                                    + fraction
-                        ) by {
-                            assert_seqs_equal!(
-                                input@
-                                    == sign
-                                        + natural
-                                        + seq!['\u{2e}']
-                                        + fraction
-                            );
+                        assert(sign_literal.len() == 0 || sign_literal == seq!['\u{2d}']);
+                        assert(sign =~= sign_literal) by {
+                            assert_seqs_equal!(sign == sign_literal);
                         }
-                        assert(decimal_is_wf_decimal(input@)) by {
-                            reveal(decimal_is_wf_decimal);
+                        assert(sign == sign_literal);
+                        assert(decimal_is_wf_Sign(sign)) by {
+                            reveal(decimal_is_wf_Sign);
+                            assert(exists|sign_literal: Seq<char>|
+                            sign == sign_literal && ((sign_literal.len() as int) == (0int) || sign_literal == seq!['\u{2d}'])) by {
+                                assert(sign == sign_literal && ((sign_literal.len() as int) == (0int) || sign_literal == seq!['\u{2d}']));
+                            }
+                        }
+
+                        assert(input@[position_2 as int] == '\u{2e}');
+                        assert(input@ =~= sign + natural + seq!['\u{2e}'] + fraction) by {
+                            assert_seqs_equal!(input@ == sign + natural + seq!['\u{2e}'] + fraction);
+                        }
+                        assert(input@ == sign + natural + seq!['\u{2e}'] + fraction);
+                        assert(decimal_is_wf_Decimal(input@)) by {
+                            reveal(decimal_is_wf_Decimal);
+                            assert(exists|sign: Seq<char>, natural: Seq<char>, fraction: Seq<char>|
+                            input@ == sign + natural + seq!['\u{2e}'] + fraction && decimal_is_wf_Sign(sign) && decimal_is_wf_Natural(natural) && decimal_is_wf_Fraction(fraction)) by {
+                                assert(input@ == sign + natural + seq!['\u{2e}'] + fraction && decimal_is_wf_Sign(sign) && decimal_is_wf_Natural(natural) && decimal_is_wf_Fraction(fraction));
+                            }
                         }
                     }
+                    proof {
+                        let parsed_spec = DecimalParseSpec {
+                            end: position_4 as int,
+                            sign_start: sign_start as int,
+                            sign_end: sign_end as int,
+                            natural_start: natural_start as int,
+                            natural_end: natural_end as int,
+                            fraction_start: fraction_start as int,
+                            fraction_end: fraction_end as int
+                        };
+                        reveal(decimal_parse_view);
+                        let parsed_view = decimal_parse_view(input@, parsed_spec);
+                        let sign = input@.subrange(position_0 as int, position_1 as int);
+                        let natural = input@.subrange(position_1 as int, position_2 as int);
+                        let fraction = input@.subrange(position_3 as int, position_4 as int);
+                        let sign_literal = input@.subrange(position_0 as int, position_1 as int);
+                        let natural_digits = input@.subrange(position_1 as int, position_2 as int);
+                        let fraction_digits = input@.subrange(position_3 as int, position_4 as int);
 
+                        assert(decimal_matches_Fraction(fraction, parsed_view)) by {
+                            reveal(decimal_matches_Fraction);
+                            assert(exists|fraction_digits: Seq<char>|
+                            fraction == fraction_digits && ((1int) <= (fraction_digits.len() as int) && (fraction_digits.len() as int) <= (4int) && (forall|i: int| #![auto] (0int) <= i && i < (fraction_digits.len() as int) ==> triptych_is_digit(fraction_digits[i])))) by {
+                                assert(fraction == fraction_digits && ((1int) <= (fraction_digits.len() as int) && (fraction_digits.len() as int) <= (4int) && (forall|i: int| #![auto] (0int) <= i && i < (fraction_digits.len() as int) ==> triptych_is_digit(fraction_digits[i]))));
+                            }
+                        }
+
+                        assert(decimal_matches_Natural(natural, parsed_view)) by {
+                            reveal(decimal_matches_Natural);
+                            assert(exists|natural_digits: Seq<char>|
+                            natural == natural_digits && ((1int) <= (natural_digits.len() as int) && (forall|i: int| #![auto] (0int) <= i && i < (natural_digits.len() as int) ==> triptych_is_digit(natural_digits[i])))) by {
+                                assert(natural == natural_digits && ((1int) <= (natural_digits.len() as int) && (forall|i: int| #![auto] (0int) <= i && i < (natural_digits.len() as int) ==> triptych_is_digit(natural_digits[i]))));
+                            }
+                        }
+
+                        assert(decimal_matches_Sign(sign, parsed_view)) by {
+                            reveal(decimal_matches_Sign);
+                            assert(exists|sign_literal: Seq<char>|
+                            sign == sign_literal && ((sign_literal.len() as int) == (0int) || sign_literal == seq!['\u{2d}'])) by {
+                                assert(sign == sign_literal && ((sign_literal.len() as int) == (0int) || sign_literal == seq!['\u{2d}']));
+                            }
+                        }
+
+                        assert(decimal_matches_Decimal(input@, parsed_view)) by {
+                            reveal(decimal_matches_Decimal);
+                            assert(exists|sign: Seq<char>, natural: Seq<char>, fraction: Seq<char>|
+                            input@ == sign + natural + seq!['\u{2e}'] + fraction && (parsed_view.sign == sign && decimal_matches_Sign(sign, parsed_view)) && (parsed_view.natural == natural && decimal_matches_Natural(natural, parsed_view)) && (parsed_view.fraction == fraction && decimal_matches_Fraction(fraction, parsed_view))) by {
+                                assert(input@ == sign + natural + seq!['\u{2e}'] + fraction && (parsed_view.sign == sign && decimal_matches_Sign(sign, parsed_view)) && (parsed_view.natural == natural && decimal_matches_Natural(natural, parsed_view)) && (parsed_view.fraction == fraction && decimal_matches_Fraction(fraction, parsed_view)));
+                            }
+                        }
+                        reveal(decimal_matches_view);
+                        assert(decimal_matches_view(input@, parsed_view));
+                    }
                     Some(DecimalParseResult {
                         end: position_4,
                         sign_start,
@@ -582,5 +637,288 @@ pub fn decimal_parse_candidate(input: &str)
         None
     }
 }
+
+
+/// Parse one captured ASCII digit run while retaining its exact mathematical value even when
+/// the executable `u64` representation overflows.
+fn triptych_checked_nat_range(
+    input: &str,
+    start: usize,
+    end: usize,
+) -> (result: vstd::arithmetic::overflow::CheckedU64)
+    requires
+        input.is_ascii(),
+        start <= end <= input@.len(),
+        forall|index: int| start <= index < end ==>
+            #[trigger] triptych_is_digit(input@[index]),
+    ensures
+        result@ as int
+            == triptych_nat_of(input@.subrange(start as int, end as int)),
+{
+    let ghost digits = input@.subrange(start as int, end as int);
+    let mut result = vstd::arithmetic::overflow::CheckedU64::new(0);
+    let mut index = start;
+    proof {
+        reveal(triptych_nat_of);
+    }
+    while index < end
+        invariant
+            input.is_ascii(),
+            start <= index <= end <= input@.len(),
+            digits == input@.subrange(start as int, end as int),
+            index - start <= digits.len(),
+            triptych_nat_of_from(
+                digits,
+                (index - start) as int,
+                result@ as int,
+            ) == triptych_nat_of(digits),
+            forall|checked: int| start <= checked < end ==>
+                #[trigger] triptych_is_digit(input@[checked]),
+        decreases end - index,
+    {
+        let byte = plan_ascii_character_at(input, index);
+        proof {
+            assert(triptych_is_digit(input@[index as int]));
+            reveal(triptych_is_digit);
+            assert(b'0' <= byte);
+        }
+        let digit = (byte - b'0') as u64;
+        let multiplied = result.mul_value(10);
+        let next = multiplied.add_value(digit);
+        proof {
+            assert(digits[(index - start) as int] == input@[index as int]);
+            assert(triptych_is_digit(input@[index as int]));
+            reveal_with_fuel(triptych_nat_of_from, 1);
+            assert(next@ as int == result@ as int * 10 + digit as int);
+        }
+        result = next;
+        index += 1;
+    }
+    proof {
+        reveal_with_fuel(triptych_nat_of_from, 1);
+    }
+    result
+}
+
+/// Compute `10^exponent` with a ghost exact value and a checked executable representation.
+fn triptych_checked_pow10(
+    exponent: usize,
+) -> (result: vstd::arithmetic::overflow::CheckedU64)
+    ensures
+        result@ as int == triptych_int_pow(10, exponent as int),
+    decreases exponent,
+{
+    if exponent == 0 {
+        proof {
+            reveal_with_fuel(triptych_int_pow, 1);
+        }
+        vstd::arithmetic::overflow::CheckedU64::new(1)
+    } else {
+        let rest = triptych_checked_pow10(exponent - 1);
+        let result = rest.mul_value(10);
+        proof {
+            reveal_with_fuel(triptych_int_pow, 1);
+            assert(exponent as int - 1 == (exponent - 1) as int);
+        }
+        result
+    }
+}
+
+
+pub open spec fn decimal_view_runtime_safe(view: DecimalView) -> bool {
+    let natural = triptych_nat_of(view.natural);
+    let fraction = triptych_nat_of(view.fraction);
+    let natural_scale = triptych_int_pow(10, 4);
+    let fraction_scale =
+        triptych_int_pow(10, 4 - view.fraction.len());
+    let scaled_natural = natural * natural_scale;
+    let scaled_fraction = fraction * fraction_scale;
+    let magnitude = scaled_natural + scaled_fraction;
+    natural <= u64::MAX
+        && fraction <= u64::MAX
+        && natural_scale <= u64::MAX
+        && fraction_scale <= u64::MAX
+        && scaled_natural <= u64::MAX
+        && scaled_fraction <= u64::MAX
+        && magnitude <= u64::MAX
+}
+
+/// Parse a complete input through grammar recognition, semantic evaluation, constraints, and
+/// the declared `Int64.ofInt` conversion.
+#[inline(always)]
+pub fn decimal_parse(input: &str) -> (result: Option<i64>)
+    ensures
+        match result {
+            Some(value) =>
+                match decimal_parse_plan(input@) {
+                    Some(parsed) => {
+                        let view = decimal_parse_view(input@, parsed);
+                        decimal_view_valid(view)
+                            && decimal_view_denotation(view) == value as int
+                    },
+                    None => false,
+                },
+            None =>
+                match decimal_parse_plan(input@) {
+                    Some(parsed) => {
+                        let view = decimal_parse_view(input@, parsed);
+                        !decimal_view_runtime_safe(view) || !decimal_view_valid(view)
+                    },
+                    None => true,
+                },
+        },
+{
+    let parsed: DecimalParseResult = match decimal_parse_candidate(input) {
+        Some(parsed) => parsed,
+        None => return None,
+    };
+    let ghost parsed_view =
+        decimal_parse_view(input@, parsed.deep_view());
+    proof {
+        broadcast use lemma_seq_subrange_index;
+        reveal(decimal_matches_view);
+        assert(decimal_is_wf_Sign(parsed_view.sign));
+        reveal(decimal_is_wf_Sign);
+        let sign_literal = choose|literal: Seq<char>|
+            parsed_view.sign == literal
+                && (literal.len() == 0 || literal == seq!['\u{2d}']);
+        assert(parsed_view.sign == sign_literal);
+        reveal(decimal_is_wf_Natural);
+        let natural_digits = choose|digits: Seq<char>|
+            parsed_view.natural == digits &&
+                1 <= digits.len() &&
+                forall|i: int| #![auto] 0 <= i < digits.len() ==>
+                    triptych_is_digit(digits[i]);
+        assert(parsed_view.natural == natural_digits);
+        assert forall|index: int| parsed.natural_start <= index < parsed.natural_end implies
+            #[trigger] triptych_is_digit(input@[index]) by {
+            let local = index - parsed.natural_start;
+            assert(parsed_view.natural[local] == input@[index]);
+            assert(triptych_is_digit(natural_digits[local]));
+        }
+        reveal(decimal_is_wf_Fraction);
+        let fraction_digits = choose|digits: Seq<char>|
+            parsed_view.fraction == digits &&
+                1 <= digits.len() &&
+                forall|i: int| #![auto] 0 <= i < digits.len() ==>
+                    triptych_is_digit(digits[i]);
+        assert(parsed_view.fraction == fraction_digits);
+        assert forall|index: int| parsed.fraction_start <= index < parsed.fraction_end implies
+            #[trigger] triptych_is_digit(input@[index]) by {
+            let local = index - parsed.fraction_start;
+            assert(parsed_view.fraction[local] == input@[index]);
+            assert(triptych_is_digit(fraction_digits[local]));
+        }
+    }
+    let natural = triptych_checked_nat_range(
+        input,
+        parsed.natural_start,
+        parsed.natural_end,
+    );
+    let fraction = triptych_checked_nat_range(
+        input,
+        parsed.fraction_start,
+        parsed.fraction_end,
+    );
+    let fraction_length = parsed.fraction_end - parsed.fraction_start;
+    if fraction_length > 4 {
+        return None;
+    }
+    let natural_scale = triptych_checked_pow10(4);
+    let fraction_scale = triptych_checked_pow10(4 - fraction_length);
+    let scaled_natural = natural.mul_checked(&natural_scale);
+    let scaled_fraction = fraction.mul_checked(&fraction_scale);
+    let magnitude = scaled_natural.add_checked(&scaled_fraction);
+    let unsigned = match magnitude.to_option() {
+        Some(value) => value,
+        None => return None,
+    };
+    let negative = parsed.sign_end > parsed.sign_start;
+    let value: i64;
+    if negative {
+        if unsigned > 9223372036854775808u64 {
+            return None;
+        }
+        if unsigned == 9223372036854775808u64 {
+            value = i64::MIN;
+            proof {
+                assert(value as int == -(unsigned as int));
+            }
+        } else {
+            value = -(unsigned as i64);
+            proof {
+                assert(value as int == -(unsigned as int));
+            }
+        }
+    } else {
+        if unsigned > i64::MAX as u64 {
+            return None;
+        }
+        value = unsigned as i64;
+        proof {
+            assert(value as int == unsigned as int);
+        }
+    }
+    proof {
+        reveal(decimal_parse_view);
+        assert(natural@ as int == triptych_nat_of(parsed_view.natural));
+        assert(fraction@ as int == triptych_nat_of(parsed_view.fraction));
+        assert(natural_scale@ as int == triptych_int_pow(10, 4));
+        assert(fraction_length as int == parsed_view.fraction.len());
+        assert(fraction_scale@ as int
+            == triptych_int_pow(10, 4 - parsed_view.fraction.len()));
+        assert(scaled_natural@ as int
+            == triptych_nat_of(parsed_view.natural)
+                * triptych_int_pow(10, 4));
+        assert(scaled_fraction@ as int
+            == triptych_nat_of(parsed_view.fraction)
+                * triptych_int_pow(
+                    10,
+                    4 - parsed_view.fraction.len(),
+                ));
+        assert(magnitude@ as int
+            == triptych_nat_of(parsed_view.natural)
+                    * triptych_int_pow(10, 4)
+                + triptych_nat_of(parsed_view.fraction)
+                    * triptych_int_pow(
+                        10,
+                        4 - parsed_view.fraction.len(),
+                    ));
+        assert(magnitude@ == unsigned);
+        reveal(decimal_view_denotation);
+        reveal(decimal_value);
+        if negative {
+            assert(parsed_view.sign.len() > 0);
+            assert(parsed_view.sign == seq!['\u{2d}']);
+            reveal(triptych_sign_of);
+            assert(triptych_sign_of(parsed_view.sign) == -1);
+            assert(decimal_view_denotation(parsed_view) == -(magnitude@ as int));
+            assert(decimal_view_denotation(parsed_view) == value as int);
+        } else {
+            assert(parsed_view.sign.len() == 0);
+            reveal(triptych_sign_of);
+            assert(triptych_sign_of(parsed_view.sign) == 1);
+            assert(decimal_view_denotation(parsed_view) == magnitude@ as int);
+            assert(decimal_view_denotation(parsed_view) == value as int);
+        }
+        assert(decimal_view_denotation(parsed_view) == value as int);
+        reveal(decimal_view_valid);
+        reveal(decimal_view_constraints);
+        reveal(decimal_constraints);
+        assert(decimal_view_valid(parsed_view));
+        reveal(decimal_is_valid);
+        reveal(decimal_is_wf);
+        reveal(decimal_satisfies_constraints);
+        assert(decimal_is_valid(input@));
+        assert(exists|view: DecimalView|
+            decimal_matches_view(input@, view)
+                && decimal_view_valid(view)
+                && decimal_view_denotation(view) == value as int) by {
+            assert(decimal_matches_view(input@, parsed_view));
+        }
+    }
+    Some(value)
+}
+
 
 } // verus!

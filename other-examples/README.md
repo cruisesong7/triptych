@@ -3,8 +3,11 @@
 This Cedar-free package follows the same source/generated/proof layout as `cedar-examples`:
 
 - `Inputs/Graph.lean` contains the public dependent-width grammar;
+- `Inputs/BitRows.lean` exercises two dependent fields, including one internal field;
 - `Outputs/Graph/` contains the generated readable specification and verified parser;
+- `Outputs/BitRows/` contains the generated readable specification and verified parser;
 - `Proofs/Graph/Examples.lean` contains executable examples and contract checks;
+- `Proofs/BitRows/Examples.lean` checks both exact-width obligations and parser rejection;
 - `Inputs/Graph6.lean` defines the lower-level staged dependent parser;
 - `Proofs/Graph6/Scanner.lean` checks its examples, agreement theorem, and search bound.
 

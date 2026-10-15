@@ -1,4 +1,4 @@
-use decimal::parser::decimal_parse_candidate;
+use decimal::parser::{decimal_parse, decimal_parse_candidate};
 
 const VALID_GRAMMAR_CASES: &[&str] = &[
     "1.0",
@@ -62,4 +62,33 @@ fn grammar_scanning_is_independent_of_semantic_bounds() {
             "the grammar accepts {input:?}; Decimal constraints reject it later"
         );
     }
+}
+
+#[test]
+fn generated_semantic_parser_returns_decimal_values() {
+    for (input, expected) in [
+        ("1.5", 15_000),
+        ("-0.15", -1_500),
+        ("922337203685477.5807", i64::MAX),
+        ("-922337203685477.5808", i64::MIN),
+    ] {
+        assert_eq!(decimal_parse(input), Some(expected), "input {input:?}");
+    }
+}
+
+#[test]
+fn generated_semantic_parser_enforces_int64_constraints() {
+    for input in [
+        "922337203685477.5808",
+        "-922337203685477.5809",
+        "1000000000000000.0",
+    ] {
+        assert_eq!(decimal_parse(input), None, "input {input:?}");
+    }
+}
+
+#[test]
+fn generated_semantic_parser_handles_long_leading_zero_runs() {
+    let input = format!("{}1.0", "0".repeat(1024));
+    assert_eq!(decimal_parse(&input), Some(10_000));
 }

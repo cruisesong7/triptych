@@ -393,7 +393,7 @@ example (s : String) :
   SizedGraph.parse_reject s
 
 /--
-error: dependent width currently requires a nonempty literal delimiter before the final payload
+error: dependent width requires a nonempty literal delimiter before its field
 -/
 #guard_msgs in
 triptych UndelimitedSized where
@@ -402,15 +402,36 @@ triptych UndelimitedSized where
     Order ::= digit+
     Cells ::= bit{upperTriangleSize Order}
 
+private def rowWidth (width : String) : Nat :=
+  readNat width
+
+private def sizedRowsValue (width first second : String) : Nat × String × String :=
+  (readNat width, first, second)
+
+triptych SizedRows where
+  grammar
+    Rows   ::= Width ":" First "/" Second
+    Width  ::= digit{1,2}
+    First  ::= bit{rowWidth Width}
+    Second ::= hexDigit{rowWidth Width}
+  value'
+    sizedRowsValue Width First Second
+
+#guard SizedRows.parse "3:101/a0F" = some (3, "101", "a0F")
+#guard SizedRows.parse "0:/" = some (0, "", "")
+#guard SizedRows.parse "3:10/a0F" = none
+#guard SizedRows.parse "3:101/a0" = none
+
 /--
-error: `Cells` must be the final field of the start production when it has a dependent width
+error: internal dependent-width field `Cells` requires an immediate nonempty literal delimiter after it
 -/
 #guard_msgs in
-triptych NonfinalSized where
+triptych UnseparatedInternalSized where
   grammar
-    Root ::= Order ":" Cells "!"
+    Root ::= Order ":" Cells Tail
     Order ::= digit+
     Cells ::= bit{upperTriangleSize Order}
+    Tail ::= digit+
 
 end SizedTerminalExample
 

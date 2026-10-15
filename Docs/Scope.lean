@@ -30,14 +30,15 @@ compiler.
 *Supported now.* Triptych generates readable specifications, executable parsers, and
 reconciliation proofs for acyclic, non-recursive grammars built from literals, finite
 alternatives, optional items, {lit}`sign`, built-in digit, hexadecimal, and bit runs, inclusive
-ASCII ranges, separated repetition, and delimiter-bounded final payloads whose exact width is
-computed from earlier captures. Values and constraints may use the
+ASCII ranges, separated repetition, and delimiter-bounded fields whose exact widths are computed
+from earlier captures. Several dependent fields may occur in one start rule; an internal field
+must be followed immediately by a nonempty literal delimiter. Values and constraints may use the
 analyzable DSLs or user-supplied escape functions. Declared external parsers and printers receive
 explicit proof contracts.
 
 *Not currently supported.* The generated grammar surface does not directly support the
 arbitrary character predicates or unseparated repetition needed by general Base64,
-delimiter-free or internal capture-dependent boundaries, or recursive formats such as JSON,
+delimiter-free capture-dependent boundaries, or recursive formats such as JSON,
 s-expressions, and Cedar policies. The scanner architecture supports a header-selected tail
 grammar through {name}`Triptych.scanDependent`, and the Graph6 example exercises that API, but
 automatic specification, view, and derivation generation for that general staged form remains
@@ -53,8 +54,8 @@ The grammar language is a strict subclass of the regular languages:
   {lit}`{n}`, {lit}`{lo,hi}`, or {lit}`+` lengths;
 - inclusive ASCII ranges such as {lit}`ascii[63,126]{1}`;
 - separated repetition such as {lit}`rep H16 sepBy ":" {8}`.
-- a final named terminal such as {lit}`Cells ::= bit{upperTriangleSize Order}`, when a
-  literal delimiter fixes its boundary and the start rule captures {lit}`Order` first.
+- named dependent terminals such as {lit}`Cells ::= bit{upperTriangleSize Order}`, when earlier
+  captures determine the width and literal delimiters fix the field boundaries.
 
 Triptych checks the complete nonterminal graph during elaboration. If it detects a cycle, for
 example {lit}`A -> B -> A`, it rejects the declaration and reports the cycle. This check enforces
@@ -62,10 +63,10 @@ the current non-recursive boundary. With an acyclic graph and field boundaries f
 structure, Triptych can emit readable predicates, executable decoding, and their equivalence
 mechanically.
 
-## Sized final payloads
+## Sized fields
 
-The first dependent surface form covers a common binary and SAT/SMT layout: a header declares
-the exact size of the final payload.
+The dependent surface form covers common binary and SAT/SMT layouts where a header declares
+later field sizes.
 
 ```lean
 def upperTriangleSize (order : String) : Nat :=
@@ -88,13 +89,15 @@ For {lit}`"3:101"`, {lit}`Order` is {lit}`"3"` and the required payload width is
 {lit}`"3:10"` and {lit}`"3:1010"` are rejected. Triptych represents the lexical payload as
 zero-or-more bits and generates the exact-width equation as part of {lit}`IsWf`. It therefore
 emits the same readable specification, typed {lit}`View`, structural {lit}`Derivation`,
-executable parser, parser contracts, and search-cost theorem as for an ordinary declaration.
+parser contracts, and verified parser as an ordinary grammar. Several sized fields may use the
+same header. An internal field is supported when an immediate literal delimiter fixes its end,
+as demonstrated by {lit}`other-examples/Inputs/BitRows.lean`.
 The derivation's structural validity checks the lexical bit shape; the generated
 {lit}`IsWf` and {lit}`View.Valid` additionally enforce the dependent width.
 
 The width function is specification code: Lean checks its type and definition, while the author
 is responsible for ensuring that it expresses the intended format rule. The current surface form
-is deliberately limited to one final, delimiter-bounded payload. Formats in which width
+requires literal-delimited boundaries and a single start alternative. Formats in which width
 validation must make the parser reconsider the header use the staged architecture API described
 in the scanner chapter.
 

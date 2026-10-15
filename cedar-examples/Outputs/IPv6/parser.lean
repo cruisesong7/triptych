@@ -8,6 +8,9 @@ import Triptych.Architecture.Constraint
 import Triptych.Architecture.Assemble
 import Triptych.Theorems.Reconcile
 import Triptych.Theorems.Value
+import Triptych.Theorems.ParsePlan
+import Triptych.Theorems.ScanPlan
+import Triptych.Theorems.SearchPlan
 import Triptych.Archive.DecodeLemmas
 import Triptych.Theorems.Derivation
 import Triptych.Theorems.Scanner
@@ -161,12 +164,7 @@ def IPv6.constraints : List ConstraintEntry :=
     ConstraintEntry.dsl ConstraintPhase.wellFormed (Constraint.noLeadingZero "Prefix"),
     ConstraintEntry.dsl ConstraintPhase.wellFormed
       (Constraint.and (Constraint.le (ValExpr.lit 0) (ValExpr.nat "Prefix"))
-        (Constraint.le (ValExpr.nat "Prefix") (ValExpr.lit 128))),
-    ConstraintEntry.dsl ConstraintPhase.value
-      (Constraint.and (Constraint.le (ValExpr.lit 0) IPv6.valueExpr)
-        (Constraint.le IPv6.valueExpr
-          (ValExpr.sub (ValExpr.mul (ValExpr.pow (ValExpr.lit 2) (ValExpr.lit 128)) (ValExpr.lit 129))
-            (ValExpr.lit 1))))]
+        (Constraint.le (ValExpr.nat "Prefix") (ValExpr.lit 128)))]
 
 def IPv6.computeValue (s : String) : Option Int :=
   Triptych.scannerComputeValue IPv6.grammar IPv6.valueExpr s
@@ -174,6 +172,20 @@ def IPv6.computeValue (s : String) : Option Int :=
 def IPv6.View.ofMap (input : String) (m : Triptych.CaptureMap) : IPv6.View :=
   IPv6.View.mk input (Triptych.CaptureMap.toEnv m "Full") (Triptych.CaptureMap.toEnv m "Left")
     (Triptych.CaptureMap.toEnv m "Right") (Triptych.CaptureMap.toEnv m "Prefix")
+
+private def IPv6.View.ofSpans (input : String) (chars : List Char) (spans : Triptych.LeanSpanCursor.SpanMap) :
+    IPv6.View :=
+  IPv6.View.mk input (Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "Full")
+    (Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "Left")
+    (Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "Right")
+    (Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "Prefix")
+
+private theorem IPv6.View.ofSpans_eq_ofMap (input : String) (chars : List Char)
+    (spans : Triptych.LeanSpanCursor.SpanMap) :
+    IPv6.View.ofSpans input chars spans = IPv6.View.ofMap input (spans.materialize chars) :=
+  by
+  unfold IPv6.View.ofSpans IPv6.View.ofMap
+  simp only [Triptych.LeanSpanCursor.SpanMap.captureMap_toEnv, Triptych.LeanSpanCursor.SpanMap.captureMap_toEnvList]
 
 def IPv6.decodeView (s : String) : Option IPv6.View :=
   (scan IPv6.grammar s).map (IPv6.View.ofMap s)
@@ -589,16 +601,6 @@ theorem IPv6.SatisfiesWfConstraints_of_decode {s : String} {m : Triptych.Capture
   simp only [Triptych.component_eq_of_decode h "Left", Triptych.component_eq_of_decode h "Right",
     Triptych.component_eq_of_decode h "Prefix"]
 
-theorem IPv6.SatisfiesConstraints_of_decode {s : String} {m : Triptych.CaptureMap}
-    (h : decode IPv6.grammar s = some m) :
-    IPv6.SatisfiesConstraints s ↔
-      IPv6.Constraints ((Triptych.CaptureMap.toEnv m "Full").getD "") ((Triptych.CaptureMap.toEnv m "Left").getD "")
-        ((Triptych.CaptureMap.toEnv m "Right").getD "") ((Triptych.CaptureMap.toEnv m "Prefix").getD "") :=
-  by
-  unfold IPv6.SatisfiesConstraints
-  simp only [Triptych.component_eq_of_decode h "Full", Triptych.component_eq_of_decode h "Left",
-    Triptych.component_eq_of_decode h "Right", Triptych.component_eq_of_decode h "Prefix"]
-
 theorem IPv6.Internal.matchesRef.H16 (fuel : Nat) (s : String) :
     matchesSym IPv6.grammar (fuel + 1) (Sym.ref "H16") s ↔ IPv6.IsWf.H16 s :=
   by
@@ -845,23 +847,19 @@ theorem IPv6.IsWf_equiv (s : String) : IPv6.IsWf s ↔ Triptych.isWf IPv6.gramma
     Bool.false_eq_true]
   try grind
 
-theorem IPv6.SatisfiesConstraints_equiv (s : String) :
-    IPv6.SatisfiesConstraints s ↔ Triptych.satisfiesConstraints IPv6.grammar IPv6.constraints s :=
-  by
-  unfold Triptych.satisfiesConstraints
-  unfold IPv6.SatisfiesConstraints IPv6.Constraints IPv6.constraints IPv6.value IPv6.valueExpr
-  simp only [Triptych.component, Triptych.envOf, Triptych.captureMapOf, Triptych.scan_eq_decode, List.forall_mem_cons,
-    List.forall_mem_singleton, List.not_mem_nil, forall_const, ConstraintEntry.valPart, Constraint.eval, ValExpr.eval,
-    presentCount, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, hexOf_getD, hexSeqOf_getD,
-    segmentsOf_getD, Env.countVal, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
-  try grind
-
 theorem IPv6.IsValid_equiv (s : String) :
     IPv6.IsValid s ↔
       Triptych.isWf IPv6.grammar IPv6.constraints s ∧ Triptych.satisfiesConstraints IPv6.grammar IPv6.constraints s :=
   by
   unfold IPv6.IsValid
-  rw [(IPv6.IsWf_equiv s), (IPv6.SatisfiesConstraints_equiv s)]
+  rw [(IPv6.IsWf_equiv s)]
+  unfold Triptych.satisfiesConstraints Triptych.captureMapOf IPv6.constraints
+  simp only [List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, ConstraintEntry.valPart, false_implies,
+    true_and, and_true]
+  constructor
+  · intro h
+    exact ⟨h, fun _ => True.intro⟩
+  · exact And.left
 
 instance IPv6.instDecidableGrammar : DecidablePred IPv6.IsWf.V6Net := fun s =>
   @decidable_of_iff _ _ (IPv6.IsWfGrammar_equiv s) (Triptych.decIsWfScanner IPv6.grammar (by decide) s)
@@ -869,21 +867,12 @@ instance IPv6.instDecidableGrammar : DecidablePred IPv6.IsWf.V6Net := fun s =>
 instance IPv6.instDecidableIsWf : DecidablePred IPv6.IsWf := fun s =>
   @decidable_of_iff _ _ (IPv6.IsWf_equiv s).symm inferInstance
 
-instance IPv6.instDecidableSatisfiesConstraints : DecidablePred IPv6.SatisfiesConstraints := fun s =>
-  @decidable_of_iff _ _ (IPv6.SatisfiesConstraints_equiv s).symm inferInstance
-
 instance IPv6.instDecidableIsValid : DecidablePred IPv6.IsValid := fun s => inferInstance
 
 theorem IPv6.View.wfConstraints_of_decode {s : String} {m : Triptych.CaptureMap} (h : decode IPv6.grammar s = some m) :
     IPv6.SatisfiesWfConstraints s ↔ IPv6.View.WfConstraints (IPv6.View.ofMap s m) :=
   by
   rw [IPv6.SatisfiesWfConstraints_of_decode h]
-  rfl
-
-theorem IPv6.View.constraints_of_decode {s : String} {m : Triptych.CaptureMap} (h : decode IPv6.grammar s = some m) :
-    IPv6.SatisfiesConstraints s ↔ IPv6.View.Constraints (IPv6.View.ofMap s m) :=
-  by
-  rw [IPv6.SatisfiesConstraints_of_decode h]
   rfl
 
 theorem IPv6.IsValid_view (s : String) :
@@ -898,10 +887,7 @@ theorem IPv6.IsValid_view (s : String) :
     refine ⟨IPv6.View.ofMap s m, ?_, ?_⟩
     · unfold IPv6.decodeView
       simp [Triptych.scan_eq_decode, hmDecode]
-    ·
-      exact
-        ⟨(IPv6.View.wfConstraints_of_decode hmDecode).mp hvalid.1.2,
-          (IPv6.View.constraints_of_decode hmDecode).mp hvalid.2⟩
+    · exact (IPv6.View.wfConstraints_of_decode hmDecode).mp hvalid.2
   · rintro ⟨v, hview, hvalid⟩
     unfold IPv6.decodeView at hview
     rw [Option.map_eq_some_iff] at hview
@@ -910,9 +896,7 @@ theorem IPv6.IsValid_view (s : String) :
     have hmDecode : decode IPv6.grammar s = some m := by simpa only [Triptych.scan_eq_decode] using hm
     have hdecoded : (decode IPv6.grammar s).isSome = true := by simp [hmDecode]
     have hgrammar := (IPv6.IsWfGrammar_equiv s).mp ((decodeSome_iff_IsWf IPv6.grammar (by decide) s).mp hdecoded)
-    exact
-      ⟨⟨hgrammar, (IPv6.View.wfConstraints_of_decode hmDecode).mpr hvalid.1⟩,
-        (IPv6.View.constraints_of_decode hmDecode).mpr hvalid.2⟩
+    exact ⟨hgrammar, (IPv6.View.wfConstraints_of_decode hmDecode).mpr hvalid⟩
 
 theorem IPv6.computeValue_eq (s : String) :
     IPv6.computeValue s =
@@ -959,9 +943,11 @@ theorem IPv6.computeValue_view (s : String) : IPv6.computeValue s = (IPv6.decode
 
 /- ═══════════════════════════════ parser ══════════════════════════════
 The generated correct-by-construction parser `parse` uses a certified staged cursor
-program when the grammar supports one, checks constraints on its capture map, and
-computes the result from those captures. The complete scanner remains the checked
-fallback. `parse_eq_scanner` and `parse_eq_gated` prove equality with the generic
+program when the grammar supports one, projects its captures once into the typed
+`View`, checks `View.Valid`, and computes `View.denotation`. Certified cursor rejection
+is final; grammar
+shapes outside that fragment use the complete scanner. `parse_eq_scanner` and
+`parse_eq_gated` prove equality with the generic
 scanner and readable validity-gated presentation. Its correctness and search-cost
 guarantees — `parse_sound`, `parse_complete`, `parse_reject`,
 `parse_profile_result`, `parse_candidateChecks_le`, `parse_view`, and typed
@@ -970,6 +956,1153 @@ AUTO-DISCHARGED here.
 When an external parser is declared, `checkedExtParse` additionally validates each
 external result against this parser and ships an AUTO-DISCHARGED soundness theorem.
 A verified parser, no `sorry`. -/
+
+private abbrev IPv6.searchPlan : SearchPlan :=
+  ({ start := "V6Net",
+      alternatives :=
+        [[SearchPattern.capture "V6Addr" ["V6Addr"]
+              [[SearchPattern.capture "Full" ["Full", "V6Addr.Full"]
+                    [[SearchPattern.repetition ":"
+                          (SearchPattern.capture "H16" ["H16", "Full.H16"]
+                            [[SearchPattern.tokenRun TokClass.hexDigit (LenSpec.between 1 4)]])
+                          8 (some 8) "H16"]]],
+                [SearchPattern.capture "Compressed" ["Compressed", "V6Addr.Compressed"]
+                    [[SearchPattern.optional
+                          (SearchPattern.capture "Left" ["Left", "Compressed.Left"]
+                            [[SearchPattern.repetition ":"
+                                  (SearchPattern.capture "H16L" ["H16L", "Left.H16L"]
+                                    [[SearchPattern.tokenRun TokClass.hexDigit (LenSpec.between 1 4)]])
+                                  1 (some 7) "H16L"]]),
+                        SearchPattern.literal "::",
+                        SearchPattern.optional
+                          (SearchPattern.capture "Right" ["Right", "Compressed.Right"]
+                            [[SearchPattern.repetition ":"
+                                  (SearchPattern.capture "H16R" ["H16R", "Right.H16R"]
+                                    [[SearchPattern.tokenRun TokClass.hexDigit (LenSpec.between 1 4)]])
+                                  1 (some 7) "H16R"]])]]]]],
+          [SearchPattern.capture "V6Addr" ["V6Addr"]
+              [[SearchPattern.capture "Full" ["Full", "V6Addr.Full"]
+                    [[SearchPattern.repetition ":"
+                          (SearchPattern.capture "H16" ["H16", "Full.H16"]
+                            [[SearchPattern.tokenRun TokClass.hexDigit (LenSpec.between 1 4)]])
+                          8 (some 8) "H16"]]],
+                [SearchPattern.capture "Compressed" ["Compressed", "V6Addr.Compressed"]
+                    [[SearchPattern.optional
+                          (SearchPattern.capture "Left" ["Left", "Compressed.Left"]
+                            [[SearchPattern.repetition ":"
+                                  (SearchPattern.capture "H16L" ["H16L", "Left.H16L"]
+                                    [[SearchPattern.tokenRun TokClass.hexDigit (LenSpec.between 1 4)]])
+                                  1 (some 7) "H16L"]]),
+                        SearchPattern.literal "::",
+                        SearchPattern.optional
+                          (SearchPattern.capture "Right" ["Right", "Compressed.Right"]
+                            [[SearchPattern.repetition ":"
+                                  (SearchPattern.capture "H16R" ["H16R", "Right.H16R"]
+                                    [[SearchPattern.tokenRun TokClass.hexDigit (LenSpec.between 1 4)]])
+                                  1 (some 7) "H16R"]])]]]],
+            SearchPattern.literal "/",
+            SearchPattern.capture "Prefix" ["Prefix"]
+              [[SearchPattern.tokenRun TokClass.digit (LenSpec.between 1 3)]]]] } :
+    SearchPlan)
+
+private abbrev IPv6.parsePlan : ParsePlan :=
+  ParsePlan.search IPv6.searchPlan
+
+private theorem IPv6.searchPlan_mirrorsGrammar : SearchPlan.MirrorsGrammar IPv6.searchPlan IPv6.grammar :=
+  SearchPlan.mirrorsGrammar_of_matchesGrammar (by native_decide)
+
+private abbrev IPv6.searchProgram : SearchProgram :=
+  ({ start := "V6Net",
+      code :=
+        SearchCode.choice
+          (SearchCode.capture ["V6Addr"]
+            (SearchCode.choice
+              (SearchCode.capture ["Full", "V6Addr.Full"]
+                (SearchCode.repetition ":"
+                  (SearchCode.capture ["H16", "Full.H16"]
+                    (SearchCode.tokenRun TokClass.hexDigit (LenSpec.between 1 4) SearchCode.accept) SearchCode.accept)
+                  8 (some 8) "H16" SearchCode.accept)
+                SearchCode.accept)
+              (SearchCode.capture ["Compressed", "V6Addr.Compressed"]
+                (SearchCode.choice
+                  (SearchCode.capture ["Left", "Compressed.Left"]
+                    (SearchCode.repetition ":"
+                      (SearchCode.capture ["H16L", "Left.H16L"]
+                        (SearchCode.tokenRun TokClass.hexDigit (LenSpec.between 1 4) SearchCode.accept)
+                        SearchCode.accept)
+                      1 (some 7) "H16L" SearchCode.accept)
+                    (SearchCode.literal "::"
+                      (SearchCode.choice
+                        (SearchCode.capture ["Right", "Compressed.Right"]
+                          (SearchCode.repetition ":"
+                            (SearchCode.capture ["H16R", "Right.H16R"]
+                              (SearchCode.tokenRun TokClass.hexDigit (LenSpec.between 1 4) SearchCode.accept)
+                              SearchCode.accept)
+                            1 (some 7) "H16R" SearchCode.accept)
+                          SearchCode.accept)
+                        SearchCode.accept)))
+                  (SearchCode.literal "::"
+                    (SearchCode.choice
+                      (SearchCode.capture ["Right", "Compressed.Right"]
+                        (SearchCode.repetition ":"
+                          (SearchCode.capture ["H16R", "Right.H16R"]
+                            (SearchCode.tokenRun TokClass.hexDigit (LenSpec.between 1 4) SearchCode.accept)
+                            SearchCode.accept)
+                          1 (some 7) "H16R" SearchCode.accept)
+                        SearchCode.accept)
+                      SearchCode.accept)))
+                SearchCode.accept))
+            SearchCode.accept)
+          (SearchCode.capture ["V6Addr"]
+            (SearchCode.choice
+              (SearchCode.capture ["Full", "V6Addr.Full"]
+                (SearchCode.repetition ":"
+                  (SearchCode.capture ["H16", "Full.H16"]
+                    (SearchCode.tokenRun TokClass.hexDigit (LenSpec.between 1 4) SearchCode.accept) SearchCode.accept)
+                  8 (some 8) "H16" SearchCode.accept)
+                SearchCode.accept)
+              (SearchCode.capture ["Compressed", "V6Addr.Compressed"]
+                (SearchCode.choice
+                  (SearchCode.capture ["Left", "Compressed.Left"]
+                    (SearchCode.repetition ":"
+                      (SearchCode.capture ["H16L", "Left.H16L"]
+                        (SearchCode.tokenRun TokClass.hexDigit (LenSpec.between 1 4) SearchCode.accept)
+                        SearchCode.accept)
+                      1 (some 7) "H16L" SearchCode.accept)
+                    (SearchCode.literal "::"
+                      (SearchCode.choice
+                        (SearchCode.capture ["Right", "Compressed.Right"]
+                          (SearchCode.repetition ":"
+                            (SearchCode.capture ["H16R", "Right.H16R"]
+                              (SearchCode.tokenRun TokClass.hexDigit (LenSpec.between 1 4) SearchCode.accept)
+                              SearchCode.accept)
+                            1 (some 7) "H16R" SearchCode.accept)
+                          SearchCode.accept)
+                        SearchCode.accept)))
+                  (SearchCode.literal "::"
+                    (SearchCode.choice
+                      (SearchCode.capture ["Right", "Compressed.Right"]
+                        (SearchCode.repetition ":"
+                          (SearchCode.capture ["H16R", "Right.H16R"]
+                            (SearchCode.tokenRun TokClass.hexDigit (LenSpec.between 1 4) SearchCode.accept)
+                            SearchCode.accept)
+                          1 (some 7) "H16R" SearchCode.accept)
+                        SearchCode.accept)
+                      SearchCode.accept)))
+                SearchCode.accept))
+            (SearchCode.literal "/"
+              (SearchCode.capture ["Prefix"]
+                (SearchCode.tokenRun TokClass.digit (LenSpec.between 1 3) SearchCode.accept) SearchCode.accept))) } :
+    SearchProgram)
+
+private theorem IPv6.searchProgram_lowered : lowerSearchPlan IPv6.searchPlan = IPv6.searchProgram := by native_decide
+
+private def IPv6.directDecode (source : String) : Option CaptureMap :=
+  let input := source.toList
+  scanOrElse
+    (scanOrElse
+      ((List.range ((input).length + 1)).findSome? fun width_rootlblbfb =>
+        if termPrefixOk TokClass.hexDigit (LenSpec.between 1 4) input width_rootlblbfb then
+          (fun (bodyCaptures_rootlblbf : CaptureMap) (remaining_rootlblbf : List Char) =>
+              let ownCaptures_rootlblbf :=
+                (["H16", "Full.H16"]).map fun key =>
+                  (key, String.ofList ((input).take ((input).length - (remaining_rootlblbf).length)))
+              (fun (tailCaptures_rootlblbf : CaptureMap) (suffix_rootlblbf : List Char) =>
+                  (fun (firstCaptures_rootlblb : CaptureMap) (remaining_rootlblb : List Char) =>
+                      scanStarK
+                        (fun itemInput_rootlblb itemContinuation_rootlblb =>
+                          (List.range ((itemInput_rootlblb).length + 1)).findSome? fun width_rootlblbib =>
+                            if
+                                termPrefixOk TokClass.hexDigit (LenSpec.between 1 4) itemInput_rootlblb
+                                  width_rootlblbib then
+                              (fun (bodyCaptures_rootlblbi : CaptureMap) (remaining_rootlblbi : List Char) =>
+                                  let ownCaptures_rootlblbi :=
+                                    (["H16", "Full.H16"]).map fun key =>
+                                      (key,
+                                        String.ofList
+                                          ((itemInput_rootlblb).take
+                                            ((itemInput_rootlblb).length - (remaining_rootlblbi).length)))
+                                  (fun (tailCaptures_rootlblbi : CaptureMap) (suffix_rootlblbi : List Char) =>
+                                      itemContinuation_rootlblb
+                                        (ownCaptures_rootlblbi ++ bodyCaptures_rootlblbi ++ tailCaptures_rootlblbi)
+                                        suffix_rootlblbi)
+                                    ([] : CaptureMap) remaining_rootlblbi)
+                                ([] : CaptureMap) ((itemInput_rootlblb).drop width_rootlblbib)
+                            else none)
+                        (":").toList 8 (some 8) (input).length remaining_rootlblb firstCaptures_rootlblb 1
+                        fun (captures_rootlblb : CaptureMap) (suffix_rootlblb : List Char) (itemCount_rootlblb : Nat) =>
+                        (fun (tailCaptures_rootlblb : CaptureMap) (finalSuffix_rootlblb : List Char) =>
+                            (fun (bodyCaptures_rootlbl : CaptureMap) (remaining_rootlbl : List Char) =>
+                                let ownCaptures_rootlbl :=
+                                  (["Full", "V6Addr.Full"]).map fun key =>
+                                    (key, String.ofList ((input).take ((input).length - (remaining_rootlbl).length)))
+                                (fun (tailCaptures_rootlbl : CaptureMap) (suffix_rootlbl : List Char) =>
+                                    (fun (bodyCaptures_rootl : CaptureMap) (remaining_rootl : List Char) =>
+                                        let ownCaptures_rootl :=
+                                          (["V6Addr"]).map fun key =>
+                                            (key,
+                                              String.ofList ((input).take ((input).length - (remaining_rootl).length)))
+                                        (fun (tailCaptures_rootl : CaptureMap) (suffix_rootl : List Char) =>
+                                            (fun (captures : CaptureMap) (remaining : List Char) =>
+                                                if (remaining).isEmpty then some captures else none)
+                                              (ownCaptures_rootl ++ bodyCaptures_rootl ++ tailCaptures_rootl)
+                                              suffix_rootl)
+                                          ([] : CaptureMap) remaining_rootl)
+                                      (ownCaptures_rootlbl ++ bodyCaptures_rootlbl ++ tailCaptures_rootlbl)
+                                      suffix_rootlbl)
+                                  ([] : CaptureMap) remaining_rootlbl)
+                              ((("H16" ++ "#count", toString itemCount_rootlblb) :: captures_rootlblb) ++
+                                tailCaptures_rootlblb)
+                              finalSuffix_rootlblb)
+                          ([] : CaptureMap) suffix_rootlblb)
+                    (ownCaptures_rootlblbf ++ bodyCaptures_rootlblbf ++ tailCaptures_rootlblbf) suffix_rootlblbf)
+                ([] : CaptureMap) remaining_rootlblbf)
+            ([] : CaptureMap) ((input).drop width_rootlblbfb)
+        else none)
+      fun _ =>
+      scanOrElse
+        ((List.range ((input).length + 1)).findSome? fun width_rootlbrblbfb =>
+          if termPrefixOk TokClass.hexDigit (LenSpec.between 1 4) input width_rootlbrblbfb then
+            (fun (bodyCaptures_rootlbrblbf : CaptureMap) (remaining_rootlbrblbf : List Char) =>
+                let ownCaptures_rootlbrblbf :=
+                  (["H16L", "Left.H16L"]).map fun key =>
+                    (key, String.ofList ((input).take ((input).length - (remaining_rootlbrblbf).length)))
+                (fun (tailCaptures_rootlbrblbf : CaptureMap) (suffix_rootlbrblbf : List Char) =>
+                    (fun (firstCaptures_rootlbrblb : CaptureMap) (remaining_rootlbrblb : List Char) =>
+                        scanStarK
+                          (fun itemInput_rootlbrblb itemContinuation_rootlbrblb =>
+                            (List.range ((itemInput_rootlbrblb).length + 1)).findSome? fun width_rootlbrblbib =>
+                              if
+                                  termPrefixOk TokClass.hexDigit (LenSpec.between 1 4) itemInput_rootlbrblb
+                                    width_rootlbrblbib then
+                                (fun (bodyCaptures_rootlbrblbi : CaptureMap) (remaining_rootlbrblbi : List Char) =>
+                                    let ownCaptures_rootlbrblbi :=
+                                      (["H16L", "Left.H16L"]).map fun key =>
+                                        (key,
+                                          String.ofList
+                                            ((itemInput_rootlbrblb).take
+                                              ((itemInput_rootlbrblb).length - (remaining_rootlbrblbi).length)))
+                                    (fun (tailCaptures_rootlbrblbi : CaptureMap) (suffix_rootlbrblbi : List Char) =>
+                                        itemContinuation_rootlbrblb
+                                          (ownCaptures_rootlbrblbi ++ bodyCaptures_rootlbrblbi ++
+                                            tailCaptures_rootlbrblbi)
+                                          suffix_rootlbrblbi)
+                                      ([] : CaptureMap) remaining_rootlbrblbi)
+                                  ([] : CaptureMap) ((itemInput_rootlbrblb).drop width_rootlbrblbib)
+                              else none)
+                          (":").toList 1 (some 7) (input).length remaining_rootlbrblb firstCaptures_rootlbrblb 1
+                          fun (captures_rootlbrblb : CaptureMap) (suffix_rootlbrblb : List Char)
+                            (itemCount_rootlbrblb : Nat) =>
+                          (fun (tailCaptures_rootlbrblb : CaptureMap) (finalSuffix_rootlbrblb : List Char) =>
+                              (fun (bodyCaptures_rootlbrbl : CaptureMap) (remaining_rootlbrbl : List Char) =>
+                                  let ownCaptures_rootlbrbl :=
+                                    (["Left", "Compressed.Left"]).map fun key =>
+                                      (key,
+                                        String.ofList ((input).take ((input).length - (remaining_rootlbrbl).length)))
+                                  let characters_rootlbrblt := "::".toList
+                                  if (characters_rootlbrblt).isPrefixOf remaining_rootlbrbl then
+                                    scanOrElse
+                                      ((List.range
+                                            (((remaining_rootlbrbl).drop (characters_rootlbrblt).length).length +
+                                              1)).findSome?
+                                        fun width_rootlbrbltnlbfb =>
+                                        if
+                                            termPrefixOk TokClass.hexDigit (LenSpec.between 1 4)
+                                              ((remaining_rootlbrbl).drop (characters_rootlbrblt).length)
+                                              width_rootlbrbltnlbfb then
+                                          (fun (bodyCaptures_rootlbrbltnlbf : CaptureMap)
+                                                (remaining_rootlbrbltnlbf : List Char) =>
+                                              let ownCaptures_rootlbrbltnlbf :=
+                                                (["H16R", "Right.H16R"]).map fun key =>
+                                                  (key,
+                                                    String.ofList
+                                                      (((remaining_rootlbrbl).drop (characters_rootlbrblt).length).take
+                                                        (((remaining_rootlbrbl).drop
+                                                              (characters_rootlbrblt).length).length -
+                                                          (remaining_rootlbrbltnlbf).length)))
+                                              (fun (tailCaptures_rootlbrbltnlbf : CaptureMap)
+                                                    (suffix_rootlbrbltnlbf : List Char) =>
+                                                  (fun (firstCaptures_rootlbrbltnlb : CaptureMap)
+                                                        (remaining_rootlbrbltnlb : List Char) =>
+                                                      scanStarK
+                                                        (fun itemInput_rootlbrbltnlb itemContinuation_rootlbrbltnlb =>
+                                                          (List.range ((itemInput_rootlbrbltnlb).length + 1)).findSome?
+                                                            fun width_rootlbrbltnlbib =>
+                                                            if
+                                                                termPrefixOk TokClass.hexDigit (LenSpec.between 1 4)
+                                                                  itemInput_rootlbrbltnlb width_rootlbrbltnlbib then
+                                                              (fun (bodyCaptures_rootlbrbltnlbi : CaptureMap)
+                                                                    (remaining_rootlbrbltnlbi : List Char) =>
+                                                                  let ownCaptures_rootlbrbltnlbi :=
+                                                                    (["H16R", "Right.H16R"]).map fun key =>
+                                                                      (key,
+                                                                        String.ofList
+                                                                          ((itemInput_rootlbrbltnlb).take
+                                                                            ((itemInput_rootlbrbltnlb).length -
+                                                                              (remaining_rootlbrbltnlbi).length)))
+                                                                  (fun (tailCaptures_rootlbrbltnlbi : CaptureMap)
+                                                                        (suffix_rootlbrbltnlbi : List Char) =>
+                                                                      itemContinuation_rootlbrbltnlb
+                                                                        (ownCaptures_rootlbrbltnlbi ++
+                                                                            bodyCaptures_rootlbrbltnlbi ++
+                                                                          tailCaptures_rootlbrbltnlbi)
+                                                                        suffix_rootlbrbltnlbi)
+                                                                    ([] : CaptureMap) remaining_rootlbrbltnlbi)
+                                                                ([] : CaptureMap)
+                                                                ((itemInput_rootlbrbltnlb).drop width_rootlbrbltnlbib)
+                                                            else none)
+                                                        (":").toList 1 (some 7)
+                                                        ((remaining_rootlbrbl).drop
+                                                            (characters_rootlbrblt).length).length
+                                                        remaining_rootlbrbltnlb firstCaptures_rootlbrbltnlb 1
+                                                        fun (captures_rootlbrbltnlb : CaptureMap)
+                                                          (suffix_rootlbrbltnlb : List Char)
+                                                          (itemCount_rootlbrbltnlb : Nat) =>
+                                                        (fun (tailCaptures_rootlbrbltnlb : CaptureMap)
+                                                              (finalSuffix_rootlbrbltnlb : List Char) =>
+                                                            (fun (bodyCaptures_rootlbrbltnl : CaptureMap)
+                                                                  (remaining_rootlbrbltnl : List Char) =>
+                                                                let ownCaptures_rootlbrbltnl :=
+                                                                  (["Right", "Compressed.Right"]).map fun key =>
+                                                                    (key,
+                                                                      String.ofList
+                                                                        (((remaining_rootlbrbl).drop
+                                                                              (characters_rootlbrblt).length).take
+                                                                          (((remaining_rootlbrbl).drop
+                                                                                (characters_rootlbrblt).length).length -
+                                                                            (remaining_rootlbrbltnl).length)))
+                                                                (fun (tailCaptures_rootlbrbltnl : CaptureMap)
+                                                                      (suffix_rootlbrbltnl : List Char) =>
+                                                                    (fun (tailCaptures_rootlbrbl : CaptureMap)
+                                                                          (suffix_rootlbrbl : List Char) =>
+                                                                        (fun (bodyCaptures_rootlbr : CaptureMap)
+                                                                              (remaining_rootlbr : List Char) =>
+                                                                            let ownCaptures_rootlbr :=
+                                                                              (["Compressed", "V6Addr.Compressed"]).map
+                                                                                fun key =>
+                                                                                (key,
+                                                                                  String.ofList
+                                                                                    ((input).take
+                                                                                      ((input).length -
+                                                                                        (remaining_rootlbr).length)))
+                                                                            (fun (tailCaptures_rootlbr : CaptureMap)
+                                                                                  (suffix_rootlbr : List Char) =>
+                                                                                (fun (bodyCaptures_rootl : CaptureMap)
+                                                                                      (remaining_rootl : List Char) =>
+                                                                                    let ownCaptures_rootl :=
+                                                                                      (["V6Addr"]).map fun key =>
+                                                                                        (key,
+                                                                                          String.ofList
+                                                                                            ((input).take
+                                                                                              ((input).length -
+                                                                                                (remaining_rootl).length)))
+                                                                                    (fun
+                                                                                          (tailCaptures_rootl :
+                                                                                            CaptureMap)
+                                                                                          (suffix_rootl : List Char) =>
+                                                                                        (fun (captures : CaptureMap)
+                                                                                              (remaining : List Char) =>
+                                                                                            if (remaining).isEmpty then
+                                                                                              some captures
+                                                                                            else none)
+                                                                                          (ownCaptures_rootl ++
+                                                                                              bodyCaptures_rootl ++
+                                                                                            tailCaptures_rootl)
+                                                                                          suffix_rootl)
+                                                                                      ([] : CaptureMap) remaining_rootl)
+                                                                                  (ownCaptures_rootlbr ++
+                                                                                      bodyCaptures_rootlbr ++
+                                                                                    tailCaptures_rootlbr)
+                                                                                  suffix_rootlbr)
+                                                                              ([] : CaptureMap) remaining_rootlbr)
+                                                                          (ownCaptures_rootlbrbl ++
+                                                                              bodyCaptures_rootlbrbl ++
+                                                                            tailCaptures_rootlbrbl)
+                                                                          suffix_rootlbrbl)
+                                                                      (ownCaptures_rootlbrbltnl ++
+                                                                          bodyCaptures_rootlbrbltnl ++
+                                                                        tailCaptures_rootlbrbltnl)
+                                                                      suffix_rootlbrbltnl)
+                                                                  ([] : CaptureMap) remaining_rootlbrbltnl)
+                                                              ((("H16R" ++ "#count",
+                                                                    toString itemCount_rootlbrbltnlb) ::
+                                                                  captures_rootlbrbltnlb) ++
+                                                                tailCaptures_rootlbrbltnlb)
+                                                              finalSuffix_rootlbrbltnlb)
+                                                          ([] : CaptureMap) suffix_rootlbrbltnlb)
+                                                    (ownCaptures_rootlbrbltnlbf ++ bodyCaptures_rootlbrbltnlbf ++
+                                                      tailCaptures_rootlbrbltnlbf)
+                                                    suffix_rootlbrbltnlbf)
+                                                ([] : CaptureMap) remaining_rootlbrbltnlbf)
+                                            ([] : CaptureMap)
+                                            (((remaining_rootlbrbl).drop (characters_rootlbrblt).length).drop
+                                              width_rootlbrbltnlbfb)
+                                        else none)
+                                      fun _ =>
+                                      (fun (tailCaptures_rootlbrbl : CaptureMap) (suffix_rootlbrbl : List Char) =>
+                                          (fun (bodyCaptures_rootlbr : CaptureMap) (remaining_rootlbr : List Char) =>
+                                              let ownCaptures_rootlbr :=
+                                                (["Compressed", "V6Addr.Compressed"]).map fun key =>
+                                                  (key,
+                                                    String.ofList
+                                                      ((input).take ((input).length - (remaining_rootlbr).length)))
+                                              (fun (tailCaptures_rootlbr : CaptureMap) (suffix_rootlbr : List Char) =>
+                                                  (fun (bodyCaptures_rootl : CaptureMap)
+                                                        (remaining_rootl : List Char) =>
+                                                      let ownCaptures_rootl :=
+                                                        (["V6Addr"]).map fun key =>
+                                                          (key,
+                                                            String.ofList
+                                                              ((input).take
+                                                                ((input).length - (remaining_rootl).length)))
+                                                      (fun (tailCaptures_rootl : CaptureMap)
+                                                            (suffix_rootl : List Char) =>
+                                                          (fun (captures : CaptureMap) (remaining : List Char) =>
+                                                              if (remaining).isEmpty then some captures else none)
+                                                            (ownCaptures_rootl ++ bodyCaptures_rootl ++
+                                                              tailCaptures_rootl)
+                                                            suffix_rootl)
+                                                        ([] : CaptureMap) remaining_rootl)
+                                                    (ownCaptures_rootlbr ++ bodyCaptures_rootlbr ++
+                                                      tailCaptures_rootlbr)
+                                                    suffix_rootlbr)
+                                                ([] : CaptureMap) remaining_rootlbr)
+                                            (ownCaptures_rootlbrbl ++ bodyCaptures_rootlbrbl ++ tailCaptures_rootlbrbl)
+                                            suffix_rootlbrbl)
+                                        ([] : CaptureMap) ((remaining_rootlbrbl).drop (characters_rootlbrblt).length)
+                                  else none)
+                                ((("H16L" ++ "#count", toString itemCount_rootlbrblb) :: captures_rootlbrblb) ++
+                                  tailCaptures_rootlbrblb)
+                                finalSuffix_rootlbrblb)
+                            ([] : CaptureMap) suffix_rootlbrblb)
+                      (ownCaptures_rootlbrblbf ++ bodyCaptures_rootlbrblbf ++ tailCaptures_rootlbrblbf)
+                      suffix_rootlbrblbf)
+                  ([] : CaptureMap) remaining_rootlbrblbf)
+              ([] : CaptureMap) ((input).drop width_rootlbrblbfb)
+          else none)
+        fun _ =>
+        let characters_rootlbrbr := "::".toList
+        if (characters_rootlbrbr).isPrefixOf input then
+          scanOrElse
+            ((List.range (((input).drop (characters_rootlbrbr).length).length + 1)).findSome?
+              fun width_rootlbrbrnlbfb =>
+              if
+                  termPrefixOk TokClass.hexDigit (LenSpec.between 1 4) ((input).drop (characters_rootlbrbr).length)
+                    width_rootlbrbrnlbfb then
+                (fun (bodyCaptures_rootlbrbrnlbf : CaptureMap) (remaining_rootlbrbrnlbf : List Char) =>
+                    let ownCaptures_rootlbrbrnlbf :=
+                      (["H16R", "Right.H16R"]).map fun key =>
+                        (key,
+                          String.ofList
+                            (((input).drop (characters_rootlbrbr).length).take
+                              (((input).drop (characters_rootlbrbr).length).length - (remaining_rootlbrbrnlbf).length)))
+                    (fun (tailCaptures_rootlbrbrnlbf : CaptureMap) (suffix_rootlbrbrnlbf : List Char) =>
+                        (fun (firstCaptures_rootlbrbrnlb : CaptureMap) (remaining_rootlbrbrnlb : List Char) =>
+                            scanStarK
+                              (fun itemInput_rootlbrbrnlb itemContinuation_rootlbrbrnlb =>
+                                (List.range ((itemInput_rootlbrbrnlb).length + 1)).findSome? fun width_rootlbrbrnlbib =>
+                                  if
+                                      termPrefixOk TokClass.hexDigit (LenSpec.between 1 4) itemInput_rootlbrbrnlb
+                                        width_rootlbrbrnlbib then
+                                    (fun (bodyCaptures_rootlbrbrnlbi : CaptureMap)
+                                          (remaining_rootlbrbrnlbi : List Char) =>
+                                        let ownCaptures_rootlbrbrnlbi :=
+                                          (["H16R", "Right.H16R"]).map fun key =>
+                                            (key,
+                                              String.ofList
+                                                ((itemInput_rootlbrbrnlb).take
+                                                  ((itemInput_rootlbrbrnlb).length - (remaining_rootlbrbrnlbi).length)))
+                                        (fun (tailCaptures_rootlbrbrnlbi : CaptureMap)
+                                              (suffix_rootlbrbrnlbi : List Char) =>
+                                            itemContinuation_rootlbrbrnlb
+                                              (ownCaptures_rootlbrbrnlbi ++ bodyCaptures_rootlbrbrnlbi ++
+                                                tailCaptures_rootlbrbrnlbi)
+                                              suffix_rootlbrbrnlbi)
+                                          ([] : CaptureMap) remaining_rootlbrbrnlbi)
+                                      ([] : CaptureMap) ((itemInput_rootlbrbrnlb).drop width_rootlbrbrnlbib)
+                                  else none)
+                              (":").toList 1 (some 7) ((input).drop (characters_rootlbrbr).length).length
+                              remaining_rootlbrbrnlb firstCaptures_rootlbrbrnlb 1
+                              fun (captures_rootlbrbrnlb : CaptureMap) (suffix_rootlbrbrnlb : List Char)
+                                (itemCount_rootlbrbrnlb : Nat) =>
+                              (fun (tailCaptures_rootlbrbrnlb : CaptureMap) (finalSuffix_rootlbrbrnlb : List Char) =>
+                                  (fun (bodyCaptures_rootlbrbrnl : CaptureMap) (remaining_rootlbrbrnl : List Char) =>
+                                      let ownCaptures_rootlbrbrnl :=
+                                        (["Right", "Compressed.Right"]).map fun key =>
+                                          (key,
+                                            String.ofList
+                                              (((input).drop (characters_rootlbrbr).length).take
+                                                (((input).drop (characters_rootlbrbr).length).length -
+                                                  (remaining_rootlbrbrnl).length)))
+                                      (fun (tailCaptures_rootlbrbrnl : CaptureMap) (suffix_rootlbrbrnl : List Char) =>
+                                          (fun (bodyCaptures_rootlbr : CaptureMap) (remaining_rootlbr : List Char) =>
+                                              let ownCaptures_rootlbr :=
+                                                (["Compressed", "V6Addr.Compressed"]).map fun key =>
+                                                  (key,
+                                                    String.ofList
+                                                      ((input).take ((input).length - (remaining_rootlbr).length)))
+                                              (fun (tailCaptures_rootlbr : CaptureMap) (suffix_rootlbr : List Char) =>
+                                                  (fun (bodyCaptures_rootl : CaptureMap)
+                                                        (remaining_rootl : List Char) =>
+                                                      let ownCaptures_rootl :=
+                                                        (["V6Addr"]).map fun key =>
+                                                          (key,
+                                                            String.ofList
+                                                              ((input).take
+                                                                ((input).length - (remaining_rootl).length)))
+                                                      (fun (tailCaptures_rootl : CaptureMap)
+                                                            (suffix_rootl : List Char) =>
+                                                          (fun (captures : CaptureMap) (remaining : List Char) =>
+                                                              if (remaining).isEmpty then some captures else none)
+                                                            (ownCaptures_rootl ++ bodyCaptures_rootl ++
+                                                              tailCaptures_rootl)
+                                                            suffix_rootl)
+                                                        ([] : CaptureMap) remaining_rootl)
+                                                    (ownCaptures_rootlbr ++ bodyCaptures_rootlbr ++
+                                                      tailCaptures_rootlbr)
+                                                    suffix_rootlbr)
+                                                ([] : CaptureMap) remaining_rootlbr)
+                                            (ownCaptures_rootlbrbrnl ++ bodyCaptures_rootlbrbrnl ++
+                                              tailCaptures_rootlbrbrnl)
+                                            suffix_rootlbrbrnl)
+                                        ([] : CaptureMap) remaining_rootlbrbrnl)
+                                    ((("H16R" ++ "#count", toString itemCount_rootlbrbrnlb) :: captures_rootlbrbrnlb) ++
+                                      tailCaptures_rootlbrbrnlb)
+                                    finalSuffix_rootlbrbrnlb)
+                                ([] : CaptureMap) suffix_rootlbrbrnlb)
+                          (ownCaptures_rootlbrbrnlbf ++ bodyCaptures_rootlbrbrnlbf ++ tailCaptures_rootlbrbrnlbf)
+                          suffix_rootlbrbrnlbf)
+                      ([] : CaptureMap) remaining_rootlbrbrnlbf)
+                  ([] : CaptureMap) (((input).drop (characters_rootlbrbr).length).drop width_rootlbrbrnlbfb)
+              else none)
+            fun _ =>
+            (fun (bodyCaptures_rootlbr : CaptureMap) (remaining_rootlbr : List Char) =>
+                let ownCaptures_rootlbr :=
+                  (["Compressed", "V6Addr.Compressed"]).map fun key =>
+                    (key, String.ofList ((input).take ((input).length - (remaining_rootlbr).length)))
+                (fun (tailCaptures_rootlbr : CaptureMap) (suffix_rootlbr : List Char) =>
+                    (fun (bodyCaptures_rootl : CaptureMap) (remaining_rootl : List Char) =>
+                        let ownCaptures_rootl :=
+                          (["V6Addr"]).map fun key =>
+                            (key, String.ofList ((input).take ((input).length - (remaining_rootl).length)))
+                        (fun (tailCaptures_rootl : CaptureMap) (suffix_rootl : List Char) =>
+                            (fun (captures : CaptureMap) (remaining : List Char) =>
+                                if (remaining).isEmpty then some captures else none)
+                              (ownCaptures_rootl ++ bodyCaptures_rootl ++ tailCaptures_rootl) suffix_rootl)
+                          ([] : CaptureMap) remaining_rootl)
+                      (ownCaptures_rootlbr ++ bodyCaptures_rootlbr ++ tailCaptures_rootlbr) suffix_rootlbr)
+                  ([] : CaptureMap) remaining_rootlbr)
+              ([] : CaptureMap) ((input).drop (characters_rootlbrbr).length)
+        else none)
+    fun _ =>
+    scanOrElse
+      ((List.range ((input).length + 1)).findSome? fun width_rootrblbfb =>
+        if termPrefixOk TokClass.hexDigit (LenSpec.between 1 4) input width_rootrblbfb then
+          (fun (bodyCaptures_rootrblbf : CaptureMap) (remaining_rootrblbf : List Char) =>
+              let ownCaptures_rootrblbf :=
+                (["H16", "Full.H16"]).map fun key =>
+                  (key, String.ofList ((input).take ((input).length - (remaining_rootrblbf).length)))
+              (fun (tailCaptures_rootrblbf : CaptureMap) (suffix_rootrblbf : List Char) =>
+                  (fun (firstCaptures_rootrblb : CaptureMap) (remaining_rootrblb : List Char) =>
+                      scanStarK
+                        (fun itemInput_rootrblb itemContinuation_rootrblb =>
+                          (List.range ((itemInput_rootrblb).length + 1)).findSome? fun width_rootrblbib =>
+                            if
+                                termPrefixOk TokClass.hexDigit (LenSpec.between 1 4) itemInput_rootrblb
+                                  width_rootrblbib then
+                              (fun (bodyCaptures_rootrblbi : CaptureMap) (remaining_rootrblbi : List Char) =>
+                                  let ownCaptures_rootrblbi :=
+                                    (["H16", "Full.H16"]).map fun key =>
+                                      (key,
+                                        String.ofList
+                                          ((itemInput_rootrblb).take
+                                            ((itemInput_rootrblb).length - (remaining_rootrblbi).length)))
+                                  (fun (tailCaptures_rootrblbi : CaptureMap) (suffix_rootrblbi : List Char) =>
+                                      itemContinuation_rootrblb
+                                        (ownCaptures_rootrblbi ++ bodyCaptures_rootrblbi ++ tailCaptures_rootrblbi)
+                                        suffix_rootrblbi)
+                                    ([] : CaptureMap) remaining_rootrblbi)
+                                ([] : CaptureMap) ((itemInput_rootrblb).drop width_rootrblbib)
+                            else none)
+                        (":").toList 8 (some 8) (input).length remaining_rootrblb firstCaptures_rootrblb 1
+                        fun (captures_rootrblb : CaptureMap) (suffix_rootrblb : List Char) (itemCount_rootrblb : Nat) =>
+                        (fun (tailCaptures_rootrblb : CaptureMap) (finalSuffix_rootrblb : List Char) =>
+                            (fun (bodyCaptures_rootrbl : CaptureMap) (remaining_rootrbl : List Char) =>
+                                let ownCaptures_rootrbl :=
+                                  (["Full", "V6Addr.Full"]).map fun key =>
+                                    (key, String.ofList ((input).take ((input).length - (remaining_rootrbl).length)))
+                                (fun (tailCaptures_rootrbl : CaptureMap) (suffix_rootrbl : List Char) =>
+                                    (fun (bodyCaptures_rootr : CaptureMap) (remaining_rootr : List Char) =>
+                                        let ownCaptures_rootr :=
+                                          (["V6Addr"]).map fun key =>
+                                            (key,
+                                              String.ofList ((input).take ((input).length - (remaining_rootr).length)))
+                                        let characters_rootrt := "/".toList
+                                        if (characters_rootrt).isPrefixOf remaining_rootr then
+                                          (List.range
+                                                (((remaining_rootr).drop (characters_rootrt).length).length +
+                                                  1)).findSome?
+                                            fun width_rootrtnb =>
+                                            if
+                                                termPrefixOk TokClass.digit (LenSpec.between 1 3)
+                                                  ((remaining_rootr).drop (characters_rootrt).length)
+                                                  width_rootrtnb then
+                                              (fun (bodyCaptures_rootrtn : CaptureMap)
+                                                    (remaining_rootrtn : List Char) =>
+                                                  let ownCaptures_rootrtn :=
+                                                    (["Prefix"]).map fun key =>
+                                                      (key,
+                                                        String.ofList
+                                                          (((remaining_rootr).drop (characters_rootrt).length).take
+                                                            (((remaining_rootr).drop
+                                                                  (characters_rootrt).length).length -
+                                                              (remaining_rootrtn).length)))
+                                                  (fun (tailCaptures_rootrtn : CaptureMap)
+                                                        (suffix_rootrtn : List Char) =>
+                                                      (fun (tailCaptures_rootr : CaptureMap)
+                                                            (suffix_rootr : List Char) =>
+                                                          (fun (captures : CaptureMap) (remaining : List Char) =>
+                                                              if (remaining).isEmpty then some captures else none)
+                                                            (ownCaptures_rootr ++ bodyCaptures_rootr ++
+                                                              tailCaptures_rootr)
+                                                            suffix_rootr)
+                                                        (ownCaptures_rootrtn ++ bodyCaptures_rootrtn ++
+                                                          tailCaptures_rootrtn)
+                                                        suffix_rootrtn)
+                                                    ([] : CaptureMap) remaining_rootrtn)
+                                                ([] : CaptureMap)
+                                                (((remaining_rootr).drop (characters_rootrt).length).drop
+                                                  width_rootrtnb)
+                                            else none
+                                        else none)
+                                      (ownCaptures_rootrbl ++ bodyCaptures_rootrbl ++ tailCaptures_rootrbl)
+                                      suffix_rootrbl)
+                                  ([] : CaptureMap) remaining_rootrbl)
+                              ((("H16" ++ "#count", toString itemCount_rootrblb) :: captures_rootrblb) ++
+                                tailCaptures_rootrblb)
+                              finalSuffix_rootrblb)
+                          ([] : CaptureMap) suffix_rootrblb)
+                    (ownCaptures_rootrblbf ++ bodyCaptures_rootrblbf ++ tailCaptures_rootrblbf) suffix_rootrblbf)
+                ([] : CaptureMap) remaining_rootrblbf)
+            ([] : CaptureMap) ((input).drop width_rootrblbfb)
+        else none)
+      fun _ =>
+      scanOrElse
+        ((List.range ((input).length + 1)).findSome? fun width_rootrbrblbfb =>
+          if termPrefixOk TokClass.hexDigit (LenSpec.between 1 4) input width_rootrbrblbfb then
+            (fun (bodyCaptures_rootrbrblbf : CaptureMap) (remaining_rootrbrblbf : List Char) =>
+                let ownCaptures_rootrbrblbf :=
+                  (["H16L", "Left.H16L"]).map fun key =>
+                    (key, String.ofList ((input).take ((input).length - (remaining_rootrbrblbf).length)))
+                (fun (tailCaptures_rootrbrblbf : CaptureMap) (suffix_rootrbrblbf : List Char) =>
+                    (fun (firstCaptures_rootrbrblb : CaptureMap) (remaining_rootrbrblb : List Char) =>
+                        scanStarK
+                          (fun itemInput_rootrbrblb itemContinuation_rootrbrblb =>
+                            (List.range ((itemInput_rootrbrblb).length + 1)).findSome? fun width_rootrbrblbib =>
+                              if
+                                  termPrefixOk TokClass.hexDigit (LenSpec.between 1 4) itemInput_rootrbrblb
+                                    width_rootrbrblbib then
+                                (fun (bodyCaptures_rootrbrblbi : CaptureMap) (remaining_rootrbrblbi : List Char) =>
+                                    let ownCaptures_rootrbrblbi :=
+                                      (["H16L", "Left.H16L"]).map fun key =>
+                                        (key,
+                                          String.ofList
+                                            ((itemInput_rootrbrblb).take
+                                              ((itemInput_rootrbrblb).length - (remaining_rootrbrblbi).length)))
+                                    (fun (tailCaptures_rootrbrblbi : CaptureMap) (suffix_rootrbrblbi : List Char) =>
+                                        itemContinuation_rootrbrblb
+                                          (ownCaptures_rootrbrblbi ++ bodyCaptures_rootrbrblbi ++
+                                            tailCaptures_rootrbrblbi)
+                                          suffix_rootrbrblbi)
+                                      ([] : CaptureMap) remaining_rootrbrblbi)
+                                  ([] : CaptureMap) ((itemInput_rootrbrblb).drop width_rootrbrblbib)
+                              else none)
+                          (":").toList 1 (some 7) (input).length remaining_rootrbrblb firstCaptures_rootrbrblb 1
+                          fun (captures_rootrbrblb : CaptureMap) (suffix_rootrbrblb : List Char)
+                            (itemCount_rootrbrblb : Nat) =>
+                          (fun (tailCaptures_rootrbrblb : CaptureMap) (finalSuffix_rootrbrblb : List Char) =>
+                              (fun (bodyCaptures_rootrbrbl : CaptureMap) (remaining_rootrbrbl : List Char) =>
+                                  let ownCaptures_rootrbrbl :=
+                                    (["Left", "Compressed.Left"]).map fun key =>
+                                      (key,
+                                        String.ofList ((input).take ((input).length - (remaining_rootrbrbl).length)))
+                                  let characters_rootrbrblt := "::".toList
+                                  if (characters_rootrbrblt).isPrefixOf remaining_rootrbrbl then
+                                    scanOrElse
+                                      ((List.range
+                                            (((remaining_rootrbrbl).drop (characters_rootrbrblt).length).length +
+                                              1)).findSome?
+                                        fun width_rootrbrbltnlbfb =>
+                                        if
+                                            termPrefixOk TokClass.hexDigit (LenSpec.between 1 4)
+                                              ((remaining_rootrbrbl).drop (characters_rootrbrblt).length)
+                                              width_rootrbrbltnlbfb then
+                                          (fun (bodyCaptures_rootrbrbltnlbf : CaptureMap)
+                                                (remaining_rootrbrbltnlbf : List Char) =>
+                                              let ownCaptures_rootrbrbltnlbf :=
+                                                (["H16R", "Right.H16R"]).map fun key =>
+                                                  (key,
+                                                    String.ofList
+                                                      (((remaining_rootrbrbl).drop (characters_rootrbrblt).length).take
+                                                        (((remaining_rootrbrbl).drop
+                                                              (characters_rootrbrblt).length).length -
+                                                          (remaining_rootrbrbltnlbf).length)))
+                                              (fun (tailCaptures_rootrbrbltnlbf : CaptureMap)
+                                                    (suffix_rootrbrbltnlbf : List Char) =>
+                                                  (fun (firstCaptures_rootrbrbltnlb : CaptureMap)
+                                                        (remaining_rootrbrbltnlb : List Char) =>
+                                                      scanStarK
+                                                        (fun itemInput_rootrbrbltnlb itemContinuation_rootrbrbltnlb =>
+                                                          (List.range ((itemInput_rootrbrbltnlb).length + 1)).findSome?
+                                                            fun width_rootrbrbltnlbib =>
+                                                            if
+                                                                termPrefixOk TokClass.hexDigit (LenSpec.between 1 4)
+                                                                  itemInput_rootrbrbltnlb width_rootrbrbltnlbib then
+                                                              (fun (bodyCaptures_rootrbrbltnlbi : CaptureMap)
+                                                                    (remaining_rootrbrbltnlbi : List Char) =>
+                                                                  let ownCaptures_rootrbrbltnlbi :=
+                                                                    (["H16R", "Right.H16R"]).map fun key =>
+                                                                      (key,
+                                                                        String.ofList
+                                                                          ((itemInput_rootrbrbltnlb).take
+                                                                            ((itemInput_rootrbrbltnlb).length -
+                                                                              (remaining_rootrbrbltnlbi).length)))
+                                                                  (fun (tailCaptures_rootrbrbltnlbi : CaptureMap)
+                                                                        (suffix_rootrbrbltnlbi : List Char) =>
+                                                                      itemContinuation_rootrbrbltnlb
+                                                                        (ownCaptures_rootrbrbltnlbi ++
+                                                                            bodyCaptures_rootrbrbltnlbi ++
+                                                                          tailCaptures_rootrbrbltnlbi)
+                                                                        suffix_rootrbrbltnlbi)
+                                                                    ([] : CaptureMap) remaining_rootrbrbltnlbi)
+                                                                ([] : CaptureMap)
+                                                                ((itemInput_rootrbrbltnlb).drop width_rootrbrbltnlbib)
+                                                            else none)
+                                                        (":").toList 1 (some 7)
+                                                        ((remaining_rootrbrbl).drop
+                                                            (characters_rootrbrblt).length).length
+                                                        remaining_rootrbrbltnlb firstCaptures_rootrbrbltnlb 1
+                                                        fun (captures_rootrbrbltnlb : CaptureMap)
+                                                          (suffix_rootrbrbltnlb : List Char)
+                                                          (itemCount_rootrbrbltnlb : Nat) =>
+                                                        (fun (tailCaptures_rootrbrbltnlb : CaptureMap)
+                                                              (finalSuffix_rootrbrbltnlb : List Char) =>
+                                                            (fun (bodyCaptures_rootrbrbltnl : CaptureMap)
+                                                                  (remaining_rootrbrbltnl : List Char) =>
+                                                                let ownCaptures_rootrbrbltnl :=
+                                                                  (["Right", "Compressed.Right"]).map fun key =>
+                                                                    (key,
+                                                                      String.ofList
+                                                                        (((remaining_rootrbrbl).drop
+                                                                              (characters_rootrbrblt).length).take
+                                                                          (((remaining_rootrbrbl).drop
+                                                                                (characters_rootrbrblt).length).length -
+                                                                            (remaining_rootrbrbltnl).length)))
+                                                                (fun (tailCaptures_rootrbrbltnl : CaptureMap)
+                                                                      (suffix_rootrbrbltnl : List Char) =>
+                                                                    (fun (tailCaptures_rootrbrbl : CaptureMap)
+                                                                          (suffix_rootrbrbl : List Char) =>
+                                                                        (fun (bodyCaptures_rootrbr : CaptureMap)
+                                                                              (remaining_rootrbr : List Char) =>
+                                                                            let ownCaptures_rootrbr :=
+                                                                              (["Compressed", "V6Addr.Compressed"]).map
+                                                                                fun key =>
+                                                                                (key,
+                                                                                  String.ofList
+                                                                                    ((input).take
+                                                                                      ((input).length -
+                                                                                        (remaining_rootrbr).length)))
+                                                                            (fun (tailCaptures_rootrbr : CaptureMap)
+                                                                                  (suffix_rootrbr : List Char) =>
+                                                                                (fun (bodyCaptures_rootr : CaptureMap)
+                                                                                      (remaining_rootr : List Char) =>
+                                                                                    let ownCaptures_rootr :=
+                                                                                      (["V6Addr"]).map fun key =>
+                                                                                        (key,
+                                                                                          String.ofList
+                                                                                            ((input).take
+                                                                                              ((input).length -
+                                                                                                (remaining_rootr).length)))
+                                                                                    let characters_rootrt := "/".toList
+                                                                                    if
+                                                                                        (characters_rootrt).isPrefixOf
+                                                                                          remaining_rootr then
+                                                                                      (List.range
+                                                                                            (((remaining_rootr).drop
+                                                                                                  (characters_rootrt).length).length +
+                                                                                              1)).findSome?
+                                                                                        fun width_rootrtnb =>
+                                                                                        if
+                                                                                            termPrefixOk TokClass.digit
+                                                                                              (LenSpec.between 1 3)
+                                                                                              ((remaining_rootr).drop
+                                                                                                (characters_rootrt).length)
+                                                                                              width_rootrtnb then
+                                                                                          (fun
+                                                                                                (bodyCaptures_rootrtn :
+                                                                                                  CaptureMap)
+                                                                                                (remaining_rootrtn :
+                                                                                                  List Char) =>
+                                                                                              let ownCaptures_rootrtn :=
+                                                                                                (["Prefix"]).map
+                                                                                                  fun key =>
+                                                                                                  (key,
+                                                                                                    String.ofList
+                                                                                                      (((remaining_rootr).drop
+                                                                                                            (characters_rootrt).length).take
+                                                                                                        (((remaining_rootr).drop
+                                                                                                              (characters_rootrt).length).length -
+                                                                                                          (remaining_rootrtn).length)))
+                                                                                              (fun
+                                                                                                    (tailCaptures_rootrtn :
+                                                                                                      CaptureMap)
+                                                                                                    (suffix_rootrtn :
+                                                                                                      List Char) =>
+                                                                                                  (fun
+                                                                                                        (tailCaptures_rootr :
+                                                                                                          CaptureMap)
+                                                                                                        (suffix_rootr :
+                                                                                                          List Char) =>
+                                                                                                      (fun
+                                                                                                            (captures :
+                                                                                                              CaptureMap)
+                                                                                                            (remaining :
+                                                                                                              List
+                                                                                                                Char) =>
+                                                                                                          if
+                                                                                                              (remaining).isEmpty then
+                                                                                                            some
+                                                                                                              captures
+                                                                                                          else none)
+                                                                                                        (ownCaptures_rootr ++
+                                                                                                            bodyCaptures_rootr ++
+                                                                                                          tailCaptures_rootr)
+                                                                                                        suffix_rootr)
+                                                                                                    (ownCaptures_rootrtn ++
+                                                                                                        bodyCaptures_rootrtn ++
+                                                                                                      tailCaptures_rootrtn)
+                                                                                                    suffix_rootrtn)
+                                                                                                ([] : CaptureMap)
+                                                                                                remaining_rootrtn)
+                                                                                            ([] : CaptureMap)
+                                                                                            (((remaining_rootr).drop
+                                                                                                  (characters_rootrt).length).drop
+                                                                                              width_rootrtnb)
+                                                                                        else none
+                                                                                    else none)
+                                                                                  (ownCaptures_rootrbr ++
+                                                                                      bodyCaptures_rootrbr ++
+                                                                                    tailCaptures_rootrbr)
+                                                                                  suffix_rootrbr)
+                                                                              ([] : CaptureMap) remaining_rootrbr)
+                                                                          (ownCaptures_rootrbrbl ++
+                                                                              bodyCaptures_rootrbrbl ++
+                                                                            tailCaptures_rootrbrbl)
+                                                                          suffix_rootrbrbl)
+                                                                      (ownCaptures_rootrbrbltnl ++
+                                                                          bodyCaptures_rootrbrbltnl ++
+                                                                        tailCaptures_rootrbrbltnl)
+                                                                      suffix_rootrbrbltnl)
+                                                                  ([] : CaptureMap) remaining_rootrbrbltnl)
+                                                              ((("H16R" ++ "#count",
+                                                                    toString itemCount_rootrbrbltnlb) ::
+                                                                  captures_rootrbrbltnlb) ++
+                                                                tailCaptures_rootrbrbltnlb)
+                                                              finalSuffix_rootrbrbltnlb)
+                                                          ([] : CaptureMap) suffix_rootrbrbltnlb)
+                                                    (ownCaptures_rootrbrbltnlbf ++ bodyCaptures_rootrbrbltnlbf ++
+                                                      tailCaptures_rootrbrbltnlbf)
+                                                    suffix_rootrbrbltnlbf)
+                                                ([] : CaptureMap) remaining_rootrbrbltnlbf)
+                                            ([] : CaptureMap)
+                                            (((remaining_rootrbrbl).drop (characters_rootrbrblt).length).drop
+                                              width_rootrbrbltnlbfb)
+                                        else none)
+                                      fun _ =>
+                                      (fun (tailCaptures_rootrbrbl : CaptureMap) (suffix_rootrbrbl : List Char) =>
+                                          (fun (bodyCaptures_rootrbr : CaptureMap) (remaining_rootrbr : List Char) =>
+                                              let ownCaptures_rootrbr :=
+                                                (["Compressed", "V6Addr.Compressed"]).map fun key =>
+                                                  (key,
+                                                    String.ofList
+                                                      ((input).take ((input).length - (remaining_rootrbr).length)))
+                                              (fun (tailCaptures_rootrbr : CaptureMap) (suffix_rootrbr : List Char) =>
+                                                  (fun (bodyCaptures_rootr : CaptureMap)
+                                                        (remaining_rootr : List Char) =>
+                                                      let ownCaptures_rootr :=
+                                                        (["V6Addr"]).map fun key =>
+                                                          (key,
+                                                            String.ofList
+                                                              ((input).take
+                                                                ((input).length - (remaining_rootr).length)))
+                                                      let characters_rootrt := "/".toList
+                                                      if (characters_rootrt).isPrefixOf remaining_rootr then
+                                                        (List.range
+                                                              (((remaining_rootr).drop
+                                                                    (characters_rootrt).length).length +
+                                                                1)).findSome?
+                                                          fun width_rootrtnb =>
+                                                          if
+                                                              termPrefixOk TokClass.digit (LenSpec.between 1 3)
+                                                                ((remaining_rootr).drop (characters_rootrt).length)
+                                                                width_rootrtnb then
+                                                            (fun (bodyCaptures_rootrtn : CaptureMap)
+                                                                  (remaining_rootrtn : List Char) =>
+                                                                let ownCaptures_rootrtn :=
+                                                                  (["Prefix"]).map fun key =>
+                                                                    (key,
+                                                                      String.ofList
+                                                                        (((remaining_rootr).drop
+                                                                              (characters_rootrt).length).take
+                                                                          (((remaining_rootr).drop
+                                                                                (characters_rootrt).length).length -
+                                                                            (remaining_rootrtn).length)))
+                                                                (fun (tailCaptures_rootrtn : CaptureMap)
+                                                                      (suffix_rootrtn : List Char) =>
+                                                                    (fun (tailCaptures_rootr : CaptureMap)
+                                                                          (suffix_rootr : List Char) =>
+                                                                        (fun (captures : CaptureMap)
+                                                                              (remaining : List Char) =>
+                                                                            if (remaining).isEmpty then some captures
+                                                                            else none)
+                                                                          (ownCaptures_rootr ++ bodyCaptures_rootr ++
+                                                                            tailCaptures_rootr)
+                                                                          suffix_rootr)
+                                                                      (ownCaptures_rootrtn ++ bodyCaptures_rootrtn ++
+                                                                        tailCaptures_rootrtn)
+                                                                      suffix_rootrtn)
+                                                                  ([] : CaptureMap) remaining_rootrtn)
+                                                              ([] : CaptureMap)
+                                                              (((remaining_rootr).drop (characters_rootrt).length).drop
+                                                                width_rootrtnb)
+                                                          else none
+                                                      else none)
+                                                    (ownCaptures_rootrbr ++ bodyCaptures_rootrbr ++
+                                                      tailCaptures_rootrbr)
+                                                    suffix_rootrbr)
+                                                ([] : CaptureMap) remaining_rootrbr)
+                                            (ownCaptures_rootrbrbl ++ bodyCaptures_rootrbrbl ++ tailCaptures_rootrbrbl)
+                                            suffix_rootrbrbl)
+                                        ([] : CaptureMap) ((remaining_rootrbrbl).drop (characters_rootrbrblt).length)
+                                  else none)
+                                ((("H16L" ++ "#count", toString itemCount_rootrbrblb) :: captures_rootrbrblb) ++
+                                  tailCaptures_rootrbrblb)
+                                finalSuffix_rootrbrblb)
+                            ([] : CaptureMap) suffix_rootrbrblb)
+                      (ownCaptures_rootrbrblbf ++ bodyCaptures_rootrbrblbf ++ tailCaptures_rootrbrblbf)
+                      suffix_rootrbrblbf)
+                  ([] : CaptureMap) remaining_rootrbrblbf)
+              ([] : CaptureMap) ((input).drop width_rootrbrblbfb)
+          else none)
+        fun _ =>
+        let characters_rootrbrbr := "::".toList
+        if (characters_rootrbrbr).isPrefixOf input then
+          scanOrElse
+            ((List.range (((input).drop (characters_rootrbrbr).length).length + 1)).findSome?
+              fun width_rootrbrbrnlbfb =>
+              if
+                  termPrefixOk TokClass.hexDigit (LenSpec.between 1 4) ((input).drop (characters_rootrbrbr).length)
+                    width_rootrbrbrnlbfb then
+                (fun (bodyCaptures_rootrbrbrnlbf : CaptureMap) (remaining_rootrbrbrnlbf : List Char) =>
+                    let ownCaptures_rootrbrbrnlbf :=
+                      (["H16R", "Right.H16R"]).map fun key =>
+                        (key,
+                          String.ofList
+                            (((input).drop (characters_rootrbrbr).length).take
+                              (((input).drop (characters_rootrbrbr).length).length - (remaining_rootrbrbrnlbf).length)))
+                    (fun (tailCaptures_rootrbrbrnlbf : CaptureMap) (suffix_rootrbrbrnlbf : List Char) =>
+                        (fun (firstCaptures_rootrbrbrnlb : CaptureMap) (remaining_rootrbrbrnlb : List Char) =>
+                            scanStarK
+                              (fun itemInput_rootrbrbrnlb itemContinuation_rootrbrbrnlb =>
+                                (List.range ((itemInput_rootrbrbrnlb).length + 1)).findSome? fun width_rootrbrbrnlbib =>
+                                  if
+                                      termPrefixOk TokClass.hexDigit (LenSpec.between 1 4) itemInput_rootrbrbrnlb
+                                        width_rootrbrbrnlbib then
+                                    (fun (bodyCaptures_rootrbrbrnlbi : CaptureMap)
+                                          (remaining_rootrbrbrnlbi : List Char) =>
+                                        let ownCaptures_rootrbrbrnlbi :=
+                                          (["H16R", "Right.H16R"]).map fun key =>
+                                            (key,
+                                              String.ofList
+                                                ((itemInput_rootrbrbrnlb).take
+                                                  ((itemInput_rootrbrbrnlb).length - (remaining_rootrbrbrnlbi).length)))
+                                        (fun (tailCaptures_rootrbrbrnlbi : CaptureMap)
+                                              (suffix_rootrbrbrnlbi : List Char) =>
+                                            itemContinuation_rootrbrbrnlb
+                                              (ownCaptures_rootrbrbrnlbi ++ bodyCaptures_rootrbrbrnlbi ++
+                                                tailCaptures_rootrbrbrnlbi)
+                                              suffix_rootrbrbrnlbi)
+                                          ([] : CaptureMap) remaining_rootrbrbrnlbi)
+                                      ([] : CaptureMap) ((itemInput_rootrbrbrnlb).drop width_rootrbrbrnlbib)
+                                  else none)
+                              (":").toList 1 (some 7) ((input).drop (characters_rootrbrbr).length).length
+                              remaining_rootrbrbrnlb firstCaptures_rootrbrbrnlb 1
+                              fun (captures_rootrbrbrnlb : CaptureMap) (suffix_rootrbrbrnlb : List Char)
+                                (itemCount_rootrbrbrnlb : Nat) =>
+                              (fun (tailCaptures_rootrbrbrnlb : CaptureMap) (finalSuffix_rootrbrbrnlb : List Char) =>
+                                  (fun (bodyCaptures_rootrbrbrnl : CaptureMap) (remaining_rootrbrbrnl : List Char) =>
+                                      let ownCaptures_rootrbrbrnl :=
+                                        (["Right", "Compressed.Right"]).map fun key =>
+                                          (key,
+                                            String.ofList
+                                              (((input).drop (characters_rootrbrbr).length).take
+                                                (((input).drop (characters_rootrbrbr).length).length -
+                                                  (remaining_rootrbrbrnl).length)))
+                                      (fun (tailCaptures_rootrbrbrnl : CaptureMap) (suffix_rootrbrbrnl : List Char) =>
+                                          (fun (bodyCaptures_rootrbr : CaptureMap) (remaining_rootrbr : List Char) =>
+                                              let ownCaptures_rootrbr :=
+                                                (["Compressed", "V6Addr.Compressed"]).map fun key =>
+                                                  (key,
+                                                    String.ofList
+                                                      ((input).take ((input).length - (remaining_rootrbr).length)))
+                                              (fun (tailCaptures_rootrbr : CaptureMap) (suffix_rootrbr : List Char) =>
+                                                  (fun (bodyCaptures_rootr : CaptureMap)
+                                                        (remaining_rootr : List Char) =>
+                                                      let ownCaptures_rootr :=
+                                                        (["V6Addr"]).map fun key =>
+                                                          (key,
+                                                            String.ofList
+                                                              ((input).take
+                                                                ((input).length - (remaining_rootr).length)))
+                                                      let characters_rootrt := "/".toList
+                                                      if (characters_rootrt).isPrefixOf remaining_rootr then
+                                                        (List.range
+                                                              (((remaining_rootr).drop
+                                                                    (characters_rootrt).length).length +
+                                                                1)).findSome?
+                                                          fun width_rootrtnb =>
+                                                          if
+                                                              termPrefixOk TokClass.digit (LenSpec.between 1 3)
+                                                                ((remaining_rootr).drop (characters_rootrt).length)
+                                                                width_rootrtnb then
+                                                            (fun (bodyCaptures_rootrtn : CaptureMap)
+                                                                  (remaining_rootrtn : List Char) =>
+                                                                let ownCaptures_rootrtn :=
+                                                                  (["Prefix"]).map fun key =>
+                                                                    (key,
+                                                                      String.ofList
+                                                                        (((remaining_rootr).drop
+                                                                              (characters_rootrt).length).take
+                                                                          (((remaining_rootr).drop
+                                                                                (characters_rootrt).length).length -
+                                                                            (remaining_rootrtn).length)))
+                                                                (fun (tailCaptures_rootrtn : CaptureMap)
+                                                                      (suffix_rootrtn : List Char) =>
+                                                                    (fun (tailCaptures_rootr : CaptureMap)
+                                                                          (suffix_rootr : List Char) =>
+                                                                        (fun (captures : CaptureMap)
+                                                                              (remaining : List Char) =>
+                                                                            if (remaining).isEmpty then some captures
+                                                                            else none)
+                                                                          (ownCaptures_rootr ++ bodyCaptures_rootr ++
+                                                                            tailCaptures_rootr)
+                                                                          suffix_rootr)
+                                                                      (ownCaptures_rootrtn ++ bodyCaptures_rootrtn ++
+                                                                        tailCaptures_rootrtn)
+                                                                      suffix_rootrtn)
+                                                                  ([] : CaptureMap) remaining_rootrtn)
+                                                              ([] : CaptureMap)
+                                                              (((remaining_rootr).drop (characters_rootrt).length).drop
+                                                                width_rootrtnb)
+                                                          else none
+                                                      else none)
+                                                    (ownCaptures_rootrbr ++ bodyCaptures_rootrbr ++
+                                                      tailCaptures_rootrbr)
+                                                    suffix_rootrbr)
+                                                ([] : CaptureMap) remaining_rootrbr)
+                                            (ownCaptures_rootrbrbrnl ++ bodyCaptures_rootrbrbrnl ++
+                                              tailCaptures_rootrbrbrnl)
+                                            suffix_rootrbrbrnl)
+                                        ([] : CaptureMap) remaining_rootrbrbrnl)
+                                    ((("H16R" ++ "#count", toString itemCount_rootrbrbrnlb) :: captures_rootrbrbrnlb) ++
+                                      tailCaptures_rootrbrbrnlb)
+                                    finalSuffix_rootrbrbrnlb)
+                                ([] : CaptureMap) suffix_rootrbrbrnlb)
+                          (ownCaptures_rootrbrbrnlbf ++ bodyCaptures_rootrbrbrnlbf ++ tailCaptures_rootrbrbrnlbf)
+                          suffix_rootrbrbrnlbf)
+                      ([] : CaptureMap) remaining_rootrbrbrnlbf)
+                  ([] : CaptureMap) (((input).drop (characters_rootrbrbr).length).drop width_rootrbrbrnlbfb)
+              else none)
+            fun _ =>
+            (fun (bodyCaptures_rootrbr : CaptureMap) (remaining_rootrbr : List Char) =>
+                let ownCaptures_rootrbr :=
+                  (["Compressed", "V6Addr.Compressed"]).map fun key =>
+                    (key, String.ofList ((input).take ((input).length - (remaining_rootrbr).length)))
+                (fun (tailCaptures_rootrbr : CaptureMap) (suffix_rootrbr : List Char) =>
+                    (fun (bodyCaptures_rootr : CaptureMap) (remaining_rootr : List Char) =>
+                        let ownCaptures_rootr :=
+                          (["V6Addr"]).map fun key =>
+                            (key, String.ofList ((input).take ((input).length - (remaining_rootr).length)))
+                        let characters_rootrt := "/".toList
+                        if (characters_rootrt).isPrefixOf remaining_rootr then
+                          (List.range (((remaining_rootr).drop (characters_rootrt).length).length + 1)).findSome?
+                            fun width_rootrtnb =>
+                            if
+                                termPrefixOk TokClass.digit (LenSpec.between 1 3)
+                                  ((remaining_rootr).drop (characters_rootrt).length) width_rootrtnb then
+                              (fun (bodyCaptures_rootrtn : CaptureMap) (remaining_rootrtn : List Char) =>
+                                  let ownCaptures_rootrtn :=
+                                    (["Prefix"]).map fun key =>
+                                      (key,
+                                        String.ofList
+                                          (((remaining_rootr).drop (characters_rootrt).length).take
+                                            (((remaining_rootr).drop (characters_rootrt).length).length -
+                                              (remaining_rootrtn).length)))
+                                  (fun (tailCaptures_rootrtn : CaptureMap) (suffix_rootrtn : List Char) =>
+                                      (fun (tailCaptures_rootr : CaptureMap) (suffix_rootr : List Char) =>
+                                          (fun (captures : CaptureMap) (remaining : List Char) =>
+                                              if (remaining).isEmpty then some captures else none)
+                                            (ownCaptures_rootr ++ bodyCaptures_rootr ++ tailCaptures_rootr)
+                                            suffix_rootr)
+                                        (ownCaptures_rootrtn ++ bodyCaptures_rootrtn ++ tailCaptures_rootrtn)
+                                        suffix_rootrtn)
+                                    ([] : CaptureMap) remaining_rootrtn)
+                                ([] : CaptureMap)
+                                (((remaining_rootr).drop (characters_rootrt).length).drop width_rootrtnb)
+                            else none
+                        else none)
+                      (ownCaptures_rootrbr ++ bodyCaptures_rootrbr ++ tailCaptures_rootrbr) suffix_rootrbr)
+                  ([] : CaptureMap) remaining_rootrbr)
+              ([] : CaptureMap) ((input).drop (characters_rootrbrbr).length)
+        else none
+
+private theorem IPv6.directDecode_eq_searchProgram (source : String) :
+    IPv6.directDecode source = SearchProgram.decode IPv6.searchProgram source :=
+  by
+  unfold IPv6.directDecode SearchProgram.decode IPv6.searchProgram
+  simp only [SearchCode.runK]
+
+private def IPv6.decodeCaptures (source : String) : Option CaptureMap :=
+  IPv6.directDecode source
+
+private theorem IPv6.decodeCaptures_eq_parsePlan (source : String) :
+    IPv6.decodeCaptures source = ParsePlan.decode IPv6.parsePlan IPv6.grammar source := by
+  calc
+    IPv6.decodeCaptures source = SearchProgram.decode IPv6.searchProgram source := by
+      exact IPv6.directDecode_eq_searchProgram source
+    _ = SearchProgram.decode (lowerSearchPlan IPv6.searchPlan) source := by rw [IPv6.searchProgram_lowered]
+    _ = ParsePlan.decode IPv6.parsePlan IPv6.grammar source := by rfl
+
+private theorem IPv6.decodeCaptures_eq_scan (source : String) : IPv6.decodeCaptures source = scan IPv6.grammar source :=
+  by
+  calc
+    IPv6.decodeCaptures source = ParsePlan.decode IPv6.parsePlan IPv6.grammar source :=
+      IPv6.decodeCaptures_eq_parsePlan source
+    _ = scan IPv6.grammar source :=
+      ParsePlan.decode_eq_scan (ParsePlan.CertifiedFor.search IPv6.searchPlan_mirrorsGrammar) source
+
+private def IPv6.directView (source : String) : Option IPv6.View :=
+  (IPv6.directDecode source).map (IPv6.View.ofMap source)
+
+private theorem IPv6.directView_eq_decodeView (source : String) : IPv6.directView source = IPv6.decodeView source :=
+  by
+  unfold IPv6.directView IPv6.decodeView
+  rw [show IPv6.directDecode source = scan IPv6.grammar source by exact IPv6.decodeCaptures_eq_scan source]
+
+private instance IPv6.instDecidableViewValid : DecidablePred IPv6.View.Valid := fun view =>
+  by
+  unfold IPv6.View.Valid IPv6.View.WfConstraints IPv6.WfConstraints
+  infer_instance
 
 theorem IPv6.computeValue_isSome (s : String) : IPv6.IsValid s → (IPv6.computeValue s).isSome :=
   by
@@ -981,10 +2114,25 @@ theorem IPv6.computeValue_isSome (s : String) : IPv6.IsValid s → (IPv6.compute
   exact hengine.1.1
 
 def IPv6.parse (s : String) :=
-  Triptych.scannerParse IPv6.grammar IPv6.constraints IPv6.valueExpr ipv6CodeToNet s
+  Triptych.decodedViewParse IPv6.directView IPv6.View.Valid IPv6.View.denotation ipv6CodeToNet s
 
 theorem IPv6.parse_eq_scanner (s : String) :
-    IPv6.parse s = Triptych.scannerParse IPv6.grammar IPv6.constraints IPv6.valueExpr ipv6CodeToNet s := by rfl
+    IPv6.parse s = Triptych.scannerParse IPv6.grammar IPv6.constraints IPv6.valueExpr ipv6CodeToNet s := by
+  calc
+    IPv6.parse s = Triptych.gatedParseOfSpec IPv6.IsValid IPv6.computeValue ipv6CodeToNet s :=
+      by
+      unfold IPv6.parse
+      exact
+        Triptych.decodedViewParse_eq_gatedParseOfSpec IPv6.directView IPv6.decodeView IPv6.View.Valid
+          IPv6.View.denotation ipv6CodeToNet IPv6.IsValid IPv6.computeValue IPv6.directView_eq_decodeView
+          IPv6.IsValid_view IPv6.computeValue_view s
+    _ = Triptych.scannerParse IPv6.grammar IPv6.constraints IPv6.valueExpr ipv6CodeToNet s :=
+      by
+      symm
+      unfold IPv6.computeValue
+      exact
+        Triptych.scannerParse_eq_surfaceGatedParseOfSpec IPv6.grammar IPv6.constraints IPv6.valueExpr ipv6CodeToNet
+          IPv6.IsValid IPv6.IsValid_equiv s
 
 theorem IPv6.parse_eq_gated (s : String) :
     IPv6.parse s = Triptych.gatedParseOfSpec IPv6.IsValid IPv6.computeValue ipv6CodeToNet s :=

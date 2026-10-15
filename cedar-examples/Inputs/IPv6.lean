@@ -44,6 +44,33 @@ export Cedar.Spec.Ext.IPAddr (IPv6Addr IPNet)
 
 abbrev IPv6Net := CIDR V6_WIDTH
 
+/-- Unsigned value of a hexadecimal string, retained as a proof-facing bridge to Cedar's
+    existing IPv6 parser implementation. The Triptych value clause uses `hexSeq` directly. -/
+def readHex (s : String) : Nat :=
+  s.foldl (fun n c =>
+    n * 16 +
+      (if c.isDigit then c.toNat - '0'.toNat
+       else if 'a' ≤ c && c ≤ 'f' then c.toNat - 'a'.toNat + 10
+       else if 'A' ≤ c && c ≤ 'F' then c.toNat - 'A'.toNat + 10
+       else 0)) 0
+
+/-- Convert eight proof-facing hexadecimal groups to Cedar's 128-bit address type. -/
+def toV6Addr (groups : List String) : IPv6Addr :=
+  let g (i : Nat) : BitVec 16 := BitVec.ofNat 16 (readHex (groups.getD i ""))
+  IPv6Addr.mk (g 0) (g 1) (g 2) (g 3) (g 4) (g 5) (g 6) (g 7)
+
+/-- Reconstruct Cedar's CIDR value from the component view used by the bridge proofs. -/
+def toIPv6Net (full left right : List String) (pre : String) : IPv6Net :=
+  let groups :=
+    if full.isEmpty then
+      let omitted := 8 - (left.length + right.length)
+      left ++ List.replicate omitted "" ++ right
+    else
+      full
+  let preValue : IPv6Prefix :=
+    if pre == "" then (ADDR_SIZE V6_WIDTH : IPv6Prefix) else (readNat pre : IPv6Prefix)
+  { addr := toV6Addr groups, pre := preValue }
+
 /-- Decode the DSL code `address·129 + prefix` into Cedar's IPv6 CIDR domain. -/
 def ipv6CodeToNet (code : Int) : IPv6Net :=
   let encoded := code.toNat
@@ -86,7 +113,6 @@ def ipv6Only (s : String) : Option IPv6Net :=
     segments Left + segments Right < 8
     noLeadingZero Prefix
     nat Prefix ∈ [0, 128]
-    value ∈ [0, 2 ^ 128 * 129 - 1]
   parser ipv6Only
   printer ipNetToStr
   verus "../verus-experiments/cedar-ext/ipaddr/src/ipv6/spec.rs"

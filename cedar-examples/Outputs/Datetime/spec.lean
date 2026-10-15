@@ -401,3 +401,22 @@ def Datetime.View.denotation (v : Datetime.View) :=
   Datetime.value (Datetime.View.mm v) (Datetime.View.yyyy v) (Datetime.View.dd v) ((Datetime.View.time_hh v).getD "")
     ((Datetime.View.time_mm v).getD "") ((Datetime.View.ss v).getD "") ((Datetime.View.sss v).getD "")
     ((Datetime.View.offset v).getD "") ((Datetime.View.offset_hh v).getD "") ((Datetime.View.offset_mm v).getD "")
+
+def Datetime.View.ConstraintsWithValue (v : Datetime.View) (computed : Int) : Prop :=
+  let mm := Datetime.View.mm v;
+  let yyyy := Datetime.View.yyyy v;
+  let dd := Datetime.View.dd v;
+  let time_hh := (Datetime.View.time_hh v).getD "";
+  let time_mm := (Datetime.View.time_mm v).getD "";
+  let ss := (Datetime.View.ss v).getD "";
+  let sss := (Datetime.View.sss v).getD "";
+  let offset := (Datetime.View.offset v).getD "";
+  let offset_hh := (Datetime.View.offset_hh v).getD "";
+  let offset_mm := (Datetime.View.offset_mm v).getD "";
+  (-9223372036854775808 : Int) ≤ computed ∧ computed ≤ (9223372036854775807 : Int)
+
+theorem Datetime.View.ConstraintsWithValue_denotation (v : Datetime.View) :
+    Datetime.View.ConstraintsWithValue v (Datetime.View.denotation v) ↔ Datetime.View.Constraints v :=
+  by
+  unfold Datetime.View.ConstraintsWithValue Datetime.View.denotation Datetime.View.Constraints
+  rfl

@@ -199,10 +199,6 @@ def IPv6.WfConstraints (left : String) (right : String) («prefix» : String) : 
   (segmentsOf left + segmentsOf right < (8 : Int) ∧ ((«prefix»).startsWith "0" → «prefix» = "0")) ∧
     (0 : Int) ≤ natOf «prefix» ∧ natOf «prefix» ≤ (128 : Int)
 
-def IPv6.Constraints (full : String) (left : String) (right : String) («prefix» : String) : Prop :=
-  (0 : Int) ≤ IPv6.value full left right «prefix» ∧
-    IPv6.value full left right «prefix» ≤ (2 : Int) ^ ((128 : Int)).toNat * (129 : Int) - (1 : Int)
-
 def IPv6.SatisfiesWfConstraints (s : String) : Prop :=
   IPv6.WfConstraints (Triptych.component IPv6.grammar s "Left") (Triptych.component IPv6.grammar s "Right")
     (Triptych.component IPv6.grammar s "Prefix")
@@ -210,12 +206,8 @@ def IPv6.SatisfiesWfConstraints (s : String) : Prop :=
 abbrev IPv6.IsWf (s : String) : Prop :=
   IPv6.Production s ∧ IPv6.SatisfiesWfConstraints s
 
-def IPv6.SatisfiesConstraints (s : String) : Prop :=
-  IPv6.Constraints (Triptych.component IPv6.grammar s "Full") (Triptych.component IPv6.grammar s "Left")
-    (Triptych.component IPv6.grammar s "Right") (Triptych.component IPv6.grammar s "Prefix")
-
 abbrev IPv6.IsValid (s : String) : Prop :=
-  IPv6.IsWf s ∧ IPv6.SatisfiesConstraints s
+  IPv6.IsWf s
 
 def IPv6.Denotes (s : String) (i : Int) : Prop :=
   IPv6.IsValid s ∧
@@ -233,12 +225,8 @@ structure IPv6.View where
 def IPv6.View.WfConstraints (v : IPv6.View) : Prop :=
   IPv6.WfConstraints ((IPv6.View.left v).getD "") ((IPv6.View.right v).getD "") ((IPv6.View.prefix v).getD "")
 
-def IPv6.View.Constraints (v : IPv6.View) : Prop :=
-  IPv6.Constraints ((IPv6.View.full v).getD "") ((IPv6.View.left v).getD "") ((IPv6.View.right v).getD "")
-    ((IPv6.View.prefix v).getD "")
-
 abbrev IPv6.View.Valid (v : IPv6.View) : Prop :=
-  IPv6.View.WfConstraints v ∧ IPv6.View.Constraints v
+  IPv6.View.WfConstraints v
 
 def IPv6.View.denotation (v : IPv6.View) :=
   IPv6.value ((IPv6.View.full v).getD "") ((IPv6.View.left v).getD "") ((IPv6.View.right v).getD "")

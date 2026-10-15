@@ -133,3 +133,15 @@ abbrev Decimal.View.Valid (v : Decimal.View) : Prop :=
 
 def Decimal.View.denotation (v : Decimal.View) :=
   Decimal.value (Decimal.View.sign v) (Decimal.View.natural v) (Decimal.View.fraction v)
+
+def Decimal.View.ConstraintsWithValue (v : Decimal.View) (computed : Int) : Prop :=
+  let «sign» := Decimal.View.sign v;
+  let natural := Decimal.View.natural v;
+  let fraction := Decimal.View.fraction v;
+  (-9223372036854775808 : Int) ≤ computed ∧ computed ≤ (9223372036854775807 : Int)
+
+theorem Decimal.View.ConstraintsWithValue_denotation (v : Decimal.View) :
+    Decimal.View.ConstraintsWithValue v (Decimal.View.denotation v) ↔ Decimal.View.Constraints v :=
+  by
+  unfold Decimal.View.ConstraintsWithValue Decimal.View.denotation Decimal.View.Constraints
+  rfl

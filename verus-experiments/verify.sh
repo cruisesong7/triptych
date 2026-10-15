@@ -24,7 +24,19 @@ export PATH="${VERUS_DIR}:${HOME}/.cargo/bin:${PATH}"
 )
 
 (
+  cd "${ROOT}/verus-experiments/direct-coverage"
+  cargo verus verify --offline --locked --fwd-verus-args-to roots -- \
+    --no-cheating --multiple-errors 20
+)
+
+(
   cd "${ROOT}/verus-experiments/cedar-ext/decimal"
+  cargo verus verify --offline --locked --fwd-verus-args-to roots -- \
+    --no-cheating --multiple-errors 20
+)
+
+(
+  cd "${ROOT}/verus-experiments/cedar-ext/suite"
   cargo verus verify --offline --locked --fwd-verus-args-to roots -- \
     --no-cheating --multiple-errors 20
 )

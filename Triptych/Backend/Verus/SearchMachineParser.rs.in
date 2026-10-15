@@ -1,0 +1,2180 @@
+#[verifier::ext_equal]
+pub struct SearchMarkerSpec {
+    pub start: int,
+    pub capture_count: nat,
+    pub second_capture_count: nat,
+}
+
+#[derive(Structural, Copy, Clone, PartialEq, Eq)]
+pub struct SearchMarker {
+    pub start: usize,
+    pub capture_count: usize,
+    pub second_capture_count: usize,
+}
+
+impl DeepView for SearchMarker {
+    type V = SearchMarkerSpec;
+
+    open spec fn deep_view(&self) -> SearchMarkerSpec {
+        SearchMarkerSpec {
+            start: self.start as int,
+            capture_count: self.capture_count as nat,
+            second_capture_count: self.second_capture_count as nat,
+        }
+    }
+}
+
+#[derive(Copy, Clone)]
+pub struct SearchCaptureStack {
+    pub slots: [Option<RuntimeCapture>; __TRIPTYCH_CAPTURE_CAPACITY__],
+    pub length: usize,
+}
+
+impl View for SearchCaptureStack {
+    type V = Seq<Option<RuntimeCapture>>;
+
+    open spec fn view(&self) -> Seq<Option<RuntimeCapture>> {
+        Seq::new(self.length as nat, |index: int| self.slots@[index])
+    }
+}
+
+impl SearchCaptureStack {
+    pub open spec fn well_formed(&self) -> bool {
+        self.length <= __TRIPTYCH_CAPTURE_CAPACITY__
+    }
+
+    fn new() -> (result: Self)
+        ensures
+            result@ == Seq::<Option<RuntimeCapture>>::empty(),
+            result.well_formed(),
+    {
+        let result = Self {
+            slots: [None; __TRIPTYCH_CAPTURE_CAPACITY__],
+            length: 0,
+        };
+        result
+    }
+
+    #[inline(always)]
+    fn len(&self) -> (result: usize)
+        requires
+            self.well_formed(),
+        ensures
+            result == self@.len(),
+    {
+        self.length
+    }
+
+    #[inline(always)]
+    fn get(&self, index: usize) -> (result: Option<RuntimeCapture>)
+        requires
+            self.well_formed(),
+            index < self@.len(),
+        ensures
+            result == self@[index as int],
+    {
+        proof {
+            broadcast use vstd::array::group_array_axioms;
+        }
+        self.slots[index]
+    }
+
+    #[inline(always)]
+    fn push(&mut self, value: Option<RuntimeCapture>)
+        requires
+            old(self).well_formed(),
+            old(self).length < __TRIPTYCH_CAPTURE_CAPACITY__,
+        ensures
+            final(self)@ == old(self)@.push(value),
+            final(self).length == old(self).length + 1,
+            final(self).well_formed(),
+    {
+        let index = self.length;
+        self.slots.set(index, value);
+        self.length = index + 1;
+        proof {
+            broadcast use vstd::array::group_array_axioms;
+            assert(self@ =~= old(self)@.push(value)) by {
+                assert forall|checked: int| 0 <= checked < self@.len() implies
+                    self@[checked] == old(self)@.push(value)[checked] by {
+                    if checked < index {
+                        assert(self.slots@[checked] == old(self).slots@[checked]);
+                    } else {
+                        assert(checked == index);
+                        assert(self.slots@[checked] == value);
+                    }
+                }
+            }
+        }
+    }
+
+    #[inline(always)]
+    fn pop(&mut self)
+        requires
+            old(self).well_formed(),
+            old(self)@.len() > 0,
+        ensures
+            final(self)@ == old(self)@.drop_last(),
+            final(self).well_formed(),
+    {
+        self.length -= 1;
+        proof {
+            assert(self@ =~= old(self)@.drop_last()) by {
+                assert forall|checked: int| 0 <= checked < self@.len() implies
+                    self@[checked] == old(self)@.drop_last()[checked] by {
+                }
+            }
+        }
+    }
+
+    #[inline(always)]
+    fn truncate(&mut self, length: usize)
+        requires
+            old(self).well_formed(),
+            length <= old(self)@.len(),
+        ensures
+            final(self)@ == old(self)@.take(length as int),
+            final(self).well_formed(),
+    {
+        self.length = length;
+        proof {
+            assert(self@ =~= old(self)@.take(length as int)) by {
+                assert forall|checked: int| 0 <= checked < self@.len() implies
+                    self@[checked] == old(self)@.take(length as int)[checked] by {
+                }
+            }
+        }
+    }
+
+    #[inline(always)]
+    fn set(&mut self, index: usize, value: Option<RuntimeCapture>)
+        requires
+            old(self).well_formed(),
+            index < old(self)@.len(),
+        ensures
+            final(self)@ == old(self)@.update(index as int, value),
+            final(self).well_formed(),
+    {
+        self.slots.set(index, value);
+        proof {
+            broadcast use vstd::array::group_array_axioms;
+            assert(self@ =~= old(self)@.update(index as int, value)) by {
+                assert forall|checked: int| 0 <= checked < self@.len() implies
+                    self@[checked] == old(self)@.update(index as int, value)[checked] by {
+                    if checked == index {
+                        assert(self.slots@[checked] == value);
+                    } else {
+                        assert(self.slots@[checked] == old(self).slots@[checked]);
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[derive(Copy, Clone)]
+pub struct SearchMarkerStack {
+    pub slots: [SearchMarker; __TRIPTYCH_MARKER_CAPACITY__],
+    pub length: usize,
+}
+
+impl DeepView for SearchMarkerStack {
+    type V = Seq<SearchMarkerSpec>;
+
+    open spec fn deep_view(&self) -> Seq<SearchMarkerSpec> {
+        Seq::new(self.length as nat, |index: int| self.slots.deep_view()[index])
+    }
+}
+
+impl SearchMarkerStack {
+    pub open spec fn well_formed(&self) -> bool {
+        self.length <= __TRIPTYCH_MARKER_CAPACITY__
+    }
+
+    fn new() -> (result: Self)
+        ensures
+            result.deep_view() == Seq::<SearchMarkerSpec>::empty(),
+            result.well_formed(),
+    {
+        let result = Self {
+            slots: [SearchMarker {
+                start: 0,
+                capture_count: 0,
+                second_capture_count: 0,
+            }; __TRIPTYCH_MARKER_CAPACITY__],
+            length: 0,
+        };
+        result
+    }
+
+    #[inline(always)]
+    fn len(&self) -> (result: usize)
+        requires
+            self.well_formed(),
+        ensures
+            result == self.deep_view().len(),
+    {
+        self.length
+    }
+
+    #[inline(always)]
+    fn get(&self, index: usize) -> (result: SearchMarker)
+        requires
+            self.well_formed(),
+            index < self.deep_view().len(),
+        ensures
+            result.deep_view() == self.deep_view()[index as int],
+    {
+        proof {
+            broadcast use vstd::array::group_array_axioms;
+        }
+        self.slots[index]
+    }
+
+    #[inline(always)]
+    fn push(&mut self, value: SearchMarker)
+        requires
+            old(self).well_formed(),
+            old(self).length < __TRIPTYCH_MARKER_CAPACITY__,
+        ensures
+            final(self).deep_view() == old(self).deep_view().push(value.deep_view()),
+            final(self).well_formed(),
+    {
+        let index = self.length;
+        self.slots.set(index, value);
+        self.length = index + 1;
+        proof {
+            broadcast use vstd::array::group_array_axioms;
+            assert(self.deep_view() =~=
+                old(self).deep_view().push(value.deep_view())) by {
+                assert forall|checked: int| 0 <= checked < self.deep_view().len() implies
+                    self.deep_view()[checked]
+                        == old(self).deep_view().push(value.deep_view())[checked] by {
+                    if checked < index {
+                        assert(self.slots.deep_view()[checked]
+                            == old(self).slots.deep_view()[checked]);
+                    } else {
+                        assert(checked == index);
+                        assert(self.slots.deep_view()[checked] == value.deep_view());
+                    }
+                }
+            }
+        }
+    }
+
+    #[inline(always)]
+    fn pop(&mut self)
+        requires
+            old(self).well_formed(),
+            old(self).deep_view().len() > 0,
+        ensures
+            final(self).deep_view() == old(self).deep_view().drop_last(),
+            final(self).well_formed(),
+    {
+        self.length -= 1;
+        proof {
+            assert(self.deep_view() =~= old(self).deep_view().drop_last()) by {
+                assert forall|checked: int| 0 <= checked < self.deep_view().len() implies
+                    self.deep_view()[checked]
+                        == old(self).deep_view().drop_last()[checked] by {
+                }
+            }
+        }
+    }
+
+    #[inline(always)]
+    fn truncate(&mut self, length: usize)
+        requires
+            old(self).well_formed(),
+            length <= old(self).deep_view().len(),
+        ensures
+            final(self).deep_view() == old(self).deep_view().take(length as int),
+            final(self).well_formed(),
+    {
+        self.length = length;
+        proof {
+            assert(self.deep_view() =~= old(self).deep_view().take(length as int)) by {
+                assert forall|checked: int| 0 <= checked < self.deep_view().len() implies
+                    self.deep_view()[checked]
+                        == old(self).deep_view().take(length as int)[checked] by {
+                }
+            }
+        }
+    }
+}
+
+#[verifier::ext_equal]
+pub struct SearchStateSpec {
+    pub end: int,
+    pub captures: Seq<Option<RuntimeCapture>>,
+    pub markers: Seq<SearchMarkerSpec>,
+}
+
+#[verifier::ext_equal]
+pub struct SearchRepeatResultSpec {
+    pub state: SearchStateSpec,
+    pub count: nat,
+}
+
+#[derive(Structural, Copy, Clone, PartialEq, Eq)]
+pub struct SearchCheckpoint {
+    pub end: usize,
+    pub capture_length: usize,
+    pub marker_length: usize,
+}
+
+pub open spec fn search_checkpoint_matches(
+    checkpoint: SearchCheckpoint,
+    original: SearchStateSpec,
+    current: SearchStateSpec,
+) -> bool {
+    &&& checkpoint.end as int == original.end
+    &&& checkpoint.capture_length == original.captures.len()
+    &&& checkpoint.marker_length == original.markers.len()
+    &&& checkpoint.capture_length <= current.captures.len()
+    &&& checkpoint.marker_length <= current.markers.len()
+    &&& original.captures
+        == current.captures.take(checkpoint.capture_length as int)
+    &&& original.markers
+        == current.markers.take(checkpoint.marker_length as int)
+}
+
+#[derive(Copy, Clone)]
+pub struct SearchState {
+    pub end: usize,
+    pub captures: SearchCaptureStack,
+    pub markers: SearchMarkerStack,
+    pub semantic_cache: __TRIPTYCH_SEMANTIC_CACHE_TYPE__,
+}
+
+impl SearchState {
+    pub open spec fn storage_well_formed(&self) -> bool {
+        self.captures.well_formed() && self.markers.well_formed()
+    }
+}
+
+impl DeepView for SearchState {
+    type V = SearchStateSpec;
+
+    open spec fn deep_view(&self) -> SearchStateSpec {
+        SearchStateSpec {
+            end: self.end as int,
+            captures: self.captures@,
+            markers: self.markers.deep_view(),
+        }
+    }
+}
+
+#[inline(always)]
+fn search_checkpoint(state: &SearchState) -> (result: SearchCheckpoint)
+    requires
+        state.storage_well_formed(),
+    ensures
+        result.end == state.deep_view().end,
+        result.capture_length == state.deep_view().captures.len(),
+        result.marker_length == state.deep_view().markers.len(),
+        search_checkpoint_matches(result, state.deep_view(), state.deep_view()),
+{
+    let result = SearchCheckpoint {
+        end: state.end,
+        capture_length: state.captures.len(),
+        marker_length: state.markers.len(),
+    };
+    proof {
+        reveal(search_checkpoint_matches);
+        assert(state.deep_view().captures.take(result.capture_length as int)
+            =~= state.deep_view().captures);
+        assert(state.deep_view().markers.take(result.marker_length as int)
+            =~= state.deep_view().markers);
+    }
+    result
+}
+
+pub proof fn search_checkpoint_matches_transitive(
+    checkpoint: SearchCheckpoint,
+    original: SearchStateSpec,
+    middle: SearchStateSpec,
+    current: SearchStateSpec,
+)
+    requires
+        search_checkpoint_matches(checkpoint, original, middle),
+        middle.captures
+            == current.captures.take(middle.captures.len() as int),
+        middle.captures.len() <= current.captures.len(),
+        middle.markers == current.markers,
+    ensures
+        search_checkpoint_matches(checkpoint, original, current),
+{
+    reveal(search_checkpoint_matches);
+    assert(checkpoint.capture_length <= middle.captures.len());
+    assert(checkpoint.capture_length <= current.captures.len());
+    assert(current.captures.take(checkpoint.capture_length as int)
+        =~= original.captures) by {
+        assert forall|index: int| 0 <= index < checkpoint.capture_length implies
+            current.captures.take(checkpoint.capture_length as int)[index]
+                == original.captures[index] by {
+            assert(middle.captures[index]
+                == current.captures.take(middle.captures.len() as int)[index]);
+            assert(current.captures.take(middle.captures.len() as int)[index]
+                == current.captures[index]);
+            assert(middle.captures[index] == original.captures[index]);
+        }
+    }
+}
+
+pub proof fn search_save_preserves_checkpoint(
+    checkpoint: SearchCheckpoint,
+    original: SearchStateSpec,
+    current: SearchStateSpec,
+)
+    requires
+        search_checkpoint_matches(checkpoint, original, current),
+    ensures
+        search_checkpoint_matches(checkpoint, original, search_save(current)),
+{
+    reveal(search_checkpoint_matches);
+    reveal(search_save);
+    assert(search_save(current).captures.take(checkpoint.capture_length as int)
+        =~= original.captures) by {
+        assert forall|index: int| 0 <= index < checkpoint.capture_length implies
+            search_save(current).captures.take(checkpoint.capture_length as int)[index]
+                == original.captures[index] by {
+            assert(current.captures[index] == original.captures[index]);
+        }
+    }
+    assert(search_save(current).markers.take(checkpoint.marker_length as int)
+        =~= original.markers) by {
+        assert forall|index: int| 0 <= index < checkpoint.marker_length implies
+            search_save(current).markers.take(checkpoint.marker_length as int)[index]
+                == original.markers[index] by {
+            assert(current.markers[index] == original.markers[index]);
+        }
+    }
+}
+
+#[inline(always)]
+fn search_restore_checkpoint_exec(
+    state: &mut SearchState,
+    checkpoint: SearchCheckpoint,
+)
+    requires
+        old(state).storage_well_formed(),
+        checkpoint.capture_length <= old(state).deep_view().captures.len(),
+        checkpoint.marker_length <= old(state).deep_view().markers.len(),
+    ensures
+        final(state).deep_view() == (SearchStateSpec {
+            end: checkpoint.end as int,
+            captures: old(state).deep_view().captures.take(checkpoint.capture_length as int),
+            markers: old(state).deep_view().markers.take(checkpoint.marker_length as int),
+        }),
+        final(state).storage_well_formed(),
+        final(state).semantic_cache == old(state).semantic_cache,
+{
+    state.end = checkpoint.end;
+    state.captures.truncate(checkpoint.capture_length);
+    state.markers.truncate(checkpoint.marker_length);
+}
+
+#[inline(always)]
+fn search_restore_checkpoint_to_exec(
+    state: &mut SearchState,
+    checkpoint: SearchCheckpoint,
+    original: Ghost<SearchStateSpec>,
+)
+    requires
+        old(state).storage_well_formed(),
+        search_checkpoint_matches(checkpoint, original@, old(state).deep_view()),
+    ensures
+        final(state).deep_view() == original@,
+        final(state).storage_well_formed(),
+        final(state).semantic_cache == old(state).semantic_cache,
+{
+    proof {
+        reveal(search_checkpoint_matches);
+    }
+    search_restore_checkpoint_exec(state, checkpoint);
+}
+
+pub open spec fn search_captures_before(
+    slots: Seq<Option<RuntimeCapture>>,
+    end: nat,
+) -> Seq<RuntimeCapture>
+    recommends
+        end <= slots.len(),
+    decreases end,
+{
+    if end == 0 {
+        seq![]
+    } else {
+        let previous = search_captures_before(slots, (end - 1) as nat);
+        match slots[(end - 1) as int] {
+            Some(capture) => previous.push(capture),
+            None => previous,
+        }
+    }
+}
+
+pub open spec fn search_captures(
+    slots: Seq<Option<RuntimeCapture>>,
+) -> Seq<RuntimeCapture> {
+    search_captures_before(slots, slots.len())
+}
+
+pub open spec fn search_first_capture_before(
+    slots: Seq<Option<RuntimeCapture>>,
+    key: CaptureKey,
+    end: nat,
+) -> Option<RuntimeCapture>
+    recommends
+        end <= slots.len(),
+    decreases end,
+{
+    if end == 0 {
+        None
+    } else {
+        let previous = search_first_capture_before(slots, key, (end - 1) as nat);
+        match previous {
+            Some(capture) => Some(capture),
+            None => match slots[(end - 1) as int] {
+                Some(capture) if capture.key == key => Some(capture),
+                _ => None,
+            },
+        }
+    }
+}
+
+pub proof fn search_first_capture_before_matches(
+    slots: Seq<Option<RuntimeCapture>>,
+    key: CaptureKey,
+    end: nat,
+)
+    requires
+        end <= slots.len(),
+    ensures
+        search_first_capture_before(slots, key, end)
+            == first_runtime_capture(search_captures_before(slots, end), key),
+    decreases end,
+{
+    if end == 0 {
+        reveal_with_fuel(search_first_capture_before, 1);
+        reveal_with_fuel(search_captures_before, 1);
+        reveal_with_fuel(first_runtime_capture, 1);
+    } else {
+        let previous_end = (end - 1) as nat;
+        let previous_captures = search_captures_before(slots, previous_end);
+        search_first_capture_before_matches(slots, key, previous_end);
+        reveal_with_fuel(search_first_capture_before, 1);
+        reveal_with_fuel(search_captures_before, 1);
+        match slots[previous_end as int] {
+            Some(capture) => {
+                first_runtime_capture_push(previous_captures, key, capture);
+            },
+            None => {},
+        }
+    }
+}
+
+fn lookup_search_runtime_capture(
+    slots: &SearchCaptureStack,
+    key: CaptureKey,
+) -> (result: Option<RuntimeCapture>)
+    requires
+        slots.well_formed(),
+    ensures
+        result == first_runtime_capture(search_captures(slots@), key),
+{
+    let mut result = None;
+    let mut index = 0usize;
+    while index < slots.len()
+        invariant
+            slots.well_formed(),
+            index <= slots@.len(),
+            result == search_first_capture_before(slots@, key, index as nat),
+        decreases slots@.len() - index,
+    {
+        let slot = slots.get(index);
+        if result.is_none() {
+            match slot {
+                Some(capture) if capture.key == key => {
+                    result = Some(capture);
+                },
+                _ => {},
+            }
+        }
+        proof {
+            reveal_with_fuel(search_first_capture_before, 1);
+        }
+        index += 1;
+    }
+    proof {
+        reveal(search_captures);
+        search_first_capture_before_matches(slots@, key, slots@.len());
+    }
+    result
+}
+
+fn search_captures_exec(
+    slots: &SearchCaptureStack,
+) -> (result: Vec<RuntimeCapture>)
+    requires
+        slots.well_formed(),
+    ensures
+        result@ == search_captures(slots@),
+{
+    let mut result = Vec::with_capacity(slots.len());
+    let mut index = 0usize;
+    while index < slots.len()
+        invariant
+            slots.well_formed(),
+            index <= slots@.len(),
+            result@ == search_captures_before(slots@, index as nat),
+        decreases slots@.len() - index,
+    {
+        let slot = slots.get(index);
+        match slot {
+            Some(capture) => result.push(capture),
+            None => {},
+        }
+        proof {
+            reveal_with_fuel(search_captures_before, 1);
+        }
+        index += 1;
+    }
+    proof {
+        reveal(search_captures);
+    }
+    result
+}
+
+pub open spec fn search_candidate_of(state: SearchStateSpec) -> CandidateSpec {
+    CandidateSpec {
+        end: state.end,
+        captures: search_captures(state.captures),
+    }
+}
+
+fn search_candidate_of_exec(state: SearchState) -> (result: Candidate)
+    requires
+        state.storage_well_formed(),
+    ensures
+        result.deep_view() == search_candidate_of(state.deep_view()),
+{
+    Candidate {
+        end: state.end,
+        captures: search_captures_exec(&state.captures),
+    }
+}
+
+/// Compute the character length once, using Rust's O(1) byte length for ASCII inputs.
+#[inline(always)]
+fn search_input_length(input: &str, input_ascii: bool) -> (result: usize)
+    requires
+        input_ascii == input.is_ascii(),
+    ensures
+        result == input@.len(),
+{
+    if input_ascii {
+        let bytes = input.as_bytes();
+        let result = bytes.len();
+        proof {
+            broadcast use is_ascii_spec_bytes;
+            broadcast use vstd::slice::axiom_spec_len;
+            assert(input.is_ascii());
+            assert(bytes@ == input.spec_bytes());
+            assert(result as nat == bytes@.len());
+            assert(input.spec_bytes().len() == input@.len());
+            assert(result as nat == input@.len());
+        }
+        result
+    } else {
+        input.unicode_len()
+    }
+}
+
+#[inline(always)]
+fn search_characters_equal_at(
+    input: &str,
+    input_ascii: bool,
+    input_index: usize,
+    literal: &str,
+    literal_ascii: bool,
+    literal_index: usize,
+) -> (result: bool)
+    requires
+        input_ascii == input.is_ascii(),
+        literal_ascii == literal.is_ascii(),
+        input_index < input@.len(),
+        literal_index < literal@.len(),
+    ensures
+        result == (input@[input_index as int] == literal@[literal_index as int]),
+{
+    if input_ascii && literal_ascii {
+        proof {
+            broadcast use is_ascii_spec_bytes;
+        }
+        input.get_ascii(input_index) == literal.get_ascii(literal_index)
+    } else {
+        input.get_char(input_index) == literal.get_char(literal_index)
+    }
+}
+
+/// Search-machine literal matching with input invariants hoisted to parser entry.
+#[inline(always)]
+fn search_match_literal_at(
+    input: &str,
+    input_length: usize,
+    input_ascii: bool,
+    start: usize,
+    literal: &str,
+) -> (result: Option<MatchEnd>)
+    requires
+        input_length == input@.len(),
+        input_ascii == input.is_ascii(),
+        start <= input_length,
+    ensures
+        match result {
+            Some(found) => {
+                &&& literal_matches_at(input@, start as int, literal@)
+                &&& found.end == start + literal@.len()
+            },
+            None => !literal_matches_at(input@, start as int, literal@),
+        },
+{
+    let literal_length = literal.unicode_len();
+    let literal_ascii = literal.is_ascii();
+    if literal_length > input_length - start {
+        return None;
+    }
+
+    let mut index: usize = 0;
+    while index < literal_length
+        invariant
+            input_length == input@.len(),
+            input_ascii == input.is_ascii(),
+            literal_length == literal@.len(),
+            literal_ascii == literal.is_ascii(),
+            literal_length <= input_length - start,
+            0 <= index <= literal_length,
+            forall|offset: int| 0 <= offset < index ==>
+                input@[start as int + offset] == literal@[offset],
+        decreases literal_length - index,
+    {
+        assert(start + index < input_length);
+        if !search_characters_equal_at(
+            input,
+            input_ascii,
+            start + index,
+            literal,
+            literal_ascii,
+            index,
+        ) {
+            assert(input@[start as int + index as int] != literal@[index as int]);
+            assert(!literal_matches_at(input@, start as int, literal@));
+            return None;
+        }
+        index += 1;
+    }
+
+    proof {
+        assert forall|offset: int| 0 <= offset < literal@.len() implies
+            input@[start as int + offset] == literal@[offset] by {
+        }
+        assert(
+            input@.subrange(start as int, start as int + literal@.len())
+                =~= literal@
+        );
+        assert(literal_matches_at(input@, start as int, literal@));
+    }
+    Some(MatchEnd { end: start + literal_length })
+}
+
+/// Fast path for the one-character separators used by generated direct repetitions.
+#[inline(always)]
+fn search_match_single_literal_at(
+    input: &str,
+    input_length: usize,
+    input_ascii: bool,
+    start: usize,
+    literal: &str,
+) -> (result: Option<MatchEnd>)
+    requires
+        input_length == input@.len(),
+        input_ascii == input.is_ascii(),
+        start <= input_length,
+        literal@.len() == 1,
+    ensures
+        match result {
+            Some(found) => {
+                &&& literal_matches_at(input@, start as int, literal@)
+                &&& found.end == start + 1
+            },
+            None => !literal_matches_at(input@, start as int, literal@),
+        },
+{
+    if start == input_length {
+        proof {
+            reveal(literal_matches_at);
+        }
+        return None;
+    }
+    let literal_ascii = literal.is_ascii();
+    if !search_characters_equal_at(
+        input,
+        input_ascii,
+        start,
+        literal,
+        literal_ascii,
+        0,
+    ) {
+        proof {
+            reveal(literal_matches_at);
+        }
+        return None;
+    }
+    proof {
+        assert forall|offset: int| 0 <= offset < literal@.len() implies
+            input@[start as int + offset] == literal@[offset] by {
+            assert(offset == 0);
+        }
+        assert(input@.subrange(start as int, start as int + 1) =~= literal@);
+        reveal(literal_matches_at);
+    }
+    Some(MatchEnd { end: start + 1 })
+}
+
+/// Whether a two-character delimiter occurs at or after `start`.
+pub closed spec fn search_contains_pair_from_spec(
+    input: Seq<char>,
+    start: int,
+    literal: Seq<char>,
+) -> bool
+    decreases input.len() - start,
+{
+    if start < 0 || input.len() < start || literal.len() != 2 {
+        false
+    } else if start + 1 < input.len() {
+        if input[start] == literal[0] && input[start + 1] == literal[1] {
+            true
+        } else {
+            search_contains_pair_from_spec(input, start + 1, literal)
+        }
+    } else {
+        false
+    }
+}
+
+/// Single-pass executable implementation of `search_contains_pair_from_spec`.
+#[inline(always)]
+fn search_contains_pair_from(
+    input: &str,
+    input_length: usize,
+    input_ascii: bool,
+    start: usize,
+    literal: &str,
+) -> (result: bool)
+    requires
+        input@.len() < usize::MAX,
+        input_length == input@.len(),
+        input_ascii == input.is_ascii(),
+        start <= input_length,
+    ensures
+        result == search_contains_pair_from_spec(
+            input@,
+            start as int,
+            literal@,
+        ),
+{
+    let literal_length = literal.unicode_len();
+    if literal_length != 2 {
+        proof {
+            reveal_with_fuel(search_contains_pair_from_spec, 1);
+        }
+        return false;
+    }
+    let literal_ascii = literal.is_ascii();
+    let mut index = start;
+    while index < input_length
+        invariant
+            input@.len() < usize::MAX,
+            input_length == input@.len(),
+            input_ascii == input.is_ascii(),
+            literal_length == literal@.len(),
+            literal_ascii == literal.is_ascii(),
+            literal_length == 2,
+            start <= index <= input_length,
+            search_contains_pair_from_spec(
+                input@,
+                start as int,
+                literal@,
+            ) == search_contains_pair_from_spec(
+                input@,
+                index as int,
+                literal@,
+            ),
+        decreases input_length - index,
+    {
+        if input_length - index < 2 {
+            proof {
+                reveal_with_fuel(search_contains_pair_from_spec, 1);
+            }
+            return false;
+        }
+        let first_matches = search_characters_equal_at(
+            input,
+            input_ascii,
+            index,
+            literal,
+            literal_ascii,
+            0,
+        );
+        let second_matches = search_characters_equal_at(
+            input,
+            input_ascii,
+            index + 1,
+            literal,
+            literal_ascii,
+            1,
+        );
+        if first_matches && second_matches {
+            proof {
+                reveal_with_fuel(search_contains_pair_from_spec, 1);
+            }
+            return true;
+        }
+        proof {
+            reveal_with_fuel(search_contains_pair_from_spec, 1);
+            assert(search_contains_pair_from_spec(
+                input@,
+                index as int,
+                literal@,
+            ) == search_contains_pair_from_spec(
+                input@,
+                index as int + 1,
+                literal@,
+            ));
+        }
+        index += 1;
+    }
+    proof {
+        reveal_with_fuel(search_contains_pair_from_spec, 1);
+    }
+    false
+}
+
+/// Search-machine string-literal matching with the input length carried as an invariant.
+fn search_match_string_literal_at_width(
+    input: &str,
+    input_length: usize,
+    start: usize,
+    width: usize,
+) -> (result: Option<MatchEnd>)
+    requires
+        input_length == input@.len(),
+        start <= input_length,
+    ensures
+        match result {
+            Some(found) => {
+                &&& string_literal_matches_at(input@, start as int, width as int)
+                &&& found.end == start + width
+            },
+            None => !string_literal_matches_at(input@, start as int, width as int),
+        },
+{
+    if width > input_length - start {
+        return None;
+    }
+    if width == 0 {
+        return None;
+    }
+    let limit = start + width;
+    let first = input.get_char(start);
+    if first == 'r' {
+        return Some(MatchEnd { end: limit });
+    }
+    if plain_string_tail_accepts_exec(input, start + 1, limit) {
+        Some(MatchEnd { end: limit })
+    } else {
+        None
+    }
+}
+
+#[inline(always)]
+fn search_token_accepts_at(
+    input: &str,
+    input_ascii: bool,
+    index: usize,
+    token: TokenClass,
+) -> (result: bool)
+    requires
+        input_ascii == input.is_ascii(),
+        index < input@.len(),
+    ensures
+        result == token_accepts(token, input@[index as int]),
+{
+    if input_ascii {
+        proof {
+            broadcast use is_ascii_spec_bytes;
+        }
+        let byte = input.get_ascii(index);
+        match token {
+            TokenClass::Digit => b'0' <= byte && byte <= b'9',
+            TokenClass::HexDigit => {
+                (b'0' <= byte && byte <= b'9')
+                    || (b'a' <= byte && byte <= b'f')
+                    || (b'A' <= byte && byte <= b'F')
+            },
+            TokenClass::Bit => byte == b'0' || byte == b'1',
+            TokenClass::AsciiRange { lower, upper } => {
+                lower <= byte as u32 && byte as u32 <= upper
+            },
+        }
+    } else {
+        token_accepts_exec(token, input.get_char(index))
+    }
+}
+
+pub open spec fn search_token_prefix_valid(
+    input: Seq<char>,
+    start: int,
+    limit: int,
+    end: int,
+    token: TokenClass,
+) -> bool {
+    &&& 0 <= start <= end <= limit <= input.len()
+    &&& forall|index: int| start <= index < end ==>
+        #[trigger] token_accepts(token, input[index])
+    &&& end < limit ==> !token_accepts(token, input[end])
+}
+
+/// The first position at or after `start` rejected by `token`, capped at `limit`.
+pub open spec fn search_token_prefix_end_spec(
+    input: Seq<char>,
+    start: int,
+    limit: int,
+    token: TokenClass,
+) -> int
+    recommends
+        0 <= start <= limit <= input.len(),
+    decreases limit - start,
+{
+    if start < limit && token_accepts(token, input[start]) {
+        search_token_prefix_end_spec(input, start + 1, limit, token)
+    } else {
+        start
+    }
+}
+
+pub proof fn search_token_prefix_end_bounds(
+    input: Seq<char>,
+    start: int,
+    limit: int,
+    token: TokenClass,
+)
+    requires
+        0 <= start <= limit <= input.len(),
+    ensures
+        start <= search_token_prefix_end_spec(input, start, limit, token) <= limit,
+    decreases limit - start,
+{
+    reveal_with_fuel(search_token_prefix_end_spec, 1);
+    if start < limit && token_accepts(token, input[start]) {
+        search_token_prefix_end_bounds(input, start + 1, limit, token);
+    }
+}
+
+/// Scan a token class once up to `limit`, returning the first rejected position.
+#[inline(always)]
+fn search_token_prefix_end(
+    input: &str,
+    input_length: usize,
+    input_ascii: bool,
+    start: usize,
+    limit: usize,
+    token: TokenClass,
+) -> (end: usize)
+    requires
+        input_length == input@.len(),
+        input_ascii == input.is_ascii(),
+        start <= limit <= input_length,
+    ensures
+        end as int == search_token_prefix_end_spec(
+            input@,
+            start as int,
+            limit as int,
+            token,
+        ),
+        search_token_prefix_valid(
+            input@,
+            start as int,
+            limit as int,
+            end as int,
+            token,
+        ),
+{
+    let mut end = start;
+    proof {
+        assert(search_token_prefix_end_spec(
+            input@,
+            start as int,
+            limit as int,
+            token,
+        ) == search_token_prefix_end_spec(
+            input@,
+            end as int,
+            limit as int,
+            token,
+        ));
+    }
+    while end < limit
+        invariant
+            input_length == input@.len(),
+            input_ascii == input.is_ascii(),
+            start <= end <= limit <= input_length,
+            forall|index: int| start <= index < end ==>
+                #[trigger] token_accepts(token, input@[index]),
+            search_token_prefix_end_spec(
+                input@,
+                start as int,
+                limit as int,
+                token,
+            ) == search_token_prefix_end_spec(
+                input@,
+                end as int,
+                limit as int,
+                token,
+            ),
+        decreases limit - end,
+    {
+        if !search_token_accepts_at(input, input_ascii, end, token) {
+            proof {
+                reveal(search_token_prefix_valid);
+                reveal_with_fuel(search_token_prefix_end_spec, 1);
+            }
+            return end;
+        }
+        proof {
+            reveal_with_fuel(search_token_prefix_end_spec, 1);
+        }
+        end += 1;
+    }
+    proof {
+        reveal(search_token_prefix_valid);
+        reveal_with_fuel(search_token_prefix_end_spec, 1);
+    }
+    end
+}
+
+/// Test one scheduled width against a token prefix that was already scanned.
+#[inline(always)]
+fn search_match_terminal_from_prefix(
+    input: &str,
+    start: usize,
+    width: usize,
+    token: TokenClass,
+    length: LengthSpec,
+    prefix_limit: usize,
+    prefix_end: usize,
+) -> (result: Option<MatchEnd>)
+    requires
+        search_token_prefix_valid(
+            input@,
+            start as int,
+            prefix_limit as int,
+            prefix_end as int,
+            token,
+        ),
+        width <= prefix_limit - start,
+    ensures
+        match result {
+            Some(found) => {
+                &&& terminal_matches_at(input@, start as int, width as int, token, length)
+                &&& found.end == start + width
+            },
+            None => !terminal_matches_at(input@, start as int, width as int, token, length),
+        },
+{
+    if !length_accepts_exec(length, width) {
+        assert(!terminal_matches_at(
+            input@,
+            start as int,
+            width as int,
+            token,
+            length,
+        ));
+        return None;
+    }
+    if width <= prefix_end - start {
+        proof {
+            reveal(search_token_prefix_valid);
+            assert forall|checked: int| 0 <= checked < width implies
+                #[trigger] token_accepts(token, input@[start as int + checked]) by {
+            }
+            assert(terminal_matches_at(
+                input@,
+                start as int,
+                width as int,
+                token,
+                length,
+            ));
+        }
+        Some(MatchEnd { end: start + width })
+    } else {
+        proof {
+            reveal(search_token_prefix_valid);
+            assert(prefix_end < prefix_limit);
+            assert(prefix_end - start < width);
+            assert(!token_accepts(token, input@[prefix_end as int]));
+            assert(!forall|checked: int| 0 <= checked < width ==>
+                #[trigger] token_accepts(token, input@[start as int + checked])) by {
+                let checked = prefix_end as int - start as int;
+                assert(0 <= checked < width as int);
+                assert(start as int + checked == prefix_end as int);
+            }
+            reveal(terminal_matches_at);
+            assert(!terminal_matches_at(
+                input@,
+                start as int,
+                width as int,
+                token,
+                length,
+            ));
+        }
+        None
+    }
+}
+
+pub open spec fn search_state_bounded(state: SearchStateSpec, input_length: nat) -> bool {
+    &&& 0 <= state.end <= input_length as int
+    &&& forall|index: int| 0 <= index < state.markers.len() ==>
+        {
+            let marker = #[trigger] state.markers[index];
+            &&& 0 <= marker.start <= state.end
+            &&& marker.capture_count < marker.second_capture_count
+            &&& marker.second_capture_count < state.captures.len()
+            &&& state.captures[marker.capture_count as int].is_none()
+            &&& state.captures[marker.second_capture_count as int].is_none()
+        }
+    &&& forall|left: int, right: int|
+        0 <= left < right < state.markers.len() ==>
+        {
+            let left_marker = #[trigger] state.markers[left];
+            let right_marker = #[trigger] state.markers[right];
+            left_marker.second_capture_count < right_marker.capture_count
+        }
+}
+
+pub open spec fn search_close_slots_state(
+    state: SearchStateSpec,
+    first: Option<RuntimeCapture>,
+    second: Option<RuntimeCapture>,
+) -> SearchStateSpec
+    recommends
+        state.markers.len() > 0,
+{
+    let marker = state.markers.last();
+    SearchStateSpec {
+        end: state.end,
+        captures: state.captures
+            .update(marker.capture_count as int, first)
+            .update(marker.second_capture_count as int, second),
+        markers: state.markers.drop_last(),
+    }
+}
+
+pub proof fn search_close_slots_preserves_checkpoint(
+    checkpoint: SearchCheckpoint,
+    original: SearchStateSpec,
+    current: SearchStateSpec,
+    first: Option<RuntimeCapture>,
+    second: Option<RuntimeCapture>,
+)
+    requires
+        search_checkpoint_matches(checkpoint, original, current),
+        current.markers.len() > 0,
+        checkpoint.capture_length <= current.markers.last().capture_count,
+        current.markers.last().capture_count
+            < current.markers.last().second_capture_count,
+        checkpoint.marker_length < current.markers.len(),
+    ensures
+        search_checkpoint_matches(
+            checkpoint,
+            original,
+            search_close_slots_state(current, first, second),
+        ),
+{
+    reveal(search_checkpoint_matches);
+    reveal(search_close_slots_state);
+    let marker = current.markers.last();
+    assert(search_close_slots_state(current, first, second).captures
+        .take(checkpoint.capture_length as int) =~= original.captures) by {
+        assert forall|index: int| 0 <= index < checkpoint.capture_length implies
+            search_close_slots_state(current, first, second).captures[index]
+                == original.captures[index] by {
+            assert(index != marker.capture_count);
+            assert(index != marker.second_capture_count);
+            assert(current.captures[index] == original.captures[index]);
+        }
+    }
+    assert(search_close_slots_state(current, first, second).markers
+        .take(checkpoint.marker_length as int) =~= original.markers) by {
+        assert forall|index: int| 0 <= index < checkpoint.marker_length implies
+            search_close_slots_state(current, first, second).markers[index]
+                == original.markers[index] by {
+            assert(current.markers.drop_last()[index] == current.markers[index]);
+            assert(current.markers[index] == original.markers[index]);
+        }
+    }
+}
+
+pub proof fn search_close_slots_state_bounded(
+    state: SearchStateSpec,
+    first: Option<RuntimeCapture>,
+    second: Option<RuntimeCapture>,
+    input_length: nat,
+)
+    requires
+        search_state_bounded(state, input_length),
+        state.markers.len() > 0,
+    ensures
+        search_state_bounded(
+            search_close_slots_state(state, first, second),
+            input_length,
+        ),
+{
+    reveal(search_state_bounded);
+    let top_index = state.markers.len() - 1;
+    let top = state.markers[top_index];
+    let closed = search_close_slots_state(state, first, second);
+    assert(closed.markers.len() == top_index);
+    assert forall|index: int| 0 <= index < closed.markers.len() implies
+        {
+            let marker = #[trigger] closed.markers[index];
+            &&& 0 <= marker.start <= closed.end
+            &&& marker.capture_count < marker.second_capture_count
+            &&& marker.second_capture_count < closed.captures.len()
+            &&& closed.captures[marker.capture_count as int].is_none()
+            &&& closed.captures[marker.second_capture_count as int].is_none()
+        }
+    by {
+        assert(index < top_index);
+        assert(closed.markers[index] == state.markers[index]);
+        let marker = closed.markers[index];
+        assert(marker.second_capture_count < top.capture_count);
+        assert(marker.capture_count as int != top.capture_count as int);
+        assert(marker.capture_count as int != top.second_capture_count as int);
+        assert(marker.second_capture_count as int != top.capture_count as int);
+        assert(marker.second_capture_count as int != top.second_capture_count as int);
+    }
+    assert forall|left: int, right: int|
+        0 <= left < right < closed.markers.len() implies
+        {
+            let left_marker = #[trigger] closed.markers[left];
+            let right_marker = #[trigger] closed.markers[right];
+            left_marker.second_capture_count < right_marker.capture_count
+        }
+    by {
+        assert(closed.markers[left] == state.markers[left]);
+        assert(closed.markers[right] == state.markers[right]);
+    }
+}
+
+pub open spec fn search_advance(state: SearchStateSpec, end: int) -> SearchStateSpec {
+    SearchStateSpec {
+        end,
+        captures: state.captures,
+        markers: state.markers,
+    }
+}
+
+#[inline(always)]
+fn search_advance_exec(
+    state: &mut SearchState,
+    end: usize,
+) 
+    requires
+        old(state).end <= end,
+        old(state).storage_well_formed(),
+    ensures
+        final(state).deep_view() == search_advance(old(state).deep_view(), end as int),
+        final(state).storage_well_formed(),
+        final(state).semantic_cache == old(state).semantic_cache,
+{
+    state.end = end;
+}
+
+#[inline(always)]
+fn search_restore_end_exec(
+    state: &mut SearchState,
+    end: usize,
+)
+    requires
+        old(state).storage_well_formed(),
+    ensures
+        final(state).deep_view() == search_advance(old(state).deep_view(), end as int),
+        final(state).storage_well_formed(),
+        final(state).semantic_cache == old(state).semantic_cache,
+{
+    state.end = end;
+}
+
+pub open spec fn search_save(state: SearchStateSpec) -> SearchStateSpec {
+    let first_count = state.captures.len();
+    let with_first = state.captures.push(None);
+    let second_count = with_first.len();
+    SearchStateSpec {
+        end: state.end,
+        captures: with_first.push(None),
+        markers: state.markers.push(SearchMarkerSpec {
+            start: state.end,
+            capture_count: first_count,
+            second_capture_count: second_count,
+        }),
+    }
+}
+
+pub open spec fn search_record_capture_one(
+    state: SearchStateSpec,
+    end: int,
+    key: CaptureKey,
+) -> SearchStateSpec {
+    let capture = RuntimeCapture {
+        key,
+        start: state.end as usize,
+        end: end as usize,
+        count: 0,
+        is_count: false,
+    };
+    SearchStateSpec {
+        end,
+        captures: state.captures.push(Some(capture)),
+        markers: state.markers,
+    }
+}
+
+pub open spec fn search_record_capture_two(
+    state: SearchStateSpec,
+    end: int,
+    first: CaptureKey,
+    second: CaptureKey,
+) -> SearchStateSpec {
+    let first_capture = RuntimeCapture {
+        key: first,
+        start: state.end as usize,
+        end: end as usize,
+        count: 0,
+        is_count: false,
+    };
+    let second_capture = RuntimeCapture {
+        key: second,
+        start: state.end as usize,
+        end: end as usize,
+        count: 0,
+        is_count: false,
+    };
+    SearchStateSpec {
+        end,
+        captures: state.captures
+            .push(Some(first_capture))
+            .push(Some(second_capture)),
+        markers: state.markers,
+    }
+}
+
+pub proof fn search_record_capture_one_bounded(
+    state: SearchStateSpec,
+    end: int,
+    key: CaptureKey,
+    input_length: nat,
+)
+    requires
+        search_state_bounded(state, input_length),
+        state.end <= end <= input_length,
+    ensures
+        search_state_bounded(
+            search_record_capture_one(state, end, key),
+            input_length,
+        ),
+{
+    reveal(search_state_bounded);
+    reveal(search_record_capture_one);
+}
+
+pub proof fn search_record_capture_two_bounded(
+    state: SearchStateSpec,
+    end: int,
+    first: CaptureKey,
+    second: CaptureKey,
+    input_length: nat,
+)
+    requires
+        search_state_bounded(state, input_length),
+        state.end <= end <= input_length,
+    ensures
+        search_state_bounded(
+            search_record_capture_two(state, end, first, second),
+            input_length,
+        ),
+{
+    reveal(search_state_bounded);
+    reveal(search_record_capture_two);
+}
+
+pub proof fn search_record_capture_one_preserves_checkpoint(
+    checkpoint: SearchCheckpoint,
+    original: SearchStateSpec,
+    current: SearchStateSpec,
+    end: int,
+    key: CaptureKey,
+)
+    requires
+        search_checkpoint_matches(checkpoint, original, current),
+    ensures
+        search_checkpoint_matches(
+            checkpoint,
+            original,
+            search_record_capture_one(current, end, key),
+        ),
+{
+    reveal(search_checkpoint_matches);
+    reveal(search_record_capture_one);
+    let recorded = search_record_capture_one(current, end, key);
+    assert(checkpoint.capture_length <= current.captures.len());
+    assert(checkpoint.capture_length <= recorded.captures.len());
+    assert(recorded.captures.take(checkpoint.capture_length as int)
+        =~= original.captures) by {
+        assert forall|index: int| 0 <= index < checkpoint.capture_length implies
+            recorded.captures[index] == original.captures[index] by {
+            assert(recorded.captures[index] == current.captures[index]);
+            assert(current.captures[index] == original.captures[index]);
+        }
+    }
+    assert(recorded.markers.take(checkpoint.marker_length as int)
+        =~= original.markers);
+}
+
+pub proof fn search_record_capture_two_preserves_checkpoint(
+    checkpoint: SearchCheckpoint,
+    original: SearchStateSpec,
+    current: SearchStateSpec,
+    end: int,
+    first: CaptureKey,
+    second: CaptureKey,
+)
+    requires
+        search_checkpoint_matches(checkpoint, original, current),
+    ensures
+        search_checkpoint_matches(
+            checkpoint,
+            original,
+            search_record_capture_two(current, end, first, second),
+        ),
+{
+    reveal(search_checkpoint_matches);
+    reveal(search_record_capture_two);
+    let recorded = search_record_capture_two(current, end, first, second);
+    assert(checkpoint.capture_length <= current.captures.len());
+    assert(checkpoint.capture_length <= recorded.captures.len());
+    assert(recorded.captures.take(checkpoint.capture_length as int)
+        =~= original.captures) by {
+        assert forall|index: int| 0 <= index < checkpoint.capture_length implies
+            recorded.captures[index] == original.captures[index] by {
+            assert(recorded.captures[index] == current.captures[index]);
+            assert(current.captures[index] == original.captures[index]);
+        }
+    }
+    assert(recorded.markers.take(checkpoint.marker_length as int)
+        =~= original.markers);
+}
+
+#[inline(always)]
+fn search_record_capture_one_exec(
+    state: &mut SearchState,
+    end: usize,
+    key: CaptureKey,
+    input_length: Ghost<nat>,
+)
+    requires
+        search_state_bounded(old(state).deep_view(), input_length@),
+        old(state).storage_well_formed(),
+        old(state).end <= end <= input_length@,
+        old(state).captures.length + 1 <= __TRIPTYCH_CAPTURE_CAPACITY__,
+    ensures
+        final(state).deep_view()
+            == search_record_capture_one(old(state).deep_view(), end as int, key),
+        search_state_bounded(final(state).deep_view(), input_length@),
+        final(state).storage_well_formed(),
+        final(state).semantic_cache == old(state).semantic_cache,
+{
+    let start = state.end;
+    let capture = RuntimeCapture {
+        key,
+        start,
+        end,
+        count: 0,
+        is_count: false,
+    };
+    assert(state.captures.length < __TRIPTYCH_CAPTURE_CAPACITY__);
+    state.captures.push(Some(capture));
+    state.end = end;
+    proof {
+        reveal(search_record_capture_one);
+        search_record_capture_one_bounded(
+            old(state).deep_view(),
+            end as int,
+            key,
+            input_length@,
+        );
+    }
+}
+
+#[inline(always)]
+fn search_record_capture_two_exec(
+    state: &mut SearchState,
+    end: usize,
+    first: CaptureKey,
+    second: CaptureKey,
+    input_length: Ghost<nat>,
+)
+    requires
+        search_state_bounded(old(state).deep_view(), input_length@),
+        old(state).storage_well_formed(),
+        old(state).end <= end <= input_length@,
+        old(state).captures.length + 2 <= __TRIPTYCH_CAPTURE_CAPACITY__,
+    ensures
+        final(state).deep_view()
+            == search_record_capture_two(
+                old(state).deep_view(),
+                end as int,
+                first,
+                second,
+            ),
+        search_state_bounded(final(state).deep_view(), input_length@),
+        final(state).storage_well_formed(),
+        final(state).semantic_cache == old(state).semantic_cache,
+{
+    let start = state.end;
+    let first_capture = RuntimeCapture {
+        key: first,
+        start,
+        end,
+        count: 0,
+        is_count: false,
+    };
+    let second_capture = RuntimeCapture {
+        key: second,
+        start,
+        end,
+        count: 0,
+        is_count: false,
+    };
+    assert(state.captures.length < __TRIPTYCH_CAPTURE_CAPACITY__);
+    state.captures.push(Some(first_capture));
+    assert(state.captures.length < __TRIPTYCH_CAPTURE_CAPACITY__);
+    state.captures.push(Some(second_capture));
+    state.end = end;
+    proof {
+        reveal(search_record_capture_two);
+        search_record_capture_two_bounded(
+            old(state).deep_view(),
+            end as int,
+            first,
+            second,
+            input_length@,
+        );
+    }
+}
+
+#[inline(always)]
+fn search_save_exec(state: &mut SearchState)
+    requires
+        old(state).storage_well_formed(),
+        old(state).captures.length + 2 <= __TRIPTYCH_CAPTURE_CAPACITY__,
+        old(state).markers.length + 1 <= __TRIPTYCH_MARKER_CAPACITY__,
+    ensures
+        final(state).deep_view() == search_save(old(state).deep_view()),
+        final(state).storage_well_formed(),
+        final(state).semantic_cache == old(state).semantic_cache,
+{
+    let start = state.end;
+    let capture_count = state.captures.len();
+    state.captures.push(None);
+    let second_capture_count = state.captures.len();
+    state.captures.push(None);
+    let marker = SearchMarker {
+        start,
+        capture_count,
+        second_capture_count,
+    };
+    state.markers.push(marker);
+}
+
+#[inline(always)]
+fn search_restore_save_exec(state: &mut SearchState)
+    requires
+        old(state).storage_well_formed(),
+        old(state).markers.deep_view().len() > 0,
+        old(state).captures@.len() >= 2,
+    ensures
+        final(state).deep_view() == (SearchStateSpec {
+            end: old(state).deep_view().end,
+            captures: old(state).deep_view().captures.drop_last().drop_last(),
+            markers: old(state).deep_view().markers.drop_last(),
+        }),
+        final(state).storage_well_formed(),
+        final(state).semantic_cache == old(state).semantic_cache,
+{
+    state.markers.pop();
+    state.captures.pop();
+    state.captures.pop();
+}
+
+#[inline(always)]
+fn search_set_capture_exec(
+    captures: &mut SearchCaptureStack,
+    index: usize,
+    capture: RuntimeCapture,
+) 
+    requires
+        old(captures).well_formed(),
+        index < old(captures)@.len(),
+    ensures
+        final(captures)@ == old(captures)@.update(index as int, Some(capture)),
+        final(captures).well_formed(),
+{
+    captures.set(index, Some(capture));
+}
+
+#[inline(always)]
+fn search_clear_capture_exec(
+    captures: &mut SearchCaptureStack,
+    index: usize,
+)
+    requires
+        old(captures).well_formed(),
+        index < old(captures)@.len(),
+    ensures
+        final(captures)@ == old(captures)@.update(index as int, None),
+        final(captures).well_formed(),
+{
+    captures.set(index, None);
+}
+
+pub open spec fn search_close_capture_one(
+    state: SearchStateSpec,
+    key: CaptureKey,
+) -> Option<SearchStateSpec> {
+    if state.markers.len() == 0 {
+        None
+    } else {
+        let marker = state.markers.last();
+        if marker.capture_count >= state.captures.len()
+            || marker.second_capture_count >= state.captures.len()
+            || state.captures[marker.capture_count as int].is_some()
+            || state.captures[marker.second_capture_count as int].is_some()
+        {
+            None
+        } else {
+            let capture = RuntimeCapture {
+                key,
+                start: marker.start as usize,
+                end: state.end as usize,
+                count: 0,
+                is_count: false,
+            };
+            Some(search_close_slots_state(state, Some(capture), None))
+        }
+    }
+}
+
+#[inline(always)]
+fn search_close_capture_one_exec(
+    state: &mut SearchState,
+    key: CaptureKey,
+    input_length: Ghost<nat>,
+) -> (result: bool)
+    requires
+        search_state_bounded(old(state).deep_view(), input_length@),
+        old(state).storage_well_formed(),
+    ensures
+        result ==> search_close_capture_one(old(state).deep_view(), key)
+            == Some(final(state).deep_view())
+            && search_state_bounded(final(state).deep_view(), input_length@)
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache == old(state).semantic_cache,
+        !result ==> search_close_capture_one(old(state).deep_view(), key).is_none()
+            && final(state).deep_view() == old(state).deep_view()
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache == old(state).semantic_cache,
+{
+    let original = Ghost(state.deep_view());
+    if state.markers.len() == 0 {
+        return false;
+    }
+    let marker = state.markers.get(state.markers.len() - 1);
+    let capture = RuntimeCapture {
+        key,
+        start: marker.start,
+        end: state.end,
+        count: 0,
+        is_count: false,
+    };
+    search_set_capture_exec(
+        &mut state.captures,
+        marker.capture_count,
+        capture,
+    );
+    search_clear_capture_exec(&mut state.captures, marker.second_capture_count);
+    state.markers.pop();
+    proof {
+        reveal(search_close_capture_one);
+        assert(state.deep_view() == search_close_slots_state(
+            original@,
+            Some(capture),
+            None,
+        ));
+        search_close_slots_state_bounded(
+            original@,
+            Some(capture),
+            None,
+            input_length@,
+        );
+    }
+    true
+}
+
+pub open spec fn search_close_capture_two(
+    state: SearchStateSpec,
+    first: CaptureKey,
+    second: CaptureKey,
+) -> Option<SearchStateSpec> {
+    if state.markers.len() == 0 {
+        None
+    } else {
+        let marker = state.markers.last();
+        if marker.capture_count >= state.captures.len()
+            || marker.second_capture_count >= state.captures.len()
+            || state.captures[marker.capture_count as int].is_some()
+            || state.captures[marker.second_capture_count as int].is_some()
+        {
+            None
+        } else {
+            let first_capture = RuntimeCapture {
+                key: first,
+                start: marker.start as usize,
+                end: state.end as usize,
+                count: 0,
+                is_count: false,
+            };
+            let second_capture = RuntimeCapture {
+                key: second,
+                start: marker.start as usize,
+                end: state.end as usize,
+                count: 0,
+                is_count: false,
+            };
+            Some(search_close_slots_state(
+                state,
+                Some(first_capture),
+                Some(second_capture),
+            ))
+        }
+    }
+}
+
+#[inline(always)]
+fn search_close_capture_two_exec(
+    state: &mut SearchState,
+    first: CaptureKey,
+    second: CaptureKey,
+    input_length: Ghost<nat>,
+) -> (result: bool)
+    requires
+        search_state_bounded(old(state).deep_view(), input_length@),
+        old(state).storage_well_formed(),
+    ensures
+        result ==> search_close_capture_two(old(state).deep_view(), first, second)
+            == Some(final(state).deep_view())
+            && search_state_bounded(final(state).deep_view(), input_length@)
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache == old(state).semantic_cache,
+        !result ==> search_close_capture_two(old(state).deep_view(), first, second).is_none()
+            && final(state).deep_view() == old(state).deep_view()
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache == old(state).semantic_cache,
+{
+    let original = Ghost(state.deep_view());
+    if state.markers.len() == 0 {
+        return false;
+    }
+    let marker = state.markers.get(state.markers.len() - 1);
+    let end = state.end;
+    let first_capture = RuntimeCapture {
+        key: first,
+        start: marker.start,
+        end,
+        count: 0,
+        is_count: false,
+    };
+    let second_capture = RuntimeCapture {
+        key: second,
+        start: marker.start,
+        end,
+        count: 0,
+        is_count: false,
+    };
+    search_set_capture_exec(
+        &mut state.captures,
+        marker.capture_count,
+        first_capture,
+    );
+    search_set_capture_exec(
+        &mut state.captures,
+        marker.second_capture_count,
+        second_capture,
+    );
+    state.markers.pop();
+    proof {
+        reveal(search_close_capture_two);
+        assert(state.deep_view() == search_close_slots_state(
+            original@,
+            Some(first_capture),
+            Some(second_capture),
+        ));
+        search_close_slots_state_bounded(
+            original@,
+            Some(first_capture),
+            Some(second_capture),
+            input_length@,
+        );
+    }
+    true
+}
+
+pub open spec fn search_close_count_capture(
+    state: SearchStateSpec,
+    key: CaptureKey,
+    count: usize,
+) -> Option<SearchStateSpec> {
+    if state.markers.len() == 0 {
+        None
+    } else {
+        let marker = state.markers.last();
+        if marker.capture_count >= state.captures.len()
+            || marker.second_capture_count >= state.captures.len()
+            || state.captures[marker.capture_count as int].is_some()
+            || state.captures[marker.second_capture_count as int].is_some()
+        {
+            None
+        } else {
+            let capture = RuntimeCapture {
+                key,
+                start: marker.start as usize,
+                end: marker.start as usize,
+                count,
+                is_count: true,
+            };
+            Some(search_close_slots_state(state, Some(capture), None))
+        }
+    }
+}
+
+pub proof fn search_close_count_capture_preserves_checkpoint(
+    checkpoint: SearchCheckpoint,
+    original: SearchStateSpec,
+    current: SearchStateSpec,
+    key: CaptureKey,
+    count: usize,
+    closed: SearchStateSpec,
+)
+    requires
+        search_checkpoint_matches(checkpoint, original, current),
+        search_close_count_capture(current, key, count) == Some(closed),
+        checkpoint.capture_length <= current.markers.last().capture_count,
+        current.markers.last().capture_count
+            < current.markers.last().second_capture_count,
+        checkpoint.marker_length < current.markers.len(),
+    ensures
+        search_checkpoint_matches(checkpoint, original, closed),
+{
+    reveal(search_close_count_capture);
+    let marker = current.markers.last();
+    let capture = RuntimeCapture {
+        key,
+        start: marker.start as usize,
+        end: marker.start as usize,
+        count,
+        is_count: true,
+    };
+    search_close_slots_preserves_checkpoint(
+        checkpoint,
+        original,
+        current,
+        Some(capture),
+        None,
+    );
+}
+
+#[inline(always)]
+fn search_close_count_capture_exec(
+    state: &mut SearchState,
+    key: CaptureKey,
+    count: usize,
+    input_length: Ghost<nat>,
+) -> (result: bool)
+    requires
+        search_state_bounded(old(state).deep_view(), input_length@),
+        old(state).storage_well_formed(),
+    ensures
+        result ==> search_close_count_capture(old(state).deep_view(), key, count)
+            == Some(final(state).deep_view())
+            && search_state_bounded(final(state).deep_view(), input_length@)
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache == old(state).semantic_cache,
+        !result ==> search_close_count_capture(old(state).deep_view(), key, count).is_none()
+            && final(state).deep_view() == old(state).deep_view()
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache == old(state).semantic_cache,
+{
+    let original = Ghost(state.deep_view());
+    if state.markers.len() == 0 {
+        return false;
+    }
+    let marker = state.markers.get(state.markers.len() - 1);
+    let capture = RuntimeCapture {
+        key,
+        start: marker.start,
+        end: marker.start,
+        count,
+        is_count: true,
+    };
+    search_set_capture_exec(
+        &mut state.captures,
+        marker.capture_count,
+        capture,
+    );
+    search_clear_capture_exec(&mut state.captures, marker.second_capture_count);
+    state.markers.pop();
+    proof {
+        reveal(search_close_count_capture);
+        assert(state.deep_view() == search_close_slots_state(
+            original@,
+            Some(capture),
+            None,
+        ));
+        search_close_slots_state_bounded(
+            original@,
+            Some(capture),
+            None,
+            input_length@,
+        );
+    }
+    true
+}
+
+#[inline(always)]
+fn search_reopen_capture_one_exec(
+    state: &mut SearchState,
+    marker: SearchMarker,
+    key: CaptureKey,
+    original: Ghost<SearchStateSpec>,
+)
+    requires
+        old(state).storage_well_formed(),
+        old(state).markers.length < __TRIPTYCH_MARKER_CAPACITY__,
+        search_close_capture_one(original@, key) == Some(old(state).deep_view()),
+        marker.deep_view() == original@.markers.last(),
+        marker.capture_count < marker.second_capture_count,
+        marker.second_capture_count < original@.captures.len(),
+        original@.captures[marker.capture_count as int].is_none(),
+        original@.captures[marker.second_capture_count as int].is_none(),
+    ensures
+        final(state).deep_view() == original@,
+        final(state).storage_well_formed(),
+        final(state).semantic_cache == old(state).semantic_cache,
+{
+    proof {
+        reveal(search_close_capture_one);
+        assert(marker.capture_count < state.captures@.len());
+    }
+    search_clear_capture_exec(&mut state.captures, marker.capture_count);
+    state.markers.push(marker);
+    proof {
+        reveal(search_close_capture_one);
+        original@.markers.lemma_add_last_back();
+        assert(state.captures@ =~= original@.captures);
+        assert(state.markers.deep_view() =~= original@.markers);
+    }
+}
+
+#[inline(always)]
+fn search_reopen_capture_two_exec(
+    state: &mut SearchState,
+    marker: SearchMarker,
+    first: CaptureKey,
+    second: CaptureKey,
+    original: Ghost<SearchStateSpec>,
+)
+    requires
+        old(state).storage_well_formed(),
+        old(state).markers.length < __TRIPTYCH_MARKER_CAPACITY__,
+        search_close_capture_two(original@, first, second) == Some(old(state).deep_view()),
+        marker.deep_view() == original@.markers.last(),
+        marker.capture_count < marker.second_capture_count,
+        marker.second_capture_count < original@.captures.len(),
+        original@.captures[marker.capture_count as int].is_none(),
+        original@.captures[marker.second_capture_count as int].is_none(),
+    ensures
+        final(state).deep_view() == original@,
+        final(state).storage_well_formed(),
+        final(state).semantic_cache == old(state).semantic_cache,
+{
+    proof {
+        reveal(search_close_capture_two);
+        assert(marker.second_capture_count < state.captures@.len());
+    }
+    search_clear_capture_exec(&mut state.captures, marker.second_capture_count);
+    search_clear_capture_exec(&mut state.captures, marker.capture_count);
+    state.markers.push(marker);
+    proof {
+        reveal(search_close_capture_two);
+        original@.markers.lemma_add_last_back();
+        assert(state.captures@ =~= original@.captures);
+        assert(state.markers.deep_view() =~= original@.markers);
+    }
+}
+
+#[inline(always)]
+fn search_reopen_count_capture_exec(
+    state: &mut SearchState,
+    marker: SearchMarker,
+    key: CaptureKey,
+    count: usize,
+    original: Ghost<SearchStateSpec>,
+)
+    requires
+        old(state).storage_well_formed(),
+        old(state).markers.length < __TRIPTYCH_MARKER_CAPACITY__,
+        search_close_count_capture(original@, key, count) == Some(old(state).deep_view()),
+        marker.deep_view() == original@.markers.last(),
+        marker.capture_count < marker.second_capture_count,
+        marker.second_capture_count < original@.captures.len(),
+        original@.captures[marker.capture_count as int].is_none(),
+        original@.captures[marker.second_capture_count as int].is_none(),
+    ensures
+        final(state).deep_view() == original@,
+        final(state).storage_well_formed(),
+        final(state).semantic_cache == old(state).semantic_cache,
+{
+    proof {
+        reveal(search_close_count_capture);
+        assert(marker.capture_count < state.captures@.len());
+    }
+    search_clear_capture_exec(&mut state.captures, marker.capture_count);
+    state.markers.push(marker);
+    proof {
+        reveal(search_close_count_capture);
+        original@.markers.lemma_add_last_back();
+        assert(state.captures@ =~= original@.captures);
+        assert(state.markers.deep_view() =~= original@.markers);
+    }
+}

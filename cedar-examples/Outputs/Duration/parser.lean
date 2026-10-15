@@ -8,6 +8,9 @@ import Triptych.Architecture.Constraint
 import Triptych.Architecture.Assemble
 import Triptych.Theorems.Reconcile
 import Triptych.Theorems.Value
+import Triptych.Theorems.ParsePlan
+import Triptych.Theorems.ScanPlan
+import Triptych.Theorems.SearchPlan
 import Triptych.Archive.DecodeLemmas
 import Triptych.Theorems.Derivation
 import Triptych.Theorems.Scanner
@@ -185,6 +188,23 @@ def Duration.View.ofMap (input : String) (m : Triptych.CaptureMap) : Duration.Vi
     (Triptych.CaptureMap.toEnv m "DHours") (Triptych.CaptureMap.toEnv m "DMinutes")
     (Triptych.CaptureMap.toEnv m "DSeconds") (Triptych.CaptureMap.toEnv m "DMillis")
     ((Triptych.CaptureMap.toEnv m "Components").getD "")
+
+private def Duration.View.ofSpans (input : String) (chars : List Char) (spans : Triptych.LeanSpanCursor.SpanMap) :
+    Duration.View :=
+  Duration.View.mk input ((Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "Sign").getD "")
+    (Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "DDays")
+    (Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "DHours")
+    (Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "DMinutes")
+    (Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "DSeconds")
+    (Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "DMillis")
+    ((Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "Components").getD "")
+
+private theorem Duration.View.ofSpans_eq_ofMap (input : String) (chars : List Char)
+    (spans : Triptych.LeanSpanCursor.SpanMap) :
+    Duration.View.ofSpans input chars spans = Duration.View.ofMap input (spans.materialize chars) :=
+  by
+  unfold Duration.View.ofSpans Duration.View.ofMap
+  simp only [Triptych.LeanSpanCursor.SpanMap.captureMap_toEnv, Triptych.LeanSpanCursor.SpanMap.captureMap_toEnvList]
 
 def Duration.decodeView (s : String) : Option Duration.View :=
   (scan Duration.grammar s).map (Duration.View.ofMap s)
@@ -1088,9 +1108,11 @@ theorem Duration.computeValue_view (s : String) :
 
 /- ═══════════════════════════════ parser ══════════════════════════════
 The generated correct-by-construction parser `parse` uses a certified staged cursor
-program when the grammar supports one, checks constraints on its capture map, and
-computes the result from those captures. The complete scanner remains the checked
-fallback. `parse_eq_scanner` and `parse_eq_gated` prove equality with the generic
+program when the grammar supports one, projects its captures once into the typed
+`View`, checks `View.Valid`, and computes `View.denotation`. Certified cursor rejection
+is final; grammar
+shapes outside that fragment use the complete scanner. `parse_eq_scanner` and
+`parse_eq_gated` prove equality with the generic
 scanner and readable validity-gated presentation. Its correctness and search-cost
 guarantees — `parse_sound`, `parse_complete`, `parse_reject`,
 `parse_profile_result`, `parse_candidateChecks_le`, `parse_view`, and typed
@@ -1099,6 +1121,6187 @@ AUTO-DISCHARGED here.
 When an external parser is declared, `checkedExtParse` additionally validates each
 external result against this parser and ships an AUTO-DISCHARGED soundness theorem.
 A verified parser, no `sorry`. -/
+
+private abbrev Duration.searchPlan : SearchPlan :=
+  ({ start := "Duration",
+      alternatives :=
+        [[SearchPattern.capture "Sign" ["Sign"] [[SearchPattern.optional (SearchPattern.literal "-")]],
+            SearchPattern.capture "Components" ["Components"]
+              [[SearchPattern.optional
+                    (SearchPattern.capture "Days" ["Days", "Components.Days"]
+                      [[SearchPattern.capture "DDays" ["DDays", "Days.DDays"]
+                            [[SearchPattern.tokenRun TokClass.digit LenSpec.atLeastOne]],
+                          SearchPattern.literal "d"]]),
+                  SearchPattern.optional
+                    (SearchPattern.capture "Hours" ["Hours", "Components.Hours"]
+                      [[SearchPattern.capture "DHours" ["DHours", "Hours.DHours"]
+                            [[SearchPattern.tokenRun TokClass.digit LenSpec.atLeastOne]],
+                          SearchPattern.literal "h"]]),
+                  SearchPattern.optional
+                    (SearchPattern.capture "Minutes" ["Minutes", "Components.Minutes"]
+                      [[SearchPattern.capture "DMinutes" ["DMinutes", "Minutes.DMinutes"]
+                            [[SearchPattern.tokenRun TokClass.digit LenSpec.atLeastOne]],
+                          SearchPattern.literal "m"]]),
+                  SearchPattern.optional
+                    (SearchPattern.capture "Seconds" ["Seconds", "Components.Seconds"]
+                      [[SearchPattern.capture "DSeconds" ["DSeconds", "Seconds.DSeconds"]
+                            [[SearchPattern.tokenRun TokClass.digit LenSpec.atLeastOne]],
+                          SearchPattern.literal "s"]]),
+                  SearchPattern.optional
+                    (SearchPattern.capture "Millis" ["Millis", "Components.Millis"]
+                      [[SearchPattern.capture "DMillis" ["DMillis", "Millis.DMillis"]
+                            [[SearchPattern.tokenRun TokClass.digit LenSpec.atLeastOne]],
+                          SearchPattern.literal "ms"]])]]]] } :
+    SearchPlan)
+
+private abbrev Duration.parsePlan : ParsePlan :=
+  ParsePlan.search Duration.searchPlan
+
+private theorem Duration.searchPlan_mirrorsGrammar : SearchPlan.MirrorsGrammar Duration.searchPlan Duration.grammar :=
+  SearchPlan.mirrorsGrammar_of_matchesGrammar (by native_decide)
+
+private abbrev Duration.searchProgram : SearchProgram :=
+  ({ start := "Duration",
+      code :=
+        SearchCode.capture ["Sign"] (SearchCode.choice (SearchCode.literal "-" SearchCode.accept) SearchCode.accept)
+          (SearchCode.capture ["Components"]
+            (SearchCode.choice
+              (SearchCode.capture ["Days", "Components.Days"]
+                (SearchCode.capture ["DDays", "Days.DDays"]
+                  (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                  (SearchCode.literal "d" SearchCode.accept))
+                (SearchCode.choice
+                  (SearchCode.capture ["Hours", "Components.Hours"]
+                    (SearchCode.capture ["DHours", "Hours.DHours"]
+                      (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                      (SearchCode.literal "h" SearchCode.accept))
+                    (SearchCode.choice
+                      (SearchCode.capture ["Minutes", "Components.Minutes"]
+                        (SearchCode.capture ["DMinutes", "Minutes.DMinutes"]
+                          (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                          (SearchCode.literal "m" SearchCode.accept))
+                        (SearchCode.choice
+                          (SearchCode.capture ["Seconds", "Components.Seconds"]
+                            (SearchCode.capture ["DSeconds", "Seconds.DSeconds"]
+                              (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                              (SearchCode.literal "s" SearchCode.accept))
+                            (SearchCode.choice
+                              (SearchCode.capture ["Millis", "Components.Millis"]
+                                (SearchCode.capture ["DMillis", "Millis.DMillis"]
+                                  (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                                  (SearchCode.literal "ms" SearchCode.accept))
+                                SearchCode.accept)
+                              SearchCode.accept))
+                          (SearchCode.choice
+                            (SearchCode.capture ["Millis", "Components.Millis"]
+                              (SearchCode.capture ["DMillis", "Millis.DMillis"]
+                                (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                                (SearchCode.literal "ms" SearchCode.accept))
+                              SearchCode.accept)
+                            SearchCode.accept)))
+                      (SearchCode.choice
+                        (SearchCode.capture ["Seconds", "Components.Seconds"]
+                          (SearchCode.capture ["DSeconds", "Seconds.DSeconds"]
+                            (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                            (SearchCode.literal "s" SearchCode.accept))
+                          (SearchCode.choice
+                            (SearchCode.capture ["Millis", "Components.Millis"]
+                              (SearchCode.capture ["DMillis", "Millis.DMillis"]
+                                (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                                (SearchCode.literal "ms" SearchCode.accept))
+                              SearchCode.accept)
+                            SearchCode.accept))
+                        (SearchCode.choice
+                          (SearchCode.capture ["Millis", "Components.Millis"]
+                            (SearchCode.capture ["DMillis", "Millis.DMillis"]
+                              (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                              (SearchCode.literal "ms" SearchCode.accept))
+                            SearchCode.accept)
+                          SearchCode.accept))))
+                  (SearchCode.choice
+                    (SearchCode.capture ["Minutes", "Components.Minutes"]
+                      (SearchCode.capture ["DMinutes", "Minutes.DMinutes"]
+                        (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                        (SearchCode.literal "m" SearchCode.accept))
+                      (SearchCode.choice
+                        (SearchCode.capture ["Seconds", "Components.Seconds"]
+                          (SearchCode.capture ["DSeconds", "Seconds.DSeconds"]
+                            (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                            (SearchCode.literal "s" SearchCode.accept))
+                          (SearchCode.choice
+                            (SearchCode.capture ["Millis", "Components.Millis"]
+                              (SearchCode.capture ["DMillis", "Millis.DMillis"]
+                                (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                                (SearchCode.literal "ms" SearchCode.accept))
+                              SearchCode.accept)
+                            SearchCode.accept))
+                        (SearchCode.choice
+                          (SearchCode.capture ["Millis", "Components.Millis"]
+                            (SearchCode.capture ["DMillis", "Millis.DMillis"]
+                              (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                              (SearchCode.literal "ms" SearchCode.accept))
+                            SearchCode.accept)
+                          SearchCode.accept)))
+                    (SearchCode.choice
+                      (SearchCode.capture ["Seconds", "Components.Seconds"]
+                        (SearchCode.capture ["DSeconds", "Seconds.DSeconds"]
+                          (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                          (SearchCode.literal "s" SearchCode.accept))
+                        (SearchCode.choice
+                          (SearchCode.capture ["Millis", "Components.Millis"]
+                            (SearchCode.capture ["DMillis", "Millis.DMillis"]
+                              (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                              (SearchCode.literal "ms" SearchCode.accept))
+                            SearchCode.accept)
+                          SearchCode.accept))
+                      (SearchCode.choice
+                        (SearchCode.capture ["Millis", "Components.Millis"]
+                          (SearchCode.capture ["DMillis", "Millis.DMillis"]
+                            (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                            (SearchCode.literal "ms" SearchCode.accept))
+                          SearchCode.accept)
+                        SearchCode.accept)))))
+              (SearchCode.choice
+                (SearchCode.capture ["Hours", "Components.Hours"]
+                  (SearchCode.capture ["DHours", "Hours.DHours"]
+                    (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                    (SearchCode.literal "h" SearchCode.accept))
+                  (SearchCode.choice
+                    (SearchCode.capture ["Minutes", "Components.Minutes"]
+                      (SearchCode.capture ["DMinutes", "Minutes.DMinutes"]
+                        (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                        (SearchCode.literal "m" SearchCode.accept))
+                      (SearchCode.choice
+                        (SearchCode.capture ["Seconds", "Components.Seconds"]
+                          (SearchCode.capture ["DSeconds", "Seconds.DSeconds"]
+                            (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                            (SearchCode.literal "s" SearchCode.accept))
+                          (SearchCode.choice
+                            (SearchCode.capture ["Millis", "Components.Millis"]
+                              (SearchCode.capture ["DMillis", "Millis.DMillis"]
+                                (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                                (SearchCode.literal "ms" SearchCode.accept))
+                              SearchCode.accept)
+                            SearchCode.accept))
+                        (SearchCode.choice
+                          (SearchCode.capture ["Millis", "Components.Millis"]
+                            (SearchCode.capture ["DMillis", "Millis.DMillis"]
+                              (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                              (SearchCode.literal "ms" SearchCode.accept))
+                            SearchCode.accept)
+                          SearchCode.accept)))
+                    (SearchCode.choice
+                      (SearchCode.capture ["Seconds", "Components.Seconds"]
+                        (SearchCode.capture ["DSeconds", "Seconds.DSeconds"]
+                          (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                          (SearchCode.literal "s" SearchCode.accept))
+                        (SearchCode.choice
+                          (SearchCode.capture ["Millis", "Components.Millis"]
+                            (SearchCode.capture ["DMillis", "Millis.DMillis"]
+                              (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                              (SearchCode.literal "ms" SearchCode.accept))
+                            SearchCode.accept)
+                          SearchCode.accept))
+                      (SearchCode.choice
+                        (SearchCode.capture ["Millis", "Components.Millis"]
+                          (SearchCode.capture ["DMillis", "Millis.DMillis"]
+                            (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                            (SearchCode.literal "ms" SearchCode.accept))
+                          SearchCode.accept)
+                        SearchCode.accept))))
+                (SearchCode.choice
+                  (SearchCode.capture ["Minutes", "Components.Minutes"]
+                    (SearchCode.capture ["DMinutes", "Minutes.DMinutes"]
+                      (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                      (SearchCode.literal "m" SearchCode.accept))
+                    (SearchCode.choice
+                      (SearchCode.capture ["Seconds", "Components.Seconds"]
+                        (SearchCode.capture ["DSeconds", "Seconds.DSeconds"]
+                          (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                          (SearchCode.literal "s" SearchCode.accept))
+                        (SearchCode.choice
+                          (SearchCode.capture ["Millis", "Components.Millis"]
+                            (SearchCode.capture ["DMillis", "Millis.DMillis"]
+                              (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                              (SearchCode.literal "ms" SearchCode.accept))
+                            SearchCode.accept)
+                          SearchCode.accept))
+                      (SearchCode.choice
+                        (SearchCode.capture ["Millis", "Components.Millis"]
+                          (SearchCode.capture ["DMillis", "Millis.DMillis"]
+                            (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                            (SearchCode.literal "ms" SearchCode.accept))
+                          SearchCode.accept)
+                        SearchCode.accept)))
+                  (SearchCode.choice
+                    (SearchCode.capture ["Seconds", "Components.Seconds"]
+                      (SearchCode.capture ["DSeconds", "Seconds.DSeconds"]
+                        (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                        (SearchCode.literal "s" SearchCode.accept))
+                      (SearchCode.choice
+                        (SearchCode.capture ["Millis", "Components.Millis"]
+                          (SearchCode.capture ["DMillis", "Millis.DMillis"]
+                            (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                            (SearchCode.literal "ms" SearchCode.accept))
+                          SearchCode.accept)
+                        SearchCode.accept))
+                    (SearchCode.choice
+                      (SearchCode.capture ["Millis", "Components.Millis"]
+                        (SearchCode.capture ["DMillis", "Millis.DMillis"]
+                          (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                          (SearchCode.literal "ms" SearchCode.accept))
+                        SearchCode.accept)
+                      SearchCode.accept)))))
+            SearchCode.accept) } :
+    SearchProgram)
+
+private theorem Duration.searchProgram_lowered : lowerSearchPlan Duration.searchPlan = Duration.searchProgram := by
+  native_decide
+
+private def Duration.directDecode (source : String) : Option CaptureMap :=
+  let input := source.toList
+  scanOrElse
+    (let characters_rootbl := "-".toList
+    if (characters_rootbl).isPrefixOf input then
+      (fun (bodyCaptures_root : CaptureMap) (remaining_root : List Char) =>
+          let ownCaptures_root :=
+            (["Sign"]).map fun key => (key, String.ofList ((input).take ((input).length - (remaining_root).length)))
+          scanOrElse
+            ((List.range ((remaining_root).length + 1)).findSome? fun width_roottblbb =>
+              if termPrefixOk TokClass.digit LenSpec.atLeastOne remaining_root width_roottblbb then
+                (fun (bodyCaptures_roottblb : CaptureMap) (remaining_roottblb : List Char) =>
+                    let ownCaptures_roottblb :=
+                      (["DDays", "Days.DDays"]).map fun key =>
+                        (key,
+                          String.ofList ((remaining_root).take ((remaining_root).length - (remaining_roottblb).length)))
+                    let characters_roottblbt := "d".toList
+                    if (characters_roottblbt).isPrefixOf remaining_roottblb then
+                      (fun (tailCaptures_roottblb : CaptureMap) (suffix_roottblb : List Char) =>
+                          (fun (bodyCaptures_roottbl : CaptureMap) (remaining_roottbl : List Char) =>
+                              let ownCaptures_roottbl :=
+                                (["Days", "Components.Days"]).map fun key =>
+                                  (key,
+                                    String.ofList
+                                      ((remaining_root).take ((remaining_root).length - (remaining_roottbl).length)))
+                              scanOrElse
+                                ((List.range ((remaining_roottbl).length + 1)).findSome? fun width_roottbltlbb =>
+                                  if
+                                      termPrefixOk TokClass.digit LenSpec.atLeastOne remaining_roottbl
+                                        width_roottbltlbb then
+                                    (fun (bodyCaptures_roottbltlb : CaptureMap) (remaining_roottbltlb : List Char) =>
+                                        let ownCaptures_roottbltlb :=
+                                          (["DHours", "Hours.DHours"]).map fun key =>
+                                            (key,
+                                              String.ofList
+                                                ((remaining_roottbl).take
+                                                  ((remaining_roottbl).length - (remaining_roottbltlb).length)))
+                                        let characters_roottbltlbt := "h".toList
+                                        if (characters_roottbltlbt).isPrefixOf remaining_roottbltlb then
+                                          (fun (tailCaptures_roottbltlb : CaptureMap) (suffix_roottbltlb : List Char) =>
+                                              (fun (bodyCaptures_roottbltl : CaptureMap)
+                                                    (remaining_roottbltl : List Char) =>
+                                                  let ownCaptures_roottbltl :=
+                                                    (["Hours", "Components.Hours"]).map fun key =>
+                                                      (key,
+                                                        String.ofList
+                                                          ((remaining_roottbl).take
+                                                            ((remaining_roottbl).length -
+                                                              (remaining_roottbltl).length)))
+                                                  scanOrElse
+                                                    ((List.range ((remaining_roottbltl).length + 1)).findSome?
+                                                      fun width_roottbltltlbb =>
+                                                      if
+                                                          termPrefixOk TokClass.digit LenSpec.atLeastOne
+                                                            remaining_roottbltl width_roottbltltlbb then
+                                                        (fun (bodyCaptures_roottbltltlb : CaptureMap)
+                                                              (remaining_roottbltltlb : List Char) =>
+                                                            let ownCaptures_roottbltltlb :=
+                                                              (["DMinutes", "Minutes.DMinutes"]).map fun key =>
+                                                                (key,
+                                                                  String.ofList
+                                                                    ((remaining_roottbltl).take
+                                                                      ((remaining_roottbltl).length -
+                                                                        (remaining_roottbltltlb).length)))
+                                                            let characters_roottbltltlbt := "m".toList
+                                                            if
+                                                                (characters_roottbltltlbt).isPrefixOf
+                                                                  remaining_roottbltltlb then
+                                                              (fun (tailCaptures_roottbltltlb : CaptureMap)
+                                                                    (suffix_roottbltltlb : List Char) =>
+                                                                  (fun (bodyCaptures_roottbltltl : CaptureMap)
+                                                                        (remaining_roottbltltl : List Char) =>
+                                                                      let ownCaptures_roottbltltl :=
+                                                                        (["Minutes", "Components.Minutes"]).map
+                                                                          fun key =>
+                                                                          (key,
+                                                                            String.ofList
+                                                                              ((remaining_roottbltl).take
+                                                                                ((remaining_roottbltl).length -
+                                                                                  (remaining_roottbltltl).length)))
+                                                                      scanOrElse
+                                                                        ((List.range
+                                                                              ((remaining_roottbltltl).length +
+                                                                                1)).findSome?
+                                                                          fun width_roottbltltltlbb =>
+                                                                          if
+                                                                              termPrefixOk TokClass.digit
+                                                                                LenSpec.atLeastOne remaining_roottbltltl
+                                                                                width_roottbltltltlbb then
+                                                                            (fun
+                                                                                  (bodyCaptures_roottbltltltlb :
+                                                                                    CaptureMap)
+                                                                                  (remaining_roottbltltltlb :
+                                                                                    List Char) =>
+                                                                                let ownCaptures_roottbltltltlb :=
+                                                                                  (["DSeconds", "Seconds.DSeconds"]).map
+                                                                                    fun key =>
+                                                                                    (key,
+                                                                                      String.ofList
+                                                                                        ((remaining_roottbltltl).take
+                                                                                          ((remaining_roottbltltl).length -
+                                                                                            (remaining_roottbltltltlb).length)))
+                                                                                let characters_roottbltltltlbt :=
+                                                                                  "s".toList
+                                                                                if
+                                                                                    (characters_roottbltltltlbt).isPrefixOf
+                                                                                      remaining_roottbltltltlb then
+                                                                                  (fun
+                                                                                        (tailCaptures_roottbltltltlb :
+                                                                                          CaptureMap)
+                                                                                        (suffix_roottbltltltlb :
+                                                                                          List Char) =>
+                                                                                      (fun
+                                                                                            (bodyCaptures_roottbltltltl :
+                                                                                              CaptureMap)
+                                                                                            (remaining_roottbltltltl :
+                                                                                              List Char) =>
+                                                                                          let
+                                                                                            ownCaptures_roottbltltltl :=
+                                                                                            (["Seconds",
+                                                                                                  "Components.Seconds"]).map
+                                                                                              fun key =>
+                                                                                              (key,
+                                                                                                String.ofList
+                                                                                                  ((remaining_roottbltltl).take
+                                                                                                    ((remaining_roottbltltl).length -
+                                                                                                      (remaining_roottbltltltl).length)))
+                                                                                          scanOrElse
+                                                                                            ((List.range
+                                                                                                  ((remaining_roottbltltltl).length +
+                                                                                                    1)).findSome?
+                                                                                              fun
+                                                                                                width_roottbltltltltlbb =>
+                                                                                              if
+                                                                                                  termPrefixOk
+                                                                                                    TokClass.digit
+                                                                                                    LenSpec.atLeastOne
+                                                                                                    remaining_roottbltltltl
+                                                                                                    width_roottbltltltltlbb then
+                                                                                                (fun
+                                                                                                      (bodyCaptures_roottbltltltltlb :
+                                                                                                        CaptureMap)
+                                                                                                      (remaining_roottbltltltltlb :
+                                                                                                        List Char) =>
+                                                                                                    let
+                                                                                                      ownCaptures_roottbltltltltlb :=
+                                                                                                      (["DMillis",
+                                                                                                            "Millis.DMillis"]).map
+                                                                                                        fun key =>
+                                                                                                        (key,
+                                                                                                          String.ofList
+                                                                                                            ((remaining_roottbltltltl).take
+                                                                                                              ((remaining_roottbltltltl).length -
+                                                                                                                (remaining_roottbltltltltlb).length)))
+                                                                                                    let
+                                                                                                      characters_roottbltltltltlbt :=
+                                                                                                      "ms".toList
+                                                                                                    if
+                                                                                                        (characters_roottbltltltltlbt).isPrefixOf
+                                                                                                          remaining_roottbltltltltlb then
+                                                                                                      (fun
+                                                                                                            (tailCaptures_roottbltltltltlb :
+                                                                                                              CaptureMap)
+                                                                                                            (suffix_roottbltltltltlb :
+                                                                                                              List
+                                                                                                                Char) =>
+                                                                                                          (fun
+                                                                                                                (bodyCaptures_roottbltltltltl :
+                                                                                                                  CaptureMap)
+                                                                                                                (remaining_roottbltltltltl :
+                                                                                                                  List
+                                                                                                                    Char) =>
+                                                                                                              let
+                                                                                                                ownCaptures_roottbltltltltl :=
+                                                                                                                (["Millis",
+                                                                                                                      "Components.Millis"]).map
+                                                                                                                  fun
+                                                                                                                    key =>
+                                                                                                                  (key,
+                                                                                                                    String.ofList
+                                                                                                                      ((remaining_roottbltltltl).take
+                                                                                                                        ((remaining_roottbltltltl).length -
+                                                                                                                          (remaining_roottbltltltltl).length)))
+                                                                                                              (fun
+                                                                                                                    (tailCaptures_roottbltltltltl :
+                                                                                                                      CaptureMap)
+                                                                                                                    (suffix_roottbltltltltl :
+                                                                                                                      List
+                                                                                                                        Char) =>
+                                                                                                                  (fun
+                                                                                                                        (tailCaptures_roottbltltltl :
+                                                                                                                          CaptureMap)
+                                                                                                                        (suffix_roottbltltltl :
+                                                                                                                          List
+                                                                                                                            Char) =>
+                                                                                                                      (fun
+                                                                                                                            (tailCaptures_roottbltltl :
+                                                                                                                              CaptureMap)
+                                                                                                                            (suffix_roottbltltl :
+                                                                                                                              List
+                                                                                                                                Char) =>
+                                                                                                                          (fun
+                                                                                                                                (tailCaptures_roottbltl :
+                                                                                                                                  CaptureMap)
+                                                                                                                                (suffix_roottbltl :
+                                                                                                                                  List
+                                                                                                                                    Char) =>
+                                                                                                                              (fun
+                                                                                                                                    (tailCaptures_roottbl :
+                                                                                                                                      CaptureMap)
+                                                                                                                                    (suffix_roottbl :
+                                                                                                                                      List
+                                                                                                                                        Char) =>
+                                                                                                                                  (fun
+                                                                                                                                        (bodyCaptures_roott :
+                                                                                                                                          CaptureMap)
+                                                                                                                                        (remaining_roott :
+                                                                                                                                          List
+                                                                                                                                            Char) =>
+                                                                                                                                      let
+                                                                                                                                        ownCaptures_roott :=
+                                                                                                                                        (["Components"]).map
+                                                                                                                                          fun
+                                                                                                                                            key =>
+                                                                                                                                          (key,
+                                                                                                                                            String.ofList
+                                                                                                                                              ((remaining_root).take
+                                                                                                                                                ((remaining_root).length -
+                                                                                                                                                  (remaining_roott).length)))
+                                                                                                                                      (fun
+                                                                                                                                            (tailCaptures_roott :
+                                                                                                                                              CaptureMap)
+                                                                                                                                            (suffix_roott :
+                                                                                                                                              List
+                                                                                                                                                Char) =>
+                                                                                                                                          (fun
+                                                                                                                                                (tailCaptures_root :
+                                                                                                                                                  CaptureMap)
+                                                                                                                                                (suffix_root :
+                                                                                                                                                  List
+                                                                                                                                                    Char) =>
+                                                                                                                                              (fun
+                                                                                                                                                    (captures :
+                                                                                                                                                      CaptureMap)
+                                                                                                                                                    (remaining :
+                                                                                                                                                      List
+                                                                                                                                                        Char) =>
+                                                                                                                                                  if
+                                                                                                                                                      (remaining).isEmpty then
+                                                                                                                                                    some
+                                                                                                                                                      captures
+                                                                                                                                                  else
+                                                                                                                                                    none)
+                                                                                                                                                (ownCaptures_root ++
+                                                                                                                                                    bodyCaptures_root ++
+                                                                                                                                                  tailCaptures_root)
+                                                                                                                                                suffix_root)
+                                                                                                                                            (ownCaptures_roott ++
+                                                                                                                                                bodyCaptures_roott ++
+                                                                                                                                              tailCaptures_roott)
+                                                                                                                                            suffix_roott)
+                                                                                                                                        ([] :
+                                                                                                                                          CaptureMap)
+                                                                                                                                        remaining_roott)
+                                                                                                                                    (ownCaptures_roottbl ++
+                                                                                                                                        bodyCaptures_roottbl ++
+                                                                                                                                      tailCaptures_roottbl)
+                                                                                                                                    suffix_roottbl)
+                                                                                                                                (ownCaptures_roottbltl ++
+                                                                                                                                    bodyCaptures_roottbltl ++
+                                                                                                                                  tailCaptures_roottbltl)
+                                                                                                                                suffix_roottbltl)
+                                                                                                                            (ownCaptures_roottbltltl ++
+                                                                                                                                bodyCaptures_roottbltltl ++
+                                                                                                                              tailCaptures_roottbltltl)
+                                                                                                                            suffix_roottbltltl)
+                                                                                                                        (ownCaptures_roottbltltltl ++
+                                                                                                                            bodyCaptures_roottbltltltl ++
+                                                                                                                          tailCaptures_roottbltltltl)
+                                                                                                                        suffix_roottbltltltl)
+                                                                                                                    (ownCaptures_roottbltltltltl ++
+                                                                                                                        bodyCaptures_roottbltltltltl ++
+                                                                                                                      tailCaptures_roottbltltltltl)
+                                                                                                                    suffix_roottbltltltltl)
+                                                                                                                ([] :
+                                                                                                                  CaptureMap)
+                                                                                                                remaining_roottbltltltltl)
+                                                                                                            (ownCaptures_roottbltltltltlb ++
+                                                                                                                bodyCaptures_roottbltltltltlb ++
+                                                                                                              tailCaptures_roottbltltltltlb)
+                                                                                                            suffix_roottbltltltltlb)
+                                                                                                        ([] :
+                                                                                                          CaptureMap)
+                                                                                                        ((remaining_roottbltltltltlb).drop
+                                                                                                          (characters_roottbltltltltlbt).length)
+                                                                                                    else none)
+                                                                                                  ([] : CaptureMap)
+                                                                                                  ((remaining_roottbltltltl).drop
+                                                                                                    width_roottbltltltltlbb)
+                                                                                              else none)
+                                                                                            fun _ =>
+                                                                                            (fun
+                                                                                                  (tailCaptures_roottbltltltl :
+                                                                                                    CaptureMap)
+                                                                                                  (suffix_roottbltltltl :
+                                                                                                    List Char) =>
+                                                                                                (fun
+                                                                                                      (tailCaptures_roottbltltl :
+                                                                                                        CaptureMap)
+                                                                                                      (suffix_roottbltltl :
+                                                                                                        List Char) =>
+                                                                                                    (fun
+                                                                                                          (tailCaptures_roottbltl :
+                                                                                                            CaptureMap)
+                                                                                                          (suffix_roottbltl :
+                                                                                                            List
+                                                                                                              Char) =>
+                                                                                                        (fun
+                                                                                                              (tailCaptures_roottbl :
+                                                                                                                CaptureMap)
+                                                                                                              (suffix_roottbl :
+                                                                                                                List
+                                                                                                                  Char) =>
+                                                                                                            (fun
+                                                                                                                  (bodyCaptures_roott :
+                                                                                                                    CaptureMap)
+                                                                                                                  (remaining_roott :
+                                                                                                                    List
+                                                                                                                      Char) =>
+                                                                                                                let
+                                                                                                                  ownCaptures_roott :=
+                                                                                                                  (["Components"]).map
+                                                                                                                    fun
+                                                                                                                      key =>
+                                                                                                                    (key,
+                                                                                                                      String.ofList
+                                                                                                                        ((remaining_root).take
+                                                                                                                          ((remaining_root).length -
+                                                                                                                            (remaining_roott).length)))
+                                                                                                                (fun
+                                                                                                                      (tailCaptures_roott :
+                                                                                                                        CaptureMap)
+                                                                                                                      (suffix_roott :
+                                                                                                                        List
+                                                                                                                          Char) =>
+                                                                                                                    (fun
+                                                                                                                          (tailCaptures_root :
+                                                                                                                            CaptureMap)
+                                                                                                                          (suffix_root :
+                                                                                                                            List
+                                                                                                                              Char) =>
+                                                                                                                        (fun
+                                                                                                                              (captures :
+                                                                                                                                CaptureMap)
+                                                                                                                              (remaining :
+                                                                                                                                List
+                                                                                                                                  Char) =>
+                                                                                                                            if
+                                                                                                                                (remaining).isEmpty then
+                                                                                                                              some
+                                                                                                                                captures
+                                                                                                                            else
+                                                                                                                              none)
+                                                                                                                          (ownCaptures_root ++
+                                                                                                                              bodyCaptures_root ++
+                                                                                                                            tailCaptures_root)
+                                                                                                                          suffix_root)
+                                                                                                                      (ownCaptures_roott ++
+                                                                                                                          bodyCaptures_roott ++
+                                                                                                                        tailCaptures_roott)
+                                                                                                                      suffix_roott)
+                                                                                                                  ([] :
+                                                                                                                    CaptureMap)
+                                                                                                                  remaining_roott)
+                                                                                                              (ownCaptures_roottbl ++
+                                                                                                                  bodyCaptures_roottbl ++
+                                                                                                                tailCaptures_roottbl)
+                                                                                                              suffix_roottbl)
+                                                                                                          (ownCaptures_roottbltl ++
+                                                                                                              bodyCaptures_roottbltl ++
+                                                                                                            tailCaptures_roottbltl)
+                                                                                                          suffix_roottbltl)
+                                                                                                      (ownCaptures_roottbltltl ++
+                                                                                                          bodyCaptures_roottbltltl ++
+                                                                                                        tailCaptures_roottbltltl)
+                                                                                                      suffix_roottbltltl)
+                                                                                                  (ownCaptures_roottbltltltl ++
+                                                                                                      bodyCaptures_roottbltltltl ++
+                                                                                                    tailCaptures_roottbltltltl)
+                                                                                                  suffix_roottbltltltl)
+                                                                                              ([] : CaptureMap)
+                                                                                              remaining_roottbltltltl)
+                                                                                        (ownCaptures_roottbltltltlb ++
+                                                                                            bodyCaptures_roottbltltltlb ++
+                                                                                          tailCaptures_roottbltltltlb)
+                                                                                        suffix_roottbltltltlb)
+                                                                                    ([] : CaptureMap)
+                                                                                    ((remaining_roottbltltltlb).drop
+                                                                                      (characters_roottbltltltlbt).length)
+                                                                                else none)
+                                                                              ([] : CaptureMap)
+                                                                              ((remaining_roottbltltl).drop
+                                                                                width_roottbltltltlbb)
+                                                                          else none)
+                                                                        fun _ =>
+                                                                        scanOrElse
+                                                                          ((List.range
+                                                                                ((remaining_roottbltltl).length +
+                                                                                  1)).findSome?
+                                                                            fun width_roottbltltltrlbb =>
+                                                                            if
+                                                                                termPrefixOk TokClass.digit
+                                                                                  LenSpec.atLeastOne
+                                                                                  remaining_roottbltltl
+                                                                                  width_roottbltltltrlbb then
+                                                                              (fun
+                                                                                    (bodyCaptures_roottbltltltrlb :
+                                                                                      CaptureMap)
+                                                                                    (remaining_roottbltltltrlb :
+                                                                                      List Char) =>
+                                                                                  let ownCaptures_roottbltltltrlb :=
+                                                                                    (["DMillis", "Millis.DMillis"]).map
+                                                                                      fun key =>
+                                                                                      (key,
+                                                                                        String.ofList
+                                                                                          ((remaining_roottbltltl).take
+                                                                                            ((remaining_roottbltltl).length -
+                                                                                              (remaining_roottbltltltrlb).length)))
+                                                                                  let characters_roottbltltltrlbt :=
+                                                                                    "ms".toList
+                                                                                  if
+                                                                                      (characters_roottbltltltrlbt).isPrefixOf
+                                                                                        remaining_roottbltltltrlb then
+                                                                                    (fun
+                                                                                          (tailCaptures_roottbltltltrlb :
+                                                                                            CaptureMap)
+                                                                                          (suffix_roottbltltltrlb :
+                                                                                            List Char) =>
+                                                                                        (fun
+                                                                                              (bodyCaptures_roottbltltltrl :
+                                                                                                CaptureMap)
+                                                                                              (remaining_roottbltltltrl :
+                                                                                                List Char) =>
+                                                                                            let
+                                                                                              ownCaptures_roottbltltltrl :=
+                                                                                              (["Millis",
+                                                                                                    "Components.Millis"]).map
+                                                                                                fun key =>
+                                                                                                (key,
+                                                                                                  String.ofList
+                                                                                                    ((remaining_roottbltltl).take
+                                                                                                      ((remaining_roottbltltl).length -
+                                                                                                        (remaining_roottbltltltrl).length)))
+                                                                                            (fun
+                                                                                                  (tailCaptures_roottbltltltrl :
+                                                                                                    CaptureMap)
+                                                                                                  (suffix_roottbltltltrl :
+                                                                                                    List Char) =>
+                                                                                                (fun
+                                                                                                      (tailCaptures_roottbltltl :
+                                                                                                        CaptureMap)
+                                                                                                      (suffix_roottbltltl :
+                                                                                                        List Char) =>
+                                                                                                    (fun
+                                                                                                          (tailCaptures_roottbltl :
+                                                                                                            CaptureMap)
+                                                                                                          (suffix_roottbltl :
+                                                                                                            List
+                                                                                                              Char) =>
+                                                                                                        (fun
+                                                                                                              (tailCaptures_roottbl :
+                                                                                                                CaptureMap)
+                                                                                                              (suffix_roottbl :
+                                                                                                                List
+                                                                                                                  Char) =>
+                                                                                                            (fun
+                                                                                                                  (bodyCaptures_roott :
+                                                                                                                    CaptureMap)
+                                                                                                                  (remaining_roott :
+                                                                                                                    List
+                                                                                                                      Char) =>
+                                                                                                                let
+                                                                                                                  ownCaptures_roott :=
+                                                                                                                  (["Components"]).map
+                                                                                                                    fun
+                                                                                                                      key =>
+                                                                                                                    (key,
+                                                                                                                      String.ofList
+                                                                                                                        ((remaining_root).take
+                                                                                                                          ((remaining_root).length -
+                                                                                                                            (remaining_roott).length)))
+                                                                                                                (fun
+                                                                                                                      (tailCaptures_roott :
+                                                                                                                        CaptureMap)
+                                                                                                                      (suffix_roott :
+                                                                                                                        List
+                                                                                                                          Char) =>
+                                                                                                                    (fun
+                                                                                                                          (tailCaptures_root :
+                                                                                                                            CaptureMap)
+                                                                                                                          (suffix_root :
+                                                                                                                            List
+                                                                                                                              Char) =>
+                                                                                                                        (fun
+                                                                                                                              (captures :
+                                                                                                                                CaptureMap)
+                                                                                                                              (remaining :
+                                                                                                                                List
+                                                                                                                                  Char) =>
+                                                                                                                            if
+                                                                                                                                (remaining).isEmpty then
+                                                                                                                              some
+                                                                                                                                captures
+                                                                                                                            else
+                                                                                                                              none)
+                                                                                                                          (ownCaptures_root ++
+                                                                                                                              bodyCaptures_root ++
+                                                                                                                            tailCaptures_root)
+                                                                                                                          suffix_root)
+                                                                                                                      (ownCaptures_roott ++
+                                                                                                                          bodyCaptures_roott ++
+                                                                                                                        tailCaptures_roott)
+                                                                                                                      suffix_roott)
+                                                                                                                  ([] :
+                                                                                                                    CaptureMap)
+                                                                                                                  remaining_roott)
+                                                                                                              (ownCaptures_roottbl ++
+                                                                                                                  bodyCaptures_roottbl ++
+                                                                                                                tailCaptures_roottbl)
+                                                                                                              suffix_roottbl)
+                                                                                                          (ownCaptures_roottbltl ++
+                                                                                                              bodyCaptures_roottbltl ++
+                                                                                                            tailCaptures_roottbltl)
+                                                                                                          suffix_roottbltl)
+                                                                                                      (ownCaptures_roottbltltl ++
+                                                                                                          bodyCaptures_roottbltltl ++
+                                                                                                        tailCaptures_roottbltltl)
+                                                                                                      suffix_roottbltltl)
+                                                                                                  (ownCaptures_roottbltltltrl ++
+                                                                                                      bodyCaptures_roottbltltltrl ++
+                                                                                                    tailCaptures_roottbltltltrl)
+                                                                                                  suffix_roottbltltltrl)
+                                                                                              ([] : CaptureMap)
+                                                                                              remaining_roottbltltltrl)
+                                                                                          (ownCaptures_roottbltltltrlb ++
+                                                                                              bodyCaptures_roottbltltltrlb ++
+                                                                                            tailCaptures_roottbltltltrlb)
+                                                                                          suffix_roottbltltltrlb)
+                                                                                      ([] : CaptureMap)
+                                                                                      ((remaining_roottbltltltrlb).drop
+                                                                                        (characters_roottbltltltrlbt).length)
+                                                                                  else none)
+                                                                                ([] : CaptureMap)
+                                                                                ((remaining_roottbltltl).drop
+                                                                                  width_roottbltltltrlbb)
+                                                                            else none)
+                                                                          fun _ =>
+                                                                          (fun (tailCaptures_roottbltltl : CaptureMap)
+                                                                                (suffix_roottbltltl : List Char) =>
+                                                                              (fun (tailCaptures_roottbltl : CaptureMap)
+                                                                                    (suffix_roottbltl : List Char) =>
+                                                                                  (fun
+                                                                                        (tailCaptures_roottbl :
+                                                                                          CaptureMap)
+                                                                                        (suffix_roottbl : List Char) =>
+                                                                                      (fun
+                                                                                            (bodyCaptures_roott :
+                                                                                              CaptureMap)
+                                                                                            (remaining_roott :
+                                                                                              List Char) =>
+                                                                                          let ownCaptures_roott :=
+                                                                                            (["Components"]).map
+                                                                                              fun key =>
+                                                                                              (key,
+                                                                                                String.ofList
+                                                                                                  ((remaining_root).take
+                                                                                                    ((remaining_root).length -
+                                                                                                      (remaining_roott).length)))
+                                                                                          (fun
+                                                                                                (tailCaptures_roott :
+                                                                                                  CaptureMap)
+                                                                                                (suffix_roott :
+                                                                                                  List Char) =>
+                                                                                              (fun
+                                                                                                    (tailCaptures_root :
+                                                                                                      CaptureMap)
+                                                                                                    (suffix_root :
+                                                                                                      List Char) =>
+                                                                                                  (fun
+                                                                                                        (captures :
+                                                                                                          CaptureMap)
+                                                                                                        (remaining :
+                                                                                                          List Char) =>
+                                                                                                      if
+                                                                                                          (remaining).isEmpty then
+                                                                                                        some captures
+                                                                                                      else none)
+                                                                                                    (ownCaptures_root ++
+                                                                                                        bodyCaptures_root ++
+                                                                                                      tailCaptures_root)
+                                                                                                    suffix_root)
+                                                                                                (ownCaptures_roott ++
+                                                                                                    bodyCaptures_roott ++
+                                                                                                  tailCaptures_roott)
+                                                                                                suffix_roott)
+                                                                                            ([] : CaptureMap)
+                                                                                            remaining_roott)
+                                                                                        (ownCaptures_roottbl ++
+                                                                                            bodyCaptures_roottbl ++
+                                                                                          tailCaptures_roottbl)
+                                                                                        suffix_roottbl)
+                                                                                    (ownCaptures_roottbltl ++
+                                                                                        bodyCaptures_roottbltl ++
+                                                                                      tailCaptures_roottbltl)
+                                                                                    suffix_roottbltl)
+                                                                                (ownCaptures_roottbltltl ++
+                                                                                    bodyCaptures_roottbltltl ++
+                                                                                  tailCaptures_roottbltltl)
+                                                                                suffix_roottbltltl)
+                                                                            ([] : CaptureMap) remaining_roottbltltl)
+                                                                    (ownCaptures_roottbltltlb ++
+                                                                        bodyCaptures_roottbltltlb ++
+                                                                      tailCaptures_roottbltltlb)
+                                                                    suffix_roottbltltlb)
+                                                                ([] : CaptureMap)
+                                                                ((remaining_roottbltltlb).drop
+                                                                  (characters_roottbltltlbt).length)
+                                                            else none)
+                                                          ([] : CaptureMap)
+                                                          ((remaining_roottbltl).drop width_roottbltltlbb)
+                                                      else none)
+                                                    fun _ =>
+                                                    scanOrElse
+                                                      ((List.range ((remaining_roottbltl).length + 1)).findSome?
+                                                        fun width_roottbltltrlbb =>
+                                                        if
+                                                            termPrefixOk TokClass.digit LenSpec.atLeastOne
+                                                              remaining_roottbltl width_roottbltltrlbb then
+                                                          (fun (bodyCaptures_roottbltltrlb : CaptureMap)
+                                                                (remaining_roottbltltrlb : List Char) =>
+                                                              let ownCaptures_roottbltltrlb :=
+                                                                (["DSeconds", "Seconds.DSeconds"]).map fun key =>
+                                                                  (key,
+                                                                    String.ofList
+                                                                      ((remaining_roottbltl).take
+                                                                        ((remaining_roottbltl).length -
+                                                                          (remaining_roottbltltrlb).length)))
+                                                              let characters_roottbltltrlbt := "s".toList
+                                                              if
+                                                                  (characters_roottbltltrlbt).isPrefixOf
+                                                                    remaining_roottbltltrlb then
+                                                                (fun (tailCaptures_roottbltltrlb : CaptureMap)
+                                                                      (suffix_roottbltltrlb : List Char) =>
+                                                                    (fun (bodyCaptures_roottbltltrl : CaptureMap)
+                                                                          (remaining_roottbltltrl : List Char) =>
+                                                                        let ownCaptures_roottbltltrl :=
+                                                                          (["Seconds", "Components.Seconds"]).map
+                                                                            fun key =>
+                                                                            (key,
+                                                                              String.ofList
+                                                                                ((remaining_roottbltl).take
+                                                                                  ((remaining_roottbltl).length -
+                                                                                    (remaining_roottbltltrl).length)))
+                                                                        scanOrElse
+                                                                          ((List.range
+                                                                                ((remaining_roottbltltrl).length +
+                                                                                  1)).findSome?
+                                                                            fun width_roottbltltrltlbb =>
+                                                                            if
+                                                                                termPrefixOk TokClass.digit
+                                                                                  LenSpec.atLeastOne
+                                                                                  remaining_roottbltltrl
+                                                                                  width_roottbltltrltlbb then
+                                                                              (fun
+                                                                                    (bodyCaptures_roottbltltrltlb :
+                                                                                      CaptureMap)
+                                                                                    (remaining_roottbltltrltlb :
+                                                                                      List Char) =>
+                                                                                  let ownCaptures_roottbltltrltlb :=
+                                                                                    (["DMillis", "Millis.DMillis"]).map
+                                                                                      fun key =>
+                                                                                      (key,
+                                                                                        String.ofList
+                                                                                          ((remaining_roottbltltrl).take
+                                                                                            ((remaining_roottbltltrl).length -
+                                                                                              (remaining_roottbltltrltlb).length)))
+                                                                                  let characters_roottbltltrltlbt :=
+                                                                                    "ms".toList
+                                                                                  if
+                                                                                      (characters_roottbltltrltlbt).isPrefixOf
+                                                                                        remaining_roottbltltrltlb then
+                                                                                    (fun
+                                                                                          (tailCaptures_roottbltltrltlb :
+                                                                                            CaptureMap)
+                                                                                          (suffix_roottbltltrltlb :
+                                                                                            List Char) =>
+                                                                                        (fun
+                                                                                              (bodyCaptures_roottbltltrltl :
+                                                                                                CaptureMap)
+                                                                                              (remaining_roottbltltrltl :
+                                                                                                List Char) =>
+                                                                                            let
+                                                                                              ownCaptures_roottbltltrltl :=
+                                                                                              (["Millis",
+                                                                                                    "Components.Millis"]).map
+                                                                                                fun key =>
+                                                                                                (key,
+                                                                                                  String.ofList
+                                                                                                    ((remaining_roottbltltrl).take
+                                                                                                      ((remaining_roottbltltrl).length -
+                                                                                                        (remaining_roottbltltrltl).length)))
+                                                                                            (fun
+                                                                                                  (tailCaptures_roottbltltrltl :
+                                                                                                    CaptureMap)
+                                                                                                  (suffix_roottbltltrltl :
+                                                                                                    List Char) =>
+                                                                                                (fun
+                                                                                                      (tailCaptures_roottbltltrl :
+                                                                                                        CaptureMap)
+                                                                                                      (suffix_roottbltltrl :
+                                                                                                        List Char) =>
+                                                                                                    (fun
+                                                                                                          (tailCaptures_roottbltl :
+                                                                                                            CaptureMap)
+                                                                                                          (suffix_roottbltl :
+                                                                                                            List
+                                                                                                              Char) =>
+                                                                                                        (fun
+                                                                                                              (tailCaptures_roottbl :
+                                                                                                                CaptureMap)
+                                                                                                              (suffix_roottbl :
+                                                                                                                List
+                                                                                                                  Char) =>
+                                                                                                            (fun
+                                                                                                                  (bodyCaptures_roott :
+                                                                                                                    CaptureMap)
+                                                                                                                  (remaining_roott :
+                                                                                                                    List
+                                                                                                                      Char) =>
+                                                                                                                let
+                                                                                                                  ownCaptures_roott :=
+                                                                                                                  (["Components"]).map
+                                                                                                                    fun
+                                                                                                                      key =>
+                                                                                                                    (key,
+                                                                                                                      String.ofList
+                                                                                                                        ((remaining_root).take
+                                                                                                                          ((remaining_root).length -
+                                                                                                                            (remaining_roott).length)))
+                                                                                                                (fun
+                                                                                                                      (tailCaptures_roott :
+                                                                                                                        CaptureMap)
+                                                                                                                      (suffix_roott :
+                                                                                                                        List
+                                                                                                                          Char) =>
+                                                                                                                    (fun
+                                                                                                                          (tailCaptures_root :
+                                                                                                                            CaptureMap)
+                                                                                                                          (suffix_root :
+                                                                                                                            List
+                                                                                                                              Char) =>
+                                                                                                                        (fun
+                                                                                                                              (captures :
+                                                                                                                                CaptureMap)
+                                                                                                                              (remaining :
+                                                                                                                                List
+                                                                                                                                  Char) =>
+                                                                                                                            if
+                                                                                                                                (remaining).isEmpty then
+                                                                                                                              some
+                                                                                                                                captures
+                                                                                                                            else
+                                                                                                                              none)
+                                                                                                                          (ownCaptures_root ++
+                                                                                                                              bodyCaptures_root ++
+                                                                                                                            tailCaptures_root)
+                                                                                                                          suffix_root)
+                                                                                                                      (ownCaptures_roott ++
+                                                                                                                          bodyCaptures_roott ++
+                                                                                                                        tailCaptures_roott)
+                                                                                                                      suffix_roott)
+                                                                                                                  ([] :
+                                                                                                                    CaptureMap)
+                                                                                                                  remaining_roott)
+                                                                                                              (ownCaptures_roottbl ++
+                                                                                                                  bodyCaptures_roottbl ++
+                                                                                                                tailCaptures_roottbl)
+                                                                                                              suffix_roottbl)
+                                                                                                          (ownCaptures_roottbltl ++
+                                                                                                              bodyCaptures_roottbltl ++
+                                                                                                            tailCaptures_roottbltl)
+                                                                                                          suffix_roottbltl)
+                                                                                                      (ownCaptures_roottbltltrl ++
+                                                                                                          bodyCaptures_roottbltltrl ++
+                                                                                                        tailCaptures_roottbltltrl)
+                                                                                                      suffix_roottbltltrl)
+                                                                                                  (ownCaptures_roottbltltrltl ++
+                                                                                                      bodyCaptures_roottbltltrltl ++
+                                                                                                    tailCaptures_roottbltltrltl)
+                                                                                                  suffix_roottbltltrltl)
+                                                                                              ([] : CaptureMap)
+                                                                                              remaining_roottbltltrltl)
+                                                                                          (ownCaptures_roottbltltrltlb ++
+                                                                                              bodyCaptures_roottbltltrltlb ++
+                                                                                            tailCaptures_roottbltltrltlb)
+                                                                                          suffix_roottbltltrltlb)
+                                                                                      ([] : CaptureMap)
+                                                                                      ((remaining_roottbltltrltlb).drop
+                                                                                        (characters_roottbltltrltlbt).length)
+                                                                                  else none)
+                                                                                ([] : CaptureMap)
+                                                                                ((remaining_roottbltltrl).drop
+                                                                                  width_roottbltltrltlbb)
+                                                                            else none)
+                                                                          fun _ =>
+                                                                          (fun (tailCaptures_roottbltltrl : CaptureMap)
+                                                                                (suffix_roottbltltrl : List Char) =>
+                                                                              (fun (tailCaptures_roottbltl : CaptureMap)
+                                                                                    (suffix_roottbltl : List Char) =>
+                                                                                  (fun
+                                                                                        (tailCaptures_roottbl :
+                                                                                          CaptureMap)
+                                                                                        (suffix_roottbl : List Char) =>
+                                                                                      (fun
+                                                                                            (bodyCaptures_roott :
+                                                                                              CaptureMap)
+                                                                                            (remaining_roott :
+                                                                                              List Char) =>
+                                                                                          let ownCaptures_roott :=
+                                                                                            (["Components"]).map
+                                                                                              fun key =>
+                                                                                              (key,
+                                                                                                String.ofList
+                                                                                                  ((remaining_root).take
+                                                                                                    ((remaining_root).length -
+                                                                                                      (remaining_roott).length)))
+                                                                                          (fun
+                                                                                                (tailCaptures_roott :
+                                                                                                  CaptureMap)
+                                                                                                (suffix_roott :
+                                                                                                  List Char) =>
+                                                                                              (fun
+                                                                                                    (tailCaptures_root :
+                                                                                                      CaptureMap)
+                                                                                                    (suffix_root :
+                                                                                                      List Char) =>
+                                                                                                  (fun
+                                                                                                        (captures :
+                                                                                                          CaptureMap)
+                                                                                                        (remaining :
+                                                                                                          List Char) =>
+                                                                                                      if
+                                                                                                          (remaining).isEmpty then
+                                                                                                        some captures
+                                                                                                      else none)
+                                                                                                    (ownCaptures_root ++
+                                                                                                        bodyCaptures_root ++
+                                                                                                      tailCaptures_root)
+                                                                                                    suffix_root)
+                                                                                                (ownCaptures_roott ++
+                                                                                                    bodyCaptures_roott ++
+                                                                                                  tailCaptures_roott)
+                                                                                                suffix_roott)
+                                                                                            ([] : CaptureMap)
+                                                                                            remaining_roott)
+                                                                                        (ownCaptures_roottbl ++
+                                                                                            bodyCaptures_roottbl ++
+                                                                                          tailCaptures_roottbl)
+                                                                                        suffix_roottbl)
+                                                                                    (ownCaptures_roottbltl ++
+                                                                                        bodyCaptures_roottbltl ++
+                                                                                      tailCaptures_roottbltl)
+                                                                                    suffix_roottbltl)
+                                                                                (ownCaptures_roottbltltrl ++
+                                                                                    bodyCaptures_roottbltltrl ++
+                                                                                  tailCaptures_roottbltltrl)
+                                                                                suffix_roottbltltrl)
+                                                                            ([] : CaptureMap) remaining_roottbltltrl)
+                                                                      (ownCaptures_roottbltltrlb ++
+                                                                          bodyCaptures_roottbltltrlb ++
+                                                                        tailCaptures_roottbltltrlb)
+                                                                      suffix_roottbltltrlb)
+                                                                  ([] : CaptureMap)
+                                                                  ((remaining_roottbltltrlb).drop
+                                                                    (characters_roottbltltrlbt).length)
+                                                              else none)
+                                                            ([] : CaptureMap)
+                                                            ((remaining_roottbltl).drop width_roottbltltrlbb)
+                                                        else none)
+                                                      fun _ =>
+                                                      scanOrElse
+                                                        ((List.range ((remaining_roottbltl).length + 1)).findSome?
+                                                          fun width_roottbltltrrlbb =>
+                                                          if
+                                                              termPrefixOk TokClass.digit LenSpec.atLeastOne
+                                                                remaining_roottbltl width_roottbltltrrlbb then
+                                                            (fun (bodyCaptures_roottbltltrrlb : CaptureMap)
+                                                                  (remaining_roottbltltrrlb : List Char) =>
+                                                                let ownCaptures_roottbltltrrlb :=
+                                                                  (["DMillis", "Millis.DMillis"]).map fun key =>
+                                                                    (key,
+                                                                      String.ofList
+                                                                        ((remaining_roottbltl).take
+                                                                          ((remaining_roottbltl).length -
+                                                                            (remaining_roottbltltrrlb).length)))
+                                                                let characters_roottbltltrrlbt := "ms".toList
+                                                                if
+                                                                    (characters_roottbltltrrlbt).isPrefixOf
+                                                                      remaining_roottbltltrrlb then
+                                                                  (fun (tailCaptures_roottbltltrrlb : CaptureMap)
+                                                                        (suffix_roottbltltrrlb : List Char) =>
+                                                                      (fun (bodyCaptures_roottbltltrrl : CaptureMap)
+                                                                            (remaining_roottbltltrrl : List Char) =>
+                                                                          let ownCaptures_roottbltltrrl :=
+                                                                            (["Millis", "Components.Millis"]).map
+                                                                              fun key =>
+                                                                              (key,
+                                                                                String.ofList
+                                                                                  ((remaining_roottbltl).take
+                                                                                    ((remaining_roottbltl).length -
+                                                                                      (remaining_roottbltltrrl).length)))
+                                                                          (fun (tailCaptures_roottbltltrrl : CaptureMap)
+                                                                                (suffix_roottbltltrrl : List Char) =>
+                                                                              (fun (tailCaptures_roottbltl : CaptureMap)
+                                                                                    (suffix_roottbltl : List Char) =>
+                                                                                  (fun
+                                                                                        (tailCaptures_roottbl :
+                                                                                          CaptureMap)
+                                                                                        (suffix_roottbl : List Char) =>
+                                                                                      (fun
+                                                                                            (bodyCaptures_roott :
+                                                                                              CaptureMap)
+                                                                                            (remaining_roott :
+                                                                                              List Char) =>
+                                                                                          let ownCaptures_roott :=
+                                                                                            (["Components"]).map
+                                                                                              fun key =>
+                                                                                              (key,
+                                                                                                String.ofList
+                                                                                                  ((remaining_root).take
+                                                                                                    ((remaining_root).length -
+                                                                                                      (remaining_roott).length)))
+                                                                                          (fun
+                                                                                                (tailCaptures_roott :
+                                                                                                  CaptureMap)
+                                                                                                (suffix_roott :
+                                                                                                  List Char) =>
+                                                                                              (fun
+                                                                                                    (tailCaptures_root :
+                                                                                                      CaptureMap)
+                                                                                                    (suffix_root :
+                                                                                                      List Char) =>
+                                                                                                  (fun
+                                                                                                        (captures :
+                                                                                                          CaptureMap)
+                                                                                                        (remaining :
+                                                                                                          List Char) =>
+                                                                                                      if
+                                                                                                          (remaining).isEmpty then
+                                                                                                        some captures
+                                                                                                      else none)
+                                                                                                    (ownCaptures_root ++
+                                                                                                        bodyCaptures_root ++
+                                                                                                      tailCaptures_root)
+                                                                                                    suffix_root)
+                                                                                                (ownCaptures_roott ++
+                                                                                                    bodyCaptures_roott ++
+                                                                                                  tailCaptures_roott)
+                                                                                                suffix_roott)
+                                                                                            ([] : CaptureMap)
+                                                                                            remaining_roott)
+                                                                                        (ownCaptures_roottbl ++
+                                                                                            bodyCaptures_roottbl ++
+                                                                                          tailCaptures_roottbl)
+                                                                                        suffix_roottbl)
+                                                                                    (ownCaptures_roottbltl ++
+                                                                                        bodyCaptures_roottbltl ++
+                                                                                      tailCaptures_roottbltl)
+                                                                                    suffix_roottbltl)
+                                                                                (ownCaptures_roottbltltrrl ++
+                                                                                    bodyCaptures_roottbltltrrl ++
+                                                                                  tailCaptures_roottbltltrrl)
+                                                                                suffix_roottbltltrrl)
+                                                                            ([] : CaptureMap) remaining_roottbltltrrl)
+                                                                        (ownCaptures_roottbltltrrlb ++
+                                                                            bodyCaptures_roottbltltrrlb ++
+                                                                          tailCaptures_roottbltltrrlb)
+                                                                        suffix_roottbltltrrlb)
+                                                                    ([] : CaptureMap)
+                                                                    ((remaining_roottbltltrrlb).drop
+                                                                      (characters_roottbltltrrlbt).length)
+                                                                else none)
+                                                              ([] : CaptureMap)
+                                                              ((remaining_roottbltl).drop width_roottbltltrrlbb)
+                                                          else none)
+                                                        fun _ =>
+                                                        (fun (tailCaptures_roottbltl : CaptureMap)
+                                                              (suffix_roottbltl : List Char) =>
+                                                            (fun (tailCaptures_roottbl : CaptureMap)
+                                                                  (suffix_roottbl : List Char) =>
+                                                                (fun (bodyCaptures_roott : CaptureMap)
+                                                                      (remaining_roott : List Char) =>
+                                                                    let ownCaptures_roott :=
+                                                                      (["Components"]).map fun key =>
+                                                                        (key,
+                                                                          String.ofList
+                                                                            ((remaining_root).take
+                                                                              ((remaining_root).length -
+                                                                                (remaining_roott).length)))
+                                                                    (fun (tailCaptures_roott : CaptureMap)
+                                                                          (suffix_roott : List Char) =>
+                                                                        (fun (tailCaptures_root : CaptureMap)
+                                                                              (suffix_root : List Char) =>
+                                                                            (fun (captures : CaptureMap)
+                                                                                  (remaining : List Char) =>
+                                                                                if (remaining).isEmpty then
+                                                                                  some captures
+                                                                                else none)
+                                                                              (ownCaptures_root ++ bodyCaptures_root ++
+                                                                                tailCaptures_root)
+                                                                              suffix_root)
+                                                                          (ownCaptures_roott ++ bodyCaptures_roott ++
+                                                                            tailCaptures_roott)
+                                                                          suffix_roott)
+                                                                      ([] : CaptureMap) remaining_roott)
+                                                                  (ownCaptures_roottbl ++ bodyCaptures_roottbl ++
+                                                                    tailCaptures_roottbl)
+                                                                  suffix_roottbl)
+                                                              (ownCaptures_roottbltl ++ bodyCaptures_roottbltl ++
+                                                                tailCaptures_roottbltl)
+                                                              suffix_roottbltl)
+                                                          ([] : CaptureMap) remaining_roottbltl)
+                                                (ownCaptures_roottbltlb ++ bodyCaptures_roottbltlb ++
+                                                  tailCaptures_roottbltlb)
+                                                suffix_roottbltlb)
+                                            ([] : CaptureMap)
+                                            ((remaining_roottbltlb).drop (characters_roottbltlbt).length)
+                                        else none)
+                                      ([] : CaptureMap) ((remaining_roottbl).drop width_roottbltlbb)
+                                  else none)
+                                fun _ =>
+                                scanOrElse
+                                  ((List.range ((remaining_roottbl).length + 1)).findSome? fun width_roottbltrlbb =>
+                                    if
+                                        termPrefixOk TokClass.digit LenSpec.atLeastOne remaining_roottbl
+                                          width_roottbltrlbb then
+                                      (fun (bodyCaptures_roottbltrlb : CaptureMap)
+                                            (remaining_roottbltrlb : List Char) =>
+                                          let ownCaptures_roottbltrlb :=
+                                            (["DMinutes", "Minutes.DMinutes"]).map fun key =>
+                                              (key,
+                                                String.ofList
+                                                  ((remaining_roottbl).take
+                                                    ((remaining_roottbl).length - (remaining_roottbltrlb).length)))
+                                          let characters_roottbltrlbt := "m".toList
+                                          if (characters_roottbltrlbt).isPrefixOf remaining_roottbltrlb then
+                                            (fun (tailCaptures_roottbltrlb : CaptureMap)
+                                                  (suffix_roottbltrlb : List Char) =>
+                                                (fun (bodyCaptures_roottbltrl : CaptureMap)
+                                                      (remaining_roottbltrl : List Char) =>
+                                                    let ownCaptures_roottbltrl :=
+                                                      (["Minutes", "Components.Minutes"]).map fun key =>
+                                                        (key,
+                                                          String.ofList
+                                                            ((remaining_roottbl).take
+                                                              ((remaining_roottbl).length -
+                                                                (remaining_roottbltrl).length)))
+                                                    scanOrElse
+                                                      ((List.range ((remaining_roottbltrl).length + 1)).findSome?
+                                                        fun width_roottbltrltlbb =>
+                                                        if
+                                                            termPrefixOk TokClass.digit LenSpec.atLeastOne
+                                                              remaining_roottbltrl width_roottbltrltlbb then
+                                                          (fun (bodyCaptures_roottbltrltlb : CaptureMap)
+                                                                (remaining_roottbltrltlb : List Char) =>
+                                                              let ownCaptures_roottbltrltlb :=
+                                                                (["DSeconds", "Seconds.DSeconds"]).map fun key =>
+                                                                  (key,
+                                                                    String.ofList
+                                                                      ((remaining_roottbltrl).take
+                                                                        ((remaining_roottbltrl).length -
+                                                                          (remaining_roottbltrltlb).length)))
+                                                              let characters_roottbltrltlbt := "s".toList
+                                                              if
+                                                                  (characters_roottbltrltlbt).isPrefixOf
+                                                                    remaining_roottbltrltlb then
+                                                                (fun (tailCaptures_roottbltrltlb : CaptureMap)
+                                                                      (suffix_roottbltrltlb : List Char) =>
+                                                                    (fun (bodyCaptures_roottbltrltl : CaptureMap)
+                                                                          (remaining_roottbltrltl : List Char) =>
+                                                                        let ownCaptures_roottbltrltl :=
+                                                                          (["Seconds", "Components.Seconds"]).map
+                                                                            fun key =>
+                                                                            (key,
+                                                                              String.ofList
+                                                                                ((remaining_roottbltrl).take
+                                                                                  ((remaining_roottbltrl).length -
+                                                                                    (remaining_roottbltrltl).length)))
+                                                                        scanOrElse
+                                                                          ((List.range
+                                                                                ((remaining_roottbltrltl).length +
+                                                                                  1)).findSome?
+                                                                            fun width_roottbltrltltlbb =>
+                                                                            if
+                                                                                termPrefixOk TokClass.digit
+                                                                                  LenSpec.atLeastOne
+                                                                                  remaining_roottbltrltl
+                                                                                  width_roottbltrltltlbb then
+                                                                              (fun
+                                                                                    (bodyCaptures_roottbltrltltlb :
+                                                                                      CaptureMap)
+                                                                                    (remaining_roottbltrltltlb :
+                                                                                      List Char) =>
+                                                                                  let ownCaptures_roottbltrltltlb :=
+                                                                                    (["DMillis", "Millis.DMillis"]).map
+                                                                                      fun key =>
+                                                                                      (key,
+                                                                                        String.ofList
+                                                                                          ((remaining_roottbltrltl).take
+                                                                                            ((remaining_roottbltrltl).length -
+                                                                                              (remaining_roottbltrltltlb).length)))
+                                                                                  let characters_roottbltrltltlbt :=
+                                                                                    "ms".toList
+                                                                                  if
+                                                                                      (characters_roottbltrltltlbt).isPrefixOf
+                                                                                        remaining_roottbltrltltlb then
+                                                                                    (fun
+                                                                                          (tailCaptures_roottbltrltltlb :
+                                                                                            CaptureMap)
+                                                                                          (suffix_roottbltrltltlb :
+                                                                                            List Char) =>
+                                                                                        (fun
+                                                                                              (bodyCaptures_roottbltrltltl :
+                                                                                                CaptureMap)
+                                                                                              (remaining_roottbltrltltl :
+                                                                                                List Char) =>
+                                                                                            let
+                                                                                              ownCaptures_roottbltrltltl :=
+                                                                                              (["Millis",
+                                                                                                    "Components.Millis"]).map
+                                                                                                fun key =>
+                                                                                                (key,
+                                                                                                  String.ofList
+                                                                                                    ((remaining_roottbltrltl).take
+                                                                                                      ((remaining_roottbltrltl).length -
+                                                                                                        (remaining_roottbltrltltl).length)))
+                                                                                            (fun
+                                                                                                  (tailCaptures_roottbltrltltl :
+                                                                                                    CaptureMap)
+                                                                                                  (suffix_roottbltrltltl :
+                                                                                                    List Char) =>
+                                                                                                (fun
+                                                                                                      (tailCaptures_roottbltrltl :
+                                                                                                        CaptureMap)
+                                                                                                      (suffix_roottbltrltl :
+                                                                                                        List Char) =>
+                                                                                                    (fun
+                                                                                                          (tailCaptures_roottbltrl :
+                                                                                                            CaptureMap)
+                                                                                                          (suffix_roottbltrl :
+                                                                                                            List
+                                                                                                              Char) =>
+                                                                                                        (fun
+                                                                                                              (tailCaptures_roottbl :
+                                                                                                                CaptureMap)
+                                                                                                              (suffix_roottbl :
+                                                                                                                List
+                                                                                                                  Char) =>
+                                                                                                            (fun
+                                                                                                                  (bodyCaptures_roott :
+                                                                                                                    CaptureMap)
+                                                                                                                  (remaining_roott :
+                                                                                                                    List
+                                                                                                                      Char) =>
+                                                                                                                let
+                                                                                                                  ownCaptures_roott :=
+                                                                                                                  (["Components"]).map
+                                                                                                                    fun
+                                                                                                                      key =>
+                                                                                                                    (key,
+                                                                                                                      String.ofList
+                                                                                                                        ((remaining_root).take
+                                                                                                                          ((remaining_root).length -
+                                                                                                                            (remaining_roott).length)))
+                                                                                                                (fun
+                                                                                                                      (tailCaptures_roott :
+                                                                                                                        CaptureMap)
+                                                                                                                      (suffix_roott :
+                                                                                                                        List
+                                                                                                                          Char) =>
+                                                                                                                    (fun
+                                                                                                                          (tailCaptures_root :
+                                                                                                                            CaptureMap)
+                                                                                                                          (suffix_root :
+                                                                                                                            List
+                                                                                                                              Char) =>
+                                                                                                                        (fun
+                                                                                                                              (captures :
+                                                                                                                                CaptureMap)
+                                                                                                                              (remaining :
+                                                                                                                                List
+                                                                                                                                  Char) =>
+                                                                                                                            if
+                                                                                                                                (remaining).isEmpty then
+                                                                                                                              some
+                                                                                                                                captures
+                                                                                                                            else
+                                                                                                                              none)
+                                                                                                                          (ownCaptures_root ++
+                                                                                                                              bodyCaptures_root ++
+                                                                                                                            tailCaptures_root)
+                                                                                                                          suffix_root)
+                                                                                                                      (ownCaptures_roott ++
+                                                                                                                          bodyCaptures_roott ++
+                                                                                                                        tailCaptures_roott)
+                                                                                                                      suffix_roott)
+                                                                                                                  ([] :
+                                                                                                                    CaptureMap)
+                                                                                                                  remaining_roott)
+                                                                                                              (ownCaptures_roottbl ++
+                                                                                                                  bodyCaptures_roottbl ++
+                                                                                                                tailCaptures_roottbl)
+                                                                                                              suffix_roottbl)
+                                                                                                          (ownCaptures_roottbltrl ++
+                                                                                                              bodyCaptures_roottbltrl ++
+                                                                                                            tailCaptures_roottbltrl)
+                                                                                                          suffix_roottbltrl)
+                                                                                                      (ownCaptures_roottbltrltl ++
+                                                                                                          bodyCaptures_roottbltrltl ++
+                                                                                                        tailCaptures_roottbltrltl)
+                                                                                                      suffix_roottbltrltl)
+                                                                                                  (ownCaptures_roottbltrltltl ++
+                                                                                                      bodyCaptures_roottbltrltltl ++
+                                                                                                    tailCaptures_roottbltrltltl)
+                                                                                                  suffix_roottbltrltltl)
+                                                                                              ([] : CaptureMap)
+                                                                                              remaining_roottbltrltltl)
+                                                                                          (ownCaptures_roottbltrltltlb ++
+                                                                                              bodyCaptures_roottbltrltltlb ++
+                                                                                            tailCaptures_roottbltrltltlb)
+                                                                                          suffix_roottbltrltltlb)
+                                                                                      ([] : CaptureMap)
+                                                                                      ((remaining_roottbltrltltlb).drop
+                                                                                        (characters_roottbltrltltlbt).length)
+                                                                                  else none)
+                                                                                ([] : CaptureMap)
+                                                                                ((remaining_roottbltrltl).drop
+                                                                                  width_roottbltrltltlbb)
+                                                                            else none)
+                                                                          fun _ =>
+                                                                          (fun (tailCaptures_roottbltrltl : CaptureMap)
+                                                                                (suffix_roottbltrltl : List Char) =>
+                                                                              (fun
+                                                                                    (tailCaptures_roottbltrl :
+                                                                                      CaptureMap)
+                                                                                    (suffix_roottbltrl : List Char) =>
+                                                                                  (fun
+                                                                                        (tailCaptures_roottbl :
+                                                                                          CaptureMap)
+                                                                                        (suffix_roottbl : List Char) =>
+                                                                                      (fun
+                                                                                            (bodyCaptures_roott :
+                                                                                              CaptureMap)
+                                                                                            (remaining_roott :
+                                                                                              List Char) =>
+                                                                                          let ownCaptures_roott :=
+                                                                                            (["Components"]).map
+                                                                                              fun key =>
+                                                                                              (key,
+                                                                                                String.ofList
+                                                                                                  ((remaining_root).take
+                                                                                                    ((remaining_root).length -
+                                                                                                      (remaining_roott).length)))
+                                                                                          (fun
+                                                                                                (tailCaptures_roott :
+                                                                                                  CaptureMap)
+                                                                                                (suffix_roott :
+                                                                                                  List Char) =>
+                                                                                              (fun
+                                                                                                    (tailCaptures_root :
+                                                                                                      CaptureMap)
+                                                                                                    (suffix_root :
+                                                                                                      List Char) =>
+                                                                                                  (fun
+                                                                                                        (captures :
+                                                                                                          CaptureMap)
+                                                                                                        (remaining :
+                                                                                                          List Char) =>
+                                                                                                      if
+                                                                                                          (remaining).isEmpty then
+                                                                                                        some captures
+                                                                                                      else none)
+                                                                                                    (ownCaptures_root ++
+                                                                                                        bodyCaptures_root ++
+                                                                                                      tailCaptures_root)
+                                                                                                    suffix_root)
+                                                                                                (ownCaptures_roott ++
+                                                                                                    bodyCaptures_roott ++
+                                                                                                  tailCaptures_roott)
+                                                                                                suffix_roott)
+                                                                                            ([] : CaptureMap)
+                                                                                            remaining_roott)
+                                                                                        (ownCaptures_roottbl ++
+                                                                                            bodyCaptures_roottbl ++
+                                                                                          tailCaptures_roottbl)
+                                                                                        suffix_roottbl)
+                                                                                    (ownCaptures_roottbltrl ++
+                                                                                        bodyCaptures_roottbltrl ++
+                                                                                      tailCaptures_roottbltrl)
+                                                                                    suffix_roottbltrl)
+                                                                                (ownCaptures_roottbltrltl ++
+                                                                                    bodyCaptures_roottbltrltl ++
+                                                                                  tailCaptures_roottbltrltl)
+                                                                                suffix_roottbltrltl)
+                                                                            ([] : CaptureMap) remaining_roottbltrltl)
+                                                                      (ownCaptures_roottbltrltlb ++
+                                                                          bodyCaptures_roottbltrltlb ++
+                                                                        tailCaptures_roottbltrltlb)
+                                                                      suffix_roottbltrltlb)
+                                                                  ([] : CaptureMap)
+                                                                  ((remaining_roottbltrltlb).drop
+                                                                    (characters_roottbltrltlbt).length)
+                                                              else none)
+                                                            ([] : CaptureMap)
+                                                            ((remaining_roottbltrl).drop width_roottbltrltlbb)
+                                                        else none)
+                                                      fun _ =>
+                                                      scanOrElse
+                                                        ((List.range ((remaining_roottbltrl).length + 1)).findSome?
+                                                          fun width_roottbltrltrlbb =>
+                                                          if
+                                                              termPrefixOk TokClass.digit LenSpec.atLeastOne
+                                                                remaining_roottbltrl width_roottbltrltrlbb then
+                                                            (fun (bodyCaptures_roottbltrltrlb : CaptureMap)
+                                                                  (remaining_roottbltrltrlb : List Char) =>
+                                                                let ownCaptures_roottbltrltrlb :=
+                                                                  (["DMillis", "Millis.DMillis"]).map fun key =>
+                                                                    (key,
+                                                                      String.ofList
+                                                                        ((remaining_roottbltrl).take
+                                                                          ((remaining_roottbltrl).length -
+                                                                            (remaining_roottbltrltrlb).length)))
+                                                                let characters_roottbltrltrlbt := "ms".toList
+                                                                if
+                                                                    (characters_roottbltrltrlbt).isPrefixOf
+                                                                      remaining_roottbltrltrlb then
+                                                                  (fun (tailCaptures_roottbltrltrlb : CaptureMap)
+                                                                        (suffix_roottbltrltrlb : List Char) =>
+                                                                      (fun (bodyCaptures_roottbltrltrl : CaptureMap)
+                                                                            (remaining_roottbltrltrl : List Char) =>
+                                                                          let ownCaptures_roottbltrltrl :=
+                                                                            (["Millis", "Components.Millis"]).map
+                                                                              fun key =>
+                                                                              (key,
+                                                                                String.ofList
+                                                                                  ((remaining_roottbltrl).take
+                                                                                    ((remaining_roottbltrl).length -
+                                                                                      (remaining_roottbltrltrl).length)))
+                                                                          (fun (tailCaptures_roottbltrltrl : CaptureMap)
+                                                                                (suffix_roottbltrltrl : List Char) =>
+                                                                              (fun
+                                                                                    (tailCaptures_roottbltrl :
+                                                                                      CaptureMap)
+                                                                                    (suffix_roottbltrl : List Char) =>
+                                                                                  (fun
+                                                                                        (tailCaptures_roottbl :
+                                                                                          CaptureMap)
+                                                                                        (suffix_roottbl : List Char) =>
+                                                                                      (fun
+                                                                                            (bodyCaptures_roott :
+                                                                                              CaptureMap)
+                                                                                            (remaining_roott :
+                                                                                              List Char) =>
+                                                                                          let ownCaptures_roott :=
+                                                                                            (["Components"]).map
+                                                                                              fun key =>
+                                                                                              (key,
+                                                                                                String.ofList
+                                                                                                  ((remaining_root).take
+                                                                                                    ((remaining_root).length -
+                                                                                                      (remaining_roott).length)))
+                                                                                          (fun
+                                                                                                (tailCaptures_roott :
+                                                                                                  CaptureMap)
+                                                                                                (suffix_roott :
+                                                                                                  List Char) =>
+                                                                                              (fun
+                                                                                                    (tailCaptures_root :
+                                                                                                      CaptureMap)
+                                                                                                    (suffix_root :
+                                                                                                      List Char) =>
+                                                                                                  (fun
+                                                                                                        (captures :
+                                                                                                          CaptureMap)
+                                                                                                        (remaining :
+                                                                                                          List Char) =>
+                                                                                                      if
+                                                                                                          (remaining).isEmpty then
+                                                                                                        some captures
+                                                                                                      else none)
+                                                                                                    (ownCaptures_root ++
+                                                                                                        bodyCaptures_root ++
+                                                                                                      tailCaptures_root)
+                                                                                                    suffix_root)
+                                                                                                (ownCaptures_roott ++
+                                                                                                    bodyCaptures_roott ++
+                                                                                                  tailCaptures_roott)
+                                                                                                suffix_roott)
+                                                                                            ([] : CaptureMap)
+                                                                                            remaining_roott)
+                                                                                        (ownCaptures_roottbl ++
+                                                                                            bodyCaptures_roottbl ++
+                                                                                          tailCaptures_roottbl)
+                                                                                        suffix_roottbl)
+                                                                                    (ownCaptures_roottbltrl ++
+                                                                                        bodyCaptures_roottbltrl ++
+                                                                                      tailCaptures_roottbltrl)
+                                                                                    suffix_roottbltrl)
+                                                                                (ownCaptures_roottbltrltrl ++
+                                                                                    bodyCaptures_roottbltrltrl ++
+                                                                                  tailCaptures_roottbltrltrl)
+                                                                                suffix_roottbltrltrl)
+                                                                            ([] : CaptureMap) remaining_roottbltrltrl)
+                                                                        (ownCaptures_roottbltrltrlb ++
+                                                                            bodyCaptures_roottbltrltrlb ++
+                                                                          tailCaptures_roottbltrltrlb)
+                                                                        suffix_roottbltrltrlb)
+                                                                    ([] : CaptureMap)
+                                                                    ((remaining_roottbltrltrlb).drop
+                                                                      (characters_roottbltrltrlbt).length)
+                                                                else none)
+                                                              ([] : CaptureMap)
+                                                              ((remaining_roottbltrl).drop width_roottbltrltrlbb)
+                                                          else none)
+                                                        fun _ =>
+                                                        (fun (tailCaptures_roottbltrl : CaptureMap)
+                                                              (suffix_roottbltrl : List Char) =>
+                                                            (fun (tailCaptures_roottbl : CaptureMap)
+                                                                  (suffix_roottbl : List Char) =>
+                                                                (fun (bodyCaptures_roott : CaptureMap)
+                                                                      (remaining_roott : List Char) =>
+                                                                    let ownCaptures_roott :=
+                                                                      (["Components"]).map fun key =>
+                                                                        (key,
+                                                                          String.ofList
+                                                                            ((remaining_root).take
+                                                                              ((remaining_root).length -
+                                                                                (remaining_roott).length)))
+                                                                    (fun (tailCaptures_roott : CaptureMap)
+                                                                          (suffix_roott : List Char) =>
+                                                                        (fun (tailCaptures_root : CaptureMap)
+                                                                              (suffix_root : List Char) =>
+                                                                            (fun (captures : CaptureMap)
+                                                                                  (remaining : List Char) =>
+                                                                                if (remaining).isEmpty then
+                                                                                  some captures
+                                                                                else none)
+                                                                              (ownCaptures_root ++ bodyCaptures_root ++
+                                                                                tailCaptures_root)
+                                                                              suffix_root)
+                                                                          (ownCaptures_roott ++ bodyCaptures_roott ++
+                                                                            tailCaptures_roott)
+                                                                          suffix_roott)
+                                                                      ([] : CaptureMap) remaining_roott)
+                                                                  (ownCaptures_roottbl ++ bodyCaptures_roottbl ++
+                                                                    tailCaptures_roottbl)
+                                                                  suffix_roottbl)
+                                                              (ownCaptures_roottbltrl ++ bodyCaptures_roottbltrl ++
+                                                                tailCaptures_roottbltrl)
+                                                              suffix_roottbltrl)
+                                                          ([] : CaptureMap) remaining_roottbltrl)
+                                                  (ownCaptures_roottbltrlb ++ bodyCaptures_roottbltrlb ++
+                                                    tailCaptures_roottbltrlb)
+                                                  suffix_roottbltrlb)
+                                              ([] : CaptureMap)
+                                              ((remaining_roottbltrlb).drop (characters_roottbltrlbt).length)
+                                          else none)
+                                        ([] : CaptureMap) ((remaining_roottbl).drop width_roottbltrlbb)
+                                    else none)
+                                  fun _ =>
+                                  scanOrElse
+                                    ((List.range ((remaining_roottbl).length + 1)).findSome? fun width_roottbltrrlbb =>
+                                      if
+                                          termPrefixOk TokClass.digit LenSpec.atLeastOne remaining_roottbl
+                                            width_roottbltrrlbb then
+                                        (fun (bodyCaptures_roottbltrrlb : CaptureMap)
+                                              (remaining_roottbltrrlb : List Char) =>
+                                            let ownCaptures_roottbltrrlb :=
+                                              (["DSeconds", "Seconds.DSeconds"]).map fun key =>
+                                                (key,
+                                                  String.ofList
+                                                    ((remaining_roottbl).take
+                                                      ((remaining_roottbl).length - (remaining_roottbltrrlb).length)))
+                                            let characters_roottbltrrlbt := "s".toList
+                                            if (characters_roottbltrrlbt).isPrefixOf remaining_roottbltrrlb then
+                                              (fun (tailCaptures_roottbltrrlb : CaptureMap)
+                                                    (suffix_roottbltrrlb : List Char) =>
+                                                  (fun (bodyCaptures_roottbltrrl : CaptureMap)
+                                                        (remaining_roottbltrrl : List Char) =>
+                                                      let ownCaptures_roottbltrrl :=
+                                                        (["Seconds", "Components.Seconds"]).map fun key =>
+                                                          (key,
+                                                            String.ofList
+                                                              ((remaining_roottbl).take
+                                                                ((remaining_roottbl).length -
+                                                                  (remaining_roottbltrrl).length)))
+                                                      scanOrElse
+                                                        ((List.range ((remaining_roottbltrrl).length + 1)).findSome?
+                                                          fun width_roottbltrrltlbb =>
+                                                          if
+                                                              termPrefixOk TokClass.digit LenSpec.atLeastOne
+                                                                remaining_roottbltrrl width_roottbltrrltlbb then
+                                                            (fun (bodyCaptures_roottbltrrltlb : CaptureMap)
+                                                                  (remaining_roottbltrrltlb : List Char) =>
+                                                                let ownCaptures_roottbltrrltlb :=
+                                                                  (["DMillis", "Millis.DMillis"]).map fun key =>
+                                                                    (key,
+                                                                      String.ofList
+                                                                        ((remaining_roottbltrrl).take
+                                                                          ((remaining_roottbltrrl).length -
+                                                                            (remaining_roottbltrrltlb).length)))
+                                                                let characters_roottbltrrltlbt := "ms".toList
+                                                                if
+                                                                    (characters_roottbltrrltlbt).isPrefixOf
+                                                                      remaining_roottbltrrltlb then
+                                                                  (fun (tailCaptures_roottbltrrltlb : CaptureMap)
+                                                                        (suffix_roottbltrrltlb : List Char) =>
+                                                                      (fun (bodyCaptures_roottbltrrltl : CaptureMap)
+                                                                            (remaining_roottbltrrltl : List Char) =>
+                                                                          let ownCaptures_roottbltrrltl :=
+                                                                            (["Millis", "Components.Millis"]).map
+                                                                              fun key =>
+                                                                              (key,
+                                                                                String.ofList
+                                                                                  ((remaining_roottbltrrl).take
+                                                                                    ((remaining_roottbltrrl).length -
+                                                                                      (remaining_roottbltrrltl).length)))
+                                                                          (fun (tailCaptures_roottbltrrltl : CaptureMap)
+                                                                                (suffix_roottbltrrltl : List Char) =>
+                                                                              (fun
+                                                                                    (tailCaptures_roottbltrrl :
+                                                                                      CaptureMap)
+                                                                                    (suffix_roottbltrrl : List Char) =>
+                                                                                  (fun
+                                                                                        (tailCaptures_roottbl :
+                                                                                          CaptureMap)
+                                                                                        (suffix_roottbl : List Char) =>
+                                                                                      (fun
+                                                                                            (bodyCaptures_roott :
+                                                                                              CaptureMap)
+                                                                                            (remaining_roott :
+                                                                                              List Char) =>
+                                                                                          let ownCaptures_roott :=
+                                                                                            (["Components"]).map
+                                                                                              fun key =>
+                                                                                              (key,
+                                                                                                String.ofList
+                                                                                                  ((remaining_root).take
+                                                                                                    ((remaining_root).length -
+                                                                                                      (remaining_roott).length)))
+                                                                                          (fun
+                                                                                                (tailCaptures_roott :
+                                                                                                  CaptureMap)
+                                                                                                (suffix_roott :
+                                                                                                  List Char) =>
+                                                                                              (fun
+                                                                                                    (tailCaptures_root :
+                                                                                                      CaptureMap)
+                                                                                                    (suffix_root :
+                                                                                                      List Char) =>
+                                                                                                  (fun
+                                                                                                        (captures :
+                                                                                                          CaptureMap)
+                                                                                                        (remaining :
+                                                                                                          List Char) =>
+                                                                                                      if
+                                                                                                          (remaining).isEmpty then
+                                                                                                        some captures
+                                                                                                      else none)
+                                                                                                    (ownCaptures_root ++
+                                                                                                        bodyCaptures_root ++
+                                                                                                      tailCaptures_root)
+                                                                                                    suffix_root)
+                                                                                                (ownCaptures_roott ++
+                                                                                                    bodyCaptures_roott ++
+                                                                                                  tailCaptures_roott)
+                                                                                                suffix_roott)
+                                                                                            ([] : CaptureMap)
+                                                                                            remaining_roott)
+                                                                                        (ownCaptures_roottbl ++
+                                                                                            bodyCaptures_roottbl ++
+                                                                                          tailCaptures_roottbl)
+                                                                                        suffix_roottbl)
+                                                                                    (ownCaptures_roottbltrrl ++
+                                                                                        bodyCaptures_roottbltrrl ++
+                                                                                      tailCaptures_roottbltrrl)
+                                                                                    suffix_roottbltrrl)
+                                                                                (ownCaptures_roottbltrrltl ++
+                                                                                    bodyCaptures_roottbltrrltl ++
+                                                                                  tailCaptures_roottbltrrltl)
+                                                                                suffix_roottbltrrltl)
+                                                                            ([] : CaptureMap) remaining_roottbltrrltl)
+                                                                        (ownCaptures_roottbltrrltlb ++
+                                                                            bodyCaptures_roottbltrrltlb ++
+                                                                          tailCaptures_roottbltrrltlb)
+                                                                        suffix_roottbltrrltlb)
+                                                                    ([] : CaptureMap)
+                                                                    ((remaining_roottbltrrltlb).drop
+                                                                      (characters_roottbltrrltlbt).length)
+                                                                else none)
+                                                              ([] : CaptureMap)
+                                                              ((remaining_roottbltrrl).drop width_roottbltrrltlbb)
+                                                          else none)
+                                                        fun _ =>
+                                                        (fun (tailCaptures_roottbltrrl : CaptureMap)
+                                                              (suffix_roottbltrrl : List Char) =>
+                                                            (fun (tailCaptures_roottbl : CaptureMap)
+                                                                  (suffix_roottbl : List Char) =>
+                                                                (fun (bodyCaptures_roott : CaptureMap)
+                                                                      (remaining_roott : List Char) =>
+                                                                    let ownCaptures_roott :=
+                                                                      (["Components"]).map fun key =>
+                                                                        (key,
+                                                                          String.ofList
+                                                                            ((remaining_root).take
+                                                                              ((remaining_root).length -
+                                                                                (remaining_roott).length)))
+                                                                    (fun (tailCaptures_roott : CaptureMap)
+                                                                          (suffix_roott : List Char) =>
+                                                                        (fun (tailCaptures_root : CaptureMap)
+                                                                              (suffix_root : List Char) =>
+                                                                            (fun (captures : CaptureMap)
+                                                                                  (remaining : List Char) =>
+                                                                                if (remaining).isEmpty then
+                                                                                  some captures
+                                                                                else none)
+                                                                              (ownCaptures_root ++ bodyCaptures_root ++
+                                                                                tailCaptures_root)
+                                                                              suffix_root)
+                                                                          (ownCaptures_roott ++ bodyCaptures_roott ++
+                                                                            tailCaptures_roott)
+                                                                          suffix_roott)
+                                                                      ([] : CaptureMap) remaining_roott)
+                                                                  (ownCaptures_roottbl ++ bodyCaptures_roottbl ++
+                                                                    tailCaptures_roottbl)
+                                                                  suffix_roottbl)
+                                                              (ownCaptures_roottbltrrl ++ bodyCaptures_roottbltrrl ++
+                                                                tailCaptures_roottbltrrl)
+                                                              suffix_roottbltrrl)
+                                                          ([] : CaptureMap) remaining_roottbltrrl)
+                                                    (ownCaptures_roottbltrrlb ++ bodyCaptures_roottbltrrlb ++
+                                                      tailCaptures_roottbltrrlb)
+                                                    suffix_roottbltrrlb)
+                                                ([] : CaptureMap)
+                                                ((remaining_roottbltrrlb).drop (characters_roottbltrrlbt).length)
+                                            else none)
+                                          ([] : CaptureMap) ((remaining_roottbl).drop width_roottbltrrlbb)
+                                      else none)
+                                    fun _ =>
+                                    scanOrElse
+                                      ((List.range ((remaining_roottbl).length + 1)).findSome?
+                                        fun width_roottbltrrrlbb =>
+                                        if
+                                            termPrefixOk TokClass.digit LenSpec.atLeastOne remaining_roottbl
+                                              width_roottbltrrrlbb then
+                                          (fun (bodyCaptures_roottbltrrrlb : CaptureMap)
+                                                (remaining_roottbltrrrlb : List Char) =>
+                                              let ownCaptures_roottbltrrrlb :=
+                                                (["DMillis", "Millis.DMillis"]).map fun key =>
+                                                  (key,
+                                                    String.ofList
+                                                      ((remaining_roottbl).take
+                                                        ((remaining_roottbl).length -
+                                                          (remaining_roottbltrrrlb).length)))
+                                              let characters_roottbltrrrlbt := "ms".toList
+                                              if (characters_roottbltrrrlbt).isPrefixOf remaining_roottbltrrrlb then
+                                                (fun (tailCaptures_roottbltrrrlb : CaptureMap)
+                                                      (suffix_roottbltrrrlb : List Char) =>
+                                                    (fun (bodyCaptures_roottbltrrrl : CaptureMap)
+                                                          (remaining_roottbltrrrl : List Char) =>
+                                                        let ownCaptures_roottbltrrrl :=
+                                                          (["Millis", "Components.Millis"]).map fun key =>
+                                                            (key,
+                                                              String.ofList
+                                                                ((remaining_roottbl).take
+                                                                  ((remaining_roottbl).length -
+                                                                    (remaining_roottbltrrrl).length)))
+                                                        (fun (tailCaptures_roottbltrrrl : CaptureMap)
+                                                              (suffix_roottbltrrrl : List Char) =>
+                                                            (fun (tailCaptures_roottbl : CaptureMap)
+                                                                  (suffix_roottbl : List Char) =>
+                                                                (fun (bodyCaptures_roott : CaptureMap)
+                                                                      (remaining_roott : List Char) =>
+                                                                    let ownCaptures_roott :=
+                                                                      (["Components"]).map fun key =>
+                                                                        (key,
+                                                                          String.ofList
+                                                                            ((remaining_root).take
+                                                                              ((remaining_root).length -
+                                                                                (remaining_roott).length)))
+                                                                    (fun (tailCaptures_roott : CaptureMap)
+                                                                          (suffix_roott : List Char) =>
+                                                                        (fun (tailCaptures_root : CaptureMap)
+                                                                              (suffix_root : List Char) =>
+                                                                            (fun (captures : CaptureMap)
+                                                                                  (remaining : List Char) =>
+                                                                                if (remaining).isEmpty then
+                                                                                  some captures
+                                                                                else none)
+                                                                              (ownCaptures_root ++ bodyCaptures_root ++
+                                                                                tailCaptures_root)
+                                                                              suffix_root)
+                                                                          (ownCaptures_roott ++ bodyCaptures_roott ++
+                                                                            tailCaptures_roott)
+                                                                          suffix_roott)
+                                                                      ([] : CaptureMap) remaining_roott)
+                                                                  (ownCaptures_roottbl ++ bodyCaptures_roottbl ++
+                                                                    tailCaptures_roottbl)
+                                                                  suffix_roottbl)
+                                                              (ownCaptures_roottbltrrrl ++ bodyCaptures_roottbltrrrl ++
+                                                                tailCaptures_roottbltrrrl)
+                                                              suffix_roottbltrrrl)
+                                                          ([] : CaptureMap) remaining_roottbltrrrl)
+                                                      (ownCaptures_roottbltrrrlb ++ bodyCaptures_roottbltrrrlb ++
+                                                        tailCaptures_roottbltrrrlb)
+                                                      suffix_roottbltrrrlb)
+                                                  ([] : CaptureMap)
+                                                  ((remaining_roottbltrrrlb).drop (characters_roottbltrrrlbt).length)
+                                              else none)
+                                            ([] : CaptureMap) ((remaining_roottbl).drop width_roottbltrrrlbb)
+                                        else none)
+                                      fun _ =>
+                                      (fun (tailCaptures_roottbl : CaptureMap) (suffix_roottbl : List Char) =>
+                                          (fun (bodyCaptures_roott : CaptureMap) (remaining_roott : List Char) =>
+                                              let ownCaptures_roott :=
+                                                (["Components"]).map fun key =>
+                                                  (key,
+                                                    String.ofList
+                                                      ((remaining_root).take
+                                                        ((remaining_root).length - (remaining_roott).length)))
+                                              (fun (tailCaptures_roott : CaptureMap) (suffix_roott : List Char) =>
+                                                  (fun (tailCaptures_root : CaptureMap) (suffix_root : List Char) =>
+                                                      (fun (captures : CaptureMap) (remaining : List Char) =>
+                                                          if (remaining).isEmpty then some captures else none)
+                                                        (ownCaptures_root ++ bodyCaptures_root ++ tailCaptures_root)
+                                                        suffix_root)
+                                                    (ownCaptures_roott ++ bodyCaptures_roott ++ tailCaptures_roott)
+                                                    suffix_roott)
+                                                ([] : CaptureMap) remaining_roott)
+                                            (ownCaptures_roottbl ++ bodyCaptures_roottbl ++ tailCaptures_roottbl)
+                                            suffix_roottbl)
+                                        ([] : CaptureMap) remaining_roottbl)
+                            (ownCaptures_roottblb ++ bodyCaptures_roottblb ++ tailCaptures_roottblb) suffix_roottblb)
+                        ([] : CaptureMap) ((remaining_roottblb).drop (characters_roottblbt).length)
+                    else none)
+                  ([] : CaptureMap) ((remaining_root).drop width_roottblbb)
+              else none)
+            fun _ =>
+            scanOrElse
+              ((List.range ((remaining_root).length + 1)).findSome? fun width_roottbrlbb =>
+                if termPrefixOk TokClass.digit LenSpec.atLeastOne remaining_root width_roottbrlbb then
+                  (fun (bodyCaptures_roottbrlb : CaptureMap) (remaining_roottbrlb : List Char) =>
+                      let ownCaptures_roottbrlb :=
+                        (["DHours", "Hours.DHours"]).map fun key =>
+                          (key,
+                            String.ofList
+                              ((remaining_root).take ((remaining_root).length - (remaining_roottbrlb).length)))
+                      let characters_roottbrlbt := "h".toList
+                      if (characters_roottbrlbt).isPrefixOf remaining_roottbrlb then
+                        (fun (tailCaptures_roottbrlb : CaptureMap) (suffix_roottbrlb : List Char) =>
+                            (fun (bodyCaptures_roottbrl : CaptureMap) (remaining_roottbrl : List Char) =>
+                                let ownCaptures_roottbrl :=
+                                  (["Hours", "Components.Hours"]).map fun key =>
+                                    (key,
+                                      String.ofList
+                                        ((remaining_root).take ((remaining_root).length - (remaining_roottbrl).length)))
+                                scanOrElse
+                                  ((List.range ((remaining_roottbrl).length + 1)).findSome? fun width_roottbrltlbb =>
+                                    if
+                                        termPrefixOk TokClass.digit LenSpec.atLeastOne remaining_roottbrl
+                                          width_roottbrltlbb then
+                                      (fun (bodyCaptures_roottbrltlb : CaptureMap)
+                                            (remaining_roottbrltlb : List Char) =>
+                                          let ownCaptures_roottbrltlb :=
+                                            (["DMinutes", "Minutes.DMinutes"]).map fun key =>
+                                              (key,
+                                                String.ofList
+                                                  ((remaining_roottbrl).take
+                                                    ((remaining_roottbrl).length - (remaining_roottbrltlb).length)))
+                                          let characters_roottbrltlbt := "m".toList
+                                          if (characters_roottbrltlbt).isPrefixOf remaining_roottbrltlb then
+                                            (fun (tailCaptures_roottbrltlb : CaptureMap)
+                                                  (suffix_roottbrltlb : List Char) =>
+                                                (fun (bodyCaptures_roottbrltl : CaptureMap)
+                                                      (remaining_roottbrltl : List Char) =>
+                                                    let ownCaptures_roottbrltl :=
+                                                      (["Minutes", "Components.Minutes"]).map fun key =>
+                                                        (key,
+                                                          String.ofList
+                                                            ((remaining_roottbrl).take
+                                                              ((remaining_roottbrl).length -
+                                                                (remaining_roottbrltl).length)))
+                                                    scanOrElse
+                                                      ((List.range ((remaining_roottbrltl).length + 1)).findSome?
+                                                        fun width_roottbrltltlbb =>
+                                                        if
+                                                            termPrefixOk TokClass.digit LenSpec.atLeastOne
+                                                              remaining_roottbrltl width_roottbrltltlbb then
+                                                          (fun (bodyCaptures_roottbrltltlb : CaptureMap)
+                                                                (remaining_roottbrltltlb : List Char) =>
+                                                              let ownCaptures_roottbrltltlb :=
+                                                                (["DSeconds", "Seconds.DSeconds"]).map fun key =>
+                                                                  (key,
+                                                                    String.ofList
+                                                                      ((remaining_roottbrltl).take
+                                                                        ((remaining_roottbrltl).length -
+                                                                          (remaining_roottbrltltlb).length)))
+                                                              let characters_roottbrltltlbt := "s".toList
+                                                              if
+                                                                  (characters_roottbrltltlbt).isPrefixOf
+                                                                    remaining_roottbrltltlb then
+                                                                (fun (tailCaptures_roottbrltltlb : CaptureMap)
+                                                                      (suffix_roottbrltltlb : List Char) =>
+                                                                    (fun (bodyCaptures_roottbrltltl : CaptureMap)
+                                                                          (remaining_roottbrltltl : List Char) =>
+                                                                        let ownCaptures_roottbrltltl :=
+                                                                          (["Seconds", "Components.Seconds"]).map
+                                                                            fun key =>
+                                                                            (key,
+                                                                              String.ofList
+                                                                                ((remaining_roottbrltl).take
+                                                                                  ((remaining_roottbrltl).length -
+                                                                                    (remaining_roottbrltltl).length)))
+                                                                        scanOrElse
+                                                                          ((List.range
+                                                                                ((remaining_roottbrltltl).length +
+                                                                                  1)).findSome?
+                                                                            fun width_roottbrltltltlbb =>
+                                                                            if
+                                                                                termPrefixOk TokClass.digit
+                                                                                  LenSpec.atLeastOne
+                                                                                  remaining_roottbrltltl
+                                                                                  width_roottbrltltltlbb then
+                                                                              (fun
+                                                                                    (bodyCaptures_roottbrltltltlb :
+                                                                                      CaptureMap)
+                                                                                    (remaining_roottbrltltltlb :
+                                                                                      List Char) =>
+                                                                                  let ownCaptures_roottbrltltltlb :=
+                                                                                    (["DMillis", "Millis.DMillis"]).map
+                                                                                      fun key =>
+                                                                                      (key,
+                                                                                        String.ofList
+                                                                                          ((remaining_roottbrltltl).take
+                                                                                            ((remaining_roottbrltltl).length -
+                                                                                              (remaining_roottbrltltltlb).length)))
+                                                                                  let characters_roottbrltltltlbt :=
+                                                                                    "ms".toList
+                                                                                  if
+                                                                                      (characters_roottbrltltltlbt).isPrefixOf
+                                                                                        remaining_roottbrltltltlb then
+                                                                                    (fun
+                                                                                          (tailCaptures_roottbrltltltlb :
+                                                                                            CaptureMap)
+                                                                                          (suffix_roottbrltltltlb :
+                                                                                            List Char) =>
+                                                                                        (fun
+                                                                                              (bodyCaptures_roottbrltltltl :
+                                                                                                CaptureMap)
+                                                                                              (remaining_roottbrltltltl :
+                                                                                                List Char) =>
+                                                                                            let
+                                                                                              ownCaptures_roottbrltltltl :=
+                                                                                              (["Millis",
+                                                                                                    "Components.Millis"]).map
+                                                                                                fun key =>
+                                                                                                (key,
+                                                                                                  String.ofList
+                                                                                                    ((remaining_roottbrltltl).take
+                                                                                                      ((remaining_roottbrltltl).length -
+                                                                                                        (remaining_roottbrltltltl).length)))
+                                                                                            (fun
+                                                                                                  (tailCaptures_roottbrltltltl :
+                                                                                                    CaptureMap)
+                                                                                                  (suffix_roottbrltltltl :
+                                                                                                    List Char) =>
+                                                                                                (fun
+                                                                                                      (tailCaptures_roottbrltltl :
+                                                                                                        CaptureMap)
+                                                                                                      (suffix_roottbrltltl :
+                                                                                                        List Char) =>
+                                                                                                    (fun
+                                                                                                          (tailCaptures_roottbrltl :
+                                                                                                            CaptureMap)
+                                                                                                          (suffix_roottbrltl :
+                                                                                                            List
+                                                                                                              Char) =>
+                                                                                                        (fun
+                                                                                                              (tailCaptures_roottbrl :
+                                                                                                                CaptureMap)
+                                                                                                              (suffix_roottbrl :
+                                                                                                                List
+                                                                                                                  Char) =>
+                                                                                                            (fun
+                                                                                                                  (bodyCaptures_roott :
+                                                                                                                    CaptureMap)
+                                                                                                                  (remaining_roott :
+                                                                                                                    List
+                                                                                                                      Char) =>
+                                                                                                                let
+                                                                                                                  ownCaptures_roott :=
+                                                                                                                  (["Components"]).map
+                                                                                                                    fun
+                                                                                                                      key =>
+                                                                                                                    (key,
+                                                                                                                      String.ofList
+                                                                                                                        ((remaining_root).take
+                                                                                                                          ((remaining_root).length -
+                                                                                                                            (remaining_roott).length)))
+                                                                                                                (fun
+                                                                                                                      (tailCaptures_roott :
+                                                                                                                        CaptureMap)
+                                                                                                                      (suffix_roott :
+                                                                                                                        List
+                                                                                                                          Char) =>
+                                                                                                                    (fun
+                                                                                                                          (tailCaptures_root :
+                                                                                                                            CaptureMap)
+                                                                                                                          (suffix_root :
+                                                                                                                            List
+                                                                                                                              Char) =>
+                                                                                                                        (fun
+                                                                                                                              (captures :
+                                                                                                                                CaptureMap)
+                                                                                                                              (remaining :
+                                                                                                                                List
+                                                                                                                                  Char) =>
+                                                                                                                            if
+                                                                                                                                (remaining).isEmpty then
+                                                                                                                              some
+                                                                                                                                captures
+                                                                                                                            else
+                                                                                                                              none)
+                                                                                                                          (ownCaptures_root ++
+                                                                                                                              bodyCaptures_root ++
+                                                                                                                            tailCaptures_root)
+                                                                                                                          suffix_root)
+                                                                                                                      (ownCaptures_roott ++
+                                                                                                                          bodyCaptures_roott ++
+                                                                                                                        tailCaptures_roott)
+                                                                                                                      suffix_roott)
+                                                                                                                  ([] :
+                                                                                                                    CaptureMap)
+                                                                                                                  remaining_roott)
+                                                                                                              (ownCaptures_roottbrl ++
+                                                                                                                  bodyCaptures_roottbrl ++
+                                                                                                                tailCaptures_roottbrl)
+                                                                                                              suffix_roottbrl)
+                                                                                                          (ownCaptures_roottbrltl ++
+                                                                                                              bodyCaptures_roottbrltl ++
+                                                                                                            tailCaptures_roottbrltl)
+                                                                                                          suffix_roottbrltl)
+                                                                                                      (ownCaptures_roottbrltltl ++
+                                                                                                          bodyCaptures_roottbrltltl ++
+                                                                                                        tailCaptures_roottbrltltl)
+                                                                                                      suffix_roottbrltltl)
+                                                                                                  (ownCaptures_roottbrltltltl ++
+                                                                                                      bodyCaptures_roottbrltltltl ++
+                                                                                                    tailCaptures_roottbrltltltl)
+                                                                                                  suffix_roottbrltltltl)
+                                                                                              ([] : CaptureMap)
+                                                                                              remaining_roottbrltltltl)
+                                                                                          (ownCaptures_roottbrltltltlb ++
+                                                                                              bodyCaptures_roottbrltltltlb ++
+                                                                                            tailCaptures_roottbrltltltlb)
+                                                                                          suffix_roottbrltltltlb)
+                                                                                      ([] : CaptureMap)
+                                                                                      ((remaining_roottbrltltltlb).drop
+                                                                                        (characters_roottbrltltltlbt).length)
+                                                                                  else none)
+                                                                                ([] : CaptureMap)
+                                                                                ((remaining_roottbrltltl).drop
+                                                                                  width_roottbrltltltlbb)
+                                                                            else none)
+                                                                          fun _ =>
+                                                                          (fun (tailCaptures_roottbrltltl : CaptureMap)
+                                                                                (suffix_roottbrltltl : List Char) =>
+                                                                              (fun
+                                                                                    (tailCaptures_roottbrltl :
+                                                                                      CaptureMap)
+                                                                                    (suffix_roottbrltl : List Char) =>
+                                                                                  (fun
+                                                                                        (tailCaptures_roottbrl :
+                                                                                          CaptureMap)
+                                                                                        (suffix_roottbrl : List Char) =>
+                                                                                      (fun
+                                                                                            (bodyCaptures_roott :
+                                                                                              CaptureMap)
+                                                                                            (remaining_roott :
+                                                                                              List Char) =>
+                                                                                          let ownCaptures_roott :=
+                                                                                            (["Components"]).map
+                                                                                              fun key =>
+                                                                                              (key,
+                                                                                                String.ofList
+                                                                                                  ((remaining_root).take
+                                                                                                    ((remaining_root).length -
+                                                                                                      (remaining_roott).length)))
+                                                                                          (fun
+                                                                                                (tailCaptures_roott :
+                                                                                                  CaptureMap)
+                                                                                                (suffix_roott :
+                                                                                                  List Char) =>
+                                                                                              (fun
+                                                                                                    (tailCaptures_root :
+                                                                                                      CaptureMap)
+                                                                                                    (suffix_root :
+                                                                                                      List Char) =>
+                                                                                                  (fun
+                                                                                                        (captures :
+                                                                                                          CaptureMap)
+                                                                                                        (remaining :
+                                                                                                          List Char) =>
+                                                                                                      if
+                                                                                                          (remaining).isEmpty then
+                                                                                                        some captures
+                                                                                                      else none)
+                                                                                                    (ownCaptures_root ++
+                                                                                                        bodyCaptures_root ++
+                                                                                                      tailCaptures_root)
+                                                                                                    suffix_root)
+                                                                                                (ownCaptures_roott ++
+                                                                                                    bodyCaptures_roott ++
+                                                                                                  tailCaptures_roott)
+                                                                                                suffix_roott)
+                                                                                            ([] : CaptureMap)
+                                                                                            remaining_roott)
+                                                                                        (ownCaptures_roottbrl ++
+                                                                                            bodyCaptures_roottbrl ++
+                                                                                          tailCaptures_roottbrl)
+                                                                                        suffix_roottbrl)
+                                                                                    (ownCaptures_roottbrltl ++
+                                                                                        bodyCaptures_roottbrltl ++
+                                                                                      tailCaptures_roottbrltl)
+                                                                                    suffix_roottbrltl)
+                                                                                (ownCaptures_roottbrltltl ++
+                                                                                    bodyCaptures_roottbrltltl ++
+                                                                                  tailCaptures_roottbrltltl)
+                                                                                suffix_roottbrltltl)
+                                                                            ([] : CaptureMap) remaining_roottbrltltl)
+                                                                      (ownCaptures_roottbrltltlb ++
+                                                                          bodyCaptures_roottbrltltlb ++
+                                                                        tailCaptures_roottbrltltlb)
+                                                                      suffix_roottbrltltlb)
+                                                                  ([] : CaptureMap)
+                                                                  ((remaining_roottbrltltlb).drop
+                                                                    (characters_roottbrltltlbt).length)
+                                                              else none)
+                                                            ([] : CaptureMap)
+                                                            ((remaining_roottbrltl).drop width_roottbrltltlbb)
+                                                        else none)
+                                                      fun _ =>
+                                                      scanOrElse
+                                                        ((List.range ((remaining_roottbrltl).length + 1)).findSome?
+                                                          fun width_roottbrltltrlbb =>
+                                                          if
+                                                              termPrefixOk TokClass.digit LenSpec.atLeastOne
+                                                                remaining_roottbrltl width_roottbrltltrlbb then
+                                                            (fun (bodyCaptures_roottbrltltrlb : CaptureMap)
+                                                                  (remaining_roottbrltltrlb : List Char) =>
+                                                                let ownCaptures_roottbrltltrlb :=
+                                                                  (["DMillis", "Millis.DMillis"]).map fun key =>
+                                                                    (key,
+                                                                      String.ofList
+                                                                        ((remaining_roottbrltl).take
+                                                                          ((remaining_roottbrltl).length -
+                                                                            (remaining_roottbrltltrlb).length)))
+                                                                let characters_roottbrltltrlbt := "ms".toList
+                                                                if
+                                                                    (characters_roottbrltltrlbt).isPrefixOf
+                                                                      remaining_roottbrltltrlb then
+                                                                  (fun (tailCaptures_roottbrltltrlb : CaptureMap)
+                                                                        (suffix_roottbrltltrlb : List Char) =>
+                                                                      (fun (bodyCaptures_roottbrltltrl : CaptureMap)
+                                                                            (remaining_roottbrltltrl : List Char) =>
+                                                                          let ownCaptures_roottbrltltrl :=
+                                                                            (["Millis", "Components.Millis"]).map
+                                                                              fun key =>
+                                                                              (key,
+                                                                                String.ofList
+                                                                                  ((remaining_roottbrltl).take
+                                                                                    ((remaining_roottbrltl).length -
+                                                                                      (remaining_roottbrltltrl).length)))
+                                                                          (fun (tailCaptures_roottbrltltrl : CaptureMap)
+                                                                                (suffix_roottbrltltrl : List Char) =>
+                                                                              (fun
+                                                                                    (tailCaptures_roottbrltl :
+                                                                                      CaptureMap)
+                                                                                    (suffix_roottbrltl : List Char) =>
+                                                                                  (fun
+                                                                                        (tailCaptures_roottbrl :
+                                                                                          CaptureMap)
+                                                                                        (suffix_roottbrl : List Char) =>
+                                                                                      (fun
+                                                                                            (bodyCaptures_roott :
+                                                                                              CaptureMap)
+                                                                                            (remaining_roott :
+                                                                                              List Char) =>
+                                                                                          let ownCaptures_roott :=
+                                                                                            (["Components"]).map
+                                                                                              fun key =>
+                                                                                              (key,
+                                                                                                String.ofList
+                                                                                                  ((remaining_root).take
+                                                                                                    ((remaining_root).length -
+                                                                                                      (remaining_roott).length)))
+                                                                                          (fun
+                                                                                                (tailCaptures_roott :
+                                                                                                  CaptureMap)
+                                                                                                (suffix_roott :
+                                                                                                  List Char) =>
+                                                                                              (fun
+                                                                                                    (tailCaptures_root :
+                                                                                                      CaptureMap)
+                                                                                                    (suffix_root :
+                                                                                                      List Char) =>
+                                                                                                  (fun
+                                                                                                        (captures :
+                                                                                                          CaptureMap)
+                                                                                                        (remaining :
+                                                                                                          List Char) =>
+                                                                                                      if
+                                                                                                          (remaining).isEmpty then
+                                                                                                        some captures
+                                                                                                      else none)
+                                                                                                    (ownCaptures_root ++
+                                                                                                        bodyCaptures_root ++
+                                                                                                      tailCaptures_root)
+                                                                                                    suffix_root)
+                                                                                                (ownCaptures_roott ++
+                                                                                                    bodyCaptures_roott ++
+                                                                                                  tailCaptures_roott)
+                                                                                                suffix_roott)
+                                                                                            ([] : CaptureMap)
+                                                                                            remaining_roott)
+                                                                                        (ownCaptures_roottbrl ++
+                                                                                            bodyCaptures_roottbrl ++
+                                                                                          tailCaptures_roottbrl)
+                                                                                        suffix_roottbrl)
+                                                                                    (ownCaptures_roottbrltl ++
+                                                                                        bodyCaptures_roottbrltl ++
+                                                                                      tailCaptures_roottbrltl)
+                                                                                    suffix_roottbrltl)
+                                                                                (ownCaptures_roottbrltltrl ++
+                                                                                    bodyCaptures_roottbrltltrl ++
+                                                                                  tailCaptures_roottbrltltrl)
+                                                                                suffix_roottbrltltrl)
+                                                                            ([] : CaptureMap) remaining_roottbrltltrl)
+                                                                        (ownCaptures_roottbrltltrlb ++
+                                                                            bodyCaptures_roottbrltltrlb ++
+                                                                          tailCaptures_roottbrltltrlb)
+                                                                        suffix_roottbrltltrlb)
+                                                                    ([] : CaptureMap)
+                                                                    ((remaining_roottbrltltrlb).drop
+                                                                      (characters_roottbrltltrlbt).length)
+                                                                else none)
+                                                              ([] : CaptureMap)
+                                                              ((remaining_roottbrltl).drop width_roottbrltltrlbb)
+                                                          else none)
+                                                        fun _ =>
+                                                        (fun (tailCaptures_roottbrltl : CaptureMap)
+                                                              (suffix_roottbrltl : List Char) =>
+                                                            (fun (tailCaptures_roottbrl : CaptureMap)
+                                                                  (suffix_roottbrl : List Char) =>
+                                                                (fun (bodyCaptures_roott : CaptureMap)
+                                                                      (remaining_roott : List Char) =>
+                                                                    let ownCaptures_roott :=
+                                                                      (["Components"]).map fun key =>
+                                                                        (key,
+                                                                          String.ofList
+                                                                            ((remaining_root).take
+                                                                              ((remaining_root).length -
+                                                                                (remaining_roott).length)))
+                                                                    (fun (tailCaptures_roott : CaptureMap)
+                                                                          (suffix_roott : List Char) =>
+                                                                        (fun (tailCaptures_root : CaptureMap)
+                                                                              (suffix_root : List Char) =>
+                                                                            (fun (captures : CaptureMap)
+                                                                                  (remaining : List Char) =>
+                                                                                if (remaining).isEmpty then
+                                                                                  some captures
+                                                                                else none)
+                                                                              (ownCaptures_root ++ bodyCaptures_root ++
+                                                                                tailCaptures_root)
+                                                                              suffix_root)
+                                                                          (ownCaptures_roott ++ bodyCaptures_roott ++
+                                                                            tailCaptures_roott)
+                                                                          suffix_roott)
+                                                                      ([] : CaptureMap) remaining_roott)
+                                                                  (ownCaptures_roottbrl ++ bodyCaptures_roottbrl ++
+                                                                    tailCaptures_roottbrl)
+                                                                  suffix_roottbrl)
+                                                              (ownCaptures_roottbrltl ++ bodyCaptures_roottbrltl ++
+                                                                tailCaptures_roottbrltl)
+                                                              suffix_roottbrltl)
+                                                          ([] : CaptureMap) remaining_roottbrltl)
+                                                  (ownCaptures_roottbrltlb ++ bodyCaptures_roottbrltlb ++
+                                                    tailCaptures_roottbrltlb)
+                                                  suffix_roottbrltlb)
+                                              ([] : CaptureMap)
+                                              ((remaining_roottbrltlb).drop (characters_roottbrltlbt).length)
+                                          else none)
+                                        ([] : CaptureMap) ((remaining_roottbrl).drop width_roottbrltlbb)
+                                    else none)
+                                  fun _ =>
+                                  scanOrElse
+                                    ((List.range ((remaining_roottbrl).length + 1)).findSome? fun width_roottbrltrlbb =>
+                                      if
+                                          termPrefixOk TokClass.digit LenSpec.atLeastOne remaining_roottbrl
+                                            width_roottbrltrlbb then
+                                        (fun (bodyCaptures_roottbrltrlb : CaptureMap)
+                                              (remaining_roottbrltrlb : List Char) =>
+                                            let ownCaptures_roottbrltrlb :=
+                                              (["DSeconds", "Seconds.DSeconds"]).map fun key =>
+                                                (key,
+                                                  String.ofList
+                                                    ((remaining_roottbrl).take
+                                                      ((remaining_roottbrl).length - (remaining_roottbrltrlb).length)))
+                                            let characters_roottbrltrlbt := "s".toList
+                                            if (characters_roottbrltrlbt).isPrefixOf remaining_roottbrltrlb then
+                                              (fun (tailCaptures_roottbrltrlb : CaptureMap)
+                                                    (suffix_roottbrltrlb : List Char) =>
+                                                  (fun (bodyCaptures_roottbrltrl : CaptureMap)
+                                                        (remaining_roottbrltrl : List Char) =>
+                                                      let ownCaptures_roottbrltrl :=
+                                                        (["Seconds", "Components.Seconds"]).map fun key =>
+                                                          (key,
+                                                            String.ofList
+                                                              ((remaining_roottbrl).take
+                                                                ((remaining_roottbrl).length -
+                                                                  (remaining_roottbrltrl).length)))
+                                                      scanOrElse
+                                                        ((List.range ((remaining_roottbrltrl).length + 1)).findSome?
+                                                          fun width_roottbrltrltlbb =>
+                                                          if
+                                                              termPrefixOk TokClass.digit LenSpec.atLeastOne
+                                                                remaining_roottbrltrl width_roottbrltrltlbb then
+                                                            (fun (bodyCaptures_roottbrltrltlb : CaptureMap)
+                                                                  (remaining_roottbrltrltlb : List Char) =>
+                                                                let ownCaptures_roottbrltrltlb :=
+                                                                  (["DMillis", "Millis.DMillis"]).map fun key =>
+                                                                    (key,
+                                                                      String.ofList
+                                                                        ((remaining_roottbrltrl).take
+                                                                          ((remaining_roottbrltrl).length -
+                                                                            (remaining_roottbrltrltlb).length)))
+                                                                let characters_roottbrltrltlbt := "ms".toList
+                                                                if
+                                                                    (characters_roottbrltrltlbt).isPrefixOf
+                                                                      remaining_roottbrltrltlb then
+                                                                  (fun (tailCaptures_roottbrltrltlb : CaptureMap)
+                                                                        (suffix_roottbrltrltlb : List Char) =>
+                                                                      (fun (bodyCaptures_roottbrltrltl : CaptureMap)
+                                                                            (remaining_roottbrltrltl : List Char) =>
+                                                                          let ownCaptures_roottbrltrltl :=
+                                                                            (["Millis", "Components.Millis"]).map
+                                                                              fun key =>
+                                                                              (key,
+                                                                                String.ofList
+                                                                                  ((remaining_roottbrltrl).take
+                                                                                    ((remaining_roottbrltrl).length -
+                                                                                      (remaining_roottbrltrltl).length)))
+                                                                          (fun (tailCaptures_roottbrltrltl : CaptureMap)
+                                                                                (suffix_roottbrltrltl : List Char) =>
+                                                                              (fun
+                                                                                    (tailCaptures_roottbrltrl :
+                                                                                      CaptureMap)
+                                                                                    (suffix_roottbrltrl : List Char) =>
+                                                                                  (fun
+                                                                                        (tailCaptures_roottbrl :
+                                                                                          CaptureMap)
+                                                                                        (suffix_roottbrl : List Char) =>
+                                                                                      (fun
+                                                                                            (bodyCaptures_roott :
+                                                                                              CaptureMap)
+                                                                                            (remaining_roott :
+                                                                                              List Char) =>
+                                                                                          let ownCaptures_roott :=
+                                                                                            (["Components"]).map
+                                                                                              fun key =>
+                                                                                              (key,
+                                                                                                String.ofList
+                                                                                                  ((remaining_root).take
+                                                                                                    ((remaining_root).length -
+                                                                                                      (remaining_roott).length)))
+                                                                                          (fun
+                                                                                                (tailCaptures_roott :
+                                                                                                  CaptureMap)
+                                                                                                (suffix_roott :
+                                                                                                  List Char) =>
+                                                                                              (fun
+                                                                                                    (tailCaptures_root :
+                                                                                                      CaptureMap)
+                                                                                                    (suffix_root :
+                                                                                                      List Char) =>
+                                                                                                  (fun
+                                                                                                        (captures :
+                                                                                                          CaptureMap)
+                                                                                                        (remaining :
+                                                                                                          List Char) =>
+                                                                                                      if
+                                                                                                          (remaining).isEmpty then
+                                                                                                        some captures
+                                                                                                      else none)
+                                                                                                    (ownCaptures_root ++
+                                                                                                        bodyCaptures_root ++
+                                                                                                      tailCaptures_root)
+                                                                                                    suffix_root)
+                                                                                                (ownCaptures_roott ++
+                                                                                                    bodyCaptures_roott ++
+                                                                                                  tailCaptures_roott)
+                                                                                                suffix_roott)
+                                                                                            ([] : CaptureMap)
+                                                                                            remaining_roott)
+                                                                                        (ownCaptures_roottbrl ++
+                                                                                            bodyCaptures_roottbrl ++
+                                                                                          tailCaptures_roottbrl)
+                                                                                        suffix_roottbrl)
+                                                                                    (ownCaptures_roottbrltrl ++
+                                                                                        bodyCaptures_roottbrltrl ++
+                                                                                      tailCaptures_roottbrltrl)
+                                                                                    suffix_roottbrltrl)
+                                                                                (ownCaptures_roottbrltrltl ++
+                                                                                    bodyCaptures_roottbrltrltl ++
+                                                                                  tailCaptures_roottbrltrltl)
+                                                                                suffix_roottbrltrltl)
+                                                                            ([] : CaptureMap) remaining_roottbrltrltl)
+                                                                        (ownCaptures_roottbrltrltlb ++
+                                                                            bodyCaptures_roottbrltrltlb ++
+                                                                          tailCaptures_roottbrltrltlb)
+                                                                        suffix_roottbrltrltlb)
+                                                                    ([] : CaptureMap)
+                                                                    ((remaining_roottbrltrltlb).drop
+                                                                      (characters_roottbrltrltlbt).length)
+                                                                else none)
+                                                              ([] : CaptureMap)
+                                                              ((remaining_roottbrltrl).drop width_roottbrltrltlbb)
+                                                          else none)
+                                                        fun _ =>
+                                                        (fun (tailCaptures_roottbrltrl : CaptureMap)
+                                                              (suffix_roottbrltrl : List Char) =>
+                                                            (fun (tailCaptures_roottbrl : CaptureMap)
+                                                                  (suffix_roottbrl : List Char) =>
+                                                                (fun (bodyCaptures_roott : CaptureMap)
+                                                                      (remaining_roott : List Char) =>
+                                                                    let ownCaptures_roott :=
+                                                                      (["Components"]).map fun key =>
+                                                                        (key,
+                                                                          String.ofList
+                                                                            ((remaining_root).take
+                                                                              ((remaining_root).length -
+                                                                                (remaining_roott).length)))
+                                                                    (fun (tailCaptures_roott : CaptureMap)
+                                                                          (suffix_roott : List Char) =>
+                                                                        (fun (tailCaptures_root : CaptureMap)
+                                                                              (suffix_root : List Char) =>
+                                                                            (fun (captures : CaptureMap)
+                                                                                  (remaining : List Char) =>
+                                                                                if (remaining).isEmpty then
+                                                                                  some captures
+                                                                                else none)
+                                                                              (ownCaptures_root ++ bodyCaptures_root ++
+                                                                                tailCaptures_root)
+                                                                              suffix_root)
+                                                                          (ownCaptures_roott ++ bodyCaptures_roott ++
+                                                                            tailCaptures_roott)
+                                                                          suffix_roott)
+                                                                      ([] : CaptureMap) remaining_roott)
+                                                                  (ownCaptures_roottbrl ++ bodyCaptures_roottbrl ++
+                                                                    tailCaptures_roottbrl)
+                                                                  suffix_roottbrl)
+                                                              (ownCaptures_roottbrltrl ++ bodyCaptures_roottbrltrl ++
+                                                                tailCaptures_roottbrltrl)
+                                                              suffix_roottbrltrl)
+                                                          ([] : CaptureMap) remaining_roottbrltrl)
+                                                    (ownCaptures_roottbrltrlb ++ bodyCaptures_roottbrltrlb ++
+                                                      tailCaptures_roottbrltrlb)
+                                                    suffix_roottbrltrlb)
+                                                ([] : CaptureMap)
+                                                ((remaining_roottbrltrlb).drop (characters_roottbrltrlbt).length)
+                                            else none)
+                                          ([] : CaptureMap) ((remaining_roottbrl).drop width_roottbrltrlbb)
+                                      else none)
+                                    fun _ =>
+                                    scanOrElse
+                                      ((List.range ((remaining_roottbrl).length + 1)).findSome?
+                                        fun width_roottbrltrrlbb =>
+                                        if
+                                            termPrefixOk TokClass.digit LenSpec.atLeastOne remaining_roottbrl
+                                              width_roottbrltrrlbb then
+                                          (fun (bodyCaptures_roottbrltrrlb : CaptureMap)
+                                                (remaining_roottbrltrrlb : List Char) =>
+                                              let ownCaptures_roottbrltrrlb :=
+                                                (["DMillis", "Millis.DMillis"]).map fun key =>
+                                                  (key,
+                                                    String.ofList
+                                                      ((remaining_roottbrl).take
+                                                        ((remaining_roottbrl).length -
+                                                          (remaining_roottbrltrrlb).length)))
+                                              let characters_roottbrltrrlbt := "ms".toList
+                                              if (characters_roottbrltrrlbt).isPrefixOf remaining_roottbrltrrlb then
+                                                (fun (tailCaptures_roottbrltrrlb : CaptureMap)
+                                                      (suffix_roottbrltrrlb : List Char) =>
+                                                    (fun (bodyCaptures_roottbrltrrl : CaptureMap)
+                                                          (remaining_roottbrltrrl : List Char) =>
+                                                        let ownCaptures_roottbrltrrl :=
+                                                          (["Millis", "Components.Millis"]).map fun key =>
+                                                            (key,
+                                                              String.ofList
+                                                                ((remaining_roottbrl).take
+                                                                  ((remaining_roottbrl).length -
+                                                                    (remaining_roottbrltrrl).length)))
+                                                        (fun (tailCaptures_roottbrltrrl : CaptureMap)
+                                                              (suffix_roottbrltrrl : List Char) =>
+                                                            (fun (tailCaptures_roottbrl : CaptureMap)
+                                                                  (suffix_roottbrl : List Char) =>
+                                                                (fun (bodyCaptures_roott : CaptureMap)
+                                                                      (remaining_roott : List Char) =>
+                                                                    let ownCaptures_roott :=
+                                                                      (["Components"]).map fun key =>
+                                                                        (key,
+                                                                          String.ofList
+                                                                            ((remaining_root).take
+                                                                              ((remaining_root).length -
+                                                                                (remaining_roott).length)))
+                                                                    (fun (tailCaptures_roott : CaptureMap)
+                                                                          (suffix_roott : List Char) =>
+                                                                        (fun (tailCaptures_root : CaptureMap)
+                                                                              (suffix_root : List Char) =>
+                                                                            (fun (captures : CaptureMap)
+                                                                                  (remaining : List Char) =>
+                                                                                if (remaining).isEmpty then
+                                                                                  some captures
+                                                                                else none)
+                                                                              (ownCaptures_root ++ bodyCaptures_root ++
+                                                                                tailCaptures_root)
+                                                                              suffix_root)
+                                                                          (ownCaptures_roott ++ bodyCaptures_roott ++
+                                                                            tailCaptures_roott)
+                                                                          suffix_roott)
+                                                                      ([] : CaptureMap) remaining_roott)
+                                                                  (ownCaptures_roottbrl ++ bodyCaptures_roottbrl ++
+                                                                    tailCaptures_roottbrl)
+                                                                  suffix_roottbrl)
+                                                              (ownCaptures_roottbrltrrl ++ bodyCaptures_roottbrltrrl ++
+                                                                tailCaptures_roottbrltrrl)
+                                                              suffix_roottbrltrrl)
+                                                          ([] : CaptureMap) remaining_roottbrltrrl)
+                                                      (ownCaptures_roottbrltrrlb ++ bodyCaptures_roottbrltrrlb ++
+                                                        tailCaptures_roottbrltrrlb)
+                                                      suffix_roottbrltrrlb)
+                                                  ([] : CaptureMap)
+                                                  ((remaining_roottbrltrrlb).drop (characters_roottbrltrrlbt).length)
+                                              else none)
+                                            ([] : CaptureMap) ((remaining_roottbrl).drop width_roottbrltrrlbb)
+                                        else none)
+                                      fun _ =>
+                                      (fun (tailCaptures_roottbrl : CaptureMap) (suffix_roottbrl : List Char) =>
+                                          (fun (bodyCaptures_roott : CaptureMap) (remaining_roott : List Char) =>
+                                              let ownCaptures_roott :=
+                                                (["Components"]).map fun key =>
+                                                  (key,
+                                                    String.ofList
+                                                      ((remaining_root).take
+                                                        ((remaining_root).length - (remaining_roott).length)))
+                                              (fun (tailCaptures_roott : CaptureMap) (suffix_roott : List Char) =>
+                                                  (fun (tailCaptures_root : CaptureMap) (suffix_root : List Char) =>
+                                                      (fun (captures : CaptureMap) (remaining : List Char) =>
+                                                          if (remaining).isEmpty then some captures else none)
+                                                        (ownCaptures_root ++ bodyCaptures_root ++ tailCaptures_root)
+                                                        suffix_root)
+                                                    (ownCaptures_roott ++ bodyCaptures_roott ++ tailCaptures_roott)
+                                                    suffix_roott)
+                                                ([] : CaptureMap) remaining_roott)
+                                            (ownCaptures_roottbrl ++ bodyCaptures_roottbrl ++ tailCaptures_roottbrl)
+                                            suffix_roottbrl)
+                                        ([] : CaptureMap) remaining_roottbrl)
+                              (ownCaptures_roottbrlb ++ bodyCaptures_roottbrlb ++ tailCaptures_roottbrlb)
+                              suffix_roottbrlb)
+                          ([] : CaptureMap) ((remaining_roottbrlb).drop (characters_roottbrlbt).length)
+                      else none)
+                    ([] : CaptureMap) ((remaining_root).drop width_roottbrlbb)
+                else none)
+              fun _ =>
+              scanOrElse
+                ((List.range ((remaining_root).length + 1)).findSome? fun width_roottbrrlbb =>
+                  if termPrefixOk TokClass.digit LenSpec.atLeastOne remaining_root width_roottbrrlbb then
+                    (fun (bodyCaptures_roottbrrlb : CaptureMap) (remaining_roottbrrlb : List Char) =>
+                        let ownCaptures_roottbrrlb :=
+                          (["DMinutes", "Minutes.DMinutes"]).map fun key =>
+                            (key,
+                              String.ofList
+                                ((remaining_root).take ((remaining_root).length - (remaining_roottbrrlb).length)))
+                        let characters_roottbrrlbt := "m".toList
+                        if (characters_roottbrrlbt).isPrefixOf remaining_roottbrrlb then
+                          (fun (tailCaptures_roottbrrlb : CaptureMap) (suffix_roottbrrlb : List Char) =>
+                              (fun (bodyCaptures_roottbrrl : CaptureMap) (remaining_roottbrrl : List Char) =>
+                                  let ownCaptures_roottbrrl :=
+                                    (["Minutes", "Components.Minutes"]).map fun key =>
+                                      (key,
+                                        String.ofList
+                                          ((remaining_root).take
+                                            ((remaining_root).length - (remaining_roottbrrl).length)))
+                                  scanOrElse
+                                    ((List.range ((remaining_roottbrrl).length + 1)).findSome?
+                                      fun width_roottbrrltlbb =>
+                                      if
+                                          termPrefixOk TokClass.digit LenSpec.atLeastOne remaining_roottbrrl
+                                            width_roottbrrltlbb then
+                                        (fun (bodyCaptures_roottbrrltlb : CaptureMap)
+                                              (remaining_roottbrrltlb : List Char) =>
+                                            let ownCaptures_roottbrrltlb :=
+                                              (["DSeconds", "Seconds.DSeconds"]).map fun key =>
+                                                (key,
+                                                  String.ofList
+                                                    ((remaining_roottbrrl).take
+                                                      ((remaining_roottbrrl).length - (remaining_roottbrrltlb).length)))
+                                            let characters_roottbrrltlbt := "s".toList
+                                            if (characters_roottbrrltlbt).isPrefixOf remaining_roottbrrltlb then
+                                              (fun (tailCaptures_roottbrrltlb : CaptureMap)
+                                                    (suffix_roottbrrltlb : List Char) =>
+                                                  (fun (bodyCaptures_roottbrrltl : CaptureMap)
+                                                        (remaining_roottbrrltl : List Char) =>
+                                                      let ownCaptures_roottbrrltl :=
+                                                        (["Seconds", "Components.Seconds"]).map fun key =>
+                                                          (key,
+                                                            String.ofList
+                                                              ((remaining_roottbrrl).take
+                                                                ((remaining_roottbrrl).length -
+                                                                  (remaining_roottbrrltl).length)))
+                                                      scanOrElse
+                                                        ((List.range ((remaining_roottbrrltl).length + 1)).findSome?
+                                                          fun width_roottbrrltltlbb =>
+                                                          if
+                                                              termPrefixOk TokClass.digit LenSpec.atLeastOne
+                                                                remaining_roottbrrltl width_roottbrrltltlbb then
+                                                            (fun (bodyCaptures_roottbrrltltlb : CaptureMap)
+                                                                  (remaining_roottbrrltltlb : List Char) =>
+                                                                let ownCaptures_roottbrrltltlb :=
+                                                                  (["DMillis", "Millis.DMillis"]).map fun key =>
+                                                                    (key,
+                                                                      String.ofList
+                                                                        ((remaining_roottbrrltl).take
+                                                                          ((remaining_roottbrrltl).length -
+                                                                            (remaining_roottbrrltltlb).length)))
+                                                                let characters_roottbrrltltlbt := "ms".toList
+                                                                if
+                                                                    (characters_roottbrrltltlbt).isPrefixOf
+                                                                      remaining_roottbrrltltlb then
+                                                                  (fun (tailCaptures_roottbrrltltlb : CaptureMap)
+                                                                        (suffix_roottbrrltltlb : List Char) =>
+                                                                      (fun (bodyCaptures_roottbrrltltl : CaptureMap)
+                                                                            (remaining_roottbrrltltl : List Char) =>
+                                                                          let ownCaptures_roottbrrltltl :=
+                                                                            (["Millis", "Components.Millis"]).map
+                                                                              fun key =>
+                                                                              (key,
+                                                                                String.ofList
+                                                                                  ((remaining_roottbrrltl).take
+                                                                                    ((remaining_roottbrrltl).length -
+                                                                                      (remaining_roottbrrltltl).length)))
+                                                                          (fun (tailCaptures_roottbrrltltl : CaptureMap)
+                                                                                (suffix_roottbrrltltl : List Char) =>
+                                                                              (fun
+                                                                                    (tailCaptures_roottbrrltl :
+                                                                                      CaptureMap)
+                                                                                    (suffix_roottbrrltl : List Char) =>
+                                                                                  (fun
+                                                                                        (tailCaptures_roottbrrl :
+                                                                                          CaptureMap)
+                                                                                        (suffix_roottbrrl :
+                                                                                          List Char) =>
+                                                                                      (fun
+                                                                                            (bodyCaptures_roott :
+                                                                                              CaptureMap)
+                                                                                            (remaining_roott :
+                                                                                              List Char) =>
+                                                                                          let ownCaptures_roott :=
+                                                                                            (["Components"]).map
+                                                                                              fun key =>
+                                                                                              (key,
+                                                                                                String.ofList
+                                                                                                  ((remaining_root).take
+                                                                                                    ((remaining_root).length -
+                                                                                                      (remaining_roott).length)))
+                                                                                          (fun
+                                                                                                (tailCaptures_roott :
+                                                                                                  CaptureMap)
+                                                                                                (suffix_roott :
+                                                                                                  List Char) =>
+                                                                                              (fun
+                                                                                                    (tailCaptures_root :
+                                                                                                      CaptureMap)
+                                                                                                    (suffix_root :
+                                                                                                      List Char) =>
+                                                                                                  (fun
+                                                                                                        (captures :
+                                                                                                          CaptureMap)
+                                                                                                        (remaining :
+                                                                                                          List Char) =>
+                                                                                                      if
+                                                                                                          (remaining).isEmpty then
+                                                                                                        some captures
+                                                                                                      else none)
+                                                                                                    (ownCaptures_root ++
+                                                                                                        bodyCaptures_root ++
+                                                                                                      tailCaptures_root)
+                                                                                                    suffix_root)
+                                                                                                (ownCaptures_roott ++
+                                                                                                    bodyCaptures_roott ++
+                                                                                                  tailCaptures_roott)
+                                                                                                suffix_roott)
+                                                                                            ([] : CaptureMap)
+                                                                                            remaining_roott)
+                                                                                        (ownCaptures_roottbrrl ++
+                                                                                            bodyCaptures_roottbrrl ++
+                                                                                          tailCaptures_roottbrrl)
+                                                                                        suffix_roottbrrl)
+                                                                                    (ownCaptures_roottbrrltl ++
+                                                                                        bodyCaptures_roottbrrltl ++
+                                                                                      tailCaptures_roottbrrltl)
+                                                                                    suffix_roottbrrltl)
+                                                                                (ownCaptures_roottbrrltltl ++
+                                                                                    bodyCaptures_roottbrrltltl ++
+                                                                                  tailCaptures_roottbrrltltl)
+                                                                                suffix_roottbrrltltl)
+                                                                            ([] : CaptureMap) remaining_roottbrrltltl)
+                                                                        (ownCaptures_roottbrrltltlb ++
+                                                                            bodyCaptures_roottbrrltltlb ++
+                                                                          tailCaptures_roottbrrltltlb)
+                                                                        suffix_roottbrrltltlb)
+                                                                    ([] : CaptureMap)
+                                                                    ((remaining_roottbrrltltlb).drop
+                                                                      (characters_roottbrrltltlbt).length)
+                                                                else none)
+                                                              ([] : CaptureMap)
+                                                              ((remaining_roottbrrltl).drop width_roottbrrltltlbb)
+                                                          else none)
+                                                        fun _ =>
+                                                        (fun (tailCaptures_roottbrrltl : CaptureMap)
+                                                              (suffix_roottbrrltl : List Char) =>
+                                                            (fun (tailCaptures_roottbrrl : CaptureMap)
+                                                                  (suffix_roottbrrl : List Char) =>
+                                                                (fun (bodyCaptures_roott : CaptureMap)
+                                                                      (remaining_roott : List Char) =>
+                                                                    let ownCaptures_roott :=
+                                                                      (["Components"]).map fun key =>
+                                                                        (key,
+                                                                          String.ofList
+                                                                            ((remaining_root).take
+                                                                              ((remaining_root).length -
+                                                                                (remaining_roott).length)))
+                                                                    (fun (tailCaptures_roott : CaptureMap)
+                                                                          (suffix_roott : List Char) =>
+                                                                        (fun (tailCaptures_root : CaptureMap)
+                                                                              (suffix_root : List Char) =>
+                                                                            (fun (captures : CaptureMap)
+                                                                                  (remaining : List Char) =>
+                                                                                if (remaining).isEmpty then
+                                                                                  some captures
+                                                                                else none)
+                                                                              (ownCaptures_root ++ bodyCaptures_root ++
+                                                                                tailCaptures_root)
+                                                                              suffix_root)
+                                                                          (ownCaptures_roott ++ bodyCaptures_roott ++
+                                                                            tailCaptures_roott)
+                                                                          suffix_roott)
+                                                                      ([] : CaptureMap) remaining_roott)
+                                                                  (ownCaptures_roottbrrl ++ bodyCaptures_roottbrrl ++
+                                                                    tailCaptures_roottbrrl)
+                                                                  suffix_roottbrrl)
+                                                              (ownCaptures_roottbrrltl ++ bodyCaptures_roottbrrltl ++
+                                                                tailCaptures_roottbrrltl)
+                                                              suffix_roottbrrltl)
+                                                          ([] : CaptureMap) remaining_roottbrrltl)
+                                                    (ownCaptures_roottbrrltlb ++ bodyCaptures_roottbrrltlb ++
+                                                      tailCaptures_roottbrrltlb)
+                                                    suffix_roottbrrltlb)
+                                                ([] : CaptureMap)
+                                                ((remaining_roottbrrltlb).drop (characters_roottbrrltlbt).length)
+                                            else none)
+                                          ([] : CaptureMap) ((remaining_roottbrrl).drop width_roottbrrltlbb)
+                                      else none)
+                                    fun _ =>
+                                    scanOrElse
+                                      ((List.range ((remaining_roottbrrl).length + 1)).findSome?
+                                        fun width_roottbrrltrlbb =>
+                                        if
+                                            termPrefixOk TokClass.digit LenSpec.atLeastOne remaining_roottbrrl
+                                              width_roottbrrltrlbb then
+                                          (fun (bodyCaptures_roottbrrltrlb : CaptureMap)
+                                                (remaining_roottbrrltrlb : List Char) =>
+                                              let ownCaptures_roottbrrltrlb :=
+                                                (["DMillis", "Millis.DMillis"]).map fun key =>
+                                                  (key,
+                                                    String.ofList
+                                                      ((remaining_roottbrrl).take
+                                                        ((remaining_roottbrrl).length -
+                                                          (remaining_roottbrrltrlb).length)))
+                                              let characters_roottbrrltrlbt := "ms".toList
+                                              if (characters_roottbrrltrlbt).isPrefixOf remaining_roottbrrltrlb then
+                                                (fun (tailCaptures_roottbrrltrlb : CaptureMap)
+                                                      (suffix_roottbrrltrlb : List Char) =>
+                                                    (fun (bodyCaptures_roottbrrltrl : CaptureMap)
+                                                          (remaining_roottbrrltrl : List Char) =>
+                                                        let ownCaptures_roottbrrltrl :=
+                                                          (["Millis", "Components.Millis"]).map fun key =>
+                                                            (key,
+                                                              String.ofList
+                                                                ((remaining_roottbrrl).take
+                                                                  ((remaining_roottbrrl).length -
+                                                                    (remaining_roottbrrltrl).length)))
+                                                        (fun (tailCaptures_roottbrrltrl : CaptureMap)
+                                                              (suffix_roottbrrltrl : List Char) =>
+                                                            (fun (tailCaptures_roottbrrl : CaptureMap)
+                                                                  (suffix_roottbrrl : List Char) =>
+                                                                (fun (bodyCaptures_roott : CaptureMap)
+                                                                      (remaining_roott : List Char) =>
+                                                                    let ownCaptures_roott :=
+                                                                      (["Components"]).map fun key =>
+                                                                        (key,
+                                                                          String.ofList
+                                                                            ((remaining_root).take
+                                                                              ((remaining_root).length -
+                                                                                (remaining_roott).length)))
+                                                                    (fun (tailCaptures_roott : CaptureMap)
+                                                                          (suffix_roott : List Char) =>
+                                                                        (fun (tailCaptures_root : CaptureMap)
+                                                                              (suffix_root : List Char) =>
+                                                                            (fun (captures : CaptureMap)
+                                                                                  (remaining : List Char) =>
+                                                                                if (remaining).isEmpty then
+                                                                                  some captures
+                                                                                else none)
+                                                                              (ownCaptures_root ++ bodyCaptures_root ++
+                                                                                tailCaptures_root)
+                                                                              suffix_root)
+                                                                          (ownCaptures_roott ++ bodyCaptures_roott ++
+                                                                            tailCaptures_roott)
+                                                                          suffix_roott)
+                                                                      ([] : CaptureMap) remaining_roott)
+                                                                  (ownCaptures_roottbrrl ++ bodyCaptures_roottbrrl ++
+                                                                    tailCaptures_roottbrrl)
+                                                                  suffix_roottbrrl)
+                                                              (ownCaptures_roottbrrltrl ++ bodyCaptures_roottbrrltrl ++
+                                                                tailCaptures_roottbrrltrl)
+                                                              suffix_roottbrrltrl)
+                                                          ([] : CaptureMap) remaining_roottbrrltrl)
+                                                      (ownCaptures_roottbrrltrlb ++ bodyCaptures_roottbrrltrlb ++
+                                                        tailCaptures_roottbrrltrlb)
+                                                      suffix_roottbrrltrlb)
+                                                  ([] : CaptureMap)
+                                                  ((remaining_roottbrrltrlb).drop (characters_roottbrrltrlbt).length)
+                                              else none)
+                                            ([] : CaptureMap) ((remaining_roottbrrl).drop width_roottbrrltrlbb)
+                                        else none)
+                                      fun _ =>
+                                      (fun (tailCaptures_roottbrrl : CaptureMap) (suffix_roottbrrl : List Char) =>
+                                          (fun (bodyCaptures_roott : CaptureMap) (remaining_roott : List Char) =>
+                                              let ownCaptures_roott :=
+                                                (["Components"]).map fun key =>
+                                                  (key,
+                                                    String.ofList
+                                                      ((remaining_root).take
+                                                        ((remaining_root).length - (remaining_roott).length)))
+                                              (fun (tailCaptures_roott : CaptureMap) (suffix_roott : List Char) =>
+                                                  (fun (tailCaptures_root : CaptureMap) (suffix_root : List Char) =>
+                                                      (fun (captures : CaptureMap) (remaining : List Char) =>
+                                                          if (remaining).isEmpty then some captures else none)
+                                                        (ownCaptures_root ++ bodyCaptures_root ++ tailCaptures_root)
+                                                        suffix_root)
+                                                    (ownCaptures_roott ++ bodyCaptures_roott ++ tailCaptures_roott)
+                                                    suffix_roott)
+                                                ([] : CaptureMap) remaining_roott)
+                                            (ownCaptures_roottbrrl ++ bodyCaptures_roottbrrl ++ tailCaptures_roottbrrl)
+                                            suffix_roottbrrl)
+                                        ([] : CaptureMap) remaining_roottbrrl)
+                                (ownCaptures_roottbrrlb ++ bodyCaptures_roottbrrlb ++ tailCaptures_roottbrrlb)
+                                suffix_roottbrrlb)
+                            ([] : CaptureMap) ((remaining_roottbrrlb).drop (characters_roottbrrlbt).length)
+                        else none)
+                      ([] : CaptureMap) ((remaining_root).drop width_roottbrrlbb)
+                  else none)
+                fun _ =>
+                scanOrElse
+                  ((List.range ((remaining_root).length + 1)).findSome? fun width_roottbrrrlbb =>
+                    if termPrefixOk TokClass.digit LenSpec.atLeastOne remaining_root width_roottbrrrlbb then
+                      (fun (bodyCaptures_roottbrrrlb : CaptureMap) (remaining_roottbrrrlb : List Char) =>
+                          let ownCaptures_roottbrrrlb :=
+                            (["DSeconds", "Seconds.DSeconds"]).map fun key =>
+                              (key,
+                                String.ofList
+                                  ((remaining_root).take ((remaining_root).length - (remaining_roottbrrrlb).length)))
+                          let characters_roottbrrrlbt := "s".toList
+                          if (characters_roottbrrrlbt).isPrefixOf remaining_roottbrrrlb then
+                            (fun (tailCaptures_roottbrrrlb : CaptureMap) (suffix_roottbrrrlb : List Char) =>
+                                (fun (bodyCaptures_roottbrrrl : CaptureMap) (remaining_roottbrrrl : List Char) =>
+                                    let ownCaptures_roottbrrrl :=
+                                      (["Seconds", "Components.Seconds"]).map fun key =>
+                                        (key,
+                                          String.ofList
+                                            ((remaining_root).take
+                                              ((remaining_root).length - (remaining_roottbrrrl).length)))
+                                    scanOrElse
+                                      ((List.range ((remaining_roottbrrrl).length + 1)).findSome?
+                                        fun width_roottbrrrltlbb =>
+                                        if
+                                            termPrefixOk TokClass.digit LenSpec.atLeastOne remaining_roottbrrrl
+                                              width_roottbrrrltlbb then
+                                          (fun (bodyCaptures_roottbrrrltlb : CaptureMap)
+                                                (remaining_roottbrrrltlb : List Char) =>
+                                              let ownCaptures_roottbrrrltlb :=
+                                                (["DMillis", "Millis.DMillis"]).map fun key =>
+                                                  (key,
+                                                    String.ofList
+                                                      ((remaining_roottbrrrl).take
+                                                        ((remaining_roottbrrrl).length -
+                                                          (remaining_roottbrrrltlb).length)))
+                                              let characters_roottbrrrltlbt := "ms".toList
+                                              if (characters_roottbrrrltlbt).isPrefixOf remaining_roottbrrrltlb then
+                                                (fun (tailCaptures_roottbrrrltlb : CaptureMap)
+                                                      (suffix_roottbrrrltlb : List Char) =>
+                                                    (fun (bodyCaptures_roottbrrrltl : CaptureMap)
+                                                          (remaining_roottbrrrltl : List Char) =>
+                                                        let ownCaptures_roottbrrrltl :=
+                                                          (["Millis", "Components.Millis"]).map fun key =>
+                                                            (key,
+                                                              String.ofList
+                                                                ((remaining_roottbrrrl).take
+                                                                  ((remaining_roottbrrrl).length -
+                                                                    (remaining_roottbrrrltl).length)))
+                                                        (fun (tailCaptures_roottbrrrltl : CaptureMap)
+                                                              (suffix_roottbrrrltl : List Char) =>
+                                                            (fun (tailCaptures_roottbrrrl : CaptureMap)
+                                                                  (suffix_roottbrrrl : List Char) =>
+                                                                (fun (bodyCaptures_roott : CaptureMap)
+                                                                      (remaining_roott : List Char) =>
+                                                                    let ownCaptures_roott :=
+                                                                      (["Components"]).map fun key =>
+                                                                        (key,
+                                                                          String.ofList
+                                                                            ((remaining_root).take
+                                                                              ((remaining_root).length -
+                                                                                (remaining_roott).length)))
+                                                                    (fun (tailCaptures_roott : CaptureMap)
+                                                                          (suffix_roott : List Char) =>
+                                                                        (fun (tailCaptures_root : CaptureMap)
+                                                                              (suffix_root : List Char) =>
+                                                                            (fun (captures : CaptureMap)
+                                                                                  (remaining : List Char) =>
+                                                                                if (remaining).isEmpty then
+                                                                                  some captures
+                                                                                else none)
+                                                                              (ownCaptures_root ++ bodyCaptures_root ++
+                                                                                tailCaptures_root)
+                                                                              suffix_root)
+                                                                          (ownCaptures_roott ++ bodyCaptures_roott ++
+                                                                            tailCaptures_roott)
+                                                                          suffix_roott)
+                                                                      ([] : CaptureMap) remaining_roott)
+                                                                  (ownCaptures_roottbrrrl ++ bodyCaptures_roottbrrrl ++
+                                                                    tailCaptures_roottbrrrl)
+                                                                  suffix_roottbrrrl)
+                                                              (ownCaptures_roottbrrrltl ++ bodyCaptures_roottbrrrltl ++
+                                                                tailCaptures_roottbrrrltl)
+                                                              suffix_roottbrrrltl)
+                                                          ([] : CaptureMap) remaining_roottbrrrltl)
+                                                      (ownCaptures_roottbrrrltlb ++ bodyCaptures_roottbrrrltlb ++
+                                                        tailCaptures_roottbrrrltlb)
+                                                      suffix_roottbrrrltlb)
+                                                  ([] : CaptureMap)
+                                                  ((remaining_roottbrrrltlb).drop (characters_roottbrrrltlbt).length)
+                                              else none)
+                                            ([] : CaptureMap) ((remaining_roottbrrrl).drop width_roottbrrrltlbb)
+                                        else none)
+                                      fun _ =>
+                                      (fun (tailCaptures_roottbrrrl : CaptureMap) (suffix_roottbrrrl : List Char) =>
+                                          (fun (bodyCaptures_roott : CaptureMap) (remaining_roott : List Char) =>
+                                              let ownCaptures_roott :=
+                                                (["Components"]).map fun key =>
+                                                  (key,
+                                                    String.ofList
+                                                      ((remaining_root).take
+                                                        ((remaining_root).length - (remaining_roott).length)))
+                                              (fun (tailCaptures_roott : CaptureMap) (suffix_roott : List Char) =>
+                                                  (fun (tailCaptures_root : CaptureMap) (suffix_root : List Char) =>
+                                                      (fun (captures : CaptureMap) (remaining : List Char) =>
+                                                          if (remaining).isEmpty then some captures else none)
+                                                        (ownCaptures_root ++ bodyCaptures_root ++ tailCaptures_root)
+                                                        suffix_root)
+                                                    (ownCaptures_roott ++ bodyCaptures_roott ++ tailCaptures_roott)
+                                                    suffix_roott)
+                                                ([] : CaptureMap) remaining_roott)
+                                            (ownCaptures_roottbrrrl ++ bodyCaptures_roottbrrrl ++
+                                              tailCaptures_roottbrrrl)
+                                            suffix_roottbrrrl)
+                                        ([] : CaptureMap) remaining_roottbrrrl)
+                                  (ownCaptures_roottbrrrlb ++ bodyCaptures_roottbrrrlb ++ tailCaptures_roottbrrrlb)
+                                  suffix_roottbrrrlb)
+                              ([] : CaptureMap) ((remaining_roottbrrrlb).drop (characters_roottbrrrlbt).length)
+                          else none)
+                        ([] : CaptureMap) ((remaining_root).drop width_roottbrrrlbb)
+                    else none)
+                  fun _ =>
+                  scanOrElse
+                    ((List.range ((remaining_root).length + 1)).findSome? fun width_roottbrrrrlbb =>
+                      if termPrefixOk TokClass.digit LenSpec.atLeastOne remaining_root width_roottbrrrrlbb then
+                        (fun (bodyCaptures_roottbrrrrlb : CaptureMap) (remaining_roottbrrrrlb : List Char) =>
+                            let ownCaptures_roottbrrrrlb :=
+                              (["DMillis", "Millis.DMillis"]).map fun key =>
+                                (key,
+                                  String.ofList
+                                    ((remaining_root).take ((remaining_root).length - (remaining_roottbrrrrlb).length)))
+                            let characters_roottbrrrrlbt := "ms".toList
+                            if (characters_roottbrrrrlbt).isPrefixOf remaining_roottbrrrrlb then
+                              (fun (tailCaptures_roottbrrrrlb : CaptureMap) (suffix_roottbrrrrlb : List Char) =>
+                                  (fun (bodyCaptures_roottbrrrrl : CaptureMap) (remaining_roottbrrrrl : List Char) =>
+                                      let ownCaptures_roottbrrrrl :=
+                                        (["Millis", "Components.Millis"]).map fun key =>
+                                          (key,
+                                            String.ofList
+                                              ((remaining_root).take
+                                                ((remaining_root).length - (remaining_roottbrrrrl).length)))
+                                      (fun (tailCaptures_roottbrrrrl : CaptureMap) (suffix_roottbrrrrl : List Char) =>
+                                          (fun (bodyCaptures_roott : CaptureMap) (remaining_roott : List Char) =>
+                                              let ownCaptures_roott :=
+                                                (["Components"]).map fun key =>
+                                                  (key,
+                                                    String.ofList
+                                                      ((remaining_root).take
+                                                        ((remaining_root).length - (remaining_roott).length)))
+                                              (fun (tailCaptures_roott : CaptureMap) (suffix_roott : List Char) =>
+                                                  (fun (tailCaptures_root : CaptureMap) (suffix_root : List Char) =>
+                                                      (fun (captures : CaptureMap) (remaining : List Char) =>
+                                                          if (remaining).isEmpty then some captures else none)
+                                                        (ownCaptures_root ++ bodyCaptures_root ++ tailCaptures_root)
+                                                        suffix_root)
+                                                    (ownCaptures_roott ++ bodyCaptures_roott ++ tailCaptures_roott)
+                                                    suffix_roott)
+                                                ([] : CaptureMap) remaining_roott)
+                                            (ownCaptures_roottbrrrrl ++ bodyCaptures_roottbrrrrl ++
+                                              tailCaptures_roottbrrrrl)
+                                            suffix_roottbrrrrl)
+                                        ([] : CaptureMap) remaining_roottbrrrrl)
+                                    (ownCaptures_roottbrrrrlb ++ bodyCaptures_roottbrrrrlb ++ tailCaptures_roottbrrrrlb)
+                                    suffix_roottbrrrrlb)
+                                ([] : CaptureMap) ((remaining_roottbrrrrlb).drop (characters_roottbrrrrlbt).length)
+                            else none)
+                          ([] : CaptureMap) ((remaining_root).drop width_roottbrrrrlbb)
+                      else none)
+                    fun _ =>
+                    (fun (bodyCaptures_roott : CaptureMap) (remaining_roott : List Char) =>
+                        let ownCaptures_roott :=
+                          (["Components"]).map fun key =>
+                            (key,
+                              String.ofList
+                                ((remaining_root).take ((remaining_root).length - (remaining_roott).length)))
+                        (fun (tailCaptures_roott : CaptureMap) (suffix_roott : List Char) =>
+                            (fun (tailCaptures_root : CaptureMap) (suffix_root : List Char) =>
+                                (fun (captures : CaptureMap) (remaining : List Char) =>
+                                    if (remaining).isEmpty then some captures else none)
+                                  (ownCaptures_root ++ bodyCaptures_root ++ tailCaptures_root) suffix_root)
+                              (ownCaptures_roott ++ bodyCaptures_roott ++ tailCaptures_roott) suffix_roott)
+                          ([] : CaptureMap) remaining_roott)
+                      ([] : CaptureMap) remaining_root)
+        ([] : CaptureMap) ((input).drop (characters_rootbl).length)
+    else none)
+    fun _ =>
+    (fun (bodyCaptures_root : CaptureMap) (remaining_root : List Char) =>
+        let ownCaptures_root :=
+          (["Sign"]).map fun key => (key, String.ofList ((input).take ((input).length - (remaining_root).length)))
+        scanOrElse
+          ((List.range ((remaining_root).length + 1)).findSome? fun width_roottblbb =>
+            if termPrefixOk TokClass.digit LenSpec.atLeastOne remaining_root width_roottblbb then
+              (fun (bodyCaptures_roottblb : CaptureMap) (remaining_roottblb : List Char) =>
+                  let ownCaptures_roottblb :=
+                    (["DDays", "Days.DDays"]).map fun key =>
+                      (key,
+                        String.ofList ((remaining_root).take ((remaining_root).length - (remaining_roottblb).length)))
+                  let characters_roottblbt := "d".toList
+                  if (characters_roottblbt).isPrefixOf remaining_roottblb then
+                    (fun (tailCaptures_roottblb : CaptureMap) (suffix_roottblb : List Char) =>
+                        (fun (bodyCaptures_roottbl : CaptureMap) (remaining_roottbl : List Char) =>
+                            let ownCaptures_roottbl :=
+                              (["Days", "Components.Days"]).map fun key =>
+                                (key,
+                                  String.ofList
+                                    ((remaining_root).take ((remaining_root).length - (remaining_roottbl).length)))
+                            scanOrElse
+                              ((List.range ((remaining_roottbl).length + 1)).findSome? fun width_roottbltlbb =>
+                                if
+                                    termPrefixOk TokClass.digit LenSpec.atLeastOne remaining_roottbl
+                                      width_roottbltlbb then
+                                  (fun (bodyCaptures_roottbltlb : CaptureMap) (remaining_roottbltlb : List Char) =>
+                                      let ownCaptures_roottbltlb :=
+                                        (["DHours", "Hours.DHours"]).map fun key =>
+                                          (key,
+                                            String.ofList
+                                              ((remaining_roottbl).take
+                                                ((remaining_roottbl).length - (remaining_roottbltlb).length)))
+                                      let characters_roottbltlbt := "h".toList
+                                      if (characters_roottbltlbt).isPrefixOf remaining_roottbltlb then
+                                        (fun (tailCaptures_roottbltlb : CaptureMap) (suffix_roottbltlb : List Char) =>
+                                            (fun (bodyCaptures_roottbltl : CaptureMap)
+                                                  (remaining_roottbltl : List Char) =>
+                                                let ownCaptures_roottbltl :=
+                                                  (["Hours", "Components.Hours"]).map fun key =>
+                                                    (key,
+                                                      String.ofList
+                                                        ((remaining_roottbl).take
+                                                          ((remaining_roottbl).length - (remaining_roottbltl).length)))
+                                                scanOrElse
+                                                  ((List.range ((remaining_roottbltl).length + 1)).findSome?
+                                                    fun width_roottbltltlbb =>
+                                                    if
+                                                        termPrefixOk TokClass.digit LenSpec.atLeastOne
+                                                          remaining_roottbltl width_roottbltltlbb then
+                                                      (fun (bodyCaptures_roottbltltlb : CaptureMap)
+                                                            (remaining_roottbltltlb : List Char) =>
+                                                          let ownCaptures_roottbltltlb :=
+                                                            (["DMinutes", "Minutes.DMinutes"]).map fun key =>
+                                                              (key,
+                                                                String.ofList
+                                                                  ((remaining_roottbltl).take
+                                                                    ((remaining_roottbltl).length -
+                                                                      (remaining_roottbltltlb).length)))
+                                                          let characters_roottbltltlbt := "m".toList
+                                                          if
+                                                              (characters_roottbltltlbt).isPrefixOf
+                                                                remaining_roottbltltlb then
+                                                            (fun (tailCaptures_roottbltltlb : CaptureMap)
+                                                                  (suffix_roottbltltlb : List Char) =>
+                                                                (fun (bodyCaptures_roottbltltl : CaptureMap)
+                                                                      (remaining_roottbltltl : List Char) =>
+                                                                    let ownCaptures_roottbltltl :=
+                                                                      (["Minutes", "Components.Minutes"]).map fun key =>
+                                                                        (key,
+                                                                          String.ofList
+                                                                            ((remaining_roottbltl).take
+                                                                              ((remaining_roottbltl).length -
+                                                                                (remaining_roottbltltl).length)))
+                                                                    scanOrElse
+                                                                      ((List.range
+                                                                            ((remaining_roottbltltl).length +
+                                                                              1)).findSome?
+                                                                        fun width_roottbltltltlbb =>
+                                                                        if
+                                                                            termPrefixOk TokClass.digit
+                                                                              LenSpec.atLeastOne remaining_roottbltltl
+                                                                              width_roottbltltltlbb then
+                                                                          (fun
+                                                                                (bodyCaptures_roottbltltltlb :
+                                                                                  CaptureMap)
+                                                                                (remaining_roottbltltltlb :
+                                                                                  List Char) =>
+                                                                              let ownCaptures_roottbltltltlb :=
+                                                                                (["DSeconds", "Seconds.DSeconds"]).map
+                                                                                  fun key =>
+                                                                                  (key,
+                                                                                    String.ofList
+                                                                                      ((remaining_roottbltltl).take
+                                                                                        ((remaining_roottbltltl).length -
+                                                                                          (remaining_roottbltltltlb).length)))
+                                                                              let characters_roottbltltltlbt :=
+                                                                                "s".toList
+                                                                              if
+                                                                                  (characters_roottbltltltlbt).isPrefixOf
+                                                                                    remaining_roottbltltltlb then
+                                                                                (fun
+                                                                                      (tailCaptures_roottbltltltlb :
+                                                                                        CaptureMap)
+                                                                                      (suffix_roottbltltltlb :
+                                                                                        List Char) =>
+                                                                                    (fun
+                                                                                          (bodyCaptures_roottbltltltl :
+                                                                                            CaptureMap)
+                                                                                          (remaining_roottbltltltl :
+                                                                                            List Char) =>
+                                                                                        let ownCaptures_roottbltltltl :=
+                                                                                          (["Seconds",
+                                                                                                "Components.Seconds"]).map
+                                                                                            fun key =>
+                                                                                            (key,
+                                                                                              String.ofList
+                                                                                                ((remaining_roottbltltl).take
+                                                                                                  ((remaining_roottbltltl).length -
+                                                                                                    (remaining_roottbltltltl).length)))
+                                                                                        scanOrElse
+                                                                                          ((List.range
+                                                                                                ((remaining_roottbltltltl).length +
+                                                                                                  1)).findSome?
+                                                                                            fun
+                                                                                              width_roottbltltltltlbb =>
+                                                                                            if
+                                                                                                termPrefixOk
+                                                                                                  TokClass.digit
+                                                                                                  LenSpec.atLeastOne
+                                                                                                  remaining_roottbltltltl
+                                                                                                  width_roottbltltltltlbb then
+                                                                                              (fun
+                                                                                                    (bodyCaptures_roottbltltltltlb :
+                                                                                                      CaptureMap)
+                                                                                                    (remaining_roottbltltltltlb :
+                                                                                                      List Char) =>
+                                                                                                  let
+                                                                                                    ownCaptures_roottbltltltltlb :=
+                                                                                                    (["DMillis",
+                                                                                                          "Millis.DMillis"]).map
+                                                                                                      fun key =>
+                                                                                                      (key,
+                                                                                                        String.ofList
+                                                                                                          ((remaining_roottbltltltl).take
+                                                                                                            ((remaining_roottbltltltl).length -
+                                                                                                              (remaining_roottbltltltltlb).length)))
+                                                                                                  let
+                                                                                                    characters_roottbltltltltlbt :=
+                                                                                                    "ms".toList
+                                                                                                  if
+                                                                                                      (characters_roottbltltltltlbt).isPrefixOf
+                                                                                                        remaining_roottbltltltltlb then
+                                                                                                    (fun
+                                                                                                          (tailCaptures_roottbltltltltlb :
+                                                                                                            CaptureMap)
+                                                                                                          (suffix_roottbltltltltlb :
+                                                                                                            List
+                                                                                                              Char) =>
+                                                                                                        (fun
+                                                                                                              (bodyCaptures_roottbltltltltl :
+                                                                                                                CaptureMap)
+                                                                                                              (remaining_roottbltltltltl :
+                                                                                                                List
+                                                                                                                  Char) =>
+                                                                                                            let
+                                                                                                              ownCaptures_roottbltltltltl :=
+                                                                                                              (["Millis",
+                                                                                                                    "Components.Millis"]).map
+                                                                                                                fun
+                                                                                                                  key =>
+                                                                                                                (key,
+                                                                                                                  String.ofList
+                                                                                                                    ((remaining_roottbltltltl).take
+                                                                                                                      ((remaining_roottbltltltl).length -
+                                                                                                                        (remaining_roottbltltltltl).length)))
+                                                                                                            (fun
+                                                                                                                  (tailCaptures_roottbltltltltl :
+                                                                                                                    CaptureMap)
+                                                                                                                  (suffix_roottbltltltltl :
+                                                                                                                    List
+                                                                                                                      Char) =>
+                                                                                                                (fun
+                                                                                                                      (tailCaptures_roottbltltltl :
+                                                                                                                        CaptureMap)
+                                                                                                                      (suffix_roottbltltltl :
+                                                                                                                        List
+                                                                                                                          Char) =>
+                                                                                                                    (fun
+                                                                                                                          (tailCaptures_roottbltltl :
+                                                                                                                            CaptureMap)
+                                                                                                                          (suffix_roottbltltl :
+                                                                                                                            List
+                                                                                                                              Char) =>
+                                                                                                                        (fun
+                                                                                                                              (tailCaptures_roottbltl :
+                                                                                                                                CaptureMap)
+                                                                                                                              (suffix_roottbltl :
+                                                                                                                                List
+                                                                                                                                  Char) =>
+                                                                                                                            (fun
+                                                                                                                                  (tailCaptures_roottbl :
+                                                                                                                                    CaptureMap)
+                                                                                                                                  (suffix_roottbl :
+                                                                                                                                    List
+                                                                                                                                      Char) =>
+                                                                                                                                (fun
+                                                                                                                                      (bodyCaptures_roott :
+                                                                                                                                        CaptureMap)
+                                                                                                                                      (remaining_roott :
+                                                                                                                                        List
+                                                                                                                                          Char) =>
+                                                                                                                                    let
+                                                                                                                                      ownCaptures_roott :=
+                                                                                                                                      (["Components"]).map
+                                                                                                                                        fun
+                                                                                                                                          key =>
+                                                                                                                                        (key,
+                                                                                                                                          String.ofList
+                                                                                                                                            ((remaining_root).take
+                                                                                                                                              ((remaining_root).length -
+                                                                                                                                                (remaining_roott).length)))
+                                                                                                                                    (fun
+                                                                                                                                          (tailCaptures_roott :
+                                                                                                                                            CaptureMap)
+                                                                                                                                          (suffix_roott :
+                                                                                                                                            List
+                                                                                                                                              Char) =>
+                                                                                                                                        (fun
+                                                                                                                                              (tailCaptures_root :
+                                                                                                                                                CaptureMap)
+                                                                                                                                              (suffix_root :
+                                                                                                                                                List
+                                                                                                                                                  Char) =>
+                                                                                                                                            (fun
+                                                                                                                                                  (captures :
+                                                                                                                                                    CaptureMap)
+                                                                                                                                                  (remaining :
+                                                                                                                                                    List
+                                                                                                                                                      Char) =>
+                                                                                                                                                if
+                                                                                                                                                    (remaining).isEmpty then
+                                                                                                                                                  some
+                                                                                                                                                    captures
+                                                                                                                                                else
+                                                                                                                                                  none)
+                                                                                                                                              (ownCaptures_root ++
+                                                                                                                                                  bodyCaptures_root ++
+                                                                                                                                                tailCaptures_root)
+                                                                                                                                              suffix_root)
+                                                                                                                                          (ownCaptures_roott ++
+                                                                                                                                              bodyCaptures_roott ++
+                                                                                                                                            tailCaptures_roott)
+                                                                                                                                          suffix_roott)
+                                                                                                                                      ([] :
+                                                                                                                                        CaptureMap)
+                                                                                                                                      remaining_roott)
+                                                                                                                                  (ownCaptures_roottbl ++
+                                                                                                                                      bodyCaptures_roottbl ++
+                                                                                                                                    tailCaptures_roottbl)
+                                                                                                                                  suffix_roottbl)
+                                                                                                                              (ownCaptures_roottbltl ++
+                                                                                                                                  bodyCaptures_roottbltl ++
+                                                                                                                                tailCaptures_roottbltl)
+                                                                                                                              suffix_roottbltl)
+                                                                                                                          (ownCaptures_roottbltltl ++
+                                                                                                                              bodyCaptures_roottbltltl ++
+                                                                                                                            tailCaptures_roottbltltl)
+                                                                                                                          suffix_roottbltltl)
+                                                                                                                      (ownCaptures_roottbltltltl ++
+                                                                                                                          bodyCaptures_roottbltltltl ++
+                                                                                                                        tailCaptures_roottbltltltl)
+                                                                                                                      suffix_roottbltltltl)
+                                                                                                                  (ownCaptures_roottbltltltltl ++
+                                                                                                                      bodyCaptures_roottbltltltltl ++
+                                                                                                                    tailCaptures_roottbltltltltl)
+                                                                                                                  suffix_roottbltltltltl)
+                                                                                                              ([] :
+                                                                                                                CaptureMap)
+                                                                                                              remaining_roottbltltltltl)
+                                                                                                          (ownCaptures_roottbltltltltlb ++
+                                                                                                              bodyCaptures_roottbltltltltlb ++
+                                                                                                            tailCaptures_roottbltltltltlb)
+                                                                                                          suffix_roottbltltltltlb)
+                                                                                                      ([] : CaptureMap)
+                                                                                                      ((remaining_roottbltltltltlb).drop
+                                                                                                        (characters_roottbltltltltlbt).length)
+                                                                                                  else none)
+                                                                                                ([] : CaptureMap)
+                                                                                                ((remaining_roottbltltltl).drop
+                                                                                                  width_roottbltltltltlbb)
+                                                                                            else none)
+                                                                                          fun _ =>
+                                                                                          (fun
+                                                                                                (tailCaptures_roottbltltltl :
+                                                                                                  CaptureMap)
+                                                                                                (suffix_roottbltltltl :
+                                                                                                  List Char) =>
+                                                                                              (fun
+                                                                                                    (tailCaptures_roottbltltl :
+                                                                                                      CaptureMap)
+                                                                                                    (suffix_roottbltltl :
+                                                                                                      List Char) =>
+                                                                                                  (fun
+                                                                                                        (tailCaptures_roottbltl :
+                                                                                                          CaptureMap)
+                                                                                                        (suffix_roottbltl :
+                                                                                                          List Char) =>
+                                                                                                      (fun
+                                                                                                            (tailCaptures_roottbl :
+                                                                                                              CaptureMap)
+                                                                                                            (suffix_roottbl :
+                                                                                                              List
+                                                                                                                Char) =>
+                                                                                                          (fun
+                                                                                                                (bodyCaptures_roott :
+                                                                                                                  CaptureMap)
+                                                                                                                (remaining_roott :
+                                                                                                                  List
+                                                                                                                    Char) =>
+                                                                                                              let
+                                                                                                                ownCaptures_roott :=
+                                                                                                                (["Components"]).map
+                                                                                                                  fun
+                                                                                                                    key =>
+                                                                                                                  (key,
+                                                                                                                    String.ofList
+                                                                                                                      ((remaining_root).take
+                                                                                                                        ((remaining_root).length -
+                                                                                                                          (remaining_roott).length)))
+                                                                                                              (fun
+                                                                                                                    (tailCaptures_roott :
+                                                                                                                      CaptureMap)
+                                                                                                                    (suffix_roott :
+                                                                                                                      List
+                                                                                                                        Char) =>
+                                                                                                                  (fun
+                                                                                                                        (tailCaptures_root :
+                                                                                                                          CaptureMap)
+                                                                                                                        (suffix_root :
+                                                                                                                          List
+                                                                                                                            Char) =>
+                                                                                                                      (fun
+                                                                                                                            (captures :
+                                                                                                                              CaptureMap)
+                                                                                                                            (remaining :
+                                                                                                                              List
+                                                                                                                                Char) =>
+                                                                                                                          if
+                                                                                                                              (remaining).isEmpty then
+                                                                                                                            some
+                                                                                                                              captures
+                                                                                                                          else
+                                                                                                                            none)
+                                                                                                                        (ownCaptures_root ++
+                                                                                                                            bodyCaptures_root ++
+                                                                                                                          tailCaptures_root)
+                                                                                                                        suffix_root)
+                                                                                                                    (ownCaptures_roott ++
+                                                                                                                        bodyCaptures_roott ++
+                                                                                                                      tailCaptures_roott)
+                                                                                                                    suffix_roott)
+                                                                                                                ([] :
+                                                                                                                  CaptureMap)
+                                                                                                                remaining_roott)
+                                                                                                            (ownCaptures_roottbl ++
+                                                                                                                bodyCaptures_roottbl ++
+                                                                                                              tailCaptures_roottbl)
+                                                                                                            suffix_roottbl)
+                                                                                                        (ownCaptures_roottbltl ++
+                                                                                                            bodyCaptures_roottbltl ++
+                                                                                                          tailCaptures_roottbltl)
+                                                                                                        suffix_roottbltl)
+                                                                                                    (ownCaptures_roottbltltl ++
+                                                                                                        bodyCaptures_roottbltltl ++
+                                                                                                      tailCaptures_roottbltltl)
+                                                                                                    suffix_roottbltltl)
+                                                                                                (ownCaptures_roottbltltltl ++
+                                                                                                    bodyCaptures_roottbltltltl ++
+                                                                                                  tailCaptures_roottbltltltl)
+                                                                                                suffix_roottbltltltl)
+                                                                                            ([] : CaptureMap)
+                                                                                            remaining_roottbltltltl)
+                                                                                      (ownCaptures_roottbltltltlb ++
+                                                                                          bodyCaptures_roottbltltltlb ++
+                                                                                        tailCaptures_roottbltltltlb)
+                                                                                      suffix_roottbltltltlb)
+                                                                                  ([] : CaptureMap)
+                                                                                  ((remaining_roottbltltltlb).drop
+                                                                                    (characters_roottbltltltlbt).length)
+                                                                              else none)
+                                                                            ([] : CaptureMap)
+                                                                            ((remaining_roottbltltl).drop
+                                                                              width_roottbltltltlbb)
+                                                                        else none)
+                                                                      fun _ =>
+                                                                      scanOrElse
+                                                                        ((List.range
+                                                                              ((remaining_roottbltltl).length +
+                                                                                1)).findSome?
+                                                                          fun width_roottbltltltrlbb =>
+                                                                          if
+                                                                              termPrefixOk TokClass.digit
+                                                                                LenSpec.atLeastOne remaining_roottbltltl
+                                                                                width_roottbltltltrlbb then
+                                                                            (fun
+                                                                                  (bodyCaptures_roottbltltltrlb :
+                                                                                    CaptureMap)
+                                                                                  (remaining_roottbltltltrlb :
+                                                                                    List Char) =>
+                                                                                let ownCaptures_roottbltltltrlb :=
+                                                                                  (["DMillis", "Millis.DMillis"]).map
+                                                                                    fun key =>
+                                                                                    (key,
+                                                                                      String.ofList
+                                                                                        ((remaining_roottbltltl).take
+                                                                                          ((remaining_roottbltltl).length -
+                                                                                            (remaining_roottbltltltrlb).length)))
+                                                                                let characters_roottbltltltrlbt :=
+                                                                                  "ms".toList
+                                                                                if
+                                                                                    (characters_roottbltltltrlbt).isPrefixOf
+                                                                                      remaining_roottbltltltrlb then
+                                                                                  (fun
+                                                                                        (tailCaptures_roottbltltltrlb :
+                                                                                          CaptureMap)
+                                                                                        (suffix_roottbltltltrlb :
+                                                                                          List Char) =>
+                                                                                      (fun
+                                                                                            (bodyCaptures_roottbltltltrl :
+                                                                                              CaptureMap)
+                                                                                            (remaining_roottbltltltrl :
+                                                                                              List Char) =>
+                                                                                          let
+                                                                                            ownCaptures_roottbltltltrl :=
+                                                                                            (["Millis",
+                                                                                                  "Components.Millis"]).map
+                                                                                              fun key =>
+                                                                                              (key,
+                                                                                                String.ofList
+                                                                                                  ((remaining_roottbltltl).take
+                                                                                                    ((remaining_roottbltltl).length -
+                                                                                                      (remaining_roottbltltltrl).length)))
+                                                                                          (fun
+                                                                                                (tailCaptures_roottbltltltrl :
+                                                                                                  CaptureMap)
+                                                                                                (suffix_roottbltltltrl :
+                                                                                                  List Char) =>
+                                                                                              (fun
+                                                                                                    (tailCaptures_roottbltltl :
+                                                                                                      CaptureMap)
+                                                                                                    (suffix_roottbltltl :
+                                                                                                      List Char) =>
+                                                                                                  (fun
+                                                                                                        (tailCaptures_roottbltl :
+                                                                                                          CaptureMap)
+                                                                                                        (suffix_roottbltl :
+                                                                                                          List Char) =>
+                                                                                                      (fun
+                                                                                                            (tailCaptures_roottbl :
+                                                                                                              CaptureMap)
+                                                                                                            (suffix_roottbl :
+                                                                                                              List
+                                                                                                                Char) =>
+                                                                                                          (fun
+                                                                                                                (bodyCaptures_roott :
+                                                                                                                  CaptureMap)
+                                                                                                                (remaining_roott :
+                                                                                                                  List
+                                                                                                                    Char) =>
+                                                                                                              let
+                                                                                                                ownCaptures_roott :=
+                                                                                                                (["Components"]).map
+                                                                                                                  fun
+                                                                                                                    key =>
+                                                                                                                  (key,
+                                                                                                                    String.ofList
+                                                                                                                      ((remaining_root).take
+                                                                                                                        ((remaining_root).length -
+                                                                                                                          (remaining_roott).length)))
+                                                                                                              (fun
+                                                                                                                    (tailCaptures_roott :
+                                                                                                                      CaptureMap)
+                                                                                                                    (suffix_roott :
+                                                                                                                      List
+                                                                                                                        Char) =>
+                                                                                                                  (fun
+                                                                                                                        (tailCaptures_root :
+                                                                                                                          CaptureMap)
+                                                                                                                        (suffix_root :
+                                                                                                                          List
+                                                                                                                            Char) =>
+                                                                                                                      (fun
+                                                                                                                            (captures :
+                                                                                                                              CaptureMap)
+                                                                                                                            (remaining :
+                                                                                                                              List
+                                                                                                                                Char) =>
+                                                                                                                          if
+                                                                                                                              (remaining).isEmpty then
+                                                                                                                            some
+                                                                                                                              captures
+                                                                                                                          else
+                                                                                                                            none)
+                                                                                                                        (ownCaptures_root ++
+                                                                                                                            bodyCaptures_root ++
+                                                                                                                          tailCaptures_root)
+                                                                                                                        suffix_root)
+                                                                                                                    (ownCaptures_roott ++
+                                                                                                                        bodyCaptures_roott ++
+                                                                                                                      tailCaptures_roott)
+                                                                                                                    suffix_roott)
+                                                                                                                ([] :
+                                                                                                                  CaptureMap)
+                                                                                                                remaining_roott)
+                                                                                                            (ownCaptures_roottbl ++
+                                                                                                                bodyCaptures_roottbl ++
+                                                                                                              tailCaptures_roottbl)
+                                                                                                            suffix_roottbl)
+                                                                                                        (ownCaptures_roottbltl ++
+                                                                                                            bodyCaptures_roottbltl ++
+                                                                                                          tailCaptures_roottbltl)
+                                                                                                        suffix_roottbltl)
+                                                                                                    (ownCaptures_roottbltltl ++
+                                                                                                        bodyCaptures_roottbltltl ++
+                                                                                                      tailCaptures_roottbltltl)
+                                                                                                    suffix_roottbltltl)
+                                                                                                (ownCaptures_roottbltltltrl ++
+                                                                                                    bodyCaptures_roottbltltltrl ++
+                                                                                                  tailCaptures_roottbltltltrl)
+                                                                                                suffix_roottbltltltrl)
+                                                                                            ([] : CaptureMap)
+                                                                                            remaining_roottbltltltrl)
+                                                                                        (ownCaptures_roottbltltltrlb ++
+                                                                                            bodyCaptures_roottbltltltrlb ++
+                                                                                          tailCaptures_roottbltltltrlb)
+                                                                                        suffix_roottbltltltrlb)
+                                                                                    ([] : CaptureMap)
+                                                                                    ((remaining_roottbltltltrlb).drop
+                                                                                      (characters_roottbltltltrlbt).length)
+                                                                                else none)
+                                                                              ([] : CaptureMap)
+                                                                              ((remaining_roottbltltl).drop
+                                                                                width_roottbltltltrlbb)
+                                                                          else none)
+                                                                        fun _ =>
+                                                                        (fun (tailCaptures_roottbltltl : CaptureMap)
+                                                                              (suffix_roottbltltl : List Char) =>
+                                                                            (fun (tailCaptures_roottbltl : CaptureMap)
+                                                                                  (suffix_roottbltl : List Char) =>
+                                                                                (fun (tailCaptures_roottbl : CaptureMap)
+                                                                                      (suffix_roottbl : List Char) =>
+                                                                                    (fun
+                                                                                          (bodyCaptures_roott :
+                                                                                            CaptureMap)
+                                                                                          (remaining_roott :
+                                                                                            List Char) =>
+                                                                                        let ownCaptures_roott :=
+                                                                                          (["Components"]).map
+                                                                                            fun key =>
+                                                                                            (key,
+                                                                                              String.ofList
+                                                                                                ((remaining_root).take
+                                                                                                  ((remaining_root).length -
+                                                                                                    (remaining_roott).length)))
+                                                                                        (fun
+                                                                                              (tailCaptures_roott :
+                                                                                                CaptureMap)
+                                                                                              (suffix_roott :
+                                                                                                List Char) =>
+                                                                                            (fun
+                                                                                                  (tailCaptures_root :
+                                                                                                    CaptureMap)
+                                                                                                  (suffix_root :
+                                                                                                    List Char) =>
+                                                                                                (fun
+                                                                                                      (captures :
+                                                                                                        CaptureMap)
+                                                                                                      (remaining :
+                                                                                                        List Char) =>
+                                                                                                    if
+                                                                                                        (remaining).isEmpty then
+                                                                                                      some captures
+                                                                                                    else none)
+                                                                                                  (ownCaptures_root ++
+                                                                                                      bodyCaptures_root ++
+                                                                                                    tailCaptures_root)
+                                                                                                  suffix_root)
+                                                                                              (ownCaptures_roott ++
+                                                                                                  bodyCaptures_roott ++
+                                                                                                tailCaptures_roott)
+                                                                                              suffix_roott)
+                                                                                          ([] : CaptureMap)
+                                                                                          remaining_roott)
+                                                                                      (ownCaptures_roottbl ++
+                                                                                          bodyCaptures_roottbl ++
+                                                                                        tailCaptures_roottbl)
+                                                                                      suffix_roottbl)
+                                                                                  (ownCaptures_roottbltl ++
+                                                                                      bodyCaptures_roottbltl ++
+                                                                                    tailCaptures_roottbltl)
+                                                                                  suffix_roottbltl)
+                                                                              (ownCaptures_roottbltltl ++
+                                                                                  bodyCaptures_roottbltltl ++
+                                                                                tailCaptures_roottbltltl)
+                                                                              suffix_roottbltltl)
+                                                                          ([] : CaptureMap) remaining_roottbltltl)
+                                                                  (ownCaptures_roottbltltlb ++
+                                                                      bodyCaptures_roottbltltlb ++
+                                                                    tailCaptures_roottbltltlb)
+                                                                  suffix_roottbltltlb)
+                                                              ([] : CaptureMap)
+                                                              ((remaining_roottbltltlb).drop
+                                                                (characters_roottbltltlbt).length)
+                                                          else none)
+                                                        ([] : CaptureMap)
+                                                        ((remaining_roottbltl).drop width_roottbltltlbb)
+                                                    else none)
+                                                  fun _ =>
+                                                  scanOrElse
+                                                    ((List.range ((remaining_roottbltl).length + 1)).findSome?
+                                                      fun width_roottbltltrlbb =>
+                                                      if
+                                                          termPrefixOk TokClass.digit LenSpec.atLeastOne
+                                                            remaining_roottbltl width_roottbltltrlbb then
+                                                        (fun (bodyCaptures_roottbltltrlb : CaptureMap)
+                                                              (remaining_roottbltltrlb : List Char) =>
+                                                            let ownCaptures_roottbltltrlb :=
+                                                              (["DSeconds", "Seconds.DSeconds"]).map fun key =>
+                                                                (key,
+                                                                  String.ofList
+                                                                    ((remaining_roottbltl).take
+                                                                      ((remaining_roottbltl).length -
+                                                                        (remaining_roottbltltrlb).length)))
+                                                            let characters_roottbltltrlbt := "s".toList
+                                                            if
+                                                                (characters_roottbltltrlbt).isPrefixOf
+                                                                  remaining_roottbltltrlb then
+                                                              (fun (tailCaptures_roottbltltrlb : CaptureMap)
+                                                                    (suffix_roottbltltrlb : List Char) =>
+                                                                  (fun (bodyCaptures_roottbltltrl : CaptureMap)
+                                                                        (remaining_roottbltltrl : List Char) =>
+                                                                      let ownCaptures_roottbltltrl :=
+                                                                        (["Seconds", "Components.Seconds"]).map
+                                                                          fun key =>
+                                                                          (key,
+                                                                            String.ofList
+                                                                              ((remaining_roottbltl).take
+                                                                                ((remaining_roottbltl).length -
+                                                                                  (remaining_roottbltltrl).length)))
+                                                                      scanOrElse
+                                                                        ((List.range
+                                                                              ((remaining_roottbltltrl).length +
+                                                                                1)).findSome?
+                                                                          fun width_roottbltltrltlbb =>
+                                                                          if
+                                                                              termPrefixOk TokClass.digit
+                                                                                LenSpec.atLeastOne
+                                                                                remaining_roottbltltrl
+                                                                                width_roottbltltrltlbb then
+                                                                            (fun
+                                                                                  (bodyCaptures_roottbltltrltlb :
+                                                                                    CaptureMap)
+                                                                                  (remaining_roottbltltrltlb :
+                                                                                    List Char) =>
+                                                                                let ownCaptures_roottbltltrltlb :=
+                                                                                  (["DMillis", "Millis.DMillis"]).map
+                                                                                    fun key =>
+                                                                                    (key,
+                                                                                      String.ofList
+                                                                                        ((remaining_roottbltltrl).take
+                                                                                          ((remaining_roottbltltrl).length -
+                                                                                            (remaining_roottbltltrltlb).length)))
+                                                                                let characters_roottbltltrltlbt :=
+                                                                                  "ms".toList
+                                                                                if
+                                                                                    (characters_roottbltltrltlbt).isPrefixOf
+                                                                                      remaining_roottbltltrltlb then
+                                                                                  (fun
+                                                                                        (tailCaptures_roottbltltrltlb :
+                                                                                          CaptureMap)
+                                                                                        (suffix_roottbltltrltlb :
+                                                                                          List Char) =>
+                                                                                      (fun
+                                                                                            (bodyCaptures_roottbltltrltl :
+                                                                                              CaptureMap)
+                                                                                            (remaining_roottbltltrltl :
+                                                                                              List Char) =>
+                                                                                          let
+                                                                                            ownCaptures_roottbltltrltl :=
+                                                                                            (["Millis",
+                                                                                                  "Components.Millis"]).map
+                                                                                              fun key =>
+                                                                                              (key,
+                                                                                                String.ofList
+                                                                                                  ((remaining_roottbltltrl).take
+                                                                                                    ((remaining_roottbltltrl).length -
+                                                                                                      (remaining_roottbltltrltl).length)))
+                                                                                          (fun
+                                                                                                (tailCaptures_roottbltltrltl :
+                                                                                                  CaptureMap)
+                                                                                                (suffix_roottbltltrltl :
+                                                                                                  List Char) =>
+                                                                                              (fun
+                                                                                                    (tailCaptures_roottbltltrl :
+                                                                                                      CaptureMap)
+                                                                                                    (suffix_roottbltltrl :
+                                                                                                      List Char) =>
+                                                                                                  (fun
+                                                                                                        (tailCaptures_roottbltl :
+                                                                                                          CaptureMap)
+                                                                                                        (suffix_roottbltl :
+                                                                                                          List Char) =>
+                                                                                                      (fun
+                                                                                                            (tailCaptures_roottbl :
+                                                                                                              CaptureMap)
+                                                                                                            (suffix_roottbl :
+                                                                                                              List
+                                                                                                                Char) =>
+                                                                                                          (fun
+                                                                                                                (bodyCaptures_roott :
+                                                                                                                  CaptureMap)
+                                                                                                                (remaining_roott :
+                                                                                                                  List
+                                                                                                                    Char) =>
+                                                                                                              let
+                                                                                                                ownCaptures_roott :=
+                                                                                                                (["Components"]).map
+                                                                                                                  fun
+                                                                                                                    key =>
+                                                                                                                  (key,
+                                                                                                                    String.ofList
+                                                                                                                      ((remaining_root).take
+                                                                                                                        ((remaining_root).length -
+                                                                                                                          (remaining_roott).length)))
+                                                                                                              (fun
+                                                                                                                    (tailCaptures_roott :
+                                                                                                                      CaptureMap)
+                                                                                                                    (suffix_roott :
+                                                                                                                      List
+                                                                                                                        Char) =>
+                                                                                                                  (fun
+                                                                                                                        (tailCaptures_root :
+                                                                                                                          CaptureMap)
+                                                                                                                        (suffix_root :
+                                                                                                                          List
+                                                                                                                            Char) =>
+                                                                                                                      (fun
+                                                                                                                            (captures :
+                                                                                                                              CaptureMap)
+                                                                                                                            (remaining :
+                                                                                                                              List
+                                                                                                                                Char) =>
+                                                                                                                          if
+                                                                                                                              (remaining).isEmpty then
+                                                                                                                            some
+                                                                                                                              captures
+                                                                                                                          else
+                                                                                                                            none)
+                                                                                                                        (ownCaptures_root ++
+                                                                                                                            bodyCaptures_root ++
+                                                                                                                          tailCaptures_root)
+                                                                                                                        suffix_root)
+                                                                                                                    (ownCaptures_roott ++
+                                                                                                                        bodyCaptures_roott ++
+                                                                                                                      tailCaptures_roott)
+                                                                                                                    suffix_roott)
+                                                                                                                ([] :
+                                                                                                                  CaptureMap)
+                                                                                                                remaining_roott)
+                                                                                                            (ownCaptures_roottbl ++
+                                                                                                                bodyCaptures_roottbl ++
+                                                                                                              tailCaptures_roottbl)
+                                                                                                            suffix_roottbl)
+                                                                                                        (ownCaptures_roottbltl ++
+                                                                                                            bodyCaptures_roottbltl ++
+                                                                                                          tailCaptures_roottbltl)
+                                                                                                        suffix_roottbltl)
+                                                                                                    (ownCaptures_roottbltltrl ++
+                                                                                                        bodyCaptures_roottbltltrl ++
+                                                                                                      tailCaptures_roottbltltrl)
+                                                                                                    suffix_roottbltltrl)
+                                                                                                (ownCaptures_roottbltltrltl ++
+                                                                                                    bodyCaptures_roottbltltrltl ++
+                                                                                                  tailCaptures_roottbltltrltl)
+                                                                                                suffix_roottbltltrltl)
+                                                                                            ([] : CaptureMap)
+                                                                                            remaining_roottbltltrltl)
+                                                                                        (ownCaptures_roottbltltrltlb ++
+                                                                                            bodyCaptures_roottbltltrltlb ++
+                                                                                          tailCaptures_roottbltltrltlb)
+                                                                                        suffix_roottbltltrltlb)
+                                                                                    ([] : CaptureMap)
+                                                                                    ((remaining_roottbltltrltlb).drop
+                                                                                      (characters_roottbltltrltlbt).length)
+                                                                                else none)
+                                                                              ([] : CaptureMap)
+                                                                              ((remaining_roottbltltrl).drop
+                                                                                width_roottbltltrltlbb)
+                                                                          else none)
+                                                                        fun _ =>
+                                                                        (fun (tailCaptures_roottbltltrl : CaptureMap)
+                                                                              (suffix_roottbltltrl : List Char) =>
+                                                                            (fun (tailCaptures_roottbltl : CaptureMap)
+                                                                                  (suffix_roottbltl : List Char) =>
+                                                                                (fun (tailCaptures_roottbl : CaptureMap)
+                                                                                      (suffix_roottbl : List Char) =>
+                                                                                    (fun
+                                                                                          (bodyCaptures_roott :
+                                                                                            CaptureMap)
+                                                                                          (remaining_roott :
+                                                                                            List Char) =>
+                                                                                        let ownCaptures_roott :=
+                                                                                          (["Components"]).map
+                                                                                            fun key =>
+                                                                                            (key,
+                                                                                              String.ofList
+                                                                                                ((remaining_root).take
+                                                                                                  ((remaining_root).length -
+                                                                                                    (remaining_roott).length)))
+                                                                                        (fun
+                                                                                              (tailCaptures_roott :
+                                                                                                CaptureMap)
+                                                                                              (suffix_roott :
+                                                                                                List Char) =>
+                                                                                            (fun
+                                                                                                  (tailCaptures_root :
+                                                                                                    CaptureMap)
+                                                                                                  (suffix_root :
+                                                                                                    List Char) =>
+                                                                                                (fun
+                                                                                                      (captures :
+                                                                                                        CaptureMap)
+                                                                                                      (remaining :
+                                                                                                        List Char) =>
+                                                                                                    if
+                                                                                                        (remaining).isEmpty then
+                                                                                                      some captures
+                                                                                                    else none)
+                                                                                                  (ownCaptures_root ++
+                                                                                                      bodyCaptures_root ++
+                                                                                                    tailCaptures_root)
+                                                                                                  suffix_root)
+                                                                                              (ownCaptures_roott ++
+                                                                                                  bodyCaptures_roott ++
+                                                                                                tailCaptures_roott)
+                                                                                              suffix_roott)
+                                                                                          ([] : CaptureMap)
+                                                                                          remaining_roott)
+                                                                                      (ownCaptures_roottbl ++
+                                                                                          bodyCaptures_roottbl ++
+                                                                                        tailCaptures_roottbl)
+                                                                                      suffix_roottbl)
+                                                                                  (ownCaptures_roottbltl ++
+                                                                                      bodyCaptures_roottbltl ++
+                                                                                    tailCaptures_roottbltl)
+                                                                                  suffix_roottbltl)
+                                                                              (ownCaptures_roottbltltrl ++
+                                                                                  bodyCaptures_roottbltltrl ++
+                                                                                tailCaptures_roottbltltrl)
+                                                                              suffix_roottbltltrl)
+                                                                          ([] : CaptureMap) remaining_roottbltltrl)
+                                                                    (ownCaptures_roottbltltrlb ++
+                                                                        bodyCaptures_roottbltltrlb ++
+                                                                      tailCaptures_roottbltltrlb)
+                                                                    suffix_roottbltltrlb)
+                                                                ([] : CaptureMap)
+                                                                ((remaining_roottbltltrlb).drop
+                                                                  (characters_roottbltltrlbt).length)
+                                                            else none)
+                                                          ([] : CaptureMap)
+                                                          ((remaining_roottbltl).drop width_roottbltltrlbb)
+                                                      else none)
+                                                    fun _ =>
+                                                    scanOrElse
+                                                      ((List.range ((remaining_roottbltl).length + 1)).findSome?
+                                                        fun width_roottbltltrrlbb =>
+                                                        if
+                                                            termPrefixOk TokClass.digit LenSpec.atLeastOne
+                                                              remaining_roottbltl width_roottbltltrrlbb then
+                                                          (fun (bodyCaptures_roottbltltrrlb : CaptureMap)
+                                                                (remaining_roottbltltrrlb : List Char) =>
+                                                              let ownCaptures_roottbltltrrlb :=
+                                                                (["DMillis", "Millis.DMillis"]).map fun key =>
+                                                                  (key,
+                                                                    String.ofList
+                                                                      ((remaining_roottbltl).take
+                                                                        ((remaining_roottbltl).length -
+                                                                          (remaining_roottbltltrrlb).length)))
+                                                              let characters_roottbltltrrlbt := "ms".toList
+                                                              if
+                                                                  (characters_roottbltltrrlbt).isPrefixOf
+                                                                    remaining_roottbltltrrlb then
+                                                                (fun (tailCaptures_roottbltltrrlb : CaptureMap)
+                                                                      (suffix_roottbltltrrlb : List Char) =>
+                                                                    (fun (bodyCaptures_roottbltltrrl : CaptureMap)
+                                                                          (remaining_roottbltltrrl : List Char) =>
+                                                                        let ownCaptures_roottbltltrrl :=
+                                                                          (["Millis", "Components.Millis"]).map
+                                                                            fun key =>
+                                                                            (key,
+                                                                              String.ofList
+                                                                                ((remaining_roottbltl).take
+                                                                                  ((remaining_roottbltl).length -
+                                                                                    (remaining_roottbltltrrl).length)))
+                                                                        (fun (tailCaptures_roottbltltrrl : CaptureMap)
+                                                                              (suffix_roottbltltrrl : List Char) =>
+                                                                            (fun (tailCaptures_roottbltl : CaptureMap)
+                                                                                  (suffix_roottbltl : List Char) =>
+                                                                                (fun (tailCaptures_roottbl : CaptureMap)
+                                                                                      (suffix_roottbl : List Char) =>
+                                                                                    (fun
+                                                                                          (bodyCaptures_roott :
+                                                                                            CaptureMap)
+                                                                                          (remaining_roott :
+                                                                                            List Char) =>
+                                                                                        let ownCaptures_roott :=
+                                                                                          (["Components"]).map
+                                                                                            fun key =>
+                                                                                            (key,
+                                                                                              String.ofList
+                                                                                                ((remaining_root).take
+                                                                                                  ((remaining_root).length -
+                                                                                                    (remaining_roott).length)))
+                                                                                        (fun
+                                                                                              (tailCaptures_roott :
+                                                                                                CaptureMap)
+                                                                                              (suffix_roott :
+                                                                                                List Char) =>
+                                                                                            (fun
+                                                                                                  (tailCaptures_root :
+                                                                                                    CaptureMap)
+                                                                                                  (suffix_root :
+                                                                                                    List Char) =>
+                                                                                                (fun
+                                                                                                      (captures :
+                                                                                                        CaptureMap)
+                                                                                                      (remaining :
+                                                                                                        List Char) =>
+                                                                                                    if
+                                                                                                        (remaining).isEmpty then
+                                                                                                      some captures
+                                                                                                    else none)
+                                                                                                  (ownCaptures_root ++
+                                                                                                      bodyCaptures_root ++
+                                                                                                    tailCaptures_root)
+                                                                                                  suffix_root)
+                                                                                              (ownCaptures_roott ++
+                                                                                                  bodyCaptures_roott ++
+                                                                                                tailCaptures_roott)
+                                                                                              suffix_roott)
+                                                                                          ([] : CaptureMap)
+                                                                                          remaining_roott)
+                                                                                      (ownCaptures_roottbl ++
+                                                                                          bodyCaptures_roottbl ++
+                                                                                        tailCaptures_roottbl)
+                                                                                      suffix_roottbl)
+                                                                                  (ownCaptures_roottbltl ++
+                                                                                      bodyCaptures_roottbltl ++
+                                                                                    tailCaptures_roottbltl)
+                                                                                  suffix_roottbltl)
+                                                                              (ownCaptures_roottbltltrrl ++
+                                                                                  bodyCaptures_roottbltltrrl ++
+                                                                                tailCaptures_roottbltltrrl)
+                                                                              suffix_roottbltltrrl)
+                                                                          ([] : CaptureMap) remaining_roottbltltrrl)
+                                                                      (ownCaptures_roottbltltrrlb ++
+                                                                          bodyCaptures_roottbltltrrlb ++
+                                                                        tailCaptures_roottbltltrrlb)
+                                                                      suffix_roottbltltrrlb)
+                                                                  ([] : CaptureMap)
+                                                                  ((remaining_roottbltltrrlb).drop
+                                                                    (characters_roottbltltrrlbt).length)
+                                                              else none)
+                                                            ([] : CaptureMap)
+                                                            ((remaining_roottbltl).drop width_roottbltltrrlbb)
+                                                        else none)
+                                                      fun _ =>
+                                                      (fun (tailCaptures_roottbltl : CaptureMap)
+                                                            (suffix_roottbltl : List Char) =>
+                                                          (fun (tailCaptures_roottbl : CaptureMap)
+                                                                (suffix_roottbl : List Char) =>
+                                                              (fun (bodyCaptures_roott : CaptureMap)
+                                                                    (remaining_roott : List Char) =>
+                                                                  let ownCaptures_roott :=
+                                                                    (["Components"]).map fun key =>
+                                                                      (key,
+                                                                        String.ofList
+                                                                          ((remaining_root).take
+                                                                            ((remaining_root).length -
+                                                                              (remaining_roott).length)))
+                                                                  (fun (tailCaptures_roott : CaptureMap)
+                                                                        (suffix_roott : List Char) =>
+                                                                      (fun (tailCaptures_root : CaptureMap)
+                                                                            (suffix_root : List Char) =>
+                                                                          (fun (captures : CaptureMap)
+                                                                                (remaining : List Char) =>
+                                                                              if (remaining).isEmpty then some captures
+                                                                              else none)
+                                                                            (ownCaptures_root ++ bodyCaptures_root ++
+                                                                              tailCaptures_root)
+                                                                            suffix_root)
+                                                                        (ownCaptures_roott ++ bodyCaptures_roott ++
+                                                                          tailCaptures_roott)
+                                                                        suffix_roott)
+                                                                    ([] : CaptureMap) remaining_roott)
+                                                                (ownCaptures_roottbl ++ bodyCaptures_roottbl ++
+                                                                  tailCaptures_roottbl)
+                                                                suffix_roottbl)
+                                                            (ownCaptures_roottbltl ++ bodyCaptures_roottbltl ++
+                                                              tailCaptures_roottbltl)
+                                                            suffix_roottbltl)
+                                                        ([] : CaptureMap) remaining_roottbltl)
+                                              (ownCaptures_roottbltlb ++ bodyCaptures_roottbltlb ++
+                                                tailCaptures_roottbltlb)
+                                              suffix_roottbltlb)
+                                          ([] : CaptureMap)
+                                          ((remaining_roottbltlb).drop (characters_roottbltlbt).length)
+                                      else none)
+                                    ([] : CaptureMap) ((remaining_roottbl).drop width_roottbltlbb)
+                                else none)
+                              fun _ =>
+                              scanOrElse
+                                ((List.range ((remaining_roottbl).length + 1)).findSome? fun width_roottbltrlbb =>
+                                  if
+                                      termPrefixOk TokClass.digit LenSpec.atLeastOne remaining_roottbl
+                                        width_roottbltrlbb then
+                                    (fun (bodyCaptures_roottbltrlb : CaptureMap) (remaining_roottbltrlb : List Char) =>
+                                        let ownCaptures_roottbltrlb :=
+                                          (["DMinutes", "Minutes.DMinutes"]).map fun key =>
+                                            (key,
+                                              String.ofList
+                                                ((remaining_roottbl).take
+                                                  ((remaining_roottbl).length - (remaining_roottbltrlb).length)))
+                                        let characters_roottbltrlbt := "m".toList
+                                        if (characters_roottbltrlbt).isPrefixOf remaining_roottbltrlb then
+                                          (fun (tailCaptures_roottbltrlb : CaptureMap)
+                                                (suffix_roottbltrlb : List Char) =>
+                                              (fun (bodyCaptures_roottbltrl : CaptureMap)
+                                                    (remaining_roottbltrl : List Char) =>
+                                                  let ownCaptures_roottbltrl :=
+                                                    (["Minutes", "Components.Minutes"]).map fun key =>
+                                                      (key,
+                                                        String.ofList
+                                                          ((remaining_roottbl).take
+                                                            ((remaining_roottbl).length -
+                                                              (remaining_roottbltrl).length)))
+                                                  scanOrElse
+                                                    ((List.range ((remaining_roottbltrl).length + 1)).findSome?
+                                                      fun width_roottbltrltlbb =>
+                                                      if
+                                                          termPrefixOk TokClass.digit LenSpec.atLeastOne
+                                                            remaining_roottbltrl width_roottbltrltlbb then
+                                                        (fun (bodyCaptures_roottbltrltlb : CaptureMap)
+                                                              (remaining_roottbltrltlb : List Char) =>
+                                                            let ownCaptures_roottbltrltlb :=
+                                                              (["DSeconds", "Seconds.DSeconds"]).map fun key =>
+                                                                (key,
+                                                                  String.ofList
+                                                                    ((remaining_roottbltrl).take
+                                                                      ((remaining_roottbltrl).length -
+                                                                        (remaining_roottbltrltlb).length)))
+                                                            let characters_roottbltrltlbt := "s".toList
+                                                            if
+                                                                (characters_roottbltrltlbt).isPrefixOf
+                                                                  remaining_roottbltrltlb then
+                                                              (fun (tailCaptures_roottbltrltlb : CaptureMap)
+                                                                    (suffix_roottbltrltlb : List Char) =>
+                                                                  (fun (bodyCaptures_roottbltrltl : CaptureMap)
+                                                                        (remaining_roottbltrltl : List Char) =>
+                                                                      let ownCaptures_roottbltrltl :=
+                                                                        (["Seconds", "Components.Seconds"]).map
+                                                                          fun key =>
+                                                                          (key,
+                                                                            String.ofList
+                                                                              ((remaining_roottbltrl).take
+                                                                                ((remaining_roottbltrl).length -
+                                                                                  (remaining_roottbltrltl).length)))
+                                                                      scanOrElse
+                                                                        ((List.range
+                                                                              ((remaining_roottbltrltl).length +
+                                                                                1)).findSome?
+                                                                          fun width_roottbltrltltlbb =>
+                                                                          if
+                                                                              termPrefixOk TokClass.digit
+                                                                                LenSpec.atLeastOne
+                                                                                remaining_roottbltrltl
+                                                                                width_roottbltrltltlbb then
+                                                                            (fun
+                                                                                  (bodyCaptures_roottbltrltltlb :
+                                                                                    CaptureMap)
+                                                                                  (remaining_roottbltrltltlb :
+                                                                                    List Char) =>
+                                                                                let ownCaptures_roottbltrltltlb :=
+                                                                                  (["DMillis", "Millis.DMillis"]).map
+                                                                                    fun key =>
+                                                                                    (key,
+                                                                                      String.ofList
+                                                                                        ((remaining_roottbltrltl).take
+                                                                                          ((remaining_roottbltrltl).length -
+                                                                                            (remaining_roottbltrltltlb).length)))
+                                                                                let characters_roottbltrltltlbt :=
+                                                                                  "ms".toList
+                                                                                if
+                                                                                    (characters_roottbltrltltlbt).isPrefixOf
+                                                                                      remaining_roottbltrltltlb then
+                                                                                  (fun
+                                                                                        (tailCaptures_roottbltrltltlb :
+                                                                                          CaptureMap)
+                                                                                        (suffix_roottbltrltltlb :
+                                                                                          List Char) =>
+                                                                                      (fun
+                                                                                            (bodyCaptures_roottbltrltltl :
+                                                                                              CaptureMap)
+                                                                                            (remaining_roottbltrltltl :
+                                                                                              List Char) =>
+                                                                                          let
+                                                                                            ownCaptures_roottbltrltltl :=
+                                                                                            (["Millis",
+                                                                                                  "Components.Millis"]).map
+                                                                                              fun key =>
+                                                                                              (key,
+                                                                                                String.ofList
+                                                                                                  ((remaining_roottbltrltl).take
+                                                                                                    ((remaining_roottbltrltl).length -
+                                                                                                      (remaining_roottbltrltltl).length)))
+                                                                                          (fun
+                                                                                                (tailCaptures_roottbltrltltl :
+                                                                                                  CaptureMap)
+                                                                                                (suffix_roottbltrltltl :
+                                                                                                  List Char) =>
+                                                                                              (fun
+                                                                                                    (tailCaptures_roottbltrltl :
+                                                                                                      CaptureMap)
+                                                                                                    (suffix_roottbltrltl :
+                                                                                                      List Char) =>
+                                                                                                  (fun
+                                                                                                        (tailCaptures_roottbltrl :
+                                                                                                          CaptureMap)
+                                                                                                        (suffix_roottbltrl :
+                                                                                                          List Char) =>
+                                                                                                      (fun
+                                                                                                            (tailCaptures_roottbl :
+                                                                                                              CaptureMap)
+                                                                                                            (suffix_roottbl :
+                                                                                                              List
+                                                                                                                Char) =>
+                                                                                                          (fun
+                                                                                                                (bodyCaptures_roott :
+                                                                                                                  CaptureMap)
+                                                                                                                (remaining_roott :
+                                                                                                                  List
+                                                                                                                    Char) =>
+                                                                                                              let
+                                                                                                                ownCaptures_roott :=
+                                                                                                                (["Components"]).map
+                                                                                                                  fun
+                                                                                                                    key =>
+                                                                                                                  (key,
+                                                                                                                    String.ofList
+                                                                                                                      ((remaining_root).take
+                                                                                                                        ((remaining_root).length -
+                                                                                                                          (remaining_roott).length)))
+                                                                                                              (fun
+                                                                                                                    (tailCaptures_roott :
+                                                                                                                      CaptureMap)
+                                                                                                                    (suffix_roott :
+                                                                                                                      List
+                                                                                                                        Char) =>
+                                                                                                                  (fun
+                                                                                                                        (tailCaptures_root :
+                                                                                                                          CaptureMap)
+                                                                                                                        (suffix_root :
+                                                                                                                          List
+                                                                                                                            Char) =>
+                                                                                                                      (fun
+                                                                                                                            (captures :
+                                                                                                                              CaptureMap)
+                                                                                                                            (remaining :
+                                                                                                                              List
+                                                                                                                                Char) =>
+                                                                                                                          if
+                                                                                                                              (remaining).isEmpty then
+                                                                                                                            some
+                                                                                                                              captures
+                                                                                                                          else
+                                                                                                                            none)
+                                                                                                                        (ownCaptures_root ++
+                                                                                                                            bodyCaptures_root ++
+                                                                                                                          tailCaptures_root)
+                                                                                                                        suffix_root)
+                                                                                                                    (ownCaptures_roott ++
+                                                                                                                        bodyCaptures_roott ++
+                                                                                                                      tailCaptures_roott)
+                                                                                                                    suffix_roott)
+                                                                                                                ([] :
+                                                                                                                  CaptureMap)
+                                                                                                                remaining_roott)
+                                                                                                            (ownCaptures_roottbl ++
+                                                                                                                bodyCaptures_roottbl ++
+                                                                                                              tailCaptures_roottbl)
+                                                                                                            suffix_roottbl)
+                                                                                                        (ownCaptures_roottbltrl ++
+                                                                                                            bodyCaptures_roottbltrl ++
+                                                                                                          tailCaptures_roottbltrl)
+                                                                                                        suffix_roottbltrl)
+                                                                                                    (ownCaptures_roottbltrltl ++
+                                                                                                        bodyCaptures_roottbltrltl ++
+                                                                                                      tailCaptures_roottbltrltl)
+                                                                                                    suffix_roottbltrltl)
+                                                                                                (ownCaptures_roottbltrltltl ++
+                                                                                                    bodyCaptures_roottbltrltltl ++
+                                                                                                  tailCaptures_roottbltrltltl)
+                                                                                                suffix_roottbltrltltl)
+                                                                                            ([] : CaptureMap)
+                                                                                            remaining_roottbltrltltl)
+                                                                                        (ownCaptures_roottbltrltltlb ++
+                                                                                            bodyCaptures_roottbltrltltlb ++
+                                                                                          tailCaptures_roottbltrltltlb)
+                                                                                        suffix_roottbltrltltlb)
+                                                                                    ([] : CaptureMap)
+                                                                                    ((remaining_roottbltrltltlb).drop
+                                                                                      (characters_roottbltrltltlbt).length)
+                                                                                else none)
+                                                                              ([] : CaptureMap)
+                                                                              ((remaining_roottbltrltl).drop
+                                                                                width_roottbltrltltlbb)
+                                                                          else none)
+                                                                        fun _ =>
+                                                                        (fun (tailCaptures_roottbltrltl : CaptureMap)
+                                                                              (suffix_roottbltrltl : List Char) =>
+                                                                            (fun (tailCaptures_roottbltrl : CaptureMap)
+                                                                                  (suffix_roottbltrl : List Char) =>
+                                                                                (fun (tailCaptures_roottbl : CaptureMap)
+                                                                                      (suffix_roottbl : List Char) =>
+                                                                                    (fun
+                                                                                          (bodyCaptures_roott :
+                                                                                            CaptureMap)
+                                                                                          (remaining_roott :
+                                                                                            List Char) =>
+                                                                                        let ownCaptures_roott :=
+                                                                                          (["Components"]).map
+                                                                                            fun key =>
+                                                                                            (key,
+                                                                                              String.ofList
+                                                                                                ((remaining_root).take
+                                                                                                  ((remaining_root).length -
+                                                                                                    (remaining_roott).length)))
+                                                                                        (fun
+                                                                                              (tailCaptures_roott :
+                                                                                                CaptureMap)
+                                                                                              (suffix_roott :
+                                                                                                List Char) =>
+                                                                                            (fun
+                                                                                                  (tailCaptures_root :
+                                                                                                    CaptureMap)
+                                                                                                  (suffix_root :
+                                                                                                    List Char) =>
+                                                                                                (fun
+                                                                                                      (captures :
+                                                                                                        CaptureMap)
+                                                                                                      (remaining :
+                                                                                                        List Char) =>
+                                                                                                    if
+                                                                                                        (remaining).isEmpty then
+                                                                                                      some captures
+                                                                                                    else none)
+                                                                                                  (ownCaptures_root ++
+                                                                                                      bodyCaptures_root ++
+                                                                                                    tailCaptures_root)
+                                                                                                  suffix_root)
+                                                                                              (ownCaptures_roott ++
+                                                                                                  bodyCaptures_roott ++
+                                                                                                tailCaptures_roott)
+                                                                                              suffix_roott)
+                                                                                          ([] : CaptureMap)
+                                                                                          remaining_roott)
+                                                                                      (ownCaptures_roottbl ++
+                                                                                          bodyCaptures_roottbl ++
+                                                                                        tailCaptures_roottbl)
+                                                                                      suffix_roottbl)
+                                                                                  (ownCaptures_roottbltrl ++
+                                                                                      bodyCaptures_roottbltrl ++
+                                                                                    tailCaptures_roottbltrl)
+                                                                                  suffix_roottbltrl)
+                                                                              (ownCaptures_roottbltrltl ++
+                                                                                  bodyCaptures_roottbltrltl ++
+                                                                                tailCaptures_roottbltrltl)
+                                                                              suffix_roottbltrltl)
+                                                                          ([] : CaptureMap) remaining_roottbltrltl)
+                                                                    (ownCaptures_roottbltrltlb ++
+                                                                        bodyCaptures_roottbltrltlb ++
+                                                                      tailCaptures_roottbltrltlb)
+                                                                    suffix_roottbltrltlb)
+                                                                ([] : CaptureMap)
+                                                                ((remaining_roottbltrltlb).drop
+                                                                  (characters_roottbltrltlbt).length)
+                                                            else none)
+                                                          ([] : CaptureMap)
+                                                          ((remaining_roottbltrl).drop width_roottbltrltlbb)
+                                                      else none)
+                                                    fun _ =>
+                                                    scanOrElse
+                                                      ((List.range ((remaining_roottbltrl).length + 1)).findSome?
+                                                        fun width_roottbltrltrlbb =>
+                                                        if
+                                                            termPrefixOk TokClass.digit LenSpec.atLeastOne
+                                                              remaining_roottbltrl width_roottbltrltrlbb then
+                                                          (fun (bodyCaptures_roottbltrltrlb : CaptureMap)
+                                                                (remaining_roottbltrltrlb : List Char) =>
+                                                              let ownCaptures_roottbltrltrlb :=
+                                                                (["DMillis", "Millis.DMillis"]).map fun key =>
+                                                                  (key,
+                                                                    String.ofList
+                                                                      ((remaining_roottbltrl).take
+                                                                        ((remaining_roottbltrl).length -
+                                                                          (remaining_roottbltrltrlb).length)))
+                                                              let characters_roottbltrltrlbt := "ms".toList
+                                                              if
+                                                                  (characters_roottbltrltrlbt).isPrefixOf
+                                                                    remaining_roottbltrltrlb then
+                                                                (fun (tailCaptures_roottbltrltrlb : CaptureMap)
+                                                                      (suffix_roottbltrltrlb : List Char) =>
+                                                                    (fun (bodyCaptures_roottbltrltrl : CaptureMap)
+                                                                          (remaining_roottbltrltrl : List Char) =>
+                                                                        let ownCaptures_roottbltrltrl :=
+                                                                          (["Millis", "Components.Millis"]).map
+                                                                            fun key =>
+                                                                            (key,
+                                                                              String.ofList
+                                                                                ((remaining_roottbltrl).take
+                                                                                  ((remaining_roottbltrl).length -
+                                                                                    (remaining_roottbltrltrl).length)))
+                                                                        (fun (tailCaptures_roottbltrltrl : CaptureMap)
+                                                                              (suffix_roottbltrltrl : List Char) =>
+                                                                            (fun (tailCaptures_roottbltrl : CaptureMap)
+                                                                                  (suffix_roottbltrl : List Char) =>
+                                                                                (fun (tailCaptures_roottbl : CaptureMap)
+                                                                                      (suffix_roottbl : List Char) =>
+                                                                                    (fun
+                                                                                          (bodyCaptures_roott :
+                                                                                            CaptureMap)
+                                                                                          (remaining_roott :
+                                                                                            List Char) =>
+                                                                                        let ownCaptures_roott :=
+                                                                                          (["Components"]).map
+                                                                                            fun key =>
+                                                                                            (key,
+                                                                                              String.ofList
+                                                                                                ((remaining_root).take
+                                                                                                  ((remaining_root).length -
+                                                                                                    (remaining_roott).length)))
+                                                                                        (fun
+                                                                                              (tailCaptures_roott :
+                                                                                                CaptureMap)
+                                                                                              (suffix_roott :
+                                                                                                List Char) =>
+                                                                                            (fun
+                                                                                                  (tailCaptures_root :
+                                                                                                    CaptureMap)
+                                                                                                  (suffix_root :
+                                                                                                    List Char) =>
+                                                                                                (fun
+                                                                                                      (captures :
+                                                                                                        CaptureMap)
+                                                                                                      (remaining :
+                                                                                                        List Char) =>
+                                                                                                    if
+                                                                                                        (remaining).isEmpty then
+                                                                                                      some captures
+                                                                                                    else none)
+                                                                                                  (ownCaptures_root ++
+                                                                                                      bodyCaptures_root ++
+                                                                                                    tailCaptures_root)
+                                                                                                  suffix_root)
+                                                                                              (ownCaptures_roott ++
+                                                                                                  bodyCaptures_roott ++
+                                                                                                tailCaptures_roott)
+                                                                                              suffix_roott)
+                                                                                          ([] : CaptureMap)
+                                                                                          remaining_roott)
+                                                                                      (ownCaptures_roottbl ++
+                                                                                          bodyCaptures_roottbl ++
+                                                                                        tailCaptures_roottbl)
+                                                                                      suffix_roottbl)
+                                                                                  (ownCaptures_roottbltrl ++
+                                                                                      bodyCaptures_roottbltrl ++
+                                                                                    tailCaptures_roottbltrl)
+                                                                                  suffix_roottbltrl)
+                                                                              (ownCaptures_roottbltrltrl ++
+                                                                                  bodyCaptures_roottbltrltrl ++
+                                                                                tailCaptures_roottbltrltrl)
+                                                                              suffix_roottbltrltrl)
+                                                                          ([] : CaptureMap) remaining_roottbltrltrl)
+                                                                      (ownCaptures_roottbltrltrlb ++
+                                                                          bodyCaptures_roottbltrltrlb ++
+                                                                        tailCaptures_roottbltrltrlb)
+                                                                      suffix_roottbltrltrlb)
+                                                                  ([] : CaptureMap)
+                                                                  ((remaining_roottbltrltrlb).drop
+                                                                    (characters_roottbltrltrlbt).length)
+                                                              else none)
+                                                            ([] : CaptureMap)
+                                                            ((remaining_roottbltrl).drop width_roottbltrltrlbb)
+                                                        else none)
+                                                      fun _ =>
+                                                      (fun (tailCaptures_roottbltrl : CaptureMap)
+                                                            (suffix_roottbltrl : List Char) =>
+                                                          (fun (tailCaptures_roottbl : CaptureMap)
+                                                                (suffix_roottbl : List Char) =>
+                                                              (fun (bodyCaptures_roott : CaptureMap)
+                                                                    (remaining_roott : List Char) =>
+                                                                  let ownCaptures_roott :=
+                                                                    (["Components"]).map fun key =>
+                                                                      (key,
+                                                                        String.ofList
+                                                                          ((remaining_root).take
+                                                                            ((remaining_root).length -
+                                                                              (remaining_roott).length)))
+                                                                  (fun (tailCaptures_roott : CaptureMap)
+                                                                        (suffix_roott : List Char) =>
+                                                                      (fun (tailCaptures_root : CaptureMap)
+                                                                            (suffix_root : List Char) =>
+                                                                          (fun (captures : CaptureMap)
+                                                                                (remaining : List Char) =>
+                                                                              if (remaining).isEmpty then some captures
+                                                                              else none)
+                                                                            (ownCaptures_root ++ bodyCaptures_root ++
+                                                                              tailCaptures_root)
+                                                                            suffix_root)
+                                                                        (ownCaptures_roott ++ bodyCaptures_roott ++
+                                                                          tailCaptures_roott)
+                                                                        suffix_roott)
+                                                                    ([] : CaptureMap) remaining_roott)
+                                                                (ownCaptures_roottbl ++ bodyCaptures_roottbl ++
+                                                                  tailCaptures_roottbl)
+                                                                suffix_roottbl)
+                                                            (ownCaptures_roottbltrl ++ bodyCaptures_roottbltrl ++
+                                                              tailCaptures_roottbltrl)
+                                                            suffix_roottbltrl)
+                                                        ([] : CaptureMap) remaining_roottbltrl)
+                                                (ownCaptures_roottbltrlb ++ bodyCaptures_roottbltrlb ++
+                                                  tailCaptures_roottbltrlb)
+                                                suffix_roottbltrlb)
+                                            ([] : CaptureMap)
+                                            ((remaining_roottbltrlb).drop (characters_roottbltrlbt).length)
+                                        else none)
+                                      ([] : CaptureMap) ((remaining_roottbl).drop width_roottbltrlbb)
+                                  else none)
+                                fun _ =>
+                                scanOrElse
+                                  ((List.range ((remaining_roottbl).length + 1)).findSome? fun width_roottbltrrlbb =>
+                                    if
+                                        termPrefixOk TokClass.digit LenSpec.atLeastOne remaining_roottbl
+                                          width_roottbltrrlbb then
+                                      (fun (bodyCaptures_roottbltrrlb : CaptureMap)
+                                            (remaining_roottbltrrlb : List Char) =>
+                                          let ownCaptures_roottbltrrlb :=
+                                            (["DSeconds", "Seconds.DSeconds"]).map fun key =>
+                                              (key,
+                                                String.ofList
+                                                  ((remaining_roottbl).take
+                                                    ((remaining_roottbl).length - (remaining_roottbltrrlb).length)))
+                                          let characters_roottbltrrlbt := "s".toList
+                                          if (characters_roottbltrrlbt).isPrefixOf remaining_roottbltrrlb then
+                                            (fun (tailCaptures_roottbltrrlb : CaptureMap)
+                                                  (suffix_roottbltrrlb : List Char) =>
+                                                (fun (bodyCaptures_roottbltrrl : CaptureMap)
+                                                      (remaining_roottbltrrl : List Char) =>
+                                                    let ownCaptures_roottbltrrl :=
+                                                      (["Seconds", "Components.Seconds"]).map fun key =>
+                                                        (key,
+                                                          String.ofList
+                                                            ((remaining_roottbl).take
+                                                              ((remaining_roottbl).length -
+                                                                (remaining_roottbltrrl).length)))
+                                                    scanOrElse
+                                                      ((List.range ((remaining_roottbltrrl).length + 1)).findSome?
+                                                        fun width_roottbltrrltlbb =>
+                                                        if
+                                                            termPrefixOk TokClass.digit LenSpec.atLeastOne
+                                                              remaining_roottbltrrl width_roottbltrrltlbb then
+                                                          (fun (bodyCaptures_roottbltrrltlb : CaptureMap)
+                                                                (remaining_roottbltrrltlb : List Char) =>
+                                                              let ownCaptures_roottbltrrltlb :=
+                                                                (["DMillis", "Millis.DMillis"]).map fun key =>
+                                                                  (key,
+                                                                    String.ofList
+                                                                      ((remaining_roottbltrrl).take
+                                                                        ((remaining_roottbltrrl).length -
+                                                                          (remaining_roottbltrrltlb).length)))
+                                                              let characters_roottbltrrltlbt := "ms".toList
+                                                              if
+                                                                  (characters_roottbltrrltlbt).isPrefixOf
+                                                                    remaining_roottbltrrltlb then
+                                                                (fun (tailCaptures_roottbltrrltlb : CaptureMap)
+                                                                      (suffix_roottbltrrltlb : List Char) =>
+                                                                    (fun (bodyCaptures_roottbltrrltl : CaptureMap)
+                                                                          (remaining_roottbltrrltl : List Char) =>
+                                                                        let ownCaptures_roottbltrrltl :=
+                                                                          (["Millis", "Components.Millis"]).map
+                                                                            fun key =>
+                                                                            (key,
+                                                                              String.ofList
+                                                                                ((remaining_roottbltrrl).take
+                                                                                  ((remaining_roottbltrrl).length -
+                                                                                    (remaining_roottbltrrltl).length)))
+                                                                        (fun (tailCaptures_roottbltrrltl : CaptureMap)
+                                                                              (suffix_roottbltrrltl : List Char) =>
+                                                                            (fun (tailCaptures_roottbltrrl : CaptureMap)
+                                                                                  (suffix_roottbltrrl : List Char) =>
+                                                                                (fun (tailCaptures_roottbl : CaptureMap)
+                                                                                      (suffix_roottbl : List Char) =>
+                                                                                    (fun
+                                                                                          (bodyCaptures_roott :
+                                                                                            CaptureMap)
+                                                                                          (remaining_roott :
+                                                                                            List Char) =>
+                                                                                        let ownCaptures_roott :=
+                                                                                          (["Components"]).map
+                                                                                            fun key =>
+                                                                                            (key,
+                                                                                              String.ofList
+                                                                                                ((remaining_root).take
+                                                                                                  ((remaining_root).length -
+                                                                                                    (remaining_roott).length)))
+                                                                                        (fun
+                                                                                              (tailCaptures_roott :
+                                                                                                CaptureMap)
+                                                                                              (suffix_roott :
+                                                                                                List Char) =>
+                                                                                            (fun
+                                                                                                  (tailCaptures_root :
+                                                                                                    CaptureMap)
+                                                                                                  (suffix_root :
+                                                                                                    List Char) =>
+                                                                                                (fun
+                                                                                                      (captures :
+                                                                                                        CaptureMap)
+                                                                                                      (remaining :
+                                                                                                        List Char) =>
+                                                                                                    if
+                                                                                                        (remaining).isEmpty then
+                                                                                                      some captures
+                                                                                                    else none)
+                                                                                                  (ownCaptures_root ++
+                                                                                                      bodyCaptures_root ++
+                                                                                                    tailCaptures_root)
+                                                                                                  suffix_root)
+                                                                                              (ownCaptures_roott ++
+                                                                                                  bodyCaptures_roott ++
+                                                                                                tailCaptures_roott)
+                                                                                              suffix_roott)
+                                                                                          ([] : CaptureMap)
+                                                                                          remaining_roott)
+                                                                                      (ownCaptures_roottbl ++
+                                                                                          bodyCaptures_roottbl ++
+                                                                                        tailCaptures_roottbl)
+                                                                                      suffix_roottbl)
+                                                                                  (ownCaptures_roottbltrrl ++
+                                                                                      bodyCaptures_roottbltrrl ++
+                                                                                    tailCaptures_roottbltrrl)
+                                                                                  suffix_roottbltrrl)
+                                                                              (ownCaptures_roottbltrrltl ++
+                                                                                  bodyCaptures_roottbltrrltl ++
+                                                                                tailCaptures_roottbltrrltl)
+                                                                              suffix_roottbltrrltl)
+                                                                          ([] : CaptureMap) remaining_roottbltrrltl)
+                                                                      (ownCaptures_roottbltrrltlb ++
+                                                                          bodyCaptures_roottbltrrltlb ++
+                                                                        tailCaptures_roottbltrrltlb)
+                                                                      suffix_roottbltrrltlb)
+                                                                  ([] : CaptureMap)
+                                                                  ((remaining_roottbltrrltlb).drop
+                                                                    (characters_roottbltrrltlbt).length)
+                                                              else none)
+                                                            ([] : CaptureMap)
+                                                            ((remaining_roottbltrrl).drop width_roottbltrrltlbb)
+                                                        else none)
+                                                      fun _ =>
+                                                      (fun (tailCaptures_roottbltrrl : CaptureMap)
+                                                            (suffix_roottbltrrl : List Char) =>
+                                                          (fun (tailCaptures_roottbl : CaptureMap)
+                                                                (suffix_roottbl : List Char) =>
+                                                              (fun (bodyCaptures_roott : CaptureMap)
+                                                                    (remaining_roott : List Char) =>
+                                                                  let ownCaptures_roott :=
+                                                                    (["Components"]).map fun key =>
+                                                                      (key,
+                                                                        String.ofList
+                                                                          ((remaining_root).take
+                                                                            ((remaining_root).length -
+                                                                              (remaining_roott).length)))
+                                                                  (fun (tailCaptures_roott : CaptureMap)
+                                                                        (suffix_roott : List Char) =>
+                                                                      (fun (tailCaptures_root : CaptureMap)
+                                                                            (suffix_root : List Char) =>
+                                                                          (fun (captures : CaptureMap)
+                                                                                (remaining : List Char) =>
+                                                                              if (remaining).isEmpty then some captures
+                                                                              else none)
+                                                                            (ownCaptures_root ++ bodyCaptures_root ++
+                                                                              tailCaptures_root)
+                                                                            suffix_root)
+                                                                        (ownCaptures_roott ++ bodyCaptures_roott ++
+                                                                          tailCaptures_roott)
+                                                                        suffix_roott)
+                                                                    ([] : CaptureMap) remaining_roott)
+                                                                (ownCaptures_roottbl ++ bodyCaptures_roottbl ++
+                                                                  tailCaptures_roottbl)
+                                                                suffix_roottbl)
+                                                            (ownCaptures_roottbltrrl ++ bodyCaptures_roottbltrrl ++
+                                                              tailCaptures_roottbltrrl)
+                                                            suffix_roottbltrrl)
+                                                        ([] : CaptureMap) remaining_roottbltrrl)
+                                                  (ownCaptures_roottbltrrlb ++ bodyCaptures_roottbltrrlb ++
+                                                    tailCaptures_roottbltrrlb)
+                                                  suffix_roottbltrrlb)
+                                              ([] : CaptureMap)
+                                              ((remaining_roottbltrrlb).drop (characters_roottbltrrlbt).length)
+                                          else none)
+                                        ([] : CaptureMap) ((remaining_roottbl).drop width_roottbltrrlbb)
+                                    else none)
+                                  fun _ =>
+                                  scanOrElse
+                                    ((List.range ((remaining_roottbl).length + 1)).findSome? fun width_roottbltrrrlbb =>
+                                      if
+                                          termPrefixOk TokClass.digit LenSpec.atLeastOne remaining_roottbl
+                                            width_roottbltrrrlbb then
+                                        (fun (bodyCaptures_roottbltrrrlb : CaptureMap)
+                                              (remaining_roottbltrrrlb : List Char) =>
+                                            let ownCaptures_roottbltrrrlb :=
+                                              (["DMillis", "Millis.DMillis"]).map fun key =>
+                                                (key,
+                                                  String.ofList
+                                                    ((remaining_roottbl).take
+                                                      ((remaining_roottbl).length - (remaining_roottbltrrrlb).length)))
+                                            let characters_roottbltrrrlbt := "ms".toList
+                                            if (characters_roottbltrrrlbt).isPrefixOf remaining_roottbltrrrlb then
+                                              (fun (tailCaptures_roottbltrrrlb : CaptureMap)
+                                                    (suffix_roottbltrrrlb : List Char) =>
+                                                  (fun (bodyCaptures_roottbltrrrl : CaptureMap)
+                                                        (remaining_roottbltrrrl : List Char) =>
+                                                      let ownCaptures_roottbltrrrl :=
+                                                        (["Millis", "Components.Millis"]).map fun key =>
+                                                          (key,
+                                                            String.ofList
+                                                              ((remaining_roottbl).take
+                                                                ((remaining_roottbl).length -
+                                                                  (remaining_roottbltrrrl).length)))
+                                                      (fun (tailCaptures_roottbltrrrl : CaptureMap)
+                                                            (suffix_roottbltrrrl : List Char) =>
+                                                          (fun (tailCaptures_roottbl : CaptureMap)
+                                                                (suffix_roottbl : List Char) =>
+                                                              (fun (bodyCaptures_roott : CaptureMap)
+                                                                    (remaining_roott : List Char) =>
+                                                                  let ownCaptures_roott :=
+                                                                    (["Components"]).map fun key =>
+                                                                      (key,
+                                                                        String.ofList
+                                                                          ((remaining_root).take
+                                                                            ((remaining_root).length -
+                                                                              (remaining_roott).length)))
+                                                                  (fun (tailCaptures_roott : CaptureMap)
+                                                                        (suffix_roott : List Char) =>
+                                                                      (fun (tailCaptures_root : CaptureMap)
+                                                                            (suffix_root : List Char) =>
+                                                                          (fun (captures : CaptureMap)
+                                                                                (remaining : List Char) =>
+                                                                              if (remaining).isEmpty then some captures
+                                                                              else none)
+                                                                            (ownCaptures_root ++ bodyCaptures_root ++
+                                                                              tailCaptures_root)
+                                                                            suffix_root)
+                                                                        (ownCaptures_roott ++ bodyCaptures_roott ++
+                                                                          tailCaptures_roott)
+                                                                        suffix_roott)
+                                                                    ([] : CaptureMap) remaining_roott)
+                                                                (ownCaptures_roottbl ++ bodyCaptures_roottbl ++
+                                                                  tailCaptures_roottbl)
+                                                                suffix_roottbl)
+                                                            (ownCaptures_roottbltrrrl ++ bodyCaptures_roottbltrrrl ++
+                                                              tailCaptures_roottbltrrrl)
+                                                            suffix_roottbltrrrl)
+                                                        ([] : CaptureMap) remaining_roottbltrrrl)
+                                                    (ownCaptures_roottbltrrrlb ++ bodyCaptures_roottbltrrrlb ++
+                                                      tailCaptures_roottbltrrrlb)
+                                                    suffix_roottbltrrrlb)
+                                                ([] : CaptureMap)
+                                                ((remaining_roottbltrrrlb).drop (characters_roottbltrrrlbt).length)
+                                            else none)
+                                          ([] : CaptureMap) ((remaining_roottbl).drop width_roottbltrrrlbb)
+                                      else none)
+                                    fun _ =>
+                                    (fun (tailCaptures_roottbl : CaptureMap) (suffix_roottbl : List Char) =>
+                                        (fun (bodyCaptures_roott : CaptureMap) (remaining_roott : List Char) =>
+                                            let ownCaptures_roott :=
+                                              (["Components"]).map fun key =>
+                                                (key,
+                                                  String.ofList
+                                                    ((remaining_root).take
+                                                      ((remaining_root).length - (remaining_roott).length)))
+                                            (fun (tailCaptures_roott : CaptureMap) (suffix_roott : List Char) =>
+                                                (fun (tailCaptures_root : CaptureMap) (suffix_root : List Char) =>
+                                                    (fun (captures : CaptureMap) (remaining : List Char) =>
+                                                        if (remaining).isEmpty then some captures else none)
+                                                      (ownCaptures_root ++ bodyCaptures_root ++ tailCaptures_root)
+                                                      suffix_root)
+                                                  (ownCaptures_roott ++ bodyCaptures_roott ++ tailCaptures_roott)
+                                                  suffix_roott)
+                                              ([] : CaptureMap) remaining_roott)
+                                          (ownCaptures_roottbl ++ bodyCaptures_roottbl ++ tailCaptures_roottbl)
+                                          suffix_roottbl)
+                                      ([] : CaptureMap) remaining_roottbl)
+                          (ownCaptures_roottblb ++ bodyCaptures_roottblb ++ tailCaptures_roottblb) suffix_roottblb)
+                      ([] : CaptureMap) ((remaining_roottblb).drop (characters_roottblbt).length)
+                  else none)
+                ([] : CaptureMap) ((remaining_root).drop width_roottblbb)
+            else none)
+          fun _ =>
+          scanOrElse
+            ((List.range ((remaining_root).length + 1)).findSome? fun width_roottbrlbb =>
+              if termPrefixOk TokClass.digit LenSpec.atLeastOne remaining_root width_roottbrlbb then
+                (fun (bodyCaptures_roottbrlb : CaptureMap) (remaining_roottbrlb : List Char) =>
+                    let ownCaptures_roottbrlb :=
+                      (["DHours", "Hours.DHours"]).map fun key =>
+                        (key,
+                          String.ofList
+                            ((remaining_root).take ((remaining_root).length - (remaining_roottbrlb).length)))
+                    let characters_roottbrlbt := "h".toList
+                    if (characters_roottbrlbt).isPrefixOf remaining_roottbrlb then
+                      (fun (tailCaptures_roottbrlb : CaptureMap) (suffix_roottbrlb : List Char) =>
+                          (fun (bodyCaptures_roottbrl : CaptureMap) (remaining_roottbrl : List Char) =>
+                              let ownCaptures_roottbrl :=
+                                (["Hours", "Components.Hours"]).map fun key =>
+                                  (key,
+                                    String.ofList
+                                      ((remaining_root).take ((remaining_root).length - (remaining_roottbrl).length)))
+                              scanOrElse
+                                ((List.range ((remaining_roottbrl).length + 1)).findSome? fun width_roottbrltlbb =>
+                                  if
+                                      termPrefixOk TokClass.digit LenSpec.atLeastOne remaining_roottbrl
+                                        width_roottbrltlbb then
+                                    (fun (bodyCaptures_roottbrltlb : CaptureMap) (remaining_roottbrltlb : List Char) =>
+                                        let ownCaptures_roottbrltlb :=
+                                          (["DMinutes", "Minutes.DMinutes"]).map fun key =>
+                                            (key,
+                                              String.ofList
+                                                ((remaining_roottbrl).take
+                                                  ((remaining_roottbrl).length - (remaining_roottbrltlb).length)))
+                                        let characters_roottbrltlbt := "m".toList
+                                        if (characters_roottbrltlbt).isPrefixOf remaining_roottbrltlb then
+                                          (fun (tailCaptures_roottbrltlb : CaptureMap)
+                                                (suffix_roottbrltlb : List Char) =>
+                                              (fun (bodyCaptures_roottbrltl : CaptureMap)
+                                                    (remaining_roottbrltl : List Char) =>
+                                                  let ownCaptures_roottbrltl :=
+                                                    (["Minutes", "Components.Minutes"]).map fun key =>
+                                                      (key,
+                                                        String.ofList
+                                                          ((remaining_roottbrl).take
+                                                            ((remaining_roottbrl).length -
+                                                              (remaining_roottbrltl).length)))
+                                                  scanOrElse
+                                                    ((List.range ((remaining_roottbrltl).length + 1)).findSome?
+                                                      fun width_roottbrltltlbb =>
+                                                      if
+                                                          termPrefixOk TokClass.digit LenSpec.atLeastOne
+                                                            remaining_roottbrltl width_roottbrltltlbb then
+                                                        (fun (bodyCaptures_roottbrltltlb : CaptureMap)
+                                                              (remaining_roottbrltltlb : List Char) =>
+                                                            let ownCaptures_roottbrltltlb :=
+                                                              (["DSeconds", "Seconds.DSeconds"]).map fun key =>
+                                                                (key,
+                                                                  String.ofList
+                                                                    ((remaining_roottbrltl).take
+                                                                      ((remaining_roottbrltl).length -
+                                                                        (remaining_roottbrltltlb).length)))
+                                                            let characters_roottbrltltlbt := "s".toList
+                                                            if
+                                                                (characters_roottbrltltlbt).isPrefixOf
+                                                                  remaining_roottbrltltlb then
+                                                              (fun (tailCaptures_roottbrltltlb : CaptureMap)
+                                                                    (suffix_roottbrltltlb : List Char) =>
+                                                                  (fun (bodyCaptures_roottbrltltl : CaptureMap)
+                                                                        (remaining_roottbrltltl : List Char) =>
+                                                                      let ownCaptures_roottbrltltl :=
+                                                                        (["Seconds", "Components.Seconds"]).map
+                                                                          fun key =>
+                                                                          (key,
+                                                                            String.ofList
+                                                                              ((remaining_roottbrltl).take
+                                                                                ((remaining_roottbrltl).length -
+                                                                                  (remaining_roottbrltltl).length)))
+                                                                      scanOrElse
+                                                                        ((List.range
+                                                                              ((remaining_roottbrltltl).length +
+                                                                                1)).findSome?
+                                                                          fun width_roottbrltltltlbb =>
+                                                                          if
+                                                                              termPrefixOk TokClass.digit
+                                                                                LenSpec.atLeastOne
+                                                                                remaining_roottbrltltl
+                                                                                width_roottbrltltltlbb then
+                                                                            (fun
+                                                                                  (bodyCaptures_roottbrltltltlb :
+                                                                                    CaptureMap)
+                                                                                  (remaining_roottbrltltltlb :
+                                                                                    List Char) =>
+                                                                                let ownCaptures_roottbrltltltlb :=
+                                                                                  (["DMillis", "Millis.DMillis"]).map
+                                                                                    fun key =>
+                                                                                    (key,
+                                                                                      String.ofList
+                                                                                        ((remaining_roottbrltltl).take
+                                                                                          ((remaining_roottbrltltl).length -
+                                                                                            (remaining_roottbrltltltlb).length)))
+                                                                                let characters_roottbrltltltlbt :=
+                                                                                  "ms".toList
+                                                                                if
+                                                                                    (characters_roottbrltltltlbt).isPrefixOf
+                                                                                      remaining_roottbrltltltlb then
+                                                                                  (fun
+                                                                                        (tailCaptures_roottbrltltltlb :
+                                                                                          CaptureMap)
+                                                                                        (suffix_roottbrltltltlb :
+                                                                                          List Char) =>
+                                                                                      (fun
+                                                                                            (bodyCaptures_roottbrltltltl :
+                                                                                              CaptureMap)
+                                                                                            (remaining_roottbrltltltl :
+                                                                                              List Char) =>
+                                                                                          let
+                                                                                            ownCaptures_roottbrltltltl :=
+                                                                                            (["Millis",
+                                                                                                  "Components.Millis"]).map
+                                                                                              fun key =>
+                                                                                              (key,
+                                                                                                String.ofList
+                                                                                                  ((remaining_roottbrltltl).take
+                                                                                                    ((remaining_roottbrltltl).length -
+                                                                                                      (remaining_roottbrltltltl).length)))
+                                                                                          (fun
+                                                                                                (tailCaptures_roottbrltltltl :
+                                                                                                  CaptureMap)
+                                                                                                (suffix_roottbrltltltl :
+                                                                                                  List Char) =>
+                                                                                              (fun
+                                                                                                    (tailCaptures_roottbrltltl :
+                                                                                                      CaptureMap)
+                                                                                                    (suffix_roottbrltltl :
+                                                                                                      List Char) =>
+                                                                                                  (fun
+                                                                                                        (tailCaptures_roottbrltl :
+                                                                                                          CaptureMap)
+                                                                                                        (suffix_roottbrltl :
+                                                                                                          List Char) =>
+                                                                                                      (fun
+                                                                                                            (tailCaptures_roottbrl :
+                                                                                                              CaptureMap)
+                                                                                                            (suffix_roottbrl :
+                                                                                                              List
+                                                                                                                Char) =>
+                                                                                                          (fun
+                                                                                                                (bodyCaptures_roott :
+                                                                                                                  CaptureMap)
+                                                                                                                (remaining_roott :
+                                                                                                                  List
+                                                                                                                    Char) =>
+                                                                                                              let
+                                                                                                                ownCaptures_roott :=
+                                                                                                                (["Components"]).map
+                                                                                                                  fun
+                                                                                                                    key =>
+                                                                                                                  (key,
+                                                                                                                    String.ofList
+                                                                                                                      ((remaining_root).take
+                                                                                                                        ((remaining_root).length -
+                                                                                                                          (remaining_roott).length)))
+                                                                                                              (fun
+                                                                                                                    (tailCaptures_roott :
+                                                                                                                      CaptureMap)
+                                                                                                                    (suffix_roott :
+                                                                                                                      List
+                                                                                                                        Char) =>
+                                                                                                                  (fun
+                                                                                                                        (tailCaptures_root :
+                                                                                                                          CaptureMap)
+                                                                                                                        (suffix_root :
+                                                                                                                          List
+                                                                                                                            Char) =>
+                                                                                                                      (fun
+                                                                                                                            (captures :
+                                                                                                                              CaptureMap)
+                                                                                                                            (remaining :
+                                                                                                                              List
+                                                                                                                                Char) =>
+                                                                                                                          if
+                                                                                                                              (remaining).isEmpty then
+                                                                                                                            some
+                                                                                                                              captures
+                                                                                                                          else
+                                                                                                                            none)
+                                                                                                                        (ownCaptures_root ++
+                                                                                                                            bodyCaptures_root ++
+                                                                                                                          tailCaptures_root)
+                                                                                                                        suffix_root)
+                                                                                                                    (ownCaptures_roott ++
+                                                                                                                        bodyCaptures_roott ++
+                                                                                                                      tailCaptures_roott)
+                                                                                                                    suffix_roott)
+                                                                                                                ([] :
+                                                                                                                  CaptureMap)
+                                                                                                                remaining_roott)
+                                                                                                            (ownCaptures_roottbrl ++
+                                                                                                                bodyCaptures_roottbrl ++
+                                                                                                              tailCaptures_roottbrl)
+                                                                                                            suffix_roottbrl)
+                                                                                                        (ownCaptures_roottbrltl ++
+                                                                                                            bodyCaptures_roottbrltl ++
+                                                                                                          tailCaptures_roottbrltl)
+                                                                                                        suffix_roottbrltl)
+                                                                                                    (ownCaptures_roottbrltltl ++
+                                                                                                        bodyCaptures_roottbrltltl ++
+                                                                                                      tailCaptures_roottbrltltl)
+                                                                                                    suffix_roottbrltltl)
+                                                                                                (ownCaptures_roottbrltltltl ++
+                                                                                                    bodyCaptures_roottbrltltltl ++
+                                                                                                  tailCaptures_roottbrltltltl)
+                                                                                                suffix_roottbrltltltl)
+                                                                                            ([] : CaptureMap)
+                                                                                            remaining_roottbrltltltl)
+                                                                                        (ownCaptures_roottbrltltltlb ++
+                                                                                            bodyCaptures_roottbrltltltlb ++
+                                                                                          tailCaptures_roottbrltltltlb)
+                                                                                        suffix_roottbrltltltlb)
+                                                                                    ([] : CaptureMap)
+                                                                                    ((remaining_roottbrltltltlb).drop
+                                                                                      (characters_roottbrltltltlbt).length)
+                                                                                else none)
+                                                                              ([] : CaptureMap)
+                                                                              ((remaining_roottbrltltl).drop
+                                                                                width_roottbrltltltlbb)
+                                                                          else none)
+                                                                        fun _ =>
+                                                                        (fun (tailCaptures_roottbrltltl : CaptureMap)
+                                                                              (suffix_roottbrltltl : List Char) =>
+                                                                            (fun (tailCaptures_roottbrltl : CaptureMap)
+                                                                                  (suffix_roottbrltl : List Char) =>
+                                                                                (fun
+                                                                                      (tailCaptures_roottbrl :
+                                                                                        CaptureMap)
+                                                                                      (suffix_roottbrl : List Char) =>
+                                                                                    (fun
+                                                                                          (bodyCaptures_roott :
+                                                                                            CaptureMap)
+                                                                                          (remaining_roott :
+                                                                                            List Char) =>
+                                                                                        let ownCaptures_roott :=
+                                                                                          (["Components"]).map
+                                                                                            fun key =>
+                                                                                            (key,
+                                                                                              String.ofList
+                                                                                                ((remaining_root).take
+                                                                                                  ((remaining_root).length -
+                                                                                                    (remaining_roott).length)))
+                                                                                        (fun
+                                                                                              (tailCaptures_roott :
+                                                                                                CaptureMap)
+                                                                                              (suffix_roott :
+                                                                                                List Char) =>
+                                                                                            (fun
+                                                                                                  (tailCaptures_root :
+                                                                                                    CaptureMap)
+                                                                                                  (suffix_root :
+                                                                                                    List Char) =>
+                                                                                                (fun
+                                                                                                      (captures :
+                                                                                                        CaptureMap)
+                                                                                                      (remaining :
+                                                                                                        List Char) =>
+                                                                                                    if
+                                                                                                        (remaining).isEmpty then
+                                                                                                      some captures
+                                                                                                    else none)
+                                                                                                  (ownCaptures_root ++
+                                                                                                      bodyCaptures_root ++
+                                                                                                    tailCaptures_root)
+                                                                                                  suffix_root)
+                                                                                              (ownCaptures_roott ++
+                                                                                                  bodyCaptures_roott ++
+                                                                                                tailCaptures_roott)
+                                                                                              suffix_roott)
+                                                                                          ([] : CaptureMap)
+                                                                                          remaining_roott)
+                                                                                      (ownCaptures_roottbrl ++
+                                                                                          bodyCaptures_roottbrl ++
+                                                                                        tailCaptures_roottbrl)
+                                                                                      suffix_roottbrl)
+                                                                                  (ownCaptures_roottbrltl ++
+                                                                                      bodyCaptures_roottbrltl ++
+                                                                                    tailCaptures_roottbrltl)
+                                                                                  suffix_roottbrltl)
+                                                                              (ownCaptures_roottbrltltl ++
+                                                                                  bodyCaptures_roottbrltltl ++
+                                                                                tailCaptures_roottbrltltl)
+                                                                              suffix_roottbrltltl)
+                                                                          ([] : CaptureMap) remaining_roottbrltltl)
+                                                                    (ownCaptures_roottbrltltlb ++
+                                                                        bodyCaptures_roottbrltltlb ++
+                                                                      tailCaptures_roottbrltltlb)
+                                                                    suffix_roottbrltltlb)
+                                                                ([] : CaptureMap)
+                                                                ((remaining_roottbrltltlb).drop
+                                                                  (characters_roottbrltltlbt).length)
+                                                            else none)
+                                                          ([] : CaptureMap)
+                                                          ((remaining_roottbrltl).drop width_roottbrltltlbb)
+                                                      else none)
+                                                    fun _ =>
+                                                    scanOrElse
+                                                      ((List.range ((remaining_roottbrltl).length + 1)).findSome?
+                                                        fun width_roottbrltltrlbb =>
+                                                        if
+                                                            termPrefixOk TokClass.digit LenSpec.atLeastOne
+                                                              remaining_roottbrltl width_roottbrltltrlbb then
+                                                          (fun (bodyCaptures_roottbrltltrlb : CaptureMap)
+                                                                (remaining_roottbrltltrlb : List Char) =>
+                                                              let ownCaptures_roottbrltltrlb :=
+                                                                (["DMillis", "Millis.DMillis"]).map fun key =>
+                                                                  (key,
+                                                                    String.ofList
+                                                                      ((remaining_roottbrltl).take
+                                                                        ((remaining_roottbrltl).length -
+                                                                          (remaining_roottbrltltrlb).length)))
+                                                              let characters_roottbrltltrlbt := "ms".toList
+                                                              if
+                                                                  (characters_roottbrltltrlbt).isPrefixOf
+                                                                    remaining_roottbrltltrlb then
+                                                                (fun (tailCaptures_roottbrltltrlb : CaptureMap)
+                                                                      (suffix_roottbrltltrlb : List Char) =>
+                                                                    (fun (bodyCaptures_roottbrltltrl : CaptureMap)
+                                                                          (remaining_roottbrltltrl : List Char) =>
+                                                                        let ownCaptures_roottbrltltrl :=
+                                                                          (["Millis", "Components.Millis"]).map
+                                                                            fun key =>
+                                                                            (key,
+                                                                              String.ofList
+                                                                                ((remaining_roottbrltl).take
+                                                                                  ((remaining_roottbrltl).length -
+                                                                                    (remaining_roottbrltltrl).length)))
+                                                                        (fun (tailCaptures_roottbrltltrl : CaptureMap)
+                                                                              (suffix_roottbrltltrl : List Char) =>
+                                                                            (fun (tailCaptures_roottbrltl : CaptureMap)
+                                                                                  (suffix_roottbrltl : List Char) =>
+                                                                                (fun
+                                                                                      (tailCaptures_roottbrl :
+                                                                                        CaptureMap)
+                                                                                      (suffix_roottbrl : List Char) =>
+                                                                                    (fun
+                                                                                          (bodyCaptures_roott :
+                                                                                            CaptureMap)
+                                                                                          (remaining_roott :
+                                                                                            List Char) =>
+                                                                                        let ownCaptures_roott :=
+                                                                                          (["Components"]).map
+                                                                                            fun key =>
+                                                                                            (key,
+                                                                                              String.ofList
+                                                                                                ((remaining_root).take
+                                                                                                  ((remaining_root).length -
+                                                                                                    (remaining_roott).length)))
+                                                                                        (fun
+                                                                                              (tailCaptures_roott :
+                                                                                                CaptureMap)
+                                                                                              (suffix_roott :
+                                                                                                List Char) =>
+                                                                                            (fun
+                                                                                                  (tailCaptures_root :
+                                                                                                    CaptureMap)
+                                                                                                  (suffix_root :
+                                                                                                    List Char) =>
+                                                                                                (fun
+                                                                                                      (captures :
+                                                                                                        CaptureMap)
+                                                                                                      (remaining :
+                                                                                                        List Char) =>
+                                                                                                    if
+                                                                                                        (remaining).isEmpty then
+                                                                                                      some captures
+                                                                                                    else none)
+                                                                                                  (ownCaptures_root ++
+                                                                                                      bodyCaptures_root ++
+                                                                                                    tailCaptures_root)
+                                                                                                  suffix_root)
+                                                                                              (ownCaptures_roott ++
+                                                                                                  bodyCaptures_roott ++
+                                                                                                tailCaptures_roott)
+                                                                                              suffix_roott)
+                                                                                          ([] : CaptureMap)
+                                                                                          remaining_roott)
+                                                                                      (ownCaptures_roottbrl ++
+                                                                                          bodyCaptures_roottbrl ++
+                                                                                        tailCaptures_roottbrl)
+                                                                                      suffix_roottbrl)
+                                                                                  (ownCaptures_roottbrltl ++
+                                                                                      bodyCaptures_roottbrltl ++
+                                                                                    tailCaptures_roottbrltl)
+                                                                                  suffix_roottbrltl)
+                                                                              (ownCaptures_roottbrltltrl ++
+                                                                                  bodyCaptures_roottbrltltrl ++
+                                                                                tailCaptures_roottbrltltrl)
+                                                                              suffix_roottbrltltrl)
+                                                                          ([] : CaptureMap) remaining_roottbrltltrl)
+                                                                      (ownCaptures_roottbrltltrlb ++
+                                                                          bodyCaptures_roottbrltltrlb ++
+                                                                        tailCaptures_roottbrltltrlb)
+                                                                      suffix_roottbrltltrlb)
+                                                                  ([] : CaptureMap)
+                                                                  ((remaining_roottbrltltrlb).drop
+                                                                    (characters_roottbrltltrlbt).length)
+                                                              else none)
+                                                            ([] : CaptureMap)
+                                                            ((remaining_roottbrltl).drop width_roottbrltltrlbb)
+                                                        else none)
+                                                      fun _ =>
+                                                      (fun (tailCaptures_roottbrltl : CaptureMap)
+                                                            (suffix_roottbrltl : List Char) =>
+                                                          (fun (tailCaptures_roottbrl : CaptureMap)
+                                                                (suffix_roottbrl : List Char) =>
+                                                              (fun (bodyCaptures_roott : CaptureMap)
+                                                                    (remaining_roott : List Char) =>
+                                                                  let ownCaptures_roott :=
+                                                                    (["Components"]).map fun key =>
+                                                                      (key,
+                                                                        String.ofList
+                                                                          ((remaining_root).take
+                                                                            ((remaining_root).length -
+                                                                              (remaining_roott).length)))
+                                                                  (fun (tailCaptures_roott : CaptureMap)
+                                                                        (suffix_roott : List Char) =>
+                                                                      (fun (tailCaptures_root : CaptureMap)
+                                                                            (suffix_root : List Char) =>
+                                                                          (fun (captures : CaptureMap)
+                                                                                (remaining : List Char) =>
+                                                                              if (remaining).isEmpty then some captures
+                                                                              else none)
+                                                                            (ownCaptures_root ++ bodyCaptures_root ++
+                                                                              tailCaptures_root)
+                                                                            suffix_root)
+                                                                        (ownCaptures_roott ++ bodyCaptures_roott ++
+                                                                          tailCaptures_roott)
+                                                                        suffix_roott)
+                                                                    ([] : CaptureMap) remaining_roott)
+                                                                (ownCaptures_roottbrl ++ bodyCaptures_roottbrl ++
+                                                                  tailCaptures_roottbrl)
+                                                                suffix_roottbrl)
+                                                            (ownCaptures_roottbrltl ++ bodyCaptures_roottbrltl ++
+                                                              tailCaptures_roottbrltl)
+                                                            suffix_roottbrltl)
+                                                        ([] : CaptureMap) remaining_roottbrltl)
+                                                (ownCaptures_roottbrltlb ++ bodyCaptures_roottbrltlb ++
+                                                  tailCaptures_roottbrltlb)
+                                                suffix_roottbrltlb)
+                                            ([] : CaptureMap)
+                                            ((remaining_roottbrltlb).drop (characters_roottbrltlbt).length)
+                                        else none)
+                                      ([] : CaptureMap) ((remaining_roottbrl).drop width_roottbrltlbb)
+                                  else none)
+                                fun _ =>
+                                scanOrElse
+                                  ((List.range ((remaining_roottbrl).length + 1)).findSome? fun width_roottbrltrlbb =>
+                                    if
+                                        termPrefixOk TokClass.digit LenSpec.atLeastOne remaining_roottbrl
+                                          width_roottbrltrlbb then
+                                      (fun (bodyCaptures_roottbrltrlb : CaptureMap)
+                                            (remaining_roottbrltrlb : List Char) =>
+                                          let ownCaptures_roottbrltrlb :=
+                                            (["DSeconds", "Seconds.DSeconds"]).map fun key =>
+                                              (key,
+                                                String.ofList
+                                                  ((remaining_roottbrl).take
+                                                    ((remaining_roottbrl).length - (remaining_roottbrltrlb).length)))
+                                          let characters_roottbrltrlbt := "s".toList
+                                          if (characters_roottbrltrlbt).isPrefixOf remaining_roottbrltrlb then
+                                            (fun (tailCaptures_roottbrltrlb : CaptureMap)
+                                                  (suffix_roottbrltrlb : List Char) =>
+                                                (fun (bodyCaptures_roottbrltrl : CaptureMap)
+                                                      (remaining_roottbrltrl : List Char) =>
+                                                    let ownCaptures_roottbrltrl :=
+                                                      (["Seconds", "Components.Seconds"]).map fun key =>
+                                                        (key,
+                                                          String.ofList
+                                                            ((remaining_roottbrl).take
+                                                              ((remaining_roottbrl).length -
+                                                                (remaining_roottbrltrl).length)))
+                                                    scanOrElse
+                                                      ((List.range ((remaining_roottbrltrl).length + 1)).findSome?
+                                                        fun width_roottbrltrltlbb =>
+                                                        if
+                                                            termPrefixOk TokClass.digit LenSpec.atLeastOne
+                                                              remaining_roottbrltrl width_roottbrltrltlbb then
+                                                          (fun (bodyCaptures_roottbrltrltlb : CaptureMap)
+                                                                (remaining_roottbrltrltlb : List Char) =>
+                                                              let ownCaptures_roottbrltrltlb :=
+                                                                (["DMillis", "Millis.DMillis"]).map fun key =>
+                                                                  (key,
+                                                                    String.ofList
+                                                                      ((remaining_roottbrltrl).take
+                                                                        ((remaining_roottbrltrl).length -
+                                                                          (remaining_roottbrltrltlb).length)))
+                                                              let characters_roottbrltrltlbt := "ms".toList
+                                                              if
+                                                                  (characters_roottbrltrltlbt).isPrefixOf
+                                                                    remaining_roottbrltrltlb then
+                                                                (fun (tailCaptures_roottbrltrltlb : CaptureMap)
+                                                                      (suffix_roottbrltrltlb : List Char) =>
+                                                                    (fun (bodyCaptures_roottbrltrltl : CaptureMap)
+                                                                          (remaining_roottbrltrltl : List Char) =>
+                                                                        let ownCaptures_roottbrltrltl :=
+                                                                          (["Millis", "Components.Millis"]).map
+                                                                            fun key =>
+                                                                            (key,
+                                                                              String.ofList
+                                                                                ((remaining_roottbrltrl).take
+                                                                                  ((remaining_roottbrltrl).length -
+                                                                                    (remaining_roottbrltrltl).length)))
+                                                                        (fun (tailCaptures_roottbrltrltl : CaptureMap)
+                                                                              (suffix_roottbrltrltl : List Char) =>
+                                                                            (fun (tailCaptures_roottbrltrl : CaptureMap)
+                                                                                  (suffix_roottbrltrl : List Char) =>
+                                                                                (fun
+                                                                                      (tailCaptures_roottbrl :
+                                                                                        CaptureMap)
+                                                                                      (suffix_roottbrl : List Char) =>
+                                                                                    (fun
+                                                                                          (bodyCaptures_roott :
+                                                                                            CaptureMap)
+                                                                                          (remaining_roott :
+                                                                                            List Char) =>
+                                                                                        let ownCaptures_roott :=
+                                                                                          (["Components"]).map
+                                                                                            fun key =>
+                                                                                            (key,
+                                                                                              String.ofList
+                                                                                                ((remaining_root).take
+                                                                                                  ((remaining_root).length -
+                                                                                                    (remaining_roott).length)))
+                                                                                        (fun
+                                                                                              (tailCaptures_roott :
+                                                                                                CaptureMap)
+                                                                                              (suffix_roott :
+                                                                                                List Char) =>
+                                                                                            (fun
+                                                                                                  (tailCaptures_root :
+                                                                                                    CaptureMap)
+                                                                                                  (suffix_root :
+                                                                                                    List Char) =>
+                                                                                                (fun
+                                                                                                      (captures :
+                                                                                                        CaptureMap)
+                                                                                                      (remaining :
+                                                                                                        List Char) =>
+                                                                                                    if
+                                                                                                        (remaining).isEmpty then
+                                                                                                      some captures
+                                                                                                    else none)
+                                                                                                  (ownCaptures_root ++
+                                                                                                      bodyCaptures_root ++
+                                                                                                    tailCaptures_root)
+                                                                                                  suffix_root)
+                                                                                              (ownCaptures_roott ++
+                                                                                                  bodyCaptures_roott ++
+                                                                                                tailCaptures_roott)
+                                                                                              suffix_roott)
+                                                                                          ([] : CaptureMap)
+                                                                                          remaining_roott)
+                                                                                      (ownCaptures_roottbrl ++
+                                                                                          bodyCaptures_roottbrl ++
+                                                                                        tailCaptures_roottbrl)
+                                                                                      suffix_roottbrl)
+                                                                                  (ownCaptures_roottbrltrl ++
+                                                                                      bodyCaptures_roottbrltrl ++
+                                                                                    tailCaptures_roottbrltrl)
+                                                                                  suffix_roottbrltrl)
+                                                                              (ownCaptures_roottbrltrltl ++
+                                                                                  bodyCaptures_roottbrltrltl ++
+                                                                                tailCaptures_roottbrltrltl)
+                                                                              suffix_roottbrltrltl)
+                                                                          ([] : CaptureMap) remaining_roottbrltrltl)
+                                                                      (ownCaptures_roottbrltrltlb ++
+                                                                          bodyCaptures_roottbrltrltlb ++
+                                                                        tailCaptures_roottbrltrltlb)
+                                                                      suffix_roottbrltrltlb)
+                                                                  ([] : CaptureMap)
+                                                                  ((remaining_roottbrltrltlb).drop
+                                                                    (characters_roottbrltrltlbt).length)
+                                                              else none)
+                                                            ([] : CaptureMap)
+                                                            ((remaining_roottbrltrl).drop width_roottbrltrltlbb)
+                                                        else none)
+                                                      fun _ =>
+                                                      (fun (tailCaptures_roottbrltrl : CaptureMap)
+                                                            (suffix_roottbrltrl : List Char) =>
+                                                          (fun (tailCaptures_roottbrl : CaptureMap)
+                                                                (suffix_roottbrl : List Char) =>
+                                                              (fun (bodyCaptures_roott : CaptureMap)
+                                                                    (remaining_roott : List Char) =>
+                                                                  let ownCaptures_roott :=
+                                                                    (["Components"]).map fun key =>
+                                                                      (key,
+                                                                        String.ofList
+                                                                          ((remaining_root).take
+                                                                            ((remaining_root).length -
+                                                                              (remaining_roott).length)))
+                                                                  (fun (tailCaptures_roott : CaptureMap)
+                                                                        (suffix_roott : List Char) =>
+                                                                      (fun (tailCaptures_root : CaptureMap)
+                                                                            (suffix_root : List Char) =>
+                                                                          (fun (captures : CaptureMap)
+                                                                                (remaining : List Char) =>
+                                                                              if (remaining).isEmpty then some captures
+                                                                              else none)
+                                                                            (ownCaptures_root ++ bodyCaptures_root ++
+                                                                              tailCaptures_root)
+                                                                            suffix_root)
+                                                                        (ownCaptures_roott ++ bodyCaptures_roott ++
+                                                                          tailCaptures_roott)
+                                                                        suffix_roott)
+                                                                    ([] : CaptureMap) remaining_roott)
+                                                                (ownCaptures_roottbrl ++ bodyCaptures_roottbrl ++
+                                                                  tailCaptures_roottbrl)
+                                                                suffix_roottbrl)
+                                                            (ownCaptures_roottbrltrl ++ bodyCaptures_roottbrltrl ++
+                                                              tailCaptures_roottbrltrl)
+                                                            suffix_roottbrltrl)
+                                                        ([] : CaptureMap) remaining_roottbrltrl)
+                                                  (ownCaptures_roottbrltrlb ++ bodyCaptures_roottbrltrlb ++
+                                                    tailCaptures_roottbrltrlb)
+                                                  suffix_roottbrltrlb)
+                                              ([] : CaptureMap)
+                                              ((remaining_roottbrltrlb).drop (characters_roottbrltrlbt).length)
+                                          else none)
+                                        ([] : CaptureMap) ((remaining_roottbrl).drop width_roottbrltrlbb)
+                                    else none)
+                                  fun _ =>
+                                  scanOrElse
+                                    ((List.range ((remaining_roottbrl).length + 1)).findSome?
+                                      fun width_roottbrltrrlbb =>
+                                      if
+                                          termPrefixOk TokClass.digit LenSpec.atLeastOne remaining_roottbrl
+                                            width_roottbrltrrlbb then
+                                        (fun (bodyCaptures_roottbrltrrlb : CaptureMap)
+                                              (remaining_roottbrltrrlb : List Char) =>
+                                            let ownCaptures_roottbrltrrlb :=
+                                              (["DMillis", "Millis.DMillis"]).map fun key =>
+                                                (key,
+                                                  String.ofList
+                                                    ((remaining_roottbrl).take
+                                                      ((remaining_roottbrl).length - (remaining_roottbrltrrlb).length)))
+                                            let characters_roottbrltrrlbt := "ms".toList
+                                            if (characters_roottbrltrrlbt).isPrefixOf remaining_roottbrltrrlb then
+                                              (fun (tailCaptures_roottbrltrrlb : CaptureMap)
+                                                    (suffix_roottbrltrrlb : List Char) =>
+                                                  (fun (bodyCaptures_roottbrltrrl : CaptureMap)
+                                                        (remaining_roottbrltrrl : List Char) =>
+                                                      let ownCaptures_roottbrltrrl :=
+                                                        (["Millis", "Components.Millis"]).map fun key =>
+                                                          (key,
+                                                            String.ofList
+                                                              ((remaining_roottbrl).take
+                                                                ((remaining_roottbrl).length -
+                                                                  (remaining_roottbrltrrl).length)))
+                                                      (fun (tailCaptures_roottbrltrrl : CaptureMap)
+                                                            (suffix_roottbrltrrl : List Char) =>
+                                                          (fun (tailCaptures_roottbrl : CaptureMap)
+                                                                (suffix_roottbrl : List Char) =>
+                                                              (fun (bodyCaptures_roott : CaptureMap)
+                                                                    (remaining_roott : List Char) =>
+                                                                  let ownCaptures_roott :=
+                                                                    (["Components"]).map fun key =>
+                                                                      (key,
+                                                                        String.ofList
+                                                                          ((remaining_root).take
+                                                                            ((remaining_root).length -
+                                                                              (remaining_roott).length)))
+                                                                  (fun (tailCaptures_roott : CaptureMap)
+                                                                        (suffix_roott : List Char) =>
+                                                                      (fun (tailCaptures_root : CaptureMap)
+                                                                            (suffix_root : List Char) =>
+                                                                          (fun (captures : CaptureMap)
+                                                                                (remaining : List Char) =>
+                                                                              if (remaining).isEmpty then some captures
+                                                                              else none)
+                                                                            (ownCaptures_root ++ bodyCaptures_root ++
+                                                                              tailCaptures_root)
+                                                                            suffix_root)
+                                                                        (ownCaptures_roott ++ bodyCaptures_roott ++
+                                                                          tailCaptures_roott)
+                                                                        suffix_roott)
+                                                                    ([] : CaptureMap) remaining_roott)
+                                                                (ownCaptures_roottbrl ++ bodyCaptures_roottbrl ++
+                                                                  tailCaptures_roottbrl)
+                                                                suffix_roottbrl)
+                                                            (ownCaptures_roottbrltrrl ++ bodyCaptures_roottbrltrrl ++
+                                                              tailCaptures_roottbrltrrl)
+                                                            suffix_roottbrltrrl)
+                                                        ([] : CaptureMap) remaining_roottbrltrrl)
+                                                    (ownCaptures_roottbrltrrlb ++ bodyCaptures_roottbrltrrlb ++
+                                                      tailCaptures_roottbrltrrlb)
+                                                    suffix_roottbrltrrlb)
+                                                ([] : CaptureMap)
+                                                ((remaining_roottbrltrrlb).drop (characters_roottbrltrrlbt).length)
+                                            else none)
+                                          ([] : CaptureMap) ((remaining_roottbrl).drop width_roottbrltrrlbb)
+                                      else none)
+                                    fun _ =>
+                                    (fun (tailCaptures_roottbrl : CaptureMap) (suffix_roottbrl : List Char) =>
+                                        (fun (bodyCaptures_roott : CaptureMap) (remaining_roott : List Char) =>
+                                            let ownCaptures_roott :=
+                                              (["Components"]).map fun key =>
+                                                (key,
+                                                  String.ofList
+                                                    ((remaining_root).take
+                                                      ((remaining_root).length - (remaining_roott).length)))
+                                            (fun (tailCaptures_roott : CaptureMap) (suffix_roott : List Char) =>
+                                                (fun (tailCaptures_root : CaptureMap) (suffix_root : List Char) =>
+                                                    (fun (captures : CaptureMap) (remaining : List Char) =>
+                                                        if (remaining).isEmpty then some captures else none)
+                                                      (ownCaptures_root ++ bodyCaptures_root ++ tailCaptures_root)
+                                                      suffix_root)
+                                                  (ownCaptures_roott ++ bodyCaptures_roott ++ tailCaptures_roott)
+                                                  suffix_roott)
+                                              ([] : CaptureMap) remaining_roott)
+                                          (ownCaptures_roottbrl ++ bodyCaptures_roottbrl ++ tailCaptures_roottbrl)
+                                          suffix_roottbrl)
+                                      ([] : CaptureMap) remaining_roottbrl)
+                            (ownCaptures_roottbrlb ++ bodyCaptures_roottbrlb ++ tailCaptures_roottbrlb)
+                            suffix_roottbrlb)
+                        ([] : CaptureMap) ((remaining_roottbrlb).drop (characters_roottbrlbt).length)
+                    else none)
+                  ([] : CaptureMap) ((remaining_root).drop width_roottbrlbb)
+              else none)
+            fun _ =>
+            scanOrElse
+              ((List.range ((remaining_root).length + 1)).findSome? fun width_roottbrrlbb =>
+                if termPrefixOk TokClass.digit LenSpec.atLeastOne remaining_root width_roottbrrlbb then
+                  (fun (bodyCaptures_roottbrrlb : CaptureMap) (remaining_roottbrrlb : List Char) =>
+                      let ownCaptures_roottbrrlb :=
+                        (["DMinutes", "Minutes.DMinutes"]).map fun key =>
+                          (key,
+                            String.ofList
+                              ((remaining_root).take ((remaining_root).length - (remaining_roottbrrlb).length)))
+                      let characters_roottbrrlbt := "m".toList
+                      if (characters_roottbrrlbt).isPrefixOf remaining_roottbrrlb then
+                        (fun (tailCaptures_roottbrrlb : CaptureMap) (suffix_roottbrrlb : List Char) =>
+                            (fun (bodyCaptures_roottbrrl : CaptureMap) (remaining_roottbrrl : List Char) =>
+                                let ownCaptures_roottbrrl :=
+                                  (["Minutes", "Components.Minutes"]).map fun key =>
+                                    (key,
+                                      String.ofList
+                                        ((remaining_root).take
+                                          ((remaining_root).length - (remaining_roottbrrl).length)))
+                                scanOrElse
+                                  ((List.range ((remaining_roottbrrl).length + 1)).findSome? fun width_roottbrrltlbb =>
+                                    if
+                                        termPrefixOk TokClass.digit LenSpec.atLeastOne remaining_roottbrrl
+                                          width_roottbrrltlbb then
+                                      (fun (bodyCaptures_roottbrrltlb : CaptureMap)
+                                            (remaining_roottbrrltlb : List Char) =>
+                                          let ownCaptures_roottbrrltlb :=
+                                            (["DSeconds", "Seconds.DSeconds"]).map fun key =>
+                                              (key,
+                                                String.ofList
+                                                  ((remaining_roottbrrl).take
+                                                    ((remaining_roottbrrl).length - (remaining_roottbrrltlb).length)))
+                                          let characters_roottbrrltlbt := "s".toList
+                                          if (characters_roottbrrltlbt).isPrefixOf remaining_roottbrrltlb then
+                                            (fun (tailCaptures_roottbrrltlb : CaptureMap)
+                                                  (suffix_roottbrrltlb : List Char) =>
+                                                (fun (bodyCaptures_roottbrrltl : CaptureMap)
+                                                      (remaining_roottbrrltl : List Char) =>
+                                                    let ownCaptures_roottbrrltl :=
+                                                      (["Seconds", "Components.Seconds"]).map fun key =>
+                                                        (key,
+                                                          String.ofList
+                                                            ((remaining_roottbrrl).take
+                                                              ((remaining_roottbrrl).length -
+                                                                (remaining_roottbrrltl).length)))
+                                                    scanOrElse
+                                                      ((List.range ((remaining_roottbrrltl).length + 1)).findSome?
+                                                        fun width_roottbrrltltlbb =>
+                                                        if
+                                                            termPrefixOk TokClass.digit LenSpec.atLeastOne
+                                                              remaining_roottbrrltl width_roottbrrltltlbb then
+                                                          (fun (bodyCaptures_roottbrrltltlb : CaptureMap)
+                                                                (remaining_roottbrrltltlb : List Char) =>
+                                                              let ownCaptures_roottbrrltltlb :=
+                                                                (["DMillis", "Millis.DMillis"]).map fun key =>
+                                                                  (key,
+                                                                    String.ofList
+                                                                      ((remaining_roottbrrltl).take
+                                                                        ((remaining_roottbrrltl).length -
+                                                                          (remaining_roottbrrltltlb).length)))
+                                                              let characters_roottbrrltltlbt := "ms".toList
+                                                              if
+                                                                  (characters_roottbrrltltlbt).isPrefixOf
+                                                                    remaining_roottbrrltltlb then
+                                                                (fun (tailCaptures_roottbrrltltlb : CaptureMap)
+                                                                      (suffix_roottbrrltltlb : List Char) =>
+                                                                    (fun (bodyCaptures_roottbrrltltl : CaptureMap)
+                                                                          (remaining_roottbrrltltl : List Char) =>
+                                                                        let ownCaptures_roottbrrltltl :=
+                                                                          (["Millis", "Components.Millis"]).map
+                                                                            fun key =>
+                                                                            (key,
+                                                                              String.ofList
+                                                                                ((remaining_roottbrrltl).take
+                                                                                  ((remaining_roottbrrltl).length -
+                                                                                    (remaining_roottbrrltltl).length)))
+                                                                        (fun (tailCaptures_roottbrrltltl : CaptureMap)
+                                                                              (suffix_roottbrrltltl : List Char) =>
+                                                                            (fun (tailCaptures_roottbrrltl : CaptureMap)
+                                                                                  (suffix_roottbrrltl : List Char) =>
+                                                                                (fun
+                                                                                      (tailCaptures_roottbrrl :
+                                                                                        CaptureMap)
+                                                                                      (suffix_roottbrrl : List Char) =>
+                                                                                    (fun
+                                                                                          (bodyCaptures_roott :
+                                                                                            CaptureMap)
+                                                                                          (remaining_roott :
+                                                                                            List Char) =>
+                                                                                        let ownCaptures_roott :=
+                                                                                          (["Components"]).map
+                                                                                            fun key =>
+                                                                                            (key,
+                                                                                              String.ofList
+                                                                                                ((remaining_root).take
+                                                                                                  ((remaining_root).length -
+                                                                                                    (remaining_roott).length)))
+                                                                                        (fun
+                                                                                              (tailCaptures_roott :
+                                                                                                CaptureMap)
+                                                                                              (suffix_roott :
+                                                                                                List Char) =>
+                                                                                            (fun
+                                                                                                  (tailCaptures_root :
+                                                                                                    CaptureMap)
+                                                                                                  (suffix_root :
+                                                                                                    List Char) =>
+                                                                                                (fun
+                                                                                                      (captures :
+                                                                                                        CaptureMap)
+                                                                                                      (remaining :
+                                                                                                        List Char) =>
+                                                                                                    if
+                                                                                                        (remaining).isEmpty then
+                                                                                                      some captures
+                                                                                                    else none)
+                                                                                                  (ownCaptures_root ++
+                                                                                                      bodyCaptures_root ++
+                                                                                                    tailCaptures_root)
+                                                                                                  suffix_root)
+                                                                                              (ownCaptures_roott ++
+                                                                                                  bodyCaptures_roott ++
+                                                                                                tailCaptures_roott)
+                                                                                              suffix_roott)
+                                                                                          ([] : CaptureMap)
+                                                                                          remaining_roott)
+                                                                                      (ownCaptures_roottbrrl ++
+                                                                                          bodyCaptures_roottbrrl ++
+                                                                                        tailCaptures_roottbrrl)
+                                                                                      suffix_roottbrrl)
+                                                                                  (ownCaptures_roottbrrltl ++
+                                                                                      bodyCaptures_roottbrrltl ++
+                                                                                    tailCaptures_roottbrrltl)
+                                                                                  suffix_roottbrrltl)
+                                                                              (ownCaptures_roottbrrltltl ++
+                                                                                  bodyCaptures_roottbrrltltl ++
+                                                                                tailCaptures_roottbrrltltl)
+                                                                              suffix_roottbrrltltl)
+                                                                          ([] : CaptureMap) remaining_roottbrrltltl)
+                                                                      (ownCaptures_roottbrrltltlb ++
+                                                                          bodyCaptures_roottbrrltltlb ++
+                                                                        tailCaptures_roottbrrltltlb)
+                                                                      suffix_roottbrrltltlb)
+                                                                  ([] : CaptureMap)
+                                                                  ((remaining_roottbrrltltlb).drop
+                                                                    (characters_roottbrrltltlbt).length)
+                                                              else none)
+                                                            ([] : CaptureMap)
+                                                            ((remaining_roottbrrltl).drop width_roottbrrltltlbb)
+                                                        else none)
+                                                      fun _ =>
+                                                      (fun (tailCaptures_roottbrrltl : CaptureMap)
+                                                            (suffix_roottbrrltl : List Char) =>
+                                                          (fun (tailCaptures_roottbrrl : CaptureMap)
+                                                                (suffix_roottbrrl : List Char) =>
+                                                              (fun (bodyCaptures_roott : CaptureMap)
+                                                                    (remaining_roott : List Char) =>
+                                                                  let ownCaptures_roott :=
+                                                                    (["Components"]).map fun key =>
+                                                                      (key,
+                                                                        String.ofList
+                                                                          ((remaining_root).take
+                                                                            ((remaining_root).length -
+                                                                              (remaining_roott).length)))
+                                                                  (fun (tailCaptures_roott : CaptureMap)
+                                                                        (suffix_roott : List Char) =>
+                                                                      (fun (tailCaptures_root : CaptureMap)
+                                                                            (suffix_root : List Char) =>
+                                                                          (fun (captures : CaptureMap)
+                                                                                (remaining : List Char) =>
+                                                                              if (remaining).isEmpty then some captures
+                                                                              else none)
+                                                                            (ownCaptures_root ++ bodyCaptures_root ++
+                                                                              tailCaptures_root)
+                                                                            suffix_root)
+                                                                        (ownCaptures_roott ++ bodyCaptures_roott ++
+                                                                          tailCaptures_roott)
+                                                                        suffix_roott)
+                                                                    ([] : CaptureMap) remaining_roott)
+                                                                (ownCaptures_roottbrrl ++ bodyCaptures_roottbrrl ++
+                                                                  tailCaptures_roottbrrl)
+                                                                suffix_roottbrrl)
+                                                            (ownCaptures_roottbrrltl ++ bodyCaptures_roottbrrltl ++
+                                                              tailCaptures_roottbrrltl)
+                                                            suffix_roottbrrltl)
+                                                        ([] : CaptureMap) remaining_roottbrrltl)
+                                                  (ownCaptures_roottbrrltlb ++ bodyCaptures_roottbrrltlb ++
+                                                    tailCaptures_roottbrrltlb)
+                                                  suffix_roottbrrltlb)
+                                              ([] : CaptureMap)
+                                              ((remaining_roottbrrltlb).drop (characters_roottbrrltlbt).length)
+                                          else none)
+                                        ([] : CaptureMap) ((remaining_roottbrrl).drop width_roottbrrltlbb)
+                                    else none)
+                                  fun _ =>
+                                  scanOrElse
+                                    ((List.range ((remaining_roottbrrl).length + 1)).findSome?
+                                      fun width_roottbrrltrlbb =>
+                                      if
+                                          termPrefixOk TokClass.digit LenSpec.atLeastOne remaining_roottbrrl
+                                            width_roottbrrltrlbb then
+                                        (fun (bodyCaptures_roottbrrltrlb : CaptureMap)
+                                              (remaining_roottbrrltrlb : List Char) =>
+                                            let ownCaptures_roottbrrltrlb :=
+                                              (["DMillis", "Millis.DMillis"]).map fun key =>
+                                                (key,
+                                                  String.ofList
+                                                    ((remaining_roottbrrl).take
+                                                      ((remaining_roottbrrl).length -
+                                                        (remaining_roottbrrltrlb).length)))
+                                            let characters_roottbrrltrlbt := "ms".toList
+                                            if (characters_roottbrrltrlbt).isPrefixOf remaining_roottbrrltrlb then
+                                              (fun (tailCaptures_roottbrrltrlb : CaptureMap)
+                                                    (suffix_roottbrrltrlb : List Char) =>
+                                                  (fun (bodyCaptures_roottbrrltrl : CaptureMap)
+                                                        (remaining_roottbrrltrl : List Char) =>
+                                                      let ownCaptures_roottbrrltrl :=
+                                                        (["Millis", "Components.Millis"]).map fun key =>
+                                                          (key,
+                                                            String.ofList
+                                                              ((remaining_roottbrrl).take
+                                                                ((remaining_roottbrrl).length -
+                                                                  (remaining_roottbrrltrl).length)))
+                                                      (fun (tailCaptures_roottbrrltrl : CaptureMap)
+                                                            (suffix_roottbrrltrl : List Char) =>
+                                                          (fun (tailCaptures_roottbrrl : CaptureMap)
+                                                                (suffix_roottbrrl : List Char) =>
+                                                              (fun (bodyCaptures_roott : CaptureMap)
+                                                                    (remaining_roott : List Char) =>
+                                                                  let ownCaptures_roott :=
+                                                                    (["Components"]).map fun key =>
+                                                                      (key,
+                                                                        String.ofList
+                                                                          ((remaining_root).take
+                                                                            ((remaining_root).length -
+                                                                              (remaining_roott).length)))
+                                                                  (fun (tailCaptures_roott : CaptureMap)
+                                                                        (suffix_roott : List Char) =>
+                                                                      (fun (tailCaptures_root : CaptureMap)
+                                                                            (suffix_root : List Char) =>
+                                                                          (fun (captures : CaptureMap)
+                                                                                (remaining : List Char) =>
+                                                                              if (remaining).isEmpty then some captures
+                                                                              else none)
+                                                                            (ownCaptures_root ++ bodyCaptures_root ++
+                                                                              tailCaptures_root)
+                                                                            suffix_root)
+                                                                        (ownCaptures_roott ++ bodyCaptures_roott ++
+                                                                          tailCaptures_roott)
+                                                                        suffix_roott)
+                                                                    ([] : CaptureMap) remaining_roott)
+                                                                (ownCaptures_roottbrrl ++ bodyCaptures_roottbrrl ++
+                                                                  tailCaptures_roottbrrl)
+                                                                suffix_roottbrrl)
+                                                            (ownCaptures_roottbrrltrl ++ bodyCaptures_roottbrrltrl ++
+                                                              tailCaptures_roottbrrltrl)
+                                                            suffix_roottbrrltrl)
+                                                        ([] : CaptureMap) remaining_roottbrrltrl)
+                                                    (ownCaptures_roottbrrltrlb ++ bodyCaptures_roottbrrltrlb ++
+                                                      tailCaptures_roottbrrltrlb)
+                                                    suffix_roottbrrltrlb)
+                                                ([] : CaptureMap)
+                                                ((remaining_roottbrrltrlb).drop (characters_roottbrrltrlbt).length)
+                                            else none)
+                                          ([] : CaptureMap) ((remaining_roottbrrl).drop width_roottbrrltrlbb)
+                                      else none)
+                                    fun _ =>
+                                    (fun (tailCaptures_roottbrrl : CaptureMap) (suffix_roottbrrl : List Char) =>
+                                        (fun (bodyCaptures_roott : CaptureMap) (remaining_roott : List Char) =>
+                                            let ownCaptures_roott :=
+                                              (["Components"]).map fun key =>
+                                                (key,
+                                                  String.ofList
+                                                    ((remaining_root).take
+                                                      ((remaining_root).length - (remaining_roott).length)))
+                                            (fun (tailCaptures_roott : CaptureMap) (suffix_roott : List Char) =>
+                                                (fun (tailCaptures_root : CaptureMap) (suffix_root : List Char) =>
+                                                    (fun (captures : CaptureMap) (remaining : List Char) =>
+                                                        if (remaining).isEmpty then some captures else none)
+                                                      (ownCaptures_root ++ bodyCaptures_root ++ tailCaptures_root)
+                                                      suffix_root)
+                                                  (ownCaptures_roott ++ bodyCaptures_roott ++ tailCaptures_roott)
+                                                  suffix_roott)
+                                              ([] : CaptureMap) remaining_roott)
+                                          (ownCaptures_roottbrrl ++ bodyCaptures_roottbrrl ++ tailCaptures_roottbrrl)
+                                          suffix_roottbrrl)
+                                      ([] : CaptureMap) remaining_roottbrrl)
+                              (ownCaptures_roottbrrlb ++ bodyCaptures_roottbrrlb ++ tailCaptures_roottbrrlb)
+                              suffix_roottbrrlb)
+                          ([] : CaptureMap) ((remaining_roottbrrlb).drop (characters_roottbrrlbt).length)
+                      else none)
+                    ([] : CaptureMap) ((remaining_root).drop width_roottbrrlbb)
+                else none)
+              fun _ =>
+              scanOrElse
+                ((List.range ((remaining_root).length + 1)).findSome? fun width_roottbrrrlbb =>
+                  if termPrefixOk TokClass.digit LenSpec.atLeastOne remaining_root width_roottbrrrlbb then
+                    (fun (bodyCaptures_roottbrrrlb : CaptureMap) (remaining_roottbrrrlb : List Char) =>
+                        let ownCaptures_roottbrrrlb :=
+                          (["DSeconds", "Seconds.DSeconds"]).map fun key =>
+                            (key,
+                              String.ofList
+                                ((remaining_root).take ((remaining_root).length - (remaining_roottbrrrlb).length)))
+                        let characters_roottbrrrlbt := "s".toList
+                        if (characters_roottbrrrlbt).isPrefixOf remaining_roottbrrrlb then
+                          (fun (tailCaptures_roottbrrrlb : CaptureMap) (suffix_roottbrrrlb : List Char) =>
+                              (fun (bodyCaptures_roottbrrrl : CaptureMap) (remaining_roottbrrrl : List Char) =>
+                                  let ownCaptures_roottbrrrl :=
+                                    (["Seconds", "Components.Seconds"]).map fun key =>
+                                      (key,
+                                        String.ofList
+                                          ((remaining_root).take
+                                            ((remaining_root).length - (remaining_roottbrrrl).length)))
+                                  scanOrElse
+                                    ((List.range ((remaining_roottbrrrl).length + 1)).findSome?
+                                      fun width_roottbrrrltlbb =>
+                                      if
+                                          termPrefixOk TokClass.digit LenSpec.atLeastOne remaining_roottbrrrl
+                                            width_roottbrrrltlbb then
+                                        (fun (bodyCaptures_roottbrrrltlb : CaptureMap)
+                                              (remaining_roottbrrrltlb : List Char) =>
+                                            let ownCaptures_roottbrrrltlb :=
+                                              (["DMillis", "Millis.DMillis"]).map fun key =>
+                                                (key,
+                                                  String.ofList
+                                                    ((remaining_roottbrrrl).take
+                                                      ((remaining_roottbrrrl).length -
+                                                        (remaining_roottbrrrltlb).length)))
+                                            let characters_roottbrrrltlbt := "ms".toList
+                                            if (characters_roottbrrrltlbt).isPrefixOf remaining_roottbrrrltlb then
+                                              (fun (tailCaptures_roottbrrrltlb : CaptureMap)
+                                                    (suffix_roottbrrrltlb : List Char) =>
+                                                  (fun (bodyCaptures_roottbrrrltl : CaptureMap)
+                                                        (remaining_roottbrrrltl : List Char) =>
+                                                      let ownCaptures_roottbrrrltl :=
+                                                        (["Millis", "Components.Millis"]).map fun key =>
+                                                          (key,
+                                                            String.ofList
+                                                              ((remaining_roottbrrrl).take
+                                                                ((remaining_roottbrrrl).length -
+                                                                  (remaining_roottbrrrltl).length)))
+                                                      (fun (tailCaptures_roottbrrrltl : CaptureMap)
+                                                            (suffix_roottbrrrltl : List Char) =>
+                                                          (fun (tailCaptures_roottbrrrl : CaptureMap)
+                                                                (suffix_roottbrrrl : List Char) =>
+                                                              (fun (bodyCaptures_roott : CaptureMap)
+                                                                    (remaining_roott : List Char) =>
+                                                                  let ownCaptures_roott :=
+                                                                    (["Components"]).map fun key =>
+                                                                      (key,
+                                                                        String.ofList
+                                                                          ((remaining_root).take
+                                                                            ((remaining_root).length -
+                                                                              (remaining_roott).length)))
+                                                                  (fun (tailCaptures_roott : CaptureMap)
+                                                                        (suffix_roott : List Char) =>
+                                                                      (fun (tailCaptures_root : CaptureMap)
+                                                                            (suffix_root : List Char) =>
+                                                                          (fun (captures : CaptureMap)
+                                                                                (remaining : List Char) =>
+                                                                              if (remaining).isEmpty then some captures
+                                                                              else none)
+                                                                            (ownCaptures_root ++ bodyCaptures_root ++
+                                                                              tailCaptures_root)
+                                                                            suffix_root)
+                                                                        (ownCaptures_roott ++ bodyCaptures_roott ++
+                                                                          tailCaptures_roott)
+                                                                        suffix_roott)
+                                                                    ([] : CaptureMap) remaining_roott)
+                                                                (ownCaptures_roottbrrrl ++ bodyCaptures_roottbrrrl ++
+                                                                  tailCaptures_roottbrrrl)
+                                                                suffix_roottbrrrl)
+                                                            (ownCaptures_roottbrrrltl ++ bodyCaptures_roottbrrrltl ++
+                                                              tailCaptures_roottbrrrltl)
+                                                            suffix_roottbrrrltl)
+                                                        ([] : CaptureMap) remaining_roottbrrrltl)
+                                                    (ownCaptures_roottbrrrltlb ++ bodyCaptures_roottbrrrltlb ++
+                                                      tailCaptures_roottbrrrltlb)
+                                                    suffix_roottbrrrltlb)
+                                                ([] : CaptureMap)
+                                                ((remaining_roottbrrrltlb).drop (characters_roottbrrrltlbt).length)
+                                            else none)
+                                          ([] : CaptureMap) ((remaining_roottbrrrl).drop width_roottbrrrltlbb)
+                                      else none)
+                                    fun _ =>
+                                    (fun (tailCaptures_roottbrrrl : CaptureMap) (suffix_roottbrrrl : List Char) =>
+                                        (fun (bodyCaptures_roott : CaptureMap) (remaining_roott : List Char) =>
+                                            let ownCaptures_roott :=
+                                              (["Components"]).map fun key =>
+                                                (key,
+                                                  String.ofList
+                                                    ((remaining_root).take
+                                                      ((remaining_root).length - (remaining_roott).length)))
+                                            (fun (tailCaptures_roott : CaptureMap) (suffix_roott : List Char) =>
+                                                (fun (tailCaptures_root : CaptureMap) (suffix_root : List Char) =>
+                                                    (fun (captures : CaptureMap) (remaining : List Char) =>
+                                                        if (remaining).isEmpty then some captures else none)
+                                                      (ownCaptures_root ++ bodyCaptures_root ++ tailCaptures_root)
+                                                      suffix_root)
+                                                  (ownCaptures_roott ++ bodyCaptures_roott ++ tailCaptures_roott)
+                                                  suffix_roott)
+                                              ([] : CaptureMap) remaining_roott)
+                                          (ownCaptures_roottbrrrl ++ bodyCaptures_roottbrrrl ++ tailCaptures_roottbrrrl)
+                                          suffix_roottbrrrl)
+                                      ([] : CaptureMap) remaining_roottbrrrl)
+                                (ownCaptures_roottbrrrlb ++ bodyCaptures_roottbrrrlb ++ tailCaptures_roottbrrrlb)
+                                suffix_roottbrrrlb)
+                            ([] : CaptureMap) ((remaining_roottbrrrlb).drop (characters_roottbrrrlbt).length)
+                        else none)
+                      ([] : CaptureMap) ((remaining_root).drop width_roottbrrrlbb)
+                  else none)
+                fun _ =>
+                scanOrElse
+                  ((List.range ((remaining_root).length + 1)).findSome? fun width_roottbrrrrlbb =>
+                    if termPrefixOk TokClass.digit LenSpec.atLeastOne remaining_root width_roottbrrrrlbb then
+                      (fun (bodyCaptures_roottbrrrrlb : CaptureMap) (remaining_roottbrrrrlb : List Char) =>
+                          let ownCaptures_roottbrrrrlb :=
+                            (["DMillis", "Millis.DMillis"]).map fun key =>
+                              (key,
+                                String.ofList
+                                  ((remaining_root).take ((remaining_root).length - (remaining_roottbrrrrlb).length)))
+                          let characters_roottbrrrrlbt := "ms".toList
+                          if (characters_roottbrrrrlbt).isPrefixOf remaining_roottbrrrrlb then
+                            (fun (tailCaptures_roottbrrrrlb : CaptureMap) (suffix_roottbrrrrlb : List Char) =>
+                                (fun (bodyCaptures_roottbrrrrl : CaptureMap) (remaining_roottbrrrrl : List Char) =>
+                                    let ownCaptures_roottbrrrrl :=
+                                      (["Millis", "Components.Millis"]).map fun key =>
+                                        (key,
+                                          String.ofList
+                                            ((remaining_root).take
+                                              ((remaining_root).length - (remaining_roottbrrrrl).length)))
+                                    (fun (tailCaptures_roottbrrrrl : CaptureMap) (suffix_roottbrrrrl : List Char) =>
+                                        (fun (bodyCaptures_roott : CaptureMap) (remaining_roott : List Char) =>
+                                            let ownCaptures_roott :=
+                                              (["Components"]).map fun key =>
+                                                (key,
+                                                  String.ofList
+                                                    ((remaining_root).take
+                                                      ((remaining_root).length - (remaining_roott).length)))
+                                            (fun (tailCaptures_roott : CaptureMap) (suffix_roott : List Char) =>
+                                                (fun (tailCaptures_root : CaptureMap) (suffix_root : List Char) =>
+                                                    (fun (captures : CaptureMap) (remaining : List Char) =>
+                                                        if (remaining).isEmpty then some captures else none)
+                                                      (ownCaptures_root ++ bodyCaptures_root ++ tailCaptures_root)
+                                                      suffix_root)
+                                                  (ownCaptures_roott ++ bodyCaptures_roott ++ tailCaptures_roott)
+                                                  suffix_roott)
+                                              ([] : CaptureMap) remaining_roott)
+                                          (ownCaptures_roottbrrrrl ++ bodyCaptures_roottbrrrrl ++
+                                            tailCaptures_roottbrrrrl)
+                                          suffix_roottbrrrrl)
+                                      ([] : CaptureMap) remaining_roottbrrrrl)
+                                  (ownCaptures_roottbrrrrlb ++ bodyCaptures_roottbrrrrlb ++ tailCaptures_roottbrrrrlb)
+                                  suffix_roottbrrrrlb)
+                              ([] : CaptureMap) ((remaining_roottbrrrrlb).drop (characters_roottbrrrrlbt).length)
+                          else none)
+                        ([] : CaptureMap) ((remaining_root).drop width_roottbrrrrlbb)
+                    else none)
+                  fun _ =>
+                  (fun (bodyCaptures_roott : CaptureMap) (remaining_roott : List Char) =>
+                      let ownCaptures_roott :=
+                        (["Components"]).map fun key =>
+                          (key,
+                            String.ofList ((remaining_root).take ((remaining_root).length - (remaining_roott).length)))
+                      (fun (tailCaptures_roott : CaptureMap) (suffix_roott : List Char) =>
+                          (fun (tailCaptures_root : CaptureMap) (suffix_root : List Char) =>
+                              (fun (captures : CaptureMap) (remaining : List Char) =>
+                                  if (remaining).isEmpty then some captures else none)
+                                (ownCaptures_root ++ bodyCaptures_root ++ tailCaptures_root) suffix_root)
+                            (ownCaptures_roott ++ bodyCaptures_roott ++ tailCaptures_roott) suffix_roott)
+                        ([] : CaptureMap) remaining_roott)
+                    ([] : CaptureMap) remaining_root)
+      ([] : CaptureMap) input
+
+private theorem Duration.directDecode_eq_searchProgram (source : String) :
+    Duration.directDecode source = SearchProgram.decode Duration.searchProgram source :=
+  by
+  unfold Duration.directDecode SearchProgram.decode Duration.searchProgram
+  simp only [SearchCode.runK]
+
+private def Duration.decodeCaptures (source : String) : Option CaptureMap :=
+  Duration.directDecode source
+
+private theorem Duration.decodeCaptures_eq_parsePlan (source : String) :
+    Duration.decodeCaptures source = ParsePlan.decode Duration.parsePlan Duration.grammar source := by
+  calc
+    Duration.decodeCaptures source = SearchProgram.decode Duration.searchProgram source := by
+      exact Duration.directDecode_eq_searchProgram source
+    _ = SearchProgram.decode (lowerSearchPlan Duration.searchPlan) source := by rw [Duration.searchProgram_lowered]
+    _ = ParsePlan.decode Duration.parsePlan Duration.grammar source := by rfl
+
+private theorem Duration.decodeCaptures_eq_scan (source : String) :
+    Duration.decodeCaptures source = scan Duration.grammar source := by
+  calc
+    Duration.decodeCaptures source = ParsePlan.decode Duration.parsePlan Duration.grammar source :=
+      Duration.decodeCaptures_eq_parsePlan source
+    _ = scan Duration.grammar source :=
+      ParsePlan.decode_eq_scan (ParsePlan.CertifiedFor.search Duration.searchPlan_mirrorsGrammar) source
+
+private def Duration.directView (source : String) : Option Duration.View :=
+  (Duration.directDecode source).map (Duration.View.ofMap source)
+
+private theorem Duration.directView_eq_decodeView (source : String) :
+    Duration.directView source = Duration.decodeView source :=
+  by
+  unfold Duration.directView Duration.decodeView
+  rw [show Duration.directDecode source = scan Duration.grammar source by exact Duration.decodeCaptures_eq_scan source]
+
+private instance Duration.instDecidableViewValid : DecidablePred Duration.View.Valid := fun view =>
+  by
+  unfold Duration.View.Valid Duration.View.WfConstraints Duration.View.Constraints Duration.WfConstraints
+    Duration.Constraints
+  infer_instance
+
+private def Duration.fastAccept (view : Duration.View) (computed : Int) : Bool :=
+  @decide (Duration.View.WfConstraints view ∧ Duration.View.ConstraintsWithValue view computed)
+    (by
+      unfold Duration.View.WfConstraints Duration.WfConstraints Duration.View.ConstraintsWithValue
+      infer_instance)
+
+private theorem Duration.fastAccept_denotation (view : Duration.View) :
+    Duration.fastAccept view (Duration.View.denotation view) = true ↔ Duration.View.Valid view := by
+  simp only [Duration.fastAccept, decide_eq_true_eq, Duration.View.ConstraintsWithValue_denotation]
 
 theorem Duration.computeValue_isSome (s : String) : Duration.IsValid s → (Duration.computeValue s).isSome :=
   by
@@ -1110,12 +7313,32 @@ theorem Duration.computeValue_isSome (s : String) : Duration.IsValid s → (Dura
   exact hengine.1.1
 
 def Duration.parse (s : String) :=
-  Triptych.scannerParse Duration.grammar Duration.constraints Duration.valueExpr millisToDuration s
+  Triptych.decodedViewParseCached Duration.directView Duration.fastAccept Duration.View.denotation millisToDuration s
 
 theorem Duration.parse_eq_scanner (s : String) :
     Duration.parse s =
       Triptych.scannerParse Duration.grammar Duration.constraints Duration.valueExpr millisToDuration s :=
-  by rfl
+  by
+  calc
+    Duration.parse s =
+        Triptych.decodedViewParse Duration.directView Duration.View.Valid Duration.View.denotation millisToDuration s :=
+      by
+      unfold Duration.parse
+      exact
+        Triptych.decodedViewParseCached_eq_decodedViewParse Duration.directView Duration.fastAccept Duration.View.Valid
+          Duration.View.denotation millisToDuration Duration.fastAccept_denotation s
+    _ = Triptych.gatedParseOfSpec Duration.IsValid Duration.computeValue millisToDuration s := by
+      exact
+        Triptych.decodedViewParse_eq_gatedParseOfSpec Duration.directView Duration.decodeView Duration.View.Valid
+          Duration.View.denotation millisToDuration Duration.IsValid Duration.computeValue
+          Duration.directView_eq_decodeView Duration.IsValid_view Duration.computeValue_view s
+    _ = Triptych.scannerParse Duration.grammar Duration.constraints Duration.valueExpr millisToDuration s :=
+      by
+      symm
+      unfold Duration.computeValue
+      exact
+        Triptych.scannerParse_eq_surfaceGatedParseOfSpec Duration.grammar Duration.constraints Duration.valueExpr
+          millisToDuration Duration.IsValid Duration.IsValid_equiv s
 
 theorem Duration.parse_eq_gated (s : String) :
     Duration.parse s = Triptych.gatedParseOfSpec Duration.IsValid Duration.computeValue millisToDuration s :=

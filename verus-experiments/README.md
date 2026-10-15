@@ -13,37 +13,52 @@ and never asks for a format-specific proof of the generated scanner.
 
 ## Generated parser
 
-The Rust backend has two verified execution paths.
+The Rust backend follows the three shared `ParsePlan` cases.
 
-For eligible deterministic formats, the shared `Architecture/ScanPlan.lean` compiles the grammar
-ahead of time into a structured `ScanPattern`, then derives a linear cursor plan. The plan is
-compiled away: `parser.rs` contains direct branches and loops, capture start/end indices, and no
-grammar tables or runtime interpreter. Decimal currently uses this path.
+`Architecture/ParsePlan.lean` makes one backend-neutral strategy decision for each elaborated
+grammar. For eligible deterministic formats, its cursor case carries the certified
+`Architecture/ScanPlan.lean`; that plan is lowered to a linear `CursorProgram` and compiled away.
+`parser.rs` then contains direct branches and loops, capture start/end indices, and no grammar
+tables or runtime interpreter. Decimal currently uses this path.
 
-The first specialized fragment covers the fixed-point shape used by Decimal:
+A search case lowers the resolved acyclic branching plan through `SearchProgram` and
+`SearchMachine`, hash-conses shared suffixes, and emits one Verus specification/executable pair
+per machine state. Ordered alternatives and optionals remain direct choices. Finite separated
+repetitions are unrolled at generation time, including their count captures and
+stop-before-continue policy. Executable states mutate one bounded state transactionally: failure
+restores the cursor, captures, and marker stack exactly, so ordered choice needs no whole-state
+clone. Duration, Datetime, IPv4, and IPv6 use this path. If direct state emission cannot represent
+a search plan, generation fails with that unsupported shape. The scanner case records why neither
+specialized plan compiled; it is a diagnostic, not an emitted runtime fallback.
 
-- one optional ASCII sign literal;
-- one nonempty digit capture;
-- one required separator;
-- one bounded digit capture;
-- deterministic boundaries between every field.
+The specialized fragment covers every grammar accepted by the shared `ScanPlan` compiler:
 
-The emitted Verus proof establishes that execution agrees exactly with the generated plan
-semantics. On success it also constructs the captured-string witnesses required by the readable
-root grammar predicate, such as `decimal_is_wf_decimal`.
+- acyclic productions with one alternative each;
+- nested named captures;
+- single-character ASCII literals and optional literals;
+- fixed, bounded, or nonempty token runs over digit, hexadecimal, bit, or ASCII-range classes;
+- deterministic local boundaries between variable-width fields.
 
-Grammars outside that specialization use the existing source-faithful flattened grammar scanner:
+The emitted proof is compositional rather than format-shaped. On success it reconstructs each
+production predicate bottom-up from source spans. For completeness it unpacks the same witnesses
+top-down, derives every cursor boundary, and proves that the plan cannot reject a well-formed
+input. Decimal, Quantity, and the nested `direct-coverage` grammar all use this path.
+
+The search-state path extends direct emission to:
 
 - arbitrary Unicode literals and Lean-style quoted string literals;
 - production references, source-ordered alternatives, and optional items;
 - `digit`, `hexDigit`, `bit`, and `asciiRange` token classes;
 - exact, bounded, and nonempty-unbounded token lengths;
-- bounded or unbounded separated repetition, including nested named repetitions.
+- finite bounded separated repetition, including nested named repetitions.
+
+Unbounded repetition and any direct shape rejected by the state compiler fail generation with a
+specific diagnostic.
 
 Recursive production graphs remain unsupported. Triptych rejects unresolved references, cycles,
 duplicate production names, and malformed repetition before emitting Rust.
 
-Both paths expose the same kind of entry point:
+All cases expose the same grammar entry point:
 
 ```rust
 pub fn decimal_parse_candidate(input: &str) -> Option<DecimalParseResult>
@@ -51,14 +66,42 @@ pub fn decimal_parse_candidate(input: &str) -> Option<DecimalParseResult>
 
 `DecimalParseResult` contains the complete match position and capture spans. The specialized
 parser uses ASCII byte access after a checked `is_ascii` guard, so each cursor access is constant
-time. The generic fallback preserves source-order choice and complete capture behavior for the
-larger grammar fragment.
+time. Search-state parsers call verified literal/token helpers and carry capture spans through
+generated control flow without grammar-table traversal.
 
-This is a verified **grammar and capture parser**, not yet the full semantic
-`String -> Option<alpha>` parser emitted by Lean. It does not apply `value`, semantic constraints,
-or `ofSpec` at runtime. For example, the Decimal scanner accepts syntactically well-formed values
-outside `Int64`; `decimal_is_valid` in `spec.rs` rejects them. Keeping that boundary explicit
-avoids claiming that a capture candidate is already a Cedar Decimal value.
+Search-machine entry points compute Unicode length and ASCII classification once. Literal helpers
+use byte matching for ASCII inputs and a Unicode-correct fallback otherwise. Variable-width token
+states scan the maximal accepted prefix once, then test only the widths allowed by the grammar in
+their original order. Capture keys map to fixed slots, and capture/marker capacities are computed
+at generation time. These are optimizations of the proof-carrying state machine, not a second
+unchecked implementation.
+
+For supported semantics, `parser.rs` additionally exposes the final domain parser. The Cedar
+examples now generate:
+
+```rust
+pub fn decimal_parse(input: &str) -> Option<i64>
+pub fn duration_parse(input: &str) -> Option<i64>
+pub fn datetime_parse(input: &str) -> Option<i64>
+pub fn ipv4_parse(input: &str) -> Option<IPv4ParseResult>
+pub fn ipv6_parse(input: &str) -> Option<IPv6ParseResult>
+```
+
+These functions execute the generated `value`, check the declared constraints, and implement the
+registered `ofSpec` conversion. Verus proves that every returned value comes from a matching
+grammar candidate, satisfies the generated validity conditions, and equals the generated
+denotation. The capture parser remains separately available because grammar recognition can
+accept a syntactically well-formed value that semantic constraints reject.
+
+The executable semantic plan supports the operations used by the five Cedar formats: natural,
+signed, hexadecimal, hexadecimal-sequence, segment-count, length, and repetition-count readers;
+integer arithmetic, truncating division and remainder, conditions, and exponentiation; cardinality,
+string, leading-zero, and arithmetic constraints; checked `i64` conversion; and structured IPv4
+and IPv6 results. IPv6 multiplication by a power is fused so the runtime does not first construct
+the out-of-range intermediate value `2^128`.
+
+Unsupported conversion or constraint combinations do not prevent grammar-parser generation. They
+omit the final-value entry point and retain the certified candidate parser.
 
 The retired bytecode-style `RuntimeProgram` interpreter is archived under
 `Triptych/Archive/Verus/`. It is not used by either production path.
@@ -80,10 +123,11 @@ Text is represented as `Seq<char>`, matching Lean strings by Unicode code point 
 silently narrowing them to bytes. Grammar predicates support the same shared grammar constructors
 as the scanner.
 
-Value and constraint emission currently supports scalar captures that are direct root references
-and the first-order `ValExpr`/`Constraint` fragment. Repeated-capture `count`, qualified or nested
-semantic captures, `value'`, and `constraints'` remain unsupported. `ofSpec` and `toSpec` names are
-recorded at the conversion boundary; their Lean implementations are not translated into Rust.
+The readable specification supports the first-order `ValExpr`/`Constraint` fragment, qualified
+and nested scalar captures, and separated-repetition counts. Generated View relations connect
+those fields back to the grammar rather than treating them as unconstrained inputs. Opaque
+`value'` and `constraints'` escapes remain unsupported. Executable conversions are generated for
+the checked signed values and structured IP values used by the Cedar extension examples.
 
 ## External parser contract
 
@@ -101,44 +145,60 @@ This contract is separate from the generated scanner certificate:
 The DSL is parsed once into `Grammar`, `ValExpr`, and `Constraint` values shared with Lean
 generation.
 
-1. `Architecture/ScanPlan.lean` attempts a fail-closed compilation. Capture nesting is retained
-   in `ScanPattern`; `ScanPlan.decode_eq_decodePattern` proves that flattening it into operations
-   preserves the complete captured result. Before lowering, an independent executable certificate
-   checks source-grammar shape, unique capture slots, and deterministic local boundaries;
-   `compileScanPlan_certifiedFor` proves every successful compilation passed it.
-2. `Architecture/CursorProgram.lean` lowers the plan into fixed-width and greedy cursor
+1. `Architecture/ParsePlan.lean` selects a cursor plan or the complete scanner once. Lean and
+   Verus consume this same value rather than repeating grammar capability analysis.
+2. `Architecture/ScanPlan.lean` attempts a fail-closed deterministic compilation. Capture nesting
+   is retained in `ScanPattern`; `ScanPlan.decode_eq_decodePattern` proves that flattening it into
+   operations preserves the complete captured result. Before lowering, an independent executable
+   certificate checks source-grammar shape, unique capture slots, and deterministic local
+   boundaries; `compileScanPlan_certifiedFor` proves every successful compilation passed it.
+3. `Architecture/SearchPlan.lean` resolves references and capture keys for the remaining
+   supported acyclic grammar surface. It retains source-ordered alternatives, optionals, and
+   repetitions, and its continuation executor avoids candidate-list construction.
+4. `Architecture/SearchProgram.lean` fuses sequence tails and ordered alternatives into explicit
+   continuation control flow, then removes dead arms and shares certified literal, fixed-width
+   token, and committed capture prefixes. `SearchCode.nodeCount_reduce_le` proves that this
+   reduction cannot enlarge the staged control-flow tree, while
+   `SearchProgram.lowerSearchPlan_decode` proves exact preservation of the selected capture map.
+5. `Architecture/SearchMachine.lean` totally lowers every search program into explicit capture,
+   choice, and repetition states. `SearchMachine.lowerSearchPlan_decode_eq_scan` proves exact
+   agreement with the complete scanner.
+6. `Architecture/CursorProgram.lean` lowers deterministic plans into fixed-width and greedy cursor
    instructions. `CursorProgram.lowerScanPlan_run` and `lowerScanPlan_decodePattern` prove that
    the composed lowering preserves complete results and captured strings for every input.
-3. `ScanPlan.decodeCertified_eq_decode` and
-   `CursorProgram.decodeCertified_eq_decode` prove generic completeness and exact rejection for
-   every plan that passes `certifiedFor`: a successful direct result is kept, while direct
-   rejection continues through the complete scanner.
-4. Eligible fixed-point cursor programs become specialized Rust control flow with generated
-   grammar-witness proofs; other certified plans and unsupported direct shapes use
-   `RuntimeModel.lean` and the complete checked scanner. Thus completeness is generic even though
-   the current straight-line Verus optimization covers a narrower shape.
-5. The specification translator maps the same grammar, value, and constraints into typed Verus IR.
-6. `Lowering.lean` converts specification operations into the Verus AST and selects only required
+7. `ScanPlan.decode_eq_decode`, `SearchPlan.decode_eq_scanSearch`,
+   `SearchProgram.lowerSearchPlan_decode`, and
+   `CursorProgram.decode_eq_decode` prove generic soundness,
+   completeness, and exact rejection for every plan that passes `certifiedFor`; the direct
+   cursor or ordered-search result is final on both success and rejection.
+8. Lean emits certified cursor programs and continuation-fused search programs directly. Verus
+   compiles cursor operations and callback-free search-machine states into direct generated code.
+   Shared state suffixes are hash-consed. Finite repetitions are unrolled into item, separator,
+   ordered-stop, and count-capture states. Failed states prove exact transactional rollback, so
+   alternatives reuse one mutable state without copying capture vectors. Unsupported direct shapes
+   fail generation instead of silently selecting another runtime.
+9. The specification translator maps the same grammar, value, and constraints into typed Verus IR.
+10. `Lowering.lean` converts specification operations into the Verus AST and selects only required
    helpers.
-7. `PrettyPrint.lean` renders the AST to Verus source.
-8. Verus checks the scanner implementation and all emitted proof contracts with
+11. `PrettyPrint.lean` renders the AST to Verus source.
+12. Verus checks the scanner implementation and all emitted proof contracts with
    `--no-cheating`.
 
-The IR is backend-neutral, but only the Rust/Verus emitter currently compiles it away into
-specialized source. The Lean runtime can execute either the structured pattern or the same flat
-plan; a direct Lean source lowering can be added without changing grammar analysis or semantics.
+The strategy, search-program, search-machine, and cursor IRs are backend-neutral. Lean and Verus
+specialize both parser-plan tiers. The generated Verus state functions are checked
+compositionally against their matching state specifications.
 
 Triptych's generator and pretty-printer are not formally verified. The safety model is
 proof-carrying generation: malformed Rust fails compilation, and an implementation that does not
 satisfy its emitted Verus contract fails verification. Lean also proves preservation for the
 supported value and arithmetic-constraint translations through the internal Verus AST.
 
-The specialized Decimal certificate proves exact agreement with `decimal_parse_plan` and both
-directions of the readable grammar contract. Success implies `decimal_is_wf_decimal`; the
-generated `decimal_is_wf_implies_parse_plan` theorem makes rejection imply its negation.
-Executable value computation, semantic-constraint checking, and conversion to the domain result
-type remain future work. The current Rust artifact is therefore a verified grammar-and-capture
-parser, not yet the full `String -> Option<Decimal>` parser emitted by Lean.
+Each specialized certificate proves exact agreement with its generated parse plan and both
+directions of the readable grammar contract. For Decimal, success implies
+`decimal_is_wf_decimal`; the generated `decimal_is_wf_implies_parse_plan` theorem makes grammar
+rejection imply its negation. The generated semantic function then proves successful
+`String -> Option<i64>` results against `decimal_matches_view`, `decimal_view_valid`, and
+`decimal_view_denotation`.
 
 ## Evidence
 
@@ -147,28 +207,59 @@ constructor: Unicode literals, quoted strings, all token classes and length form
 alternatives, optionals, bounded and unbounded repetition, nested named repetition, and an
 ambiguous token alternative. Its Verus and Rust tests exercise accepted and rejected inputs.
 
-`cedar-ext/decimal/` contains:
+`direct-coverage/` exercises the specialized path beyond Decimal: nested captures, an optional
+literal, required delimiters, fixed and greedy runs, and every direct token class. Verus checks
+the generated success and no-false-rejection proofs with `--no-cheating`.
 
-- the generated Decimal specification and scanner;
+`cedar-ext/decimal/` and `cedar-ext/suite/` contain:
+
+- generated specifications, candidate scanners, and final semantic parsers;
 - Rust tests for grammar acceptance, including long inputs;
-- Cedar's production-parser corpus through Cedar's public API;
-- a benchmark harness comparing the generated grammar scanner with a Cedar-style regex path.
+- cases copied from Cedar's production-parser unit tests;
+- benchmark harnesses calling Cedar's feature-gated production parsers directly.
 
-The optimized benchmark uses `"-1234567890.1234"` over five million iterations:
+The suite compares exact returned values for Datetime, Duration, Decimal, IPv4, and IPv6,
+including semantic rejection after successful grammar recognition. The generated scanner has
+formal soundness, completeness, and exact-rejection certificates. The final semantic parser has
+generated success and conditional exact-rejection contracts. For the scanner-selected candidate,
+success proves validity and the exact denotation. Rejection proves either semantic invalidity or
+failure of the generated `candidate_runtime_safe` predicate. The direct fixed-point path states
+the same result through its selected typed view and `view_runtime_safe`.
 
-| implementation | ns/parse | relative to ScanPlan |
-| --- | ---: | ---: |
-| generated Triptych ScanPlan | 13.86 | 1.00x |
-| Cedar regex recognition | 79.87 | 5.76x slower |
-| Cedar-style regex plus value computation | 93.57 | 6.75x slower |
+The runtime-safety premise records capture bounds, positive divisors, and every checked
+intermediate fitting its executable integer representation. It is necessary for the general
+value DSL: an arbitrary expression can overflow an intermediate and later cancel back into the
+final result range. The Cedar corpus remains additional executable evidence that the generated
+specification matches the intended production behavior.
 
-The old generic candidate scanner measured about `5.7 us/parse` on the same development machine.
-The large improvement comes from eliminating candidate vectors, capture-map copying, grammar
-validation, and runtime grammar traversal.
+The benchmark reports grammar scanning separately from final value and constraint evaluation.
+One warmed release run on the same development machine measured:
 
-The recognition comparison is the closest like-for-like row. The full Cedar-style path also
-computes an `i64`, while the generated function currently returns capture spans. These are
-wall-clock measurements, not a formal timing guarantee.
+| format | Triptych scan | Triptych full | Cedar production |
+| --- | ---: | ---: | ---: |
+| Decimal | 11.98 ns | 25.20 ns | 89.75 ns |
+| Duration | 60.11 ns | 49.37 ns | 223.19 ns |
+| Datetime | 83.50 ns | 105.02 ns | 292.21 ns |
+| IPv4 | 26.41 ns | 44.35 ns | 24.47 ns |
+| IPv6 | 100.07 ns | 112.60 ns | 99.05 ns |
+
+Decimal uses the straight-line cursor plan; the other four use generated search-machine states.
+The generated full parsers were 3.56x, 4.52x, and 2.78x faster than Cedar's production Decimal,
+Duration, and Datetime parsers in this run. IPv4 remained 1.81x slower and IPv6 1.14x slower.
+Bounded primitive lowering reduced the machinery emitted for IPv4 value arithmetic, but capture
+lookup and decimal decoding still dominate its end-to-end time.
+The isolated Duration scan is slower than the full parser because release inlining can fuse the
+scanner with semantic evaluation and eliminate intermediate candidate materialization.
+
+The search-machine emitter scans each variable-width token prefix once. Compact decimal fields
+such as IPv4 octets and date components additionally use a verified decoder with a fixed
+four-character bound, giving the optimizer a small unrollable loop while preserving the same
+unbounded mathematical specification. Longer fields retain the exact checked decoder.
+
+These are wall-clock measurements from one development machine, not a formal timing guarantee.
+The formal result is behavioral: the generated cursor or search machine returns exactly the
+certified scanner result, including success captures and rejection. Ambiguous ordered search can
+still branch exponentially.
 
 ## Commands
 
@@ -179,11 +270,16 @@ From the repository root:
 lake build Triptych.Backend.VerusTests Triptych.Architecture.ScanPlanTests \
   Triptych.Backend.Verus.RuntimeModelTests
 lake env lean verus-experiments/grammar-coverage/Input.lean
+lake env lean verus-experiments/direct-coverage/Input.lean
 (cd cedar-examples && lake build Inputs.Decimal)
 ./verus-experiments/verify.sh
 cargo test --manifest-path verus-experiments/grammar-coverage/Cargo.toml --offline --locked
+cargo test --manifest-path verus-experiments/direct-coverage/Cargo.toml --offline --locked
 cargo test --manifest-path verus-experiments/cedar-ext/decimal/Cargo.toml --offline --locked
+cargo test --manifest-path verus-experiments/cedar-ext/suite/Cargo.toml --offline --locked
 cargo bench --manifest-path verus-experiments/cedar-ext/decimal/Cargo.toml \
+  --bench runtime --offline --locked
+cargo bench --manifest-path verus-experiments/cedar-ext/suite/Cargo.toml \
   --bench runtime --offline --locked
 ```
 

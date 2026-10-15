@@ -59,11 +59,11 @@ restriction and asks more of the parser backend and proof generator:
    still needs arbitrary finite classes or unseparated repetition of a 64-way symbol, together
    with quartet and padding constraints.
 3. *Dependent field boundaries.* The public dependent-width form now generates the complete
-   artifact family for one delimiter-bounded final payload, as exercised by the sized
-   upper-triangular graph. The verified {name}`Triptych.scanDependent` architecture handles the
+   artifact family for multiple literal-delimited fields, including internal fields, as
+   exercised by BitRows. The verified {name}`Triptych.scanDependent` architecture handles the
    broader header-selected-tail model, and Graph6 exercises that path. The next step is lowering
-   delimiter-free and internal dependent fields to that staged engine while retaining the same
-   readable predicates, views, derivations, and parser contracts.
+   delimiter-free boundaries and header alternatives to that staged engine while retaining the
+   same readable predicates, views, derivations, and parser contracts.
 4. *Recursive productions.* JSON, s-expressions, and Cedar policies require recursive grammar
    support. Until it exists, these formats need a hand-written parser and a separately proved
    specification.

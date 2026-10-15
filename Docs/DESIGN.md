@@ -1,7 +1,7 @@
 # Design Note: Grammar-to-Specification Compiler for Cedar Extension Parsers
 
 Status: implemented (design 2026-07; the `triptych` command, engine, emitted
-equivalence/decidability proofs, and the six examples all build under Lean v4.31.0).
+equivalence/decidability proofs, and the examples all build under Lean v4.34.0).
 This note captures the design developed while verifying the Cedar extension-type
 parsers (`Decimal`, `Duration`, `Datetime`, `IPAddr`). It describes the current
 implementation; future work is labeled explicitly and tracked in `ROADMAP.md`.
@@ -21,11 +21,16 @@ gated on the decidable acceptance predicate) and discharges that parser's
 sound/complete/reject contracts for free — so every generated spec ships a verified
 parser, not merely an obligation surface.
 
-The generated parser emits a staged cursor program for grammars that pass the scan-plan
-certificate, and otherwise uses the continuation scanner. It also emits a structural
-`MirrorsGrammar` witness, so Lean checks that the specialized program represents the generated
-grammar. The staged parser is proved equal to the scanner, which is proved extensionally equal to
-the archived list decoder. The tool does not claim streaming or error recovery. Its formal
+The compiler first creates one backend-neutral `ParsePlan`, selecting a certified cursor plan or
+a resolved ordered-search plan. A third constructor records why specialized compilation failed;
+public Lean and Verus emitters report that diagnostic instead of silently substituting a generic
+runtime parser. Both backends consume the same decision rather than repeating grammar capability
+analysis. Generated Lean parsers emit staged cursor code for deterministic grammars and
+continuation-fused `SearchProgram` code for supported branching grammars. Structural
+`MirrorsGrammar` witnesses let Lean check that each specialized program represents the generated
+grammar. Every staged parser is proved equal to the scanner, which is proved extensionally equal
+to the archived list decoder. Search-program reduction is also proved not to increase its static
+control-flow node count. The tool does not claim streaming or error recovery. Its formal
 performance model bounds completed root-candidate checks for every grammar and records zero such
 backtracking when the certified fast path succeeds; ambiguous grammars can still have exponential
 candidate trees.
@@ -216,6 +221,14 @@ Because the layout combinators are a closed, pre-verified library:
   The generated `decodeView_input` theorem anchors every successful view to its source string,
   `IsValid_view` packages recognition as successful `decodeView` plus `View.Valid`, and
   `computeValue_view` packages denotation as mapping `View.denotation` over that same view.
+  Eligible staged parsers defer captures as source spans and project the view directly from those
+  spans, so rejected inputs allocate no captured strings and the runtime path never constructs a
+  generic `CaptureMap`. `View.Valid` and `View.denotation` replace repeated string-key lookup and
+  generic constraint/value-AST interpretation. For analyzable value constraints, the emitted
+  parser computes `View.denotation` once and reuses it for both acceptance and the returned value.
+  `decodedViewParse_eq_gatedParseOfSpec` and
+  `decodedViewParseCached_eq_decodedViewParse` prove these specializations preserve the readable
+  validity-gated parser.
   `parse_view` writes the generated parser as the engine validity guard followed by typed-view
   denotation (and the declared `ofSpec` conversion, when present). `parse_eq_some_iff_view` and
   `parse_eq_none_iff_view` remove that guard for proofs: parser success is equivalent to one
@@ -544,13 +557,45 @@ Novelty = "occupies an empty, practically-important niche," not "new metatheory.
 Triptych supports **verify what is shipped**: keep Cedar's hand-written extension parsers,
 generate an independent parser and specification, and prove the external implementations agree.
 For eligible deterministic grammars, the generated parser now runs emitted straight-line cursor
-code and falls back to the continuation scanner on direct rejection. Other grammars run the
-scanner directly. The generated `parse_eq_scanner` theorem proves that this specialization does
-not change behavior, while `scan_eq_decode` connects the scanner to the archived executable
-reference semantics. A project that wants to replace a production parser should still benchmark
-its workloads and integration requirements. Triptych does not claim streaming or error recovery.
-Its generic complexity theorem bounds completed candidate checks by the finite candidate tree; it
-deliberately does not claim a polynomial bound for ambiguous grammars.
+code whose certificate proves direct completeness and exact rejection. Supported acyclic
+branching grammars compile to a resolved `SearchPlan`: production references and capture keys are
+computed once, while ordered alternatives, optionals, and repetitions remain explicit. A
+verified lowering fuses that plan into `SearchProgram`, where sequence tails and choices become
+explicit continuations suitable for backend code generation. A verified reduction removes dead
+failure arms and shares literal, fixed-width token, or certified committed capture prefixes
+without changing the source-ordered result. `SearchCode.nodeCount_reduce_le` proves that this pass
+cannot enlarge the staged control-flow tree. A total second lowering produces `SearchMachine`,
+where capture boundaries and repetitions are explicit first-order states.
+`SearchMachine.lowerSearchPlan_decode_eq_scan` proves exact agreement with the complete scanner
+for every certified search plan. Lean embeds the fused program directly. Verus hash-conses the
+machine graph and emits a specification/executable function pair for each state. Finite separated
+repetitions are unrolled into direct item, separator, ordered-stop, and count-capture states.
+Generated executable states mutate one bounded search state transactionally: every failed state
+restores its input cursor, captures, and marker stack. Ordered choice therefore reuses the same
+state without whole-state cloning, while the emitted Verus contracts prove that this imperative
+rollback implements the functional state specification.
+The generated Verus semantic stage also carries a selected-candidate contract. A successful
+result is valid and has the readable denotation. A rejection means either that the selected
+candidate is semantically invalid or that its generated `candidate_runtime_safe` predicate does
+not hold. Runtime safety records valid capture spans, positive divisors, and machine-range bounds
+for every checked intermediate. This conditional form is the strongest generic statement for
+the current arithmetic DSL: a machine intermediate may overflow even when later arithmetic
+cancels into the final result range. The specialized fixed-point path states the same boundary
+with a selected typed view and `view_runtime_safe`.
+The generated entry point hoists input length and ASCII classification. Literal matching uses an
+ASCII byte path with a Unicode fallback, and variable-width token states scan their accepted
+prefix once before testing scheduled widths in source order. Capture slots and stack capacities
+are assigned at generation time. These optimizations preserve the same machine-state
+specifications; they do not add a separate unchecked fast parser.
+Unsupported direct shapes are rejected during generation with the recorded lowering or rendering
+diagnostic. The generic scanner remains the executable specification used by equivalence proofs,
+not a silent production fallback.
+The generated parser-equivalence theorems prove that these choices do not change behavior, while
+`scan_eq_decode` connects the scanner to the archived executable reference semantics. A project
+that wants to replace a production parser should still benchmark its workloads and integration
+requirements. Triptych does not claim streaming or error recovery. Its generic complexity
+theorem bounds completed candidate checks by the finite candidate tree; it deliberately does not
+claim a polynomial bound for ambiguous grammars.
 
 ## 16. The implemented `triptych` DSL
 

@@ -1,0 +1,35 @@
+pub fn semantic_sign_of_span(
+    input: &str,
+    input_ascii: bool,
+    span: SemanticSpan,
+) -> (result: SemanticInt)
+    requires
+        input_ascii == input.is_ascii(),
+        span.start <= span.end <= input@.len(),
+        span.present || span.start == span.end,
+    ensures
+        result@ == triptych_sign_of(semantic_span_text(input@, span)),
+        result.available(),
+{
+    if span.start < span.end {
+        proof {
+            assert(span.present);
+            assert(semantic_span_text(input@, span)
+                == input@.subrange(span.start as int, span.end as int));
+            assert(semantic_span_text(input@, span).len() > 0);
+            assert(semantic_span_text(input@, span)[0] == input@[span.start as int]);
+            reveal(triptych_sign_of);
+        }
+        if semantic_character_code_at(input, input_ascii, span.start) == 45 {
+            SemanticInt::new(-1)
+        } else {
+            SemanticInt::new(1)
+        }
+    } else {
+        proof {
+            assert(semantic_span_text(input@, span) == seq![]);
+            reveal(triptych_sign_of);
+        }
+        SemanticInt::new(1)
+    }
+}

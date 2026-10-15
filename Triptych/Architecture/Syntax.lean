@@ -178,13 +178,13 @@ syntax "printer" term : fmtPrinter
     semantic obligations are required. -/
 syntax fmtTo := "to " str
 
-/-- `verus "path"` emits a Verus specification at `path`, proof-carrying parser machinery in
+/-- `verus "path"` emits a Verus specification at `path`, a proof-carrying executable
     `parser.rs`, and the external-parser interface in `contract.rs`. Every supported grammar
-    receives a source-ordered capture parser; recognized semantic shapes additionally receive a
-    domain-value proof core. A user-owned `soundness.rs` implements the generated contract for an
-    optimized external parser. When both `parser` and `printer` clauses are present, the contract
-    also covers serializer roundtrip, injectivity, and normalization. Unsupported semantic escapes
-    are rejected. -/
+    receives a source-ordered capture parser; supported value, constraint, and `ofSpec`
+    combinations additionally receive a verified final-value parser. A user-owned `soundness.rs`
+    implements the generated contract for an optimized external parser. When both `parser` and
+    `printer` clauses are present, the contract also covers serializer roundtrip, injectivity, and
+    normalization. Unsupported semantic escapes are rejected. -/
 syntax fmtVerus := "verus " str
 
 /-- Defines a Triptych format. `grammar` is required; optional sections must follow the order
@@ -265,9 +265,9 @@ private def proofTermElaborates
       pure proof
   return result.isSome
 
-/-- One capture-dependent exact-width terminal from the public grammar syntax. The first
-    implementation deliberately supports a final, delimiter-bounded field, which can be
-    lowered to the existing grammar/constraint pipeline without changing flat grammars. -/
+/-- One capture-dependent exact-width terminal from the public grammar syntax. Delimiters fix
+    internal field boundaries, so several sized fields can lower independently to the existing
+    grammar/constraint pipeline without changing flat grammars. -/
 private structure SizedTerminalSpec where
   production : String
   token : TokClass
@@ -780,6 +780,7 @@ def elabTriptych : CommandElab := fun stx => do
       let startName := (prodVals.head?.map (·.name)).getD name.getId.toString
       let gval : Triptych.Grammar :=
         { start := startName, prods := prodVals }
+      let parsePlan := compileParsePlan gval
       let mut sizedTerminals : Array SizedTerminalSpec := #[]
       for prodStx in prods do
         if let `(fmtProd| $lhs:ident ::= $alts:fmtSeq|*) := prodStx then
@@ -801,14 +802,10 @@ def elabTriptych : CommandElab := fun stx => do
                       widthArgs
                       location := item.raw
                     }
-      if 1 < sizedTerminals.size then
-        if let some second := sizedTerminals[1]? then
-          throwErrorAt second.location
-            "this Triptych release supports one dependent-width field per declaration"
       for sized in sizedTerminals do
         if sized.production = startName then
           throwErrorAt sized.location
-            "a dependent width must describe a final payload field, not the start production"
+            "a dependent width must describe a named field, not the start production"
         for argument in sized.widthArgs do
           let capture := argument.getId.toString
           unless gval.prods.any (·.name = capture) do
@@ -822,25 +819,34 @@ def elabTriptych : CommandElab := fun stx => do
         let [rootAlt] := root.alts
           | throwErrorAt sized.location
               "dependent width currently requires a single-alternative start production"
-        let some finalItem := rootAlt.getLast?
+        let some _ := rootAlt.getLast?
           | throwErrorAt sized.location "the start production cannot be empty"
-        unless finalItem = { sym := .ref sized.production } do
-          throwErrorAt sized.location m!"`{sized.production}` must be the final field of the \
-            start production when it has a dependent width"
-        let headerItems := rootAlt.dropLast
-        let hasDelimiter := headerItems.any fun item =>
+        let some (_, fieldIndex) := rootAlt.zipIdx.find? fun (item, _) =>
+            item = { sym := .ref sized.production }
+          | throwErrorAt sized.location m!"`{sized.production}` must be referenced directly \
+              from the start production when it has a dependent width"
+        let precedingItems := rootAlt.take fieldIndex
+        let followingItems := rootAlt.drop (fieldIndex + 1)
+        let hasLeadingDelimiter := precedingItems.any fun item =>
           match item with
           | { sym := .lit literal, optional := false } => !literal.isEmpty
           | _ => false
-        unless hasDelimiter do
+        unless hasLeadingDelimiter do
           throwErrorAt sized.location
-            "dependent width currently requires a nonempty literal delimiter before the final \
-              payload"
+            "dependent width requires a nonempty literal delimiter before its field"
+        unless followingItems.isEmpty do
+          let hasImmediateTrailingDelimiter :=
+            match followingItems.head? with
+            | some { sym := .lit literal, optional := false } => !literal.isEmpty
+            | _ => false
+          unless hasImmediateTrailingDelimiter do
+            throwErrorAt sized.location m!"internal dependent-width field `{sized.production}` \
+              requires an immediate nonempty literal delimiter after it"
         for argument in sized.widthArgs do
           let capture := argument.getId.toString
-          unless headerItems.any (fun item => item = { sym := .ref capture }) do
+          unless precedingItems.any (fun item => item = { sym := .ref capture }) do
             throwErrorAt argument m!"dependent-width argument `{capture}` must be captured \
-              before the final `{sized.production}` field in the start production"
+              before `{sized.production}` in the start production"
         let referenceCount : Nat :=
           gval.prods.foldl (fun total production =>
             total + production.alts.foldl (fun subtotal alternative =>
@@ -1294,7 +1300,8 @@ def elabTriptych : CommandElab := fun stx => do
         for cmd in ←
             Triptych.viewSurfaceCommands name.getId viewFields
               (wfConstrCaps.getD []) (valueConstrCaps.getD [])
-              resolvedValueCaps hasGeneratedValue do
+              resolvedValueCaps hasGeneratedValue valueAst?
+              valueConstraintAsts.toList do
           emitSpec cmd
         for cmd in ← Triptych.viewEngineCommands name.getId grammarIdent viewFields do
           emitEngine cmd
@@ -1379,16 +1386,11 @@ def elabTriptych : CommandElab := fun stx => do
               emitSound (← `(theorem $inverseId : $inverseType := $autoProof))
             emittedOfSpecToSpec := true
       if veIdent?.isSome || hasValueEsc then
-        let directPlan? :=
-          match compileScanPlan gval with
-          | .ok plan => some plan
-          | .error _ => none
-        if let some plan := directPlan? then
-          for cmd in ← Triptych.directLeanParserCommands name.getId gval plan do
-            emitParser cmd
+        for cmd in ← Triptych.leanParserPlanCommands name.getId gval parsePlan do
+          emitParser cmd
         for cmd in ←
             Triptych.parserContractsProof name.getId veIdent?.isSome ofSpecTerm?
-              directPlan?.isSome do
+              parsePlan.usesDirect wfConstrCaps.isSome valueConstrCaps.isSome do
           emitParser cmd
         emitParser (← Triptych.parseViewProof name.getId ofSpecTerm?)
         emitParser (← Triptych.parseEqSomeIffViewProof name.getId ofSpecTerm?)
@@ -1719,8 +1721,9 @@ def elabTriptych : CommandElab := fun stx => do
           let ofSpecName ← conversionName "ofSpec" ofSpecTerm?
           let toSpecName ← conversionName "toSpec" toSpecTerm?
           let certifiedOutput ←
-            match Triptych.Verus.emitCertifiedRust name.getId.toString gval valueAst
-                wfConstraintAsts.toList valueConstraintAsts.toList ofSpecName toSpecName with
+            match Triptych.Verus.emitCertifiedRustWithPlan name.getId.toString gval valueAst
+                wfConstraintAsts.toList valueConstraintAsts.toList ofSpecName toSpecName
+                parsePlan with
             | .ok output => pure output
             | .error message => throwErrorAt verusStx message
           let specContents := certifiedOutput.spec
@@ -1791,7 +1794,8 @@ def elabTriptych : CommandElab := fun stx => do
           -- `Triptych.Examples.Decimal`), used to import sibling generated files.
           let dirMod := (dir.replace "/" ".").replace "\\" "."
           let callerImport ← callerModuleForOutput
-          let callerNamespace := (← getCurrNamespace).toString
+          let callerNamespaceName ← getCurrNamespace
+          let callerNamespace := callerNamespaceName.toString
           let specMod   := dirMod ++ ".spec"
           let parserMod := dirMod ++ ".parser"
           -- The surface `value`/`Constraints` reference caller fns for the escape tiers
@@ -1803,7 +1807,18 @@ def elabTriptych : CommandElab := fun stx => do
           -- it must import+open the caller too. Presence of `ofSpec` is the trigger (a library fn
           -- makes the extra import harmless — the caller module is acyclic w.r.t. the generated
           -- files, same as `soundness.lean`'s caller import).
-          let needsCallerParser := needsCallerSurface || ofSpecTerm?.isSome
+          let ofSpecNeedsCallerOpen ← match ofSpecTerm? with
+            | none => pure false
+            | some ofSpecT =>
+                match ofSpecT with
+                | `(term| $id:ident) =>
+                    match id.getId.eraseMacroScopes with
+                    | .str .anonymous localName =>
+                        pure ((← getEnv).contains (callerNamespaceName.str localName))
+                    | _ => pure false
+                | _ => pure true
+          let needsCallerParserImport := needsCallerSurface || ofSpecTerm?.isSome
+          let needsCallerParserOpen := needsCallerSurface || ofSpecNeedsCallerOpen
           -- `unusedSimpArgs`/`unusedVariables` off — uniform generated proof closers
           -- intentionally over-provision some simp lemmas and binders.
           let mkHeader (imports : List String) (openCaller : Bool) : String :=
@@ -1855,9 +1870,11 @@ def elabTriptych : CommandElab := fun stx => do
             (specHeader ++ "\n" ++ specBanner ++ "\n\n" ++ joinDecls specDecls ++ "\n")
           -- ── parser.lean ── engine + all auto-discharged proofs + the generated verified parser.
           let directParserImports :=
-            match compileScanPlan gval with
-            | .ok _ => ["Triptych.Architecture.CursorProgram", "Triptych.Theorems.ScanPlan"]
-            | .error _ => []
+            if parsePlan.usesDirect then
+              ["Triptych.Theorems.ParsePlan", "Triptych.Theorems.ScanPlan",
+                "Triptych.Theorems.SearchPlan"]
+            else
+              []
           let parserImports := ["Triptych.Architecture.GeneratedLinter"]
             ++ libImports
             ++ directParserImports
@@ -1867,9 +1884,9 @@ def elabTriptych : CommandElab := fun stx => do
                   ["Triptych.Theorems.RelationalParser", "Triptych.Theorems.Unambiguity"]
                 else [])
             ++ [specMod]
-            ++ (if needsCallerParser then [callerImport] else [])
+            ++ (if needsCallerParserImport then [callerImport] else [])
           let parserHeader :=
-            mkHeader parserImports needsCallerParser ++
+            mkHeader parserImports needsCallerParserOpen ++
               "set_option linter.unnecessarySeqFocus false\n"
           let engineBanner := "/- ══════════════════════════════ engine ══════════════════════════════\n\
             The executable counterpart of the spec. A verified scanner extracts captured\n\
@@ -1891,9 +1908,11 @@ def elabTriptych : CommandElab := fun stx => do
             via the engine. No `sorry`. -/"
           let parserBanner := "/- ═══════════════════════════════ parser ══════════════════════════════\n\
             The generated correct-by-construction parser `parse` uses a certified staged cursor\n\
-            program when the grammar supports one, checks constraints on its capture map, and\n\
-            computes the result from those captures. The complete scanner remains the checked\n\
-            fallback. `parse_eq_scanner` and `parse_eq_gated` prove equality with the generic\n\
+            program when the grammar supports one, projects its captures once into the typed\n\
+            `View`, checks `View.Valid`, and computes `View.denotation`. Certified cursor rejection\n\
+            is final; grammar\n\
+            shapes outside that fragment use the complete scanner. `parse_eq_scanner` and\n\
+            `parse_eq_gated` prove equality with the generic\n\
             scanner and readable validity-gated presentation. Its correctness and search-cost\n\
             guarantees — `parse_sound`, `parse_complete`, `parse_reject`,\n\
             `parse_profile_result`, `parse_candidateChecks_le`, `parse_view`, and typed\n\
@@ -2000,15 +2019,16 @@ from analysis and put correctness on you).
     Nonterminal                      a reference to another production (the DAG edge)
     digit<len> / hexDigit<len> / bit<len>   a built-in terminal token run
     ascii[lo,hi]<len>               characters in an inclusive ASCII range
-    bit{f X …}                      final payload whose exact width is `f X …`
+    bit{f X …}                      field whose exact width is `f X …`
     [ item ]                         optional
     sign                             optional leading '-' (only as a production's SOLE rhs)
     rep item sepBy \"sep\" <len>       separated repetition (sep non-empty, count ≥ 1)
   <len> suffix:  +  (one-or-more)   {n}  (exactly n)   {lo,hi}  (between)
-  A dependent width currently requires a sole named payload production, referenced once as the final
-  field of a single-alternative start rule after a nonempty literal delimiter. `f` receives the
-  earlier capture strings and returns the exact character count. The same form is available for
-  digit, hexDigit, bit, and ascii[lo,hi].
+  A dependent width requires a sole named field production referenced once from a
+  single-alternative start rule. A nonempty literal must precede the field; an internal field
+  also needs an immediate literal after it to fix its end. Several dependent fields may share
+  earlier captures. `f` receives those capture strings and returns the exact character count.
+  The same form is available for digit, hexDigit, bit, and ascii[lo,hi].
 
   CAPTURE RULE: only NAMED productions are captured — a capture `X` in `value`/`constraints`
   always means \"the span matched by the production named X\". Bare literals/terminals inside a
@@ -2115,9 +2135,11 @@ from analysis and put correctness on you).
 ── verus ──  (experimental) verus \"<path>\" emits a Verus specification, proof-carrying parser
                           machinery in `parser.rs`, and the external interface in `contract.rs`.
                           Verus checks the direct scanner against the exact source-ordered candidate
-                          semantics of the emitted grammar. Recognized semantic shapes also receive
-                          a domain-value proof core. A user-owned `soundness.rs` implements the
-                          optimized parser's soundness, completeness, and exact rejection proofs.
+                          semantics of the emitted grammar. Supported semantic forms also receive
+                          an executable final-value parser checked against the generated View,
+                          value, constraints, and conversion. A user-owned `soundness.rs` implements
+                          the optimized parser's soundness, completeness, and exact rejection
+                          proofs.
                           With a `printer` clause it also requires external serializer roundtrip,
                           injectivity, and normalize-equality iff parse-equality.
                           Opaque value and constraint escapes are rejected.

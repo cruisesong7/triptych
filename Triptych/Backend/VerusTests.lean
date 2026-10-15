@@ -18,6 +18,8 @@ import Triptych.Backend.Verus
 
 namespace Triptych.Verus.Tests
 
+open Triptych.Backend.Verus
+
 private def decimalGrammar : Grammar :=
   { start := "Decimal"
     prods :=
@@ -39,6 +41,17 @@ private def decimalConstraints : List Constraint :=
   [.and
     (.le (.lit (-9223372036854775808)) decimalValue)
     (.le decimalValue (.lit 9223372036854775807))]
+
+private def orderedSearchGrammar : Grammar :=
+  { start := "Root"
+    prods :=
+      [ { name := "Root"
+          alts := [[SymItem.mk (.ref "Left") false, SymItem.mk (.ref "Right") false]] },
+        { name := "Left", alts := [[SymItem.mk (.term .digit .atLeastOne) false]] },
+        { name := "Right", alts := [[SymItem.mk (.term .digit .atLeastOne) false]] } ] }
+
+private def orderedSearchValue : ValExpr :=
+  .add (.nat "Left") (.nat "Right")
 
 private def contains (source needle : String) : Bool :=
   (source.splitOn needle).length > 1
@@ -181,16 +194,20 @@ example (sourceEnv : Env) (fieldName : Backend.Verus.FieldName)
   | .error _ => false
   | .ok output =>
       let source := output.parser
+      (source.splitOn "pub open spec fn decimal_parse_view").length == 2 &&
       [ "ScanPlan is verified-lowered to CursorProgram, which is compiled away.",
         "pub struct DecimalParseSpec",
         "pub struct DecimalParseResult",
         "pub open spec fn decimal_parse_plan",
+        "pub open spec fn decimal_view_runtime_safe",
         "pub proof fn decimal_is_wf_implies_parse_plan",
         "pub fn decimal_parse_candidate(input: &str)",
-        "pub open spec fn decimal_semantic_parse_plan",
-        "pub proof fn decimal_semantic_parse_plan_iff_valid",
-        "pub(crate) fn decimal_parse(input: &str) -> (result: Option<i64>)",
-        "decimal_is_valid(input@)",
+        "pub fn decimal_parse(input: &str)",
+        "match decimal_parse_plan(input@)",
+        "!decimal_view_runtime_safe(view) || !decimal_view_valid(view)",
+        "Option<i64>",
+        "triptych_checked_nat_range",
+        "decimal_view_denotation(parsed_view) == value as int",
         "&& decimal_is_wf_Decimal(input@)",
         "&& !decimal_is_wf_Decimal(input@)",
         "plan_scan_token_end_at_boundary",
@@ -205,7 +222,66 @@ example (sourceEnv : Env) (fieldName : Backend.Verus.FieldName)
       !contains source "use regex" &&
       !contains source "FixedPoint" &&
       !contains source "external_body" &&
-      !contains source "assume("
+      !contains source "assume(" &&
+      !contains source "assert(false)"
+
+#guard
+  match compileParsePlan decimalGrammar with
+  | .scanner _ => false
+  | .search _ => false
+  | plan@(.cursor _) =>
+      match emitCertifiedRustWithPlan "Decimal" decimalGrammar decimalValue []
+          decimalConstraints `Int64.ofInt `Int64.toInt plan with
+      | .error _ => false
+      | .ok output => contains output.parser "decimal_parse_candidate"
+
+#guard
+  match emitCertifiedRustWithPlan "Decimal" decimalGrammar decimalValue []
+      decimalConstraints `Int64.ofInt `Int64.toInt (.scanner "forced test fallback") with
+  | .error message =>
+      message.contains "scanner ParsePlans are not emitted" &&
+        message.contains "forced test fallback"
+  | .ok _ => false
+
+#guard
+  match emitCertifiedRustWithPlan "Decimal" decimalGrammar decimalValue []
+      decimalConstraints `Int64.ofInt `Int64.toInt
+      (.cursor { start := "Unrelated", pattern := .empty }) with
+  | .error _ => true
+  | .ok _ => false
+
+#guard
+  match compileParsePlan orderedSearchGrammar with
+  | .cursor _ => false
+  | .scanner _ => false
+  | plan@(.search _) =>
+      match emitCertifiedRustWithPlan "OrderedSearch" orderedSearchGrammar
+          orderedSearchValue [] [] `Int64.ofInt `Int64.toInt plan with
+      | .error _ => false
+      | .ok output =>
+            contains output.parser
+              "SearchPlan is verified-lowered to callback-free, literal-dispatched SearchMachine states." &&
+            contains output.parser "ordered_search_search_state_" &&
+            contains output.parser "search_token_prefix_end" &&
+            contains output.parser "search_match_terminal_from_prefix" &&
+            !contains output.parser "search_match_terminal_at_width" &&
+            contains output.parser "ordered_search_search_parse_candidate" &&
+            contains output.parser "ordered_search_parse_candidate" &&
+            contains output.parser "fn ordered_search_evaluate_candidate" &&
+            contains output.parser "ordered_search_candidate_runtime_safe" &&
+            contains output.parser
+              "match ordered_search_search_parse_candidate(input@)" &&
+            contains output.parser
+              "!ordered_search_candidate_runtime_safe(input@, candidate)" &&
+            !contains output.parser
+              "parse_grammar_candidate(\n        &source_grammar"
+
+#guard
+  match emitCertifiedRustWithPlan "OrderedSearch" orderedSearchGrammar
+      orderedSearchValue [] [] `Int64.ofInt `Int64.toInt
+      (.search { start := "Unrelated", alternatives := [] }) with
+  | .error _ => true
+  | .ok _ => false
 
 private def moneyGrammar : Grammar :=
   { start := "Amount"
@@ -242,8 +318,10 @@ private def moneyConstraints : List Constraint :=
         "whole_start",
         "cents_start",
         "== 45u8",
-        "== 44u8" ].all (contains source) &&
-      !contains source "pub fn money_parse(input: &str)" &&
+        "== 44u8",
+        "pub fn money_parse(input: &str)",
+        "triptych_checked_nat_range",
+        "money_view_denotation(parsed_view) == value as int" ].all (contains source) &&
       !contains source "GrammarSymbol" &&
       !contains source "GrammarItem" &&
       !contains source "let program = RuntimeProgram" &&
@@ -279,10 +357,68 @@ private def quantityValue : ValExpr :=
   | .error _ => false
   | .ok output =>
       [ "pub fn quantity_parse_candidate(input: &str)",
-        "GrammarInput",
-        "parse_checked_grammar_candidate" ].all (contains output.parser) &&
-      !contains output.parser "pub proof fn quantity_is_wf_implies_parse_plan" &&
-      !contains output.parser "assume("
+        "pub proof fn quantity_is_wf_implies_parse_plan",
+        "pub struct QuantityParseResult",
+        "digits_start",
+        "plan_scan_token_end_at_boundary" ].all (contains output.parser) &&
+      !contains output.parser "GrammarInput" &&
+      !contains output.parser "parse_checked_grammar_candidate" &&
+      !contains output.parser "assume(" &&
+      !contains output.parser "assert(false)"
+
+private def directCoverageGrammar : Grammar :=
+  { start := "DirectCoverage"
+    prods :=
+      [ { name := "DirectCoverage"
+          alts :=
+            [[SymItem.mk (.ref "Prefix") false, SymItem.mk (.ref "Digits") false,
+              SymItem.mk (.lit "-") false, SymItem.mk (.ref "Payload") false,
+              SymItem.mk (.lit ":") false, SymItem.mk (.ref "Bits") false,
+              SymItem.mk (.lit "/") false, SymItem.mk (.ref "Upper") false]] },
+        { name := "Prefix", alts := [[SymItem.mk (.lit "+") true]] },
+        { name := "Payload", alts := [[SymItem.mk (.ref "Hex") false]] },
+        { name := "Digits", alts := [[SymItem.mk (.term .digit .atLeastOne) false]] },
+        { name := "Hex"
+          alts := [[SymItem.mk (.term .hexDigit (.between 1 4)) false]] },
+        { name := "Bits", alts := [[SymItem.mk (.term .bit .atLeastOne) false]] },
+        { name := "Upper"
+          alts := [[SymItem.mk (.term (.asciiRange 65 90) (.exactly 2)) false]] } ] }
+
+#guard
+  match emitCertifiedRust "DirectCoverage" directCoverageGrammar (.len "Payload")
+      [] [] `id `id with
+  | .error _ => false
+  | .ok output =>
+      [ "pub proof fn direct_coverage_is_wf_implies_parse_plan",
+        "pub fn direct_coverage_parse_candidate(input: &str)",
+        "payload_start",
+        "hex_start",
+        "PlanTokenClass::HexDigit",
+        "PlanTokenClass::Bit",
+        "PlanTokenClass::AsciiRange",
+        "#[verifier::rlimit(20)]" ].all (contains output.parser) &&
+      !contains output.parser "GrammarInput" &&
+      !contains output.parser "assume(" &&
+      !contains output.parser "assert(false)"
+
+#guard
+  match emitSpec "NestedCoverage" directCoverageGrammar (.len "Payload.Hex")
+      [] [] `id `id with
+  | .error _ => false
+  | .ok source =>
+      [ "pub payload_hex: Seq<char>",
+        "nested_coverage_matches_view",
+        "nested_coverage_value",
+        "view.payload_hex" ].all (contains source)
+
+#guard
+  match emitCertifiedRust "NestedCoverage" directCoverageGrammar (.len "Payload.Hex")
+      [] [] `id `id with
+  | .error _ => false
+  | .ok output =>
+      [ "nested_coverage_parse_view",
+        "payload_hex: input.subrange(parsed.hex_start, parsed.hex_end)",
+        "nested_coverage_matches_view" ].all (contains output.parser)
 
 #guard
   match emitSpec "Quantity" quantityGrammar quantityValue
@@ -378,9 +514,28 @@ private def separatedGrammar : Grammar :=
   | .error _ => false
   | .ok output =>
       [ "separated_rep_0_matches",
-        "GrammarSymbol::Repetition",
-        "separator: \",\"",
+        "SearchPlan is verified-lowered to callback-free, literal-dispatched SearchMachine states.",
+        "separated_search_state_",
+        "search_close_count_capture",
+        "CaptureKey::Repetition(1)",
+        "search_match_literal_at(",
+        "\",\"",
         "separated_parse_candidate" ].all (contains (output.spec ++ output.parser))
+
+#guard
+  match emitSpec "SeparatedCount" separatedGrammar (.count "Item") [] [] `id `id with
+  | .error _ => false
+  | .ok source =>
+      [ "separated_count_rep_0_matches_count",
+        "pub item_count: Seq<char>",
+        "triptych_count_of(item_count)",
+        "separated_count_value(view.item_count)" ].all (contains source)
+
+#guard
+  match emitCertifiedRust "Decimal" decimalGrammar decimalValue []
+      (decimalConstraints ++ [.le decimalValue (.lit 0)]) `Int64.ofInt `Int64.toInt with
+  | .error _ => false
+  | .ok output => !contains output.parser "pub fn decimal_parse(input: &str)"
 
 private def ambiguousGrammar : Grammar :=
   { start := "Ambiguous"
@@ -402,6 +557,111 @@ private def unicodeGrammar : Grammar :=
   | .error _ => false
   | .ok output =>
       contains output.spec "'\\u{3bb}'" &&
-        contains output.parser "GrammarSymbol::Literal(\"λ\")"
+        contains output.parser "search_match_literal_at(" &&
+        contains output.parser "\"λ\""
+
+private def semanticIpGrammar : Grammar :=
+  { start := "Net"
+    prods :=
+      [ { name := "Net"
+          alts :=
+            [[SymItem.mk (.ref "Address") false,
+              SymItem.mk (.lit "/") false,
+              SymItem.mk (.ref "Prefix") true]] },
+        { name := "Address"
+          alts := [[SymItem.mk (.ref "Octet") false]] },
+        { name := "Octet"
+          alts := [[SymItem.mk (.term .digit (.between 1 3)) false]] },
+        { name := "Prefix"
+          alts := [[SymItem.mk (.term .digit (.between 1 3)) false]] } ] }
+
+private def semanticIpAddress : ValExpr :=
+  .nat "Octet"
+
+private def semanticIpPrefix : ValExpr :=
+  .iteEmpty "Prefix" (.lit 32) (.nat "Prefix")
+
+private def semanticIpv4Expression : ValExpr :=
+  .add (.mul semanticIpAddress (.lit 33)) semanticIpPrefix
+
+private def semanticIpv6Expression : ValExpr :=
+  .add (.mul (.hexSeq "Address") (.lit 129))
+    (.iteEmpty "Prefix" (.lit 128) (.nat "Prefix"))
+
+#guard
+  match compileSemanticPlan decimalValue [] decimalConstraints "Int64.ofInt" with
+  | .ok plan => plan.result == .int64
+  | .error _ => false
+
+#guard
+  match compileSemanticPlan semanticIpv4Expression [] [] "ipv4CodeToNet" with
+  | .ok plan =>
+      plan.result == .ip 4 32 33 &&
+        match compileFlatGrammar semanticIpGrammar with
+        | .ok grammar =>
+            match compileSemanticFields grammar plan with
+            | .ok fields =>
+                fields ==
+                  [ { name := "Octet", selector := .production 2 },
+                    { name := "Prefix", selector := .production 3 } ]
+            | .error _ => false
+        | .error _ => false
+  | .error _ => false
+
+#guard
+  match compileSemanticPlan semanticIpv4Expression [] [] "ipv4CodeToNet",
+      compileFlatGrammar semanticIpGrammar with
+  | .ok plan, .ok grammar =>
+      match compileExecutableSemanticPlan grammar plan with
+      | .ok (.ip _ _ _ address prefixExpr _ _) =>
+          address.range? == some { lower := 0, upper := 999 } &&
+            prefixExpr.range? == some { lower := 0, upper := 999 }
+      | _ => false
+  | _, _ => false
+
+#guard
+  match compileSemanticPlan semanticIpv6Expression [] [] "ipv6CodeToNet" with
+  | .ok plan => plan.result == .ip 6 128 129
+  | .error _ => false
+
+#guard
+  match emitCertifiedRust "IPv4" semanticIpGrammar semanticIpv4Expression [] []
+      `ipv4CodeToNet `id with
+  | .error _ => false
+  | .ok output =>
+      [ "pub struct IPv4ParseResult",
+        "pub fn ipv4_parse(input: &str)",
+        "fn ipv4_evaluate_candidate",
+        "ipv4_candidate_runtime_safe",
+        "match ipv4_search_parse_candidate(input@)",
+        "!ipv4_candidate_runtime_safe(input@, candidate)",
+        "ipv4_candidate_address",
+        "ipv4_candidate_prefix",
+        "bounded_nat_",
+        "semantic_nat_of_span",
+        "semantic_nat_of_short_span" ].all (contains output.parser)
+        && !contains output.parser "pub struct SemanticInt"
+
+#guard
+  match emitCertifiedRust "IPv6" semanticIpGrammar semanticIpv6Expression [] []
+      `ipv6CodeToNet `id with
+  | .error _ => false
+  | .ok output =>
+      [ "pub struct IPv6ParseResult",
+        "pub fn ipv6_parse(input: &str)",
+        "fn ipv6_evaluate_candidate",
+        "ipv6_candidate_runtime_safe",
+        "match ipv6_search_parse_candidate(input@)",
+        "!ipv6_candidate_runtime_safe(input@, candidate)",
+        "ipv6_candidate_address",
+        "ipv6_candidate_prefix",
+        "semantic_hex_sequence_of_span",
+        "340282366920938463463374607431768211456int" ].all (contains output.parser)
+        && !contains output.parser "pub struct SemanticInt"
+
+#guard
+  match compileSemanticPlan (.lit 0) [] [] "unknownConversion" with
+  | .ok _ => false
+  | .error _ => true
 
 end Triptych.Verus.Tests

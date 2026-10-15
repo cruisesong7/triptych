@@ -108,9 +108,9 @@ checked without {name}`sorryAx`.
 
 Triptych is not a general parser generator. Its grammar tier has concatenation, finite
 alternation, optional items, three built-in token classes, inclusive ASCII ranges, and separated
-repetition. A delimiter-bounded final payload may compute its exact width
-from earlier captures with syntax such as {lit}`bit{upperTriangleSize Order}`, but recursive
-productions and general capture-dependent boundaries remain
+repetition. Literal-delimited fields may compute their exact widths from earlier captures with
+syntax such as {lit}`bit{upperTriangleSize Order}`; several such fields may occur in one format.
+Recursive productions and delimiter-free capture-dependent boundaries remain
 outside the generated surface. The scanner architecture can compose a parsed header with a
 generated tail grammar for those broader cases, while automatic artifacts for that composition
 remain in progress. General Base64 is not yet expressible because the grammar has no arbitrary

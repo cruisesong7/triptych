@@ -15,5 +15,5 @@ triptych GrammarCoverage where
     Csv             ::= rep Cell sepBy "," +
     Cell            ::= bit{1}
   value
-    len Payload
+    len Payload + count Item
   verus "verus-experiments/grammar-coverage/src/spec.rs"

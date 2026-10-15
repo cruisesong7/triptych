@@ -226,7 +226,8 @@ private theorem length_filterMap_le_one_of_unique {α β : Type} {f : α → Opt
                 exact (hnodup.1 hb).elim
           simp [hfa, htail]
 
-private theorem termPrefixOk_index_unique (tok : TokClass) (ls : LenSpec)
+/-- A fixed-width terminal can match at most one candidate width. -/
+theorem termPrefixOk_index_unique (tok : TokClass) (ls : LenSpec)
     (cs : List Char) (hls : (match ls with
       | .exactly _ => true
       | .between lo hi => lo == hi

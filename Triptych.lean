@@ -22,7 +22,17 @@ import Triptych.Architecture.Constraint
 import Triptych.Architecture.Scanner
 import Triptych.Architecture.ScanPlan
 import Triptych.Architecture.CursorProgram
+import Triptych.Architecture.SearchPlan
+import Triptych.Architecture.SearchProgram
+import Triptych.Architecture.SearchMachine
+import Triptych.Architecture.LeanCursor
+import Triptych.Architecture.LeanSpanCursor
+import Triptych.Architecture.ParsePlan
 import Triptych.Theorems.ScanPlan
+import Triptych.Theorems.SearchPlan
+import Triptych.Theorems.SearchProgram
+import Triptych.Theorems.SearchMachine
+import Triptych.Theorems.ParsePlan
 import Triptych.Architecture.Derivation
 import Triptych.Architecture.Dependent
 import Triptych.Architecture.Unambiguity

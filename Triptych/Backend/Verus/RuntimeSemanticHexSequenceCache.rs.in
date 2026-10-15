@@ -1,0 +1,89 @@
+/// A cached colon-separated hexadecimal interpretation and segment count.
+#[derive(Copy, Clone)]
+struct CachedSemanticHexSequence {
+    source: Ghost<Seq<char>>,
+    start: usize,
+    end: usize,
+    value: u128,
+    segments: u128,
+}
+
+impl CachedSemanticHexSequence {
+    #[verifier::type_invariant]
+    spec fn well_formed(self) -> bool {
+        &&& self.start <= self.end
+        &&& self.end <= self.source@.len()
+        &&& self.value as int == triptych_hex_seq_of(
+            self.source@.subrange(
+                self.start as int,
+                self.end as int,
+            ),
+        )
+        &&& self.segments as int == triptych_segments_of(
+            self.source@.subrange(
+                self.start as int,
+                self.end as int,
+            ),
+        )
+    }
+
+    spec fn source_matches(&self, input: Seq<char>) -> bool {
+        self.source@ == input
+    }
+
+    #[inline(always)]
+    fn from_accumulator(
+        input: Ghost<Seq<char>>,
+        accumulator: SemanticHexSequenceAccumulator,
+    ) -> (result: Option<Self>)
+        requires
+            accumulator.source_matches(input@),
+        ensures
+            match result {
+                Some(cached) => {
+                    &&& cached.source_matches(input@)
+                    &&& cached.start == accumulator.start
+                    &&& cached.end == accumulator.end
+                },
+                None => true,
+            },
+    {
+        proof {
+            use_type_invariant(&accumulator);
+        }
+        let value = match accumulator.summary.value.to_option() {
+            Some(value) => value,
+            None => return None,
+        };
+        let segments = match accumulator.summary.segments.to_option() {
+            Some(segments) => segments,
+            None => return None,
+        };
+        Some(Self {
+            source: input,
+            start: accumulator.start,
+            end: accumulator.end,
+            value,
+            segments,
+        })
+    }
+
+    #[inline(always)]
+    fn semantic_summary(&self) -> (result: SemanticHexSequenceSummary)
+        ensures
+            result.value@ as int == triptych_hex_seq_of(
+                self.source@.subrange(self.start as int, self.end as int),
+            ),
+            result.segments@ as int == triptych_segments_of(
+                self.source@.subrange(self.start as int, self.end as int),
+            ),
+    {
+        proof {
+            use_type_invariant(self);
+        }
+        SemanticHexSequenceSummary {
+            value: SemanticNat::new(self.value),
+            segments: SemanticNat::new(self.segments),
+        }
+    }
+}

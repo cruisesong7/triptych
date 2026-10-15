@@ -114,11 +114,12 @@ for the user, with routine parser plumbing discharged automatically.
 - complete: prove recognition equivalence and a finite combined header/tail candidate bound;
 - complete: exercise one-, four-, and eight-character Graph6 headers, exact payload widths,
   semantic padding validation, and structured graph decoding;
-- complete: add `Terminal{f Header...}` for one delimiter-bounded final payload and
+- complete: add `Terminal{f Header...}` for delimiter-bounded dependent fields and
   generate its readable `IsWf`, typed `View`, structural `Derivation`, parser contracts, and
   search-cost theorem;
-- lower delimiter-free and internal capture-dependent fields from the `triptych` command into
-  `scanDependent`;
+- complete: support several dependent fields and internal fields terminated by immediate
+  literal delimiters;
+- lower delimiter-free capture-dependent fields from the `triptych` command into `scanDependent`;
 - generate combined readable `IsWf`, typed `View`, and structural `Derivation` artifacts for the
   general staged form;
 - extend the cost model from completed candidates to character inspections and establish a

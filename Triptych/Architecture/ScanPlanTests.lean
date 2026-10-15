@@ -64,13 +64,6 @@ private def decimalSamples :=
   | .error _ => false
   | .ok plan => decimalSamples.all fun input => plan.decode input == scan decimalGrammar input
 
-#guard
-  match compileScanPlan decimalGrammar with
-  | .error _ => false
-  | .ok plan =>
-      decimalSamples.all fun input =>
-        plan.decodeCertified decimalGrammar input == decode decimalGrammar input
-
 private def adjacentFixedGrammar : Grammar :=
   { start := "Root"
     prods :=
@@ -105,6 +98,17 @@ private def ambiguousBoundaryGrammar : Grammar :=
   | .error _ => true
   | .ok _ => false
 
+private def zeroWidthGrammar : Grammar :=
+  { start := "Root"
+    prods :=
+      [{ name := "Root"
+         alts := [[item (.term .digit (.exactly 0))]] }] }
+
+#guard
+  match compileScanPlan zeroWidthGrammar with
+  | .error reason => reason.contains "at least one character"
+  | .ok _ => false
+
 private def nestedCaptureGrammar : Grammar :=
   { start := "Root"
     prods :=
@@ -120,10 +124,24 @@ private def nestedCaptureGrammar : Grammar :=
         [("Outer", ["Outer"]), ("Inner", ["Inner", "Outer.Inner"])] &&
       plan.decode "12!" = scan nestedCaptureGrammar "12!"
 
+private def nonAsciiRangeGrammar : Grammar :=
+  { start := "Root"
+    prods :=
+      [{ name := "Root"
+         alts := [[item (.term (.asciiRange 128 255) (.exactly 1))]] }] }
+
+/- Direct Rust and Lean cursor paths use ASCII character positions. Wider ranges therefore keep
+   the complete scanner instead of receiving an incomplete direct plan. -/
+#guard
+  match compileScanPlan nonAsciiRangeGrammar with
+  | .error reason => reason.contains "code point 127"
+  | .ok _ => false
+
 example {plan : ScanPlan} (hcompile : compileScanPlan decimalGrammar = .ok plan) :
-    plan.captureNamesUnique = true ∧ plan.deterministicBoundaries = true ∧
-      plan.matchesGrammar decimalGrammar = true :=
+    plan.captureNamesUnique = true ∧ plan.positiveTokenLengths = true ∧
+      plan.deterministicBoundaries = true ∧ plan.matchesGrammar decimalGrammar = true :=
   ⟨compileScanPlan_captureNamesUnique hcompile,
+    compileScanPlan_positiveTokenLengths hcompile,
     compileScanPlan_deterministicBoundaries hcompile,
     compileScanPlan_matchesGrammar hcompile⟩
 
@@ -135,14 +153,14 @@ example {plan : ScanPlan} (hcompile : compileScanPlan decimalGrammar = .ok plan)
 
 example {plan : ScanPlan} (hcompile : compileScanPlan decimalGrammar = .ok plan)
     (source : String) :
-    (lowerScanPlan plan).decodeCertified decimalGrammar source =
+    (lowerScanPlan plan).decode source =
       decode decimalGrammar source :=
-  compileCursorProgram_decodeCertified_eq_decode hcompile source
+  compileCursorProgram_decode_eq_decode hcompile source
 
 example {plan : ScanPlan} (hcertified : plan.certifiedFor decimalGrammar = true)
     (source : String) :
-    (lowerScanPlan plan).decodeCertified decimalGrammar source =
+    (lowerScanPlan plan).decode source =
       decode decimalGrammar source :=
-  CursorProgram.decodeCertified_eq_decode hcertified source
+  CursorProgram.decode_eq_decode hcertified source
 
 end Triptych.ScanPlanTests

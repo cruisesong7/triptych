@@ -1,0 +1,58 @@
+pub fn semantic_segments_of_span(
+    input: &str,
+    input_ascii: bool,
+    span: SemanticSpan,
+) -> (result: SemanticNat)
+    requires
+        input_ascii == input.is_ascii(),
+        span.start <= span.end <= input@.len(),
+        span.present || span.start == span.end,
+    ensures
+        result@ as int == triptych_segments_of(semantic_span_text(input@, span)),
+{
+    if span.start == span.end {
+        proof {
+            assert(semantic_span_text(input@, span) == seq![]);
+            reveal(triptych_segments_of);
+        }
+        return SemanticNat::new(0);
+    }
+    proof {
+        assert(span.present);
+    }
+    let ghost text = semantic_span_text(input@, span);
+    let mut result = SemanticNat::new(1);
+    let mut index = span.start;
+    proof {
+        reveal(triptych_segments_of);
+    }
+    while index < span.end
+        invariant
+            input_ascii == input.is_ascii(),
+            span.start <= index <= span.end <= input@.len(),
+            text == input@.subrange(span.start as int, span.end as int),
+            index - span.start <= text.len(),
+            triptych_segments_from(
+                text,
+                (index - span.start) as int,
+                result@ as int,
+            ) == triptych_segments_of(text),
+        decreases span.end - index,
+    {
+        let code = semantic_character_code_at(input, input_ascii, index);
+        if code == 58 {
+            result = result.add(&SemanticNat::new(1));
+        }
+        proof {
+            assert(text[(index - span.start) as int] == input@[index as int]);
+            assert(code as int == input@[index as int] as int);
+            assert(code as int == text[(index - span.start) as int] as int);
+            reveal_with_fuel(triptych_segments_from, 1);
+        }
+        index += 1;
+    }
+    proof {
+        reveal_with_fuel(triptych_segments_from, 1);
+    }
+    result
+}

@@ -8,6 +8,9 @@ import Triptych.Architecture.Constraint
 import Triptych.Architecture.Assemble
 import Triptych.Theorems.Reconcile
 import Triptych.Theorems.Value
+import Triptych.Theorems.ParsePlan
+import Triptych.Theorems.ScanPlan
+import Triptych.Theorems.SearchPlan
 import Triptych.Archive.DecodeLemmas
 import Triptych.Theorems.Derivation
 import Triptych.Theorems.Scanner
@@ -147,6 +150,21 @@ def IPv4.View.ofMap (input : String) (m : Triptych.CaptureMap) : IPv4.View :=
   IPv4.View.mk input ((Triptych.CaptureMap.toEnv m "Oct1").getD "") ((Triptych.CaptureMap.toEnv m "Oct2").getD "")
     ((Triptych.CaptureMap.toEnv m "Oct3").getD "") ((Triptych.CaptureMap.toEnv m "Oct4").getD "")
     (Triptych.CaptureMap.toEnv m "Prefix")
+
+private def IPv4.View.ofSpans (input : String) (chars : List Char) (spans : Triptych.LeanSpanCursor.SpanMap) :
+    IPv4.View :=
+  IPv4.View.mk input ((Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "Oct1").getD "")
+    ((Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "Oct2").getD "")
+    ((Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "Oct3").getD "")
+    ((Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "Oct4").getD "")
+    (Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "Prefix")
+
+private theorem IPv4.View.ofSpans_eq_ofMap (input : String) (chars : List Char)
+    (spans : Triptych.LeanSpanCursor.SpanMap) :
+    IPv4.View.ofSpans input chars spans = IPv4.View.ofMap input (spans.materialize chars) :=
+  by
+  unfold IPv4.View.ofSpans IPv4.View.ofMap
+  simp only [Triptych.LeanSpanCursor.SpanMap.captureMap_toEnv, Triptych.LeanSpanCursor.SpanMap.captureMap_toEnvList]
 
 def IPv4.decodeView (s : String) : Option IPv4.View :=
   (scan IPv4.grammar s).map (IPv4.View.ofMap s)
@@ -799,9 +817,11 @@ theorem IPv4.computeValue_view (s : String) : IPv4.computeValue s = (IPv4.decode
 
 /- ═══════════════════════════════ parser ══════════════════════════════
 The generated correct-by-construction parser `parse` uses a certified staged cursor
-program when the grammar supports one, checks constraints on its capture map, and
-computes the result from those captures. The complete scanner remains the checked
-fallback. `parse_eq_scanner` and `parse_eq_gated` prove equality with the generic
+program when the grammar supports one, projects its captures once into the typed
+`View`, checks `View.Valid`, and computes `View.denotation`. Certified cursor rejection
+is final; grammar
+shapes outside that fragment use the complete scanner. `parse_eq_scanner` and
+`parse_eq_gated` prove equality with the generic
 scanner and readable validity-gated presentation. Its correctness and search-cost
 guarantees — `parse_sound`, `parse_complete`, `parse_reject`,
 `parse_profile_result`, `parse_candidateChecks_le`, `parse_view`, and typed
@@ -810,6 +830,390 @@ AUTO-DISCHARGED here.
 When an external parser is declared, `checkedExtParse` additionally validates each
 external result against this parser and ships an AUTO-DISCHARGED soundness theorem.
 A verified parser, no `sorry`. -/
+
+private abbrev IPv4.searchPlan : SearchPlan :=
+  ({ start := "V4Net",
+      alternatives :=
+        [[SearchPattern.capture "V4Addr" ["V4Addr"]
+              [[SearchPattern.capture "Oct1" ["Oct1", "V4Addr.Oct1"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.between 1 3)]],
+                  SearchPattern.literal ".",
+                  SearchPattern.capture "Oct2" ["Oct2", "V4Addr.Oct2"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.between 1 3)]],
+                  SearchPattern.literal ".",
+                  SearchPattern.capture "Oct3" ["Oct3", "V4Addr.Oct3"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.between 1 3)]],
+                  SearchPattern.literal ".",
+                  SearchPattern.capture "Oct4" ["Oct4", "V4Addr.Oct4"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.between 1 3)]]]]],
+          [SearchPattern.capture "V4Addr" ["V4Addr"]
+              [[SearchPattern.capture "Oct1" ["Oct1", "V4Addr.Oct1"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.between 1 3)]],
+                  SearchPattern.literal ".",
+                  SearchPattern.capture "Oct2" ["Oct2", "V4Addr.Oct2"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.between 1 3)]],
+                  SearchPattern.literal ".",
+                  SearchPattern.capture "Oct3" ["Oct3", "V4Addr.Oct3"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.between 1 3)]],
+                  SearchPattern.literal ".",
+                  SearchPattern.capture "Oct4" ["Oct4", "V4Addr.Oct4"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.between 1 3)]]]],
+            SearchPattern.literal "/",
+            SearchPattern.capture "Prefix" ["Prefix"]
+              [[SearchPattern.tokenRun TokClass.digit (LenSpec.between 1 2)]]]] } :
+    SearchPlan)
+
+private abbrev IPv4.parsePlan : ParsePlan :=
+  ParsePlan.search IPv4.searchPlan
+
+private theorem IPv4.searchPlan_mirrorsGrammar : SearchPlan.MirrorsGrammar IPv4.searchPlan IPv4.grammar :=
+  SearchPlan.mirrorsGrammar_of_matchesGrammar (by native_decide)
+
+private abbrev IPv4.searchProgram : SearchProgram :=
+  ({ start := "V4Net",
+      code :=
+        SearchCode.choice
+          (SearchCode.capture ["V4Addr"]
+            (SearchCode.capture ["Oct1", "V4Addr.Oct1"]
+              (SearchCode.tokenRun TokClass.digit (LenSpec.between 1 3) SearchCode.accept)
+              (SearchCode.literal "."
+                (SearchCode.capture ["Oct2", "V4Addr.Oct2"]
+                  (SearchCode.tokenRun TokClass.digit (LenSpec.between 1 3) SearchCode.accept)
+                  (SearchCode.literal "."
+                    (SearchCode.capture ["Oct3", "V4Addr.Oct3"]
+                      (SearchCode.tokenRun TokClass.digit (LenSpec.between 1 3) SearchCode.accept)
+                      (SearchCode.literal "."
+                        (SearchCode.capture ["Oct4", "V4Addr.Oct4"]
+                          (SearchCode.tokenRun TokClass.digit (LenSpec.between 1 3) SearchCode.accept)
+                          SearchCode.accept)))))))
+            SearchCode.accept)
+          (SearchCode.capture ["V4Addr"]
+            (SearchCode.capture ["Oct1", "V4Addr.Oct1"]
+              (SearchCode.tokenRun TokClass.digit (LenSpec.between 1 3) SearchCode.accept)
+              (SearchCode.literal "."
+                (SearchCode.capture ["Oct2", "V4Addr.Oct2"]
+                  (SearchCode.tokenRun TokClass.digit (LenSpec.between 1 3) SearchCode.accept)
+                  (SearchCode.literal "."
+                    (SearchCode.capture ["Oct3", "V4Addr.Oct3"]
+                      (SearchCode.tokenRun TokClass.digit (LenSpec.between 1 3) SearchCode.accept)
+                      (SearchCode.literal "."
+                        (SearchCode.capture ["Oct4", "V4Addr.Oct4"]
+                          (SearchCode.tokenRun TokClass.digit (LenSpec.between 1 3) SearchCode.accept)
+                          SearchCode.accept)))))))
+            (SearchCode.literal "/"
+              (SearchCode.capture ["Prefix"]
+                (SearchCode.tokenRun TokClass.digit (LenSpec.between 1 2) SearchCode.accept) SearchCode.accept))) } :
+    SearchProgram)
+
+private theorem IPv4.searchProgram_lowered : lowerSearchPlan IPv4.searchPlan = IPv4.searchProgram := by native_decide
+
+private def IPv4.directDecode (source : String) : Option CaptureMap :=
+  let input := source.toList
+  scanOrElse
+    ((List.range ((input).length + 1)).findSome? fun width_rootlbb =>
+      if termPrefixOk TokClass.digit (LenSpec.between 1 3) input width_rootlbb then
+        (fun (bodyCaptures_rootlb : CaptureMap) (remaining_rootlb : List Char) =>
+            let ownCaptures_rootlb :=
+              (["Oct1", "V4Addr.Oct1"]).map fun key =>
+                (key, String.ofList ((input).take ((input).length - (remaining_rootlb).length)))
+            let characters_rootlbt := ".".toList
+            if (characters_rootlbt).isPrefixOf remaining_rootlb then
+              (List.range (((remaining_rootlb).drop (characters_rootlbt).length).length + 1)).findSome?
+                fun width_rootlbtnb =>
+                if
+                    termPrefixOk TokClass.digit (LenSpec.between 1 3)
+                      ((remaining_rootlb).drop (characters_rootlbt).length) width_rootlbtnb then
+                  (fun (bodyCaptures_rootlbtn : CaptureMap) (remaining_rootlbtn : List Char) =>
+                      let ownCaptures_rootlbtn :=
+                        (["Oct2", "V4Addr.Oct2"]).map fun key =>
+                          (key,
+                            String.ofList
+                              (((remaining_rootlb).drop (characters_rootlbt).length).take
+                                (((remaining_rootlb).drop (characters_rootlbt).length).length -
+                                  (remaining_rootlbtn).length)))
+                      let characters_rootlbtnt := ".".toList
+                      if (characters_rootlbtnt).isPrefixOf remaining_rootlbtn then
+                        (List.range (((remaining_rootlbtn).drop (characters_rootlbtnt).length).length + 1)).findSome?
+                          fun width_rootlbtntnb =>
+                          if
+                              termPrefixOk TokClass.digit (LenSpec.between 1 3)
+                                ((remaining_rootlbtn).drop (characters_rootlbtnt).length) width_rootlbtntnb then
+                            (fun (bodyCaptures_rootlbtntn : CaptureMap) (remaining_rootlbtntn : List Char) =>
+                                let ownCaptures_rootlbtntn :=
+                                  (["Oct3", "V4Addr.Oct3"]).map fun key =>
+                                    (key,
+                                      String.ofList
+                                        (((remaining_rootlbtn).drop (characters_rootlbtnt).length).take
+                                          (((remaining_rootlbtn).drop (characters_rootlbtnt).length).length -
+                                            (remaining_rootlbtntn).length)))
+                                let characters_rootlbtntnt := ".".toList
+                                if (characters_rootlbtntnt).isPrefixOf remaining_rootlbtntn then
+                                  (List.range
+                                        (((remaining_rootlbtntn).drop (characters_rootlbtntnt).length).length +
+                                          1)).findSome?
+                                    fun width_rootlbtntntnb =>
+                                    if
+                                        termPrefixOk TokClass.digit (LenSpec.between 1 3)
+                                          ((remaining_rootlbtntn).drop (characters_rootlbtntnt).length)
+                                          width_rootlbtntntnb then
+                                      (fun (bodyCaptures_rootlbtntntn : CaptureMap)
+                                            (remaining_rootlbtntntn : List Char) =>
+                                          let ownCaptures_rootlbtntntn :=
+                                            (["Oct4", "V4Addr.Oct4"]).map fun key =>
+                                              (key,
+                                                String.ofList
+                                                  (((remaining_rootlbtntn).drop (characters_rootlbtntnt).length).take
+                                                    (((remaining_rootlbtntn).drop
+                                                          (characters_rootlbtntnt).length).length -
+                                                      (remaining_rootlbtntntn).length)))
+                                          (fun (tailCaptures_rootlbtntntn : CaptureMap)
+                                                (suffix_rootlbtntntn : List Char) =>
+                                              (fun (tailCaptures_rootlbtntn : CaptureMap)
+                                                    (suffix_rootlbtntn : List Char) =>
+                                                  (fun (tailCaptures_rootlbtn : CaptureMap)
+                                                        (suffix_rootlbtn : List Char) =>
+                                                      (fun (tailCaptures_rootlb : CaptureMap)
+                                                            (suffix_rootlb : List Char) =>
+                                                          (fun (bodyCaptures_rootl : CaptureMap)
+                                                                (remaining_rootl : List Char) =>
+                                                              let ownCaptures_rootl :=
+                                                                (["V4Addr"]).map fun key =>
+                                                                  (key,
+                                                                    String.ofList
+                                                                      ((input).take
+                                                                        ((input).length - (remaining_rootl).length)))
+                                                              (fun (tailCaptures_rootl : CaptureMap)
+                                                                    (suffix_rootl : List Char) =>
+                                                                  (fun (captures : CaptureMap)
+                                                                        (remaining : List Char) =>
+                                                                      if (remaining).isEmpty then some captures
+                                                                      else none)
+                                                                    (ownCaptures_rootl ++ bodyCaptures_rootl ++
+                                                                      tailCaptures_rootl)
+                                                                    suffix_rootl)
+                                                                ([] : CaptureMap) remaining_rootl)
+                                                            (ownCaptures_rootlb ++ bodyCaptures_rootlb ++
+                                                              tailCaptures_rootlb)
+                                                            suffix_rootlb)
+                                                        (ownCaptures_rootlbtn ++ bodyCaptures_rootlbtn ++
+                                                          tailCaptures_rootlbtn)
+                                                        suffix_rootlbtn)
+                                                    (ownCaptures_rootlbtntn ++ bodyCaptures_rootlbtntn ++
+                                                      tailCaptures_rootlbtntn)
+                                                    suffix_rootlbtntn)
+                                                (ownCaptures_rootlbtntntn ++ bodyCaptures_rootlbtntntn ++
+                                                  tailCaptures_rootlbtntntn)
+                                                suffix_rootlbtntntn)
+                                            ([] : CaptureMap) remaining_rootlbtntntn)
+                                        ([] : CaptureMap)
+                                        (((remaining_rootlbtntn).drop (characters_rootlbtntnt).length).drop
+                                          width_rootlbtntntnb)
+                                    else none
+                                else none)
+                              ([] : CaptureMap)
+                              (((remaining_rootlbtn).drop (characters_rootlbtnt).length).drop width_rootlbtntnb)
+                          else none
+                      else none)
+                    ([] : CaptureMap) (((remaining_rootlb).drop (characters_rootlbt).length).drop width_rootlbtnb)
+                else none
+            else none)
+          ([] : CaptureMap) ((input).drop width_rootlbb)
+      else none)
+    fun _ =>
+    (List.range ((input).length + 1)).findSome? fun width_rootrbb =>
+      if termPrefixOk TokClass.digit (LenSpec.between 1 3) input width_rootrbb then
+        (fun (bodyCaptures_rootrb : CaptureMap) (remaining_rootrb : List Char) =>
+            let ownCaptures_rootrb :=
+              (["Oct1", "V4Addr.Oct1"]).map fun key =>
+                (key, String.ofList ((input).take ((input).length - (remaining_rootrb).length)))
+            let characters_rootrbt := ".".toList
+            if (characters_rootrbt).isPrefixOf remaining_rootrb then
+              (List.range (((remaining_rootrb).drop (characters_rootrbt).length).length + 1)).findSome?
+                fun width_rootrbtnb =>
+                if
+                    termPrefixOk TokClass.digit (LenSpec.between 1 3)
+                      ((remaining_rootrb).drop (characters_rootrbt).length) width_rootrbtnb then
+                  (fun (bodyCaptures_rootrbtn : CaptureMap) (remaining_rootrbtn : List Char) =>
+                      let ownCaptures_rootrbtn :=
+                        (["Oct2", "V4Addr.Oct2"]).map fun key =>
+                          (key,
+                            String.ofList
+                              (((remaining_rootrb).drop (characters_rootrbt).length).take
+                                (((remaining_rootrb).drop (characters_rootrbt).length).length -
+                                  (remaining_rootrbtn).length)))
+                      let characters_rootrbtnt := ".".toList
+                      if (characters_rootrbtnt).isPrefixOf remaining_rootrbtn then
+                        (List.range (((remaining_rootrbtn).drop (characters_rootrbtnt).length).length + 1)).findSome?
+                          fun width_rootrbtntnb =>
+                          if
+                              termPrefixOk TokClass.digit (LenSpec.between 1 3)
+                                ((remaining_rootrbtn).drop (characters_rootrbtnt).length) width_rootrbtntnb then
+                            (fun (bodyCaptures_rootrbtntn : CaptureMap) (remaining_rootrbtntn : List Char) =>
+                                let ownCaptures_rootrbtntn :=
+                                  (["Oct3", "V4Addr.Oct3"]).map fun key =>
+                                    (key,
+                                      String.ofList
+                                        (((remaining_rootrbtn).drop (characters_rootrbtnt).length).take
+                                          (((remaining_rootrbtn).drop (characters_rootrbtnt).length).length -
+                                            (remaining_rootrbtntn).length)))
+                                let characters_rootrbtntnt := ".".toList
+                                if (characters_rootrbtntnt).isPrefixOf remaining_rootrbtntn then
+                                  (List.range
+                                        (((remaining_rootrbtntn).drop (characters_rootrbtntnt).length).length +
+                                          1)).findSome?
+                                    fun width_rootrbtntntnb =>
+                                    if
+                                        termPrefixOk TokClass.digit (LenSpec.between 1 3)
+                                          ((remaining_rootrbtntn).drop (characters_rootrbtntnt).length)
+                                          width_rootrbtntntnb then
+                                      (fun (bodyCaptures_rootrbtntntn : CaptureMap)
+                                            (remaining_rootrbtntntn : List Char) =>
+                                          let ownCaptures_rootrbtntntn :=
+                                            (["Oct4", "V4Addr.Oct4"]).map fun key =>
+                                              (key,
+                                                String.ofList
+                                                  (((remaining_rootrbtntn).drop (characters_rootrbtntnt).length).take
+                                                    (((remaining_rootrbtntn).drop
+                                                          (characters_rootrbtntnt).length).length -
+                                                      (remaining_rootrbtntntn).length)))
+                                          (fun (tailCaptures_rootrbtntntn : CaptureMap)
+                                                (suffix_rootrbtntntn : List Char) =>
+                                              (fun (tailCaptures_rootrbtntn : CaptureMap)
+                                                    (suffix_rootrbtntn : List Char) =>
+                                                  (fun (tailCaptures_rootrbtn : CaptureMap)
+                                                        (suffix_rootrbtn : List Char) =>
+                                                      (fun (tailCaptures_rootrb : CaptureMap)
+                                                            (suffix_rootrb : List Char) =>
+                                                          (fun (bodyCaptures_rootr : CaptureMap)
+                                                                (remaining_rootr : List Char) =>
+                                                              let ownCaptures_rootr :=
+                                                                (["V4Addr"]).map fun key =>
+                                                                  (key,
+                                                                    String.ofList
+                                                                      ((input).take
+                                                                        ((input).length - (remaining_rootr).length)))
+                                                              let characters_rootrt := "/".toList
+                                                              if (characters_rootrt).isPrefixOf remaining_rootr then
+                                                                (List.range
+                                                                      (((remaining_rootr).drop
+                                                                            (characters_rootrt).length).length +
+                                                                        1)).findSome?
+                                                                  fun width_rootrtnb =>
+                                                                  if
+                                                                      termPrefixOk TokClass.digit (LenSpec.between 1 2)
+                                                                        ((remaining_rootr).drop
+                                                                          (characters_rootrt).length)
+                                                                        width_rootrtnb then
+                                                                    (fun (bodyCaptures_rootrtn : CaptureMap)
+                                                                          (remaining_rootrtn : List Char) =>
+                                                                        let ownCaptures_rootrtn :=
+                                                                          (["Prefix"]).map fun key =>
+                                                                            (key,
+                                                                              String.ofList
+                                                                                (((remaining_rootr).drop
+                                                                                      (characters_rootrt).length).take
+                                                                                  (((remaining_rootr).drop
+                                                                                        (characters_rootrt).length).length -
+                                                                                    (remaining_rootrtn).length)))
+                                                                        (fun (tailCaptures_rootrtn : CaptureMap)
+                                                                              (suffix_rootrtn : List Char) =>
+                                                                            (fun (tailCaptures_rootr : CaptureMap)
+                                                                                  (suffix_rootr : List Char) =>
+                                                                                (fun (captures : CaptureMap)
+                                                                                      (remaining : List Char) =>
+                                                                                    if (remaining).isEmpty then
+                                                                                      some captures
+                                                                                    else none)
+                                                                                  (ownCaptures_rootr ++
+                                                                                      bodyCaptures_rootr ++
+                                                                                    tailCaptures_rootr)
+                                                                                  suffix_rootr)
+                                                                              (ownCaptures_rootrtn ++
+                                                                                  bodyCaptures_rootrtn ++
+                                                                                tailCaptures_rootrtn)
+                                                                              suffix_rootrtn)
+                                                                          ([] : CaptureMap) remaining_rootrtn)
+                                                                      ([] : CaptureMap)
+                                                                      (((remaining_rootr).drop
+                                                                            (characters_rootrt).length).drop
+                                                                        width_rootrtnb)
+                                                                  else none
+                                                              else none)
+                                                            (ownCaptures_rootrb ++ bodyCaptures_rootrb ++
+                                                              tailCaptures_rootrb)
+                                                            suffix_rootrb)
+                                                        (ownCaptures_rootrbtn ++ bodyCaptures_rootrbtn ++
+                                                          tailCaptures_rootrbtn)
+                                                        suffix_rootrbtn)
+                                                    (ownCaptures_rootrbtntn ++ bodyCaptures_rootrbtntn ++
+                                                      tailCaptures_rootrbtntn)
+                                                    suffix_rootrbtntn)
+                                                (ownCaptures_rootrbtntntn ++ bodyCaptures_rootrbtntntn ++
+                                                  tailCaptures_rootrbtntntn)
+                                                suffix_rootrbtntntn)
+                                            ([] : CaptureMap) remaining_rootrbtntntn)
+                                        ([] : CaptureMap)
+                                        (((remaining_rootrbtntn).drop (characters_rootrbtntnt).length).drop
+                                          width_rootrbtntntnb)
+                                    else none
+                                else none)
+                              ([] : CaptureMap)
+                              (((remaining_rootrbtn).drop (characters_rootrbtnt).length).drop width_rootrbtntnb)
+                          else none
+                      else none)
+                    ([] : CaptureMap) (((remaining_rootrb).drop (characters_rootrbt).length).drop width_rootrbtnb)
+                else none
+            else none)
+          ([] : CaptureMap) ((input).drop width_rootrbb)
+      else none
+
+private theorem IPv4.directDecode_eq_searchProgram (source : String) :
+    IPv4.directDecode source = SearchProgram.decode IPv4.searchProgram source :=
+  by
+  unfold IPv4.directDecode SearchProgram.decode IPv4.searchProgram
+  simp only [SearchCode.runK]
+
+private def IPv4.decodeCaptures (source : String) : Option CaptureMap :=
+  IPv4.directDecode source
+
+private theorem IPv4.decodeCaptures_eq_parsePlan (source : String) :
+    IPv4.decodeCaptures source = ParsePlan.decode IPv4.parsePlan IPv4.grammar source := by
+  calc
+    IPv4.decodeCaptures source = SearchProgram.decode IPv4.searchProgram source := by
+      exact IPv4.directDecode_eq_searchProgram source
+    _ = SearchProgram.decode (lowerSearchPlan IPv4.searchPlan) source := by rw [IPv4.searchProgram_lowered]
+    _ = ParsePlan.decode IPv4.parsePlan IPv4.grammar source := by rfl
+
+private theorem IPv4.decodeCaptures_eq_scan (source : String) : IPv4.decodeCaptures source = scan IPv4.grammar source :=
+  by
+  calc
+    IPv4.decodeCaptures source = ParsePlan.decode IPv4.parsePlan IPv4.grammar source :=
+      IPv4.decodeCaptures_eq_parsePlan source
+    _ = scan IPv4.grammar source :=
+      ParsePlan.decode_eq_scan (ParsePlan.CertifiedFor.search IPv4.searchPlan_mirrorsGrammar) source
+
+private def IPv4.directView (source : String) : Option IPv4.View :=
+  (IPv4.directDecode source).map (IPv4.View.ofMap source)
+
+private theorem IPv4.directView_eq_decodeView (source : String) : IPv4.directView source = IPv4.decodeView source :=
+  by
+  unfold IPv4.directView IPv4.decodeView
+  rw [show IPv4.directDecode source = scan IPv4.grammar source by exact IPv4.decodeCaptures_eq_scan source]
+
+private instance IPv4.instDecidableViewValid : DecidablePred IPv4.View.Valid := fun view =>
+  by
+  unfold IPv4.View.Valid IPv4.View.WfConstraints IPv4.View.Constraints IPv4.WfConstraints IPv4.Constraints
+  infer_instance
+
+private def IPv4.fastAccept (view : IPv4.View) (computed : Int) : Bool :=
+  @decide (IPv4.View.WfConstraints view ∧ IPv4.View.ConstraintsWithValue view computed)
+    (by
+      unfold IPv4.View.WfConstraints IPv4.WfConstraints IPv4.View.ConstraintsWithValue
+      infer_instance)
+
+private theorem IPv4.fastAccept_denotation (view : IPv4.View) :
+    IPv4.fastAccept view (IPv4.View.denotation view) = true ↔ IPv4.View.Valid view := by
+  simp only [IPv4.fastAccept, decide_eq_true_eq, IPv4.View.ConstraintsWithValue_denotation]
 
 theorem IPv4.computeValue_isSome (s : String) : IPv4.IsValid s → (IPv4.computeValue s).isSome :=
   by
@@ -821,10 +1225,29 @@ theorem IPv4.computeValue_isSome (s : String) : IPv4.IsValid s → (IPv4.compute
   exact hengine.1.1
 
 def IPv4.parse (s : String) :=
-  Triptych.scannerParse IPv4.grammar IPv4.constraints IPv4.valueExpr ipv4CodeToNet s
+  Triptych.decodedViewParseCached IPv4.directView IPv4.fastAccept IPv4.View.denotation ipv4CodeToNet s
 
 theorem IPv4.parse_eq_scanner (s : String) :
-    IPv4.parse s = Triptych.scannerParse IPv4.grammar IPv4.constraints IPv4.valueExpr ipv4CodeToNet s := by rfl
+    IPv4.parse s = Triptych.scannerParse IPv4.grammar IPv4.constraints IPv4.valueExpr ipv4CodeToNet s := by
+  calc
+    IPv4.parse s = Triptych.decodedViewParse IPv4.directView IPv4.View.Valid IPv4.View.denotation ipv4CodeToNet s :=
+      by
+      unfold IPv4.parse
+      exact
+        Triptych.decodedViewParseCached_eq_decodedViewParse IPv4.directView IPv4.fastAccept IPv4.View.Valid
+          IPv4.View.denotation ipv4CodeToNet IPv4.fastAccept_denotation s
+    _ = Triptych.gatedParseOfSpec IPv4.IsValid IPv4.computeValue ipv4CodeToNet s := by
+      exact
+        Triptych.decodedViewParse_eq_gatedParseOfSpec IPv4.directView IPv4.decodeView IPv4.View.Valid
+          IPv4.View.denotation ipv4CodeToNet IPv4.IsValid IPv4.computeValue IPv4.directView_eq_decodeView
+          IPv4.IsValid_view IPv4.computeValue_view s
+    _ = Triptych.scannerParse IPv4.grammar IPv4.constraints IPv4.valueExpr ipv4CodeToNet s :=
+      by
+      symm
+      unfold IPv4.computeValue
+      exact
+        Triptych.scannerParse_eq_surfaceGatedParseOfSpec IPv4.grammar IPv4.constraints IPv4.valueExpr ipv4CodeToNet
+          IPv4.IsValid IPv4.IsValid_equiv s
 
 theorem IPv4.parse_eq_gated (s : String) :
     IPv4.parse s = Triptych.gatedParseOfSpec IPv4.IsValid IPv4.computeValue ipv4CodeToNet s :=
