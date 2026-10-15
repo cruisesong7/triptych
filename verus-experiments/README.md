@@ -208,6 +208,10 @@ alternatives, optionals, bounded repetition, nested named repetition, and an amb
 alternative. Unbounded separated repetition (`rep X sepBy "," +`) is accepted by the Lean backend
 but rejected by Verus state emission, so this crate bounds its CSV repetition at eight cells. Its Verus and Rust tests exercise accepted and rejected inputs.
 
+`search-order/` is a regression for ordered choice: both alternatives accept `"ab"`, and the
+generated parser must select the first one, as the Lean scanner does. A literal-guided dispatch
+used to try the second arm first whenever its required literal was present.
+
 `direct-coverage/` exercises the specialized path beyond Decimal: nested captures, an optional
 literal, required delimiters, fixed and greedy runs, and every direct token class. Verus checks
 the generated success and no-false-rejection proofs with `--no-cheating`.
@@ -272,10 +276,12 @@ lake build Triptych.Backend.VerusTests Triptych.Architecture.ScanPlanTests \
   Triptych.Backend.Verus.RuntimeModelTests
 lake env lean verus-experiments/grammar-coverage/Input.lean
 lake env lean verus-experiments/direct-coverage/Input.lean
+lake env lean verus-experiments/search-order/Input.lean
 (cd cedar-examples && lake build Inputs.Decimal)
 ./verus-experiments/verify.sh
 cargo test --manifest-path verus-experiments/grammar-coverage/Cargo.toml --offline --locked
 cargo test --manifest-path verus-experiments/direct-coverage/Cargo.toml --offline --locked
+cargo test --manifest-path verus-experiments/search-order/Cargo.toml --offline --locked
 cargo test --manifest-path verus-experiments/cedar-ext/decimal/Cargo.toml --offline --locked
 cargo test --manifest-path verus-experiments/cedar-ext/suite/Cargo.toml --offline --locked
 cargo bench --manifest-path verus-experiments/cedar-ext/decimal/Cargo.toml \

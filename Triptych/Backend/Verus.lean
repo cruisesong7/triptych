@@ -2414,11 +2414,11 @@ private def VerusSearchCode.requiredLongLiteral? : VerusSearchCode → Option St
           if firstLiteral == secondLiteral then some firstLiteral else none
       | _, _ => none
 
-/-- Replace a source-ordered choice by one literal-guided dispatch when the second arm must
-    consume a distinctive multi-character literal. These machines come only from grammars with a
-    `staticUnique` certificate, so trying the distinguished arm first cannot change a successful
-    complete capture result. If the literal is absent, the distinguished arm cannot succeed and is
-    skipped entirely. -/
+/-- Guard a source-ordered choice by a literal scan when its second arm must consume a distinctive
+    multi-character literal. If the literal is absent from the remaining input, the second arm
+    cannot succeed and only the first arm runs. If it is present, the original ordered choice runs
+    unchanged. The arms are never reordered: search-path grammars need not be unambiguous, so
+    trying the second arm first could select a different complete parse than the Lean scanner. -/
 private def VerusSearchCode.dispatchRequiredLiterals : VerusSearchCode → VerusSearchCode
   | .accept => .accept
   | .fail => .fail
@@ -2445,7 +2445,7 @@ private def VerusSearchCode.dispatchRequiredLiterals : VerusSearchCode → Verus
           if dispatchedFirst.requiredLongLiteral? == some needle then
             .choice dispatchedFirst dispatchedSecond
           else
-            .dispatch needle dispatchedSecond dispatchedFirst
+            .dispatch needle (.choice dispatchedFirst dispatchedSecond) dispatchedFirst
       | none => .choice dispatchedFirst dispatchedSecond
   | .dispatch needle present absent =>
       .dispatch needle

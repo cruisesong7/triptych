@@ -603,11 +603,14 @@ performed.
 the Verus IR preserves meaning (`Backend/Verus/Preservation.lean`). The parser control flow,
 pretty-printer, `*.rs.in` templates, and the Verus-only search-code rewrites (`fuse`,
 `boundedRepetition`, literal dispatch, interning) are checked only by Verus, and only when
-`verus-experiments/verify.sh` is run; CI does not run Verus. Cursor-path parsers (Decimal) are
+`verus-experiments/verify.sh` is run. Cursor-path parsers (Decimal) are
 proved against the readable `*_is_wf_*` grammar predicate in `spec.rs`. Search-path parsers
 (Duration, Datetime, IPv4, IPv6) are proved against a spec-function copy of their own generated
-state machine, not yet against `spec.rs`. Completeness of the semantic stage is conditional on
-the generated `*_runtime_safe` predicate.
+state machine, not yet against `spec.rs`, so a backend-only rewrite can change behavior without a
+proof failure; `verus-experiments/search-order/` is a regression for one such ordered-choice bug.
+`ROADMAP.md` tracks the Lean-side plan that closes this gap. CI runs Verus on every generated
+crate without the Cedar conformance dev-dependencies. Completeness of the semantic stage is
+conditional on the generated `*_runtime_safe` predicate.
 
 ## 16. The implemented `triptych` DSL
 

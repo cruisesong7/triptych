@@ -5050,618 +5050,12 @@ impl IPv6SemanticCache {
     }
 }
 
-pub closed spec fn ipv6_search_state_11(
+pub closed spec fn ipv6_search_state_6(
     input: Seq<char>,
     state: SearchStateSpec,
 ) -> Option<SearchStateSpec> {
     if state.end == input.len() {
         Some(state)
-    } else {
-        None
-    }
-}
-
-fn ipv6_search_state_11_exec(
-    input: &str,
-    input_length: usize,
-    input_ascii: bool,
-    state: &mut SearchState,
-) -> (result: bool)
-    requires
-        input@.len() < usize::MAX,
-        input_length == input@.len(),
-        input_ascii == input.is_ascii(),
-        old(state).semantic_cache.matches_input(input@),
-        search_state_bounded(old(state).deep_view(), input@.len()),
-        old(state).storage_well_formed(),
-        old(state).captures@.len() + 0 <= 10,
-        old(state).markers.deep_view().len() + 0 <= 3,
-    ensures
-        result ==> ipv6_search_state_11(input@, old(state).deep_view()) == Some(final(state).deep_view())
-            && search_state_bounded(final(state).deep_view(), input@.len())
-            && final(state).storage_well_formed()
-            && final(state).semantic_cache.matches_input(input@),
-        !result ==> ipv6_search_state_11(input@, old(state).deep_view()).is_none()
-            && final(state).deep_view() == old(state).deep_view()
-            && final(state).storage_well_formed()
-            && final(state).semantic_cache.matches_input(input@),
-{
-    proof { reveal_with_fuel(ipv6_search_state_11, 1); }
-    if state.end == input_length {
-        true
-    } else {
-        false
-    }
-}
-
-pub closed spec fn ipv6_search_state_10(
-    input: Seq<char>,
-    state: SearchStateSpec,
-) -> Option<SearchStateSpec> {
-    match search_close_capture_one(state, CaptureKey::Production(5)) {
-        Some(closed) => ipv6_search_state_11(input, closed),
-        None => None,
-    }
-}
-
-#[inline(always)]
-fn ipv6_search_state_10_exec(
-    input: &str,
-    input_length: usize,
-    input_ascii: bool,
-    state: &mut SearchState,
-) -> (result: bool)
-    requires
-        input@.len() < usize::MAX,
-        input_length == input@.len(),
-        input_ascii == input.is_ascii(),
-        old(state).semantic_cache.matches_input(input@),
-        search_state_bounded(old(state).deep_view(), input@.len()),
-        old(state).storage_well_formed(),
-        old(state).captures@.len() + 0 <= 10,
-        old(state).markers.deep_view().len() + 0 <= 3,
-    ensures
-        result ==> ipv6_search_state_10(input@, old(state).deep_view()) == Some(final(state).deep_view())
-            && search_state_bounded(final(state).deep_view(), input@.len())
-            && final(state).storage_well_formed()
-            && final(state).semantic_cache.matches_input(input@),
-        !result ==> ipv6_search_state_10(input@, old(state).deep_view()).is_none()
-            && final(state).deep_view() == old(state).deep_view()
-            && final(state).storage_well_formed()
-            && final(state).semantic_cache.matches_input(input@),
-{
-    proof { reveal_with_fuel(ipv6_search_state_10, 1); }
-    let original = Ghost(state.deep_view());
-    if state.markers.len() == 0 {
-        return false;
-    }
-    let marker = state.markers.get(state.markers.len() - 1);
-    if !search_close_capture_one_exec(state, CaptureKey::Production(5), Ghost(input@.len())) {
-        return false;
-    }
-
-    if ipv6_search_state_11_exec(input, input_length, input_ascii, state) {
-        true
-    } else {
-        search_reopen_capture_one_exec(state, marker, CaptureKey::Production(5), original);
-        false
-    }
-}
-
-pub closed spec fn ipv6_search_state_9_item(
-    input: Seq<char>,
-    state: SearchStateSpec,
-) -> Option<SearchStateSpec> {
-    let input_length = input.len() as int;
-    let remaining = input_length - state.end;
-    let limit = if 4 < remaining {
-        state.end + 4
-    } else {
-        input_length
-    };
-    let end = search_token_prefix_end_spec(
-        input,
-        state.end,
-        limit,
-        TokenClass::HexDigit,
-    );
-    let width = end - state.end;
-    if terminal_matches_at(
-        input,
-        state.end,
-        width,
-        TokenClass::HexDigit,
-        LengthSpec::Between { lower: 1, upper: 4 },
-    ) {
-        Some(search_advance(state, end))
-    } else {
-        None
-    }
-}
-
-#[inline(always)]
-fn ipv6_search_state_9_item_exec(
-    input: &str,
-    input_length: usize,
-    input_ascii: bool,
-    state: &mut SearchState,
-) -> (result: Option<SemanticHexPrefixSummary>)
-    requires
-        input@.len() < usize::MAX,
-        input_length == input@.len(),
-        input_ascii == input.is_ascii(),
-        old(state).semantic_cache.matches_input(input@),
-        search_state_bounded(old(state).deep_view(), input@.len()),
-        old(state).storage_well_formed(),
-        old(state).captures@.len() + 0 <= 10,
-        old(state).markers.deep_view().len() <= 3,
-    ensures
-        match result {
-            Some(summary) =>
-                ipv6_search_state_9_item(input@, old(state).deep_view())
-                    == Some(final(state).deep_view())
-                && search_state_bounded(final(state).deep_view(), input@.len())
-                && final(state).storage_well_formed()
-                && final(state).captures@.len()
-                    == old(state).captures@.len() + 0
-                && final(state).captures@.take(old(state).captures@.len() as int)
-                    == old(state).captures@
-                && final(state).markers.deep_view()
-                    == old(state).markers.deep_view()
-                && final(state).semantic_cache.matches_input(input@)
-                && old(state).end < summary.end
-                && summary.end == final(state).end
-                && summary.value as int == triptych_hex_seq_of(
-                    input@.subrange(old(state).end as int, summary.end as int)
-                )
-                && forall|index: int| old(state).end <= index < summary.end ==>
-                    #[trigger] input@[index] != ':',
-            None =>
-                ipv6_search_state_9_item(input@, old(state).deep_view()).is_none()
-                && final(state).deep_view() == old(state).deep_view()
-                && final(state).storage_well_formed()
-                && final(state).semantic_cache.matches_input(input@),
-        },
-{
-    proof { reveal_with_fuel(ipv6_search_state_9_item, 1); }
-    let capture_start = state.end;
-    let prefix_limit = if 4 < input_length - state.end {
-        state.end + 4
-    } else {
-        input_length
-    };
-    proof {
-        assert((prefix_limit as int) - (capture_start as int) <= 4);
-    }
-    let prefix = semantic_hex_prefix_summary(
-        input,
-        input_length,
-        input_ascii,
-        capture_start,
-        prefix_limit,
-    );
-    let width = prefix.end - capture_start;
-    if let Some(found) = search_match_terminal_from_prefix(
-        input,
-        capture_start,
-        width,
-        TokenClass::HexDigit,
-        LengthSpec::Between { lower: 1, upper: 4 },
-        prefix_limit,
-        prefix.end,
-    ) {
-        search_advance_exec(state, found.end);
-        proof {
-            assert(found.end == prefix.end);
-            reveal(terminal_matches_at);
-            reveal(length_accepts);
-            assert(capture_start < prefix.end);
-        }
-        return Some(prefix);
-    }
-    None
-}
-
-pub closed spec fn ipv6_search_state_9_tail(
-    input: Seq<char>,
-    state: SearchStateSpec,
-    remaining: nat,
-    count: nat,
-) -> SearchRepeatResultSpec
-    decreases remaining,
-{
-    if remaining == 0 {
-        SearchRepeatResultSpec { state, count }
-    } else if literal_matches_at(input, state.end, ":"@) {
-        let separated = search_advance(
-            state,
-            state.end + ":"@.len(),
-        );
-        match ipv6_search_state_9_item(input, separated) {
-            Some(found) =>
-                ipv6_search_state_9_tail(
-                    input,
-                    found,
-                    (remaining - 1) as nat,
-                    count + 1,
-                ),
-            None => SearchRepeatResultSpec { state, count },
-        }
-    } else {
-        SearchRepeatResultSpec { state, count }
-    }
-}
-
-fn ipv6_search_state_9_tail_exec(
-    input: &str,
-    input_length: usize,
-    input_ascii: bool,
-    state: &mut SearchState,
-    remaining: usize,
-    count: usize,
-    accumulator: &mut SemanticHexSequenceAccumulator,
-) -> (result: usize)
-    requires
-        input@.len() < usize::MAX,
-        input_length == input@.len(),
-        input_ascii == input.is_ascii(),
-        old(state).semantic_cache.matches_input(input@),
-        old(accumulator).source_matches(input@),
-        old(accumulator).end == old(state).end,
-        search_state_bounded(old(state).deep_view(), input@.len()),
-        old(state).storage_well_formed(),
-        old(state).captures@.len()
-            + 0 * remaining <= 10,
-        old(state).markers.deep_view().len() <= 3,
-        count + remaining < usize::MAX,
-    ensures
-        ipv6_search_state_9_tail(
-            input@,
-            old(state).deep_view(),
-            remaining as nat,
-            count as nat,
-        ) == (SearchRepeatResultSpec {
-            state: final(state).deep_view(),
-            count: result as nat,
-        }),
-        search_state_bounded(final(state).deep_view(), input@.len()),
-        final(state).storage_well_formed(),
-        final(state).captures@.len()
-            == old(state).captures@.len()
-                + 0 * (result - count),
-        final(state).captures@.take(old(state).captures@.len() as int)
-            == old(state).captures@,
-        final(state).markers.deep_view() == old(state).markers.deep_view(),
-        final(state).semantic_cache.matches_input(input@),
-        final(accumulator).source_matches(input@),
-        final(accumulator).start == old(accumulator).start,
-        final(accumulator).end == final(state).end,
-        count <= result <= count + remaining,
-    decreases remaining,
-{
-    proof { reveal_with_fuel(ipv6_search_state_9_tail, 1); }
-    if remaining == 0 {
-        return count;
-    }
-    let previous_end = state.end;
-    proof {
-        reveal_strlit(":");
-        assert(":"@.len() == 1);
-    }
-    match search_match_single_literal_at(
-        input,
-        input_length,
-        input_ascii,
-        state.end,
-        ":",
-    ) {
-        Some(found) => {
-            let group_start = found.end;
-            search_advance_exec(state, group_start);
-            match ipv6_search_state_9_item_exec(input, input_length, input_ascii, state) {
-                Some(prefix) => {
-                    proof {
-                        assert(
-                            0 * (remaining - 1)
-                                + 0
-                            == 0 * remaining
-                        );
-                        reveal(literal_matches_at);
-                        reveal_strlit(":");
-                        assert(":"@.len() == 1);
-                        assert(group_start == previous_end + 1);
-                        assert(input@.subrange(
-                            previous_end as int,
-                            previous_end as int + 1,
-                        ) == ":"@);
-                        assert(input@[previous_end as int]
-                            == ":"@[0]);
-                        assert(":"@[0] == ':');
-                        assert(input@[previous_end as int] == ':');
-                    }
-                    accumulator.push_group(Ghost(input@), group_start, prefix);
-                    return ipv6_search_state_9_tail_exec(
-                        input,
-                        input_length,
-                        input_ascii,
-                        state,
-                        remaining - 1,
-                        count + 1,
-                        accumulator,
-                    );
-                },
-                None => {},
-            }
-            search_restore_end_exec(state, previous_end);
-        },
-        None => {},
-    }
-    count
-}
-
-pub closed spec fn ipv6_search_state_9(
-    input: Seq<char>,
-    state: SearchStateSpec,
-) -> Option<SearchStateSpec> {
-    match ipv6_search_state_9_item(input, search_save(state)) {
-        Some(first) => {
-            let repeated = ipv6_search_state_9_tail(input, first, 6, 1);
-            if 1 <= repeated.count {
-                match search_close_count_capture(
-                    repeated.state,
-                    CaptureKey::Repetition(14),
-                    repeated.count as usize,
-                ) {
-                    Some(closed) => ipv6_search_state_10(input, closed),
-                    None => None,
-                }
-            } else {
-                None
-            }
-        },
-        None => None,
-    }
-}
-
-#[verifier::rlimit(200)]
-#[inline(always)]
-fn ipv6_search_state_9_exec(
-    input: &str,
-    input_length: usize,
-    input_ascii: bool,
-    state: &mut SearchState,
-) -> (result: bool)
-    requires
-        input@.len() < usize::MAX,
-        input_length == input@.len(),
-        input_ascii == input.is_ascii(),
-        old(state).semantic_cache.matches_input(input@),
-        search_state_bounded(old(state).deep_view(), input@.len()),
-        old(state).storage_well_formed(),
-        old(state).captures@.len() + 2 <= 10,
-        old(state).markers.deep_view().len() + 1 <= 3,
-    ensures
-        result ==> ipv6_search_state_9(input@, old(state).deep_view()) == Some(final(state).deep_view())
-            && search_state_bounded(final(state).deep_view(), input@.len())
-            && final(state).storage_well_formed()
-            && final(state).semantic_cache.matches_input(input@),
-        !result ==> ipv6_search_state_9(input@, old(state).deep_view()).is_none()
-            && final(state).deep_view() == old(state).deep_view()
-            && final(state).storage_well_formed()
-            && final(state).semantic_cache.matches_input(input@),
-{
-    let checkpoint = search_checkpoint(state);
-    let ghost original_view = state.deep_view();
-    proof {
-        reveal_with_fuel(ipv6_search_state_9, 1);
-    }
-    search_save_exec(state);
-    let ghost saved_view = state.deep_view();
-    proof {
-        search_save_preserves_checkpoint(
-            checkpoint,
-            original_view,
-            original_view,
-        );
-        assert(search_checkpoint_matches(
-            checkpoint,
-            original_view,
-            saved_view,
-        ));
-    }
-    let sequence_start = state.end;
-    let first_prefix = match ipv6_search_state_9_item_exec(input, input_length, input_ascii, state) {
-        Some(prefix) => prefix,
-        None => {
-            search_restore_checkpoint_to_exec(
-                state,
-                checkpoint,
-                Ghost(original_view),
-            );
-            return false;
-        },
-    };
-    let mut semantic_accumulator = SemanticHexSequenceAccumulator::first(
-        Ghost(input@),
-        sequence_start,
-        first_prefix,
-    );
-    proof {
-        search_checkpoint_matches_transitive(
-            checkpoint,
-            original_view,
-            saved_view,
-            state.deep_view(),
-        );
-    }
-    let ghost first_view = state.deep_view();
-    let count = ipv6_search_state_9_tail_exec(
-        input,
-        input_length,
-        input_ascii,
-        state,
-        6,
-        1,
-        &mut semantic_accumulator,
-    );
-    proof {
-        search_checkpoint_matches_transitive(
-            checkpoint,
-            original_view,
-            first_view,
-            state.deep_view(),
-        );
-    }
-    let ghost repeated_view = state.deep_view();
-    if count < 1 {
-        search_restore_checkpoint_to_exec(
-            state,
-            checkpoint,
-            Ghost(original_view),
-        );
-        return false;
-    }
-    let ghost repeated_marker = state.deep_view().markers.last();
-    if !search_close_count_capture_exec(
-        state,
-        CaptureKey::Repetition(14),
-        count,
-        Ghost(input@.len()),
-    ) {
-        search_restore_checkpoint_to_exec(
-            state,
-            checkpoint,
-            Ghost(original_view),
-        );
-        return false;
-    }
-    proof {
-        assert(checkpoint.capture_length <= repeated_marker.capture_count);
-        assert(repeated_marker.capture_count < repeated_marker.second_capture_count);
-        assert(checkpoint.marker_length < repeated_view.markers.len());
-        search_close_count_capture_preserves_checkpoint(
-            checkpoint,
-            original_view,
-            repeated_view,
-            CaptureKey::Repetition(14),
-            count,
-            state.deep_view(),
-        );
-    }
-    if let Some(cached_value) = CachedSemanticHexSequence::from_accumulator(
-        Ghost(input@),
-        semantic_accumulator,
-    ) {
-        state.semantic_cache.set_cache_1(Ghost(input@), cached_value);
-    }
-    if ipv6_search_state_10_exec(input, input_length, input_ascii, state) {
-        true
-    } else {
-        search_restore_checkpoint_to_exec(
-            state,
-            checkpoint,
-            Ghost(original_view),
-        );
-        false
-    }
-}
-
-pub closed spec fn ipv6_search_state_8(
-    input: Seq<char>,
-    state: SearchStateSpec,
-) -> Option<SearchStateSpec> {
-    ipv6_search_state_9(input, search_save(state))
-}
-
-#[inline(always)]
-fn ipv6_search_state_8_exec(
-    input: &str,
-    input_length: usize,
-    input_ascii: bool,
-    state: &mut SearchState,
-) -> (result: bool)
-    requires
-        input@.len() < usize::MAX,
-        input_length == input@.len(),
-        input_ascii == input.is_ascii(),
-        old(state).semantic_cache.matches_input(input@),
-        search_state_bounded(old(state).deep_view(), input@.len()),
-        old(state).storage_well_formed(),
-        old(state).captures@.len() + 4 <= 10,
-        old(state).markers.deep_view().len() + 2 <= 3,
-    ensures
-        result ==> ipv6_search_state_8(input@, old(state).deep_view()) == Some(final(state).deep_view())
-            && search_state_bounded(final(state).deep_view(), input@.len())
-            && final(state).storage_well_formed()
-            && final(state).semantic_cache.matches_input(input@),
-        !result ==> ipv6_search_state_8(input@, old(state).deep_view()).is_none()
-            && final(state).deep_view() == old(state).deep_view()
-            && final(state).storage_well_formed()
-            && final(state).semantic_cache.matches_input(input@),
-{
-    proof { reveal_with_fuel(ipv6_search_state_8, 1); }
-    search_save_exec(state);
-    if ipv6_search_state_9_exec(input, input_length, input_ascii, state) {
-        true
-    } else {
-        search_restore_save_exec(state);
-        false
-    }
-}
-
-pub closed spec fn ipv6_search_state_7(
-    input: Seq<char>,
-    state: SearchStateSpec,
-) -> Option<SearchStateSpec> {
-    match ipv6_search_state_8(input, state) {
-        Some(found) => Some(found),
-        None => ipv6_search_state_11(input, state),
-    }
-}
-
-#[inline(always)]
-fn ipv6_search_state_7_exec(
-    input: &str,
-    input_length: usize,
-    input_ascii: bool,
-    state: &mut SearchState,
-) -> (result: bool)
-    requires
-        input@.len() < usize::MAX,
-        input_length == input@.len(),
-        input_ascii == input.is_ascii(),
-        old(state).semantic_cache.matches_input(input@),
-        search_state_bounded(old(state).deep_view(), input@.len()),
-        old(state).storage_well_formed(),
-        old(state).captures@.len() + 4 <= 10,
-        old(state).markers.deep_view().len() + 2 <= 3,
-    ensures
-        result ==> ipv6_search_state_7(input@, old(state).deep_view()) == Some(final(state).deep_view())
-            && search_state_bounded(final(state).deep_view(), input@.len())
-            && final(state).storage_well_formed()
-            && final(state).semantic_cache.matches_input(input@),
-        !result ==> ipv6_search_state_7(input@, old(state).deep_view()).is_none()
-            && final(state).deep_view() == old(state).deep_view()
-            && final(state).storage_well_formed()
-            && final(state).semantic_cache.matches_input(input@),
-{
-    proof { reveal_with_fuel(ipv6_search_state_7, 1); }
-    if ipv6_search_state_8_exec(input, input_length, input_ascii, state) {
-        true
-    } else {
-    ipv6_search_state_11_exec(input, input_length, input_ascii, state)
-    }
-}
-
-pub closed spec fn ipv6_search_state_6(
-    input: Seq<char>,
-    state: SearchStateSpec,
-) -> Option<SearchStateSpec> {
-    if literal_matches_at(input, state.end, "::"@) {
-        ipv6_search_state_7(
-            input,
-            search_advance(state, state.end + "::"@.len()),
-        )
     } else {
         None
     }
@@ -5680,8 +5074,8 @@ fn ipv6_search_state_6_exec(
         old(state).semantic_cache.matches_input(input@),
         search_state_bounded(old(state).deep_view(), input@.len()),
         old(state).storage_well_formed(),
-        old(state).captures@.len() + 4 <= 10,
-        old(state).markers.deep_view().len() + 2 <= 3,
+        old(state).captures@.len() + 0 <= 10,
+        old(state).markers.deep_view().len() + 0 <= 3,
     ensures
         result ==> ipv6_search_state_6(input@, old(state).deep_view()) == Some(final(state).deep_view())
             && search_state_bounded(final(state).deep_view(), input@.len())
@@ -5693,24 +5087,10 @@ fn ipv6_search_state_6_exec(
             && final(state).semantic_cache.matches_input(input@),
 {
     proof { reveal_with_fuel(ipv6_search_state_6, 1); }
-    match search_match_literal_at(
-        input,
-        input_length,
-        input_ascii,
-        state.end,
-        "::",
-    ) {
-        Some(found) => {
-            let previous_end = state.end;
-            search_advance_exec(state, found.end);
-            if ipv6_search_state_7_exec(input, input_length, input_ascii, state) {
-                true
-            } else {
-                search_restore_end_exec(state, previous_end);
-                false
-            }
-        },
-        None => false,
+    if state.end == input_length {
+        true
+    } else {
+        false
     }
 }
 
@@ -5718,7 +5098,7 @@ pub closed spec fn ipv6_search_state_5(
     input: Seq<char>,
     state: SearchStateSpec,
 ) -> Option<SearchStateSpec> {
-    match search_close_capture_one(state, CaptureKey::Production(4)) {
+    match search_close_capture_one(state, CaptureKey::Production(2)) {
         Some(closed) => ipv6_search_state_6(input, closed),
         None => None,
     }
@@ -5738,8 +5118,8 @@ fn ipv6_search_state_5_exec(
         old(state).semantic_cache.matches_input(input@),
         search_state_bounded(old(state).deep_view(), input@.len()),
         old(state).storage_well_formed(),
-        old(state).captures@.len() + 4 <= 10,
-        old(state).markers.deep_view().len() + 2 <= 3,
+        old(state).captures@.len() + 0 <= 10,
+        old(state).markers.deep_view().len() + 0 <= 3,
     ensures
         result ==> ipv6_search_state_5(input@, old(state).deep_view()) == Some(final(state).deep_view())
             && search_state_bounded(final(state).deep_view(), input@.len())
@@ -5756,14 +5136,14 @@ fn ipv6_search_state_5_exec(
         return false;
     }
     let marker = state.markers.get(state.markers.len() - 1);
-    if !search_close_capture_one_exec(state, CaptureKey::Production(4), Ghost(input@.len())) {
+    if !search_close_capture_one_exec(state, CaptureKey::Production(2), Ghost(input@.len())) {
         return false;
     }
 
     if ipv6_search_state_6_exec(input, input_length, input_ascii, state) {
         true
     } else {
-        search_reopen_capture_one_exec(state, marker, CaptureKey::Production(4), original);
+        search_reopen_capture_one_exec(state, marker, CaptureKey::Production(2), original);
         false
     }
 }
@@ -6025,11 +5405,11 @@ pub closed spec fn ipv6_search_state_4(
 ) -> Option<SearchStateSpec> {
     match ipv6_search_state_4_item(input, search_save(state)) {
         Some(first) => {
-            let repeated = ipv6_search_state_4_tail(input, first, 6, 1);
-            if 1 <= repeated.count {
+            let repeated = ipv6_search_state_4_tail(input, first, 7, 1);
+            if 8 <= repeated.count {
                 match search_close_count_capture(
                     repeated.state,
-                    CaptureKey::Repetition(12),
+                    CaptureKey::Repetition(7),
                     repeated.count as usize,
                 ) {
                     Some(closed) => ipv6_search_state_5(input, closed),
@@ -6058,8 +5438,8 @@ fn ipv6_search_state_4_exec(
         old(state).semantic_cache.matches_input(input@),
         search_state_bounded(old(state).deep_view(), input@.len()),
         old(state).storage_well_formed(),
-        old(state).captures@.len() + 6 <= 10,
-        old(state).markers.deep_view().len() + 2 <= 3,
+        old(state).captures@.len() + 2 <= 10,
+        old(state).markers.deep_view().len() + 1 <= 3,
     ensures
         result ==> ipv6_search_state_4(input@, old(state).deep_view()) == Some(final(state).deep_view())
             && search_state_bounded(final(state).deep_view(), input@.len())
@@ -6120,7 +5500,7 @@ fn ipv6_search_state_4_exec(
         input_length,
         input_ascii,
         state,
-        6,
+        7,
         1,
         &mut semantic_accumulator,
     );
@@ -6133,7 +5513,7 @@ fn ipv6_search_state_4_exec(
         );
     }
     let ghost repeated_view = state.deep_view();
-    if count < 1 {
+    if count < 8 {
         search_restore_checkpoint_to_exec(
             state,
             checkpoint,
@@ -6144,7 +5524,7 @@ fn ipv6_search_state_4_exec(
     let ghost repeated_marker = state.deep_view().markers.last();
     if !search_close_count_capture_exec(
         state,
-        CaptureKey::Repetition(12),
+        CaptureKey::Repetition(7),
         count,
         Ghost(input@.len()),
     ) {
@@ -6163,7 +5543,7 @@ fn ipv6_search_state_4_exec(
             checkpoint,
             original_view,
             repeated_view,
-            CaptureKey::Repetition(12),
+            CaptureKey::Repetition(7),
             count,
             state.deep_view(),
         );
@@ -6172,7 +5552,7 @@ fn ipv6_search_state_4_exec(
         Ghost(input@),
         semantic_accumulator,
     ) {
-        state.semantic_cache.set_cache_0(Ghost(input@), cached_value);
+        state.semantic_cache.set_cache_2(Ghost(input@), cached_value);
     }
     if ipv6_search_state_5_exec(input, input_length, input_ascii, state) {
         true
@@ -6207,8 +5587,8 @@ fn ipv6_search_state_3_exec(
         old(state).semantic_cache.matches_input(input@),
         search_state_bounded(old(state).deep_view(), input@.len()),
         old(state).storage_well_formed(),
-        old(state).captures@.len() + 8 <= 10,
-        old(state).markers.deep_view().len() + 3 <= 3,
+        old(state).captures@.len() + 4 <= 10,
+        old(state).markers.deep_view().len() + 2 <= 3,
     ensures
         result ==> ipv6_search_state_3(input@, old(state).deep_view()) == Some(final(state).deep_view())
             && search_state_bounded(final(state).deep_view(), input@.len())
@@ -6229,1025 +5609,12 @@ fn ipv6_search_state_3_exec(
     }
 }
 
-pub closed spec fn ipv6_search_state_2(
-    input: Seq<char>,
-    state: SearchStateSpec,
-) -> Option<SearchStateSpec> {
-    match ipv6_search_state_3(input, state) {
-        Some(found) => Some(found),
-        None => ipv6_search_state_6(input, state),
-    }
-}
-
-#[inline(always)]
-fn ipv6_search_state_2_exec(
-    input: &str,
-    input_length: usize,
-    input_ascii: bool,
-    state: &mut SearchState,
-) -> (result: bool)
-    requires
-        input@.len() < usize::MAX,
-        input_length == input@.len(),
-        input_ascii == input.is_ascii(),
-        old(state).semantic_cache.matches_input(input@),
-        search_state_bounded(old(state).deep_view(), input@.len()),
-        old(state).storage_well_formed(),
-        old(state).captures@.len() + 8 <= 10,
-        old(state).markers.deep_view().len() + 3 <= 3,
-    ensures
-        result ==> ipv6_search_state_2(input@, old(state).deep_view()) == Some(final(state).deep_view())
-            && search_state_bounded(final(state).deep_view(), input@.len())
-            && final(state).storage_well_formed()
-            && final(state).semantic_cache.matches_input(input@),
-        !result ==> ipv6_search_state_2(input@, old(state).deep_view()).is_none()
-            && final(state).deep_view() == old(state).deep_view()
-            && final(state).storage_well_formed()
-            && final(state).semantic_cache.matches_input(input@),
-{
-    proof { reveal_with_fuel(ipv6_search_state_2, 1); }
-    if ipv6_search_state_3_exec(input, input_length, input_ascii, state) {
-        true
-    } else {
-    ipv6_search_state_6_exec(input, input_length, input_ascii, state)
-    }
-}
-
-pub closed spec fn ipv6_search_state_24(
-    input: Seq<char>,
-    state: SearchStateSpec,
-) -> Option<SearchStateSpec> {
-    match search_close_capture_one(state, CaptureKey::Production(9)) {
-        Some(closed) => ipv6_search_state_11(input, closed),
-        None => None,
-    }
-}
-
-#[inline(always)]
-fn ipv6_search_state_24_exec(
-    input: &str,
-    input_length: usize,
-    input_ascii: bool,
-    state: &mut SearchState,
-) -> (result: bool)
-    requires
-        input@.len() < usize::MAX,
-        input_length == input@.len(),
-        input_ascii == input.is_ascii(),
-        old(state).semantic_cache.matches_input(input@),
-        search_state_bounded(old(state).deep_view(), input@.len()),
-        old(state).storage_well_formed(),
-        old(state).captures@.len() + 0 <= 10,
-        old(state).markers.deep_view().len() + 0 <= 3,
-    ensures
-        result ==> ipv6_search_state_24(input@, old(state).deep_view()) == Some(final(state).deep_view())
-            && search_state_bounded(final(state).deep_view(), input@.len())
-            && final(state).storage_well_formed()
-            && final(state).semantic_cache.matches_input(input@),
-        !result ==> ipv6_search_state_24(input@, old(state).deep_view()).is_none()
-            && final(state).deep_view() == old(state).deep_view()
-            && final(state).storage_well_formed()
-            && final(state).semantic_cache.matches_input(input@),
-{
-    proof { reveal_with_fuel(ipv6_search_state_24, 1); }
-    let original = Ghost(state.deep_view());
-    if state.markers.len() == 0 {
-        return false;
-    }
-    let marker = state.markers.get(state.markers.len() - 1);
-    if !search_close_capture_one_exec(state, CaptureKey::Production(9), Ghost(input@.len())) {
-        return false;
-    }
-
-    if ipv6_search_state_11_exec(input, input_length, input_ascii, state) {
-        true
-    } else {
-        search_reopen_capture_one_exec(state, marker, CaptureKey::Production(9), original);
-        false
-    }
-}
-
-pub closed spec fn ipv6_search_width_23(
-    input: Seq<char>,
-    state: SearchStateSpec,
-    width: nat,
-    fuel: nat,
-) -> Option<SearchStateSpec>
-    recommends
-        search_state_bounded(state, input.len()),
-    decreases fuel,
-{
-    let remaining = (input.len() as int - state.end) as nat;
-    if fuel == 0 || width > remaining {
-        None
-    } else if terminal_matches_at(
-        input,
-        state.end,
-        width as int,
-        TokenClass::Digit,
-        LengthSpec::Between { lower: 1, upper: 3 },
-    ) {
-        match ipv6_search_state_24(
-            input,
-            search_advance(state, state.end + width as int),
-        ) {
-            Some(found) => Some(found),
-            None =>
-                if fuel > 1 {
-                    ipv6_search_width_23(input, state, width + 1, (fuel - 1) as nat)
-                } else {
-                    None
-                },
-        }
-    } else {
-        if fuel > 1 {
-            ipv6_search_width_23(input, state, width + 1, (fuel - 1) as nat)
-        } else {
-            None
-        }
-    }
-}
-
-fn ipv6_search_width_23_exec(
-    input: &str,
-    input_length: usize,
-    input_ascii: bool,
-    state: &mut SearchState,
-    width: usize,
-    fuel: usize,
-    prefix_limit: usize,
-    prefix_end: usize,
-) -> (result: bool)
-    requires
-        input@.len() < usize::MAX,
-        input_length == input@.len(),
-        input_ascii == input.is_ascii(),
-        old(state).semantic_cache.matches_input(input@),
-        search_state_bounded(old(state).deep_view(), input@.len()),
-        old(state).storage_well_formed(),
-        old(state).captures@.len() + 0 <= 10,
-        old(state).markers.deep_view().len() + 0 <= 3,
-        search_token_prefix_valid(
-            input@,
-            old(state).deep_view().end,
-            prefix_limit as int,
-            prefix_end as int,
-            TokenClass::Digit,
-        ),
-        width <= prefix_limit - old(state).end,
-        0 < fuel <= prefix_limit - old(state).end - width + 1,
-    ensures
-        result ==> ipv6_search_width_23(
-            input@,
-            old(state).deep_view(),
-            width as nat,
-            fuel as nat,
-        ) == Some(final(state).deep_view())
-            && search_state_bounded(final(state).deep_view(), input@.len())
-            && final(state).storage_well_formed()
-            && final(state).semantic_cache.matches_input(input@),
-        !result ==> ipv6_search_width_23(
-            input@,
-            old(state).deep_view(),
-            width as nat,
-            fuel as nat,
-        ).is_none()
-            && final(state).deep_view() == old(state).deep_view()
-            && final(state).storage_well_formed()
-            && final(state).semantic_cache.matches_input(input@),
-    decreases fuel,
-{
-    proof { reveal_with_fuel(ipv6_search_width_23, 1); }
-    if let Some(found) = search_match_terminal_from_prefix(
-        input,
-        state.end,
-        width,
-        TokenClass::Digit,
-        LengthSpec::Between { lower: 1, upper: 3 },
-        prefix_limit,
-        prefix_end,
-    ) {
-        let previous_end = state.end;
-        search_advance_exec(state, found.end);
-        if ipv6_search_state_24_exec(input, input_length, input_ascii, state) {
-            return true;
-        }
-        search_restore_end_exec(state, previous_end);
-    }
-    if fuel > 1 {
-        ipv6_search_width_23_exec(
-            input,
-            input_length,
-            input_ascii,
-            state,
-            width + 1,
-            fuel - 1,
-            prefix_limit,
-            prefix_end,
-        )
-    } else {
-        false
-    }
-}
-
-pub closed spec fn ipv6_search_state_23(
-    input: Seq<char>,
-    state: SearchStateSpec,
-) -> Option<SearchStateSpec> {
-    let remaining = (input.len() as int - state.end) as nat;
-    if 1 > remaining {
-        None
-    } else {
-        let limit = if 3 < remaining { 3 } else { remaining };
-        ipv6_search_width_23(input, state, 1, (limit - 1 + 1) as nat)
-    }
-}
-
-#[inline(always)]
-fn ipv6_search_state_23_exec(
-    input: &str,
-    input_length: usize,
-    input_ascii: bool,
-    state: &mut SearchState,
-) -> (result: bool)
-    requires
-        input@.len() < usize::MAX,
-        input_length == input@.len(),
-        input_ascii == input.is_ascii(),
-        old(state).semantic_cache.matches_input(input@),
-        search_state_bounded(old(state).deep_view(), input@.len()),
-        old(state).storage_well_formed(),
-        old(state).captures@.len() + 0 <= 10,
-        old(state).markers.deep_view().len() + 0 <= 3,
-    ensures
-        result ==> ipv6_search_state_23(input@, old(state).deep_view()) == Some(final(state).deep_view())
-            && search_state_bounded(final(state).deep_view(), input@.len())
-            && final(state).storage_well_formed()
-            && final(state).semantic_cache.matches_input(input@),
-        !result ==> ipv6_search_state_23(input@, old(state).deep_view()).is_none()
-            && final(state).deep_view() == old(state).deep_view()
-            && final(state).storage_well_formed()
-            && final(state).semantic_cache.matches_input(input@),
-{
-    proof { reveal_with_fuel(ipv6_search_state_23, 1); }
-    let remaining = input_length - state.end;
-    if 1 > remaining {
-        proof { reveal_with_fuel(ipv6_search_state_23, 1); }
-        false
-    } else {
-        let limit = if 3 < remaining { 3 } else { remaining };
-        let prefix_limit = state.end + limit;
-        let prefix_end = search_token_prefix_end(
-            input,
-            input_length,
-            input_ascii,
-            state.end,
-            prefix_limit,
-            TokenClass::Digit,
-        );
-        ipv6_search_width_23_exec(
-            input,
-            input_length,
-            input_ascii,
-            state,
-            1,
-            limit - 1 + 1,
-            prefix_limit,
-            prefix_end,
-        )
-    }
-}
-
-pub closed spec fn ipv6_search_state_22(
-    input: Seq<char>,
-    state: SearchStateSpec,
-) -> Option<SearchStateSpec> {
-    ipv6_search_state_23(input, search_save(state))
-}
-
-#[inline(always)]
-fn ipv6_search_state_22_exec(
-    input: &str,
-    input_length: usize,
-    input_ascii: bool,
-    state: &mut SearchState,
-) -> (result: bool)
-    requires
-        input@.len() < usize::MAX,
-        input_length == input@.len(),
-        input_ascii == input.is_ascii(),
-        old(state).semantic_cache.matches_input(input@),
-        search_state_bounded(old(state).deep_view(), input@.len()),
-        old(state).storage_well_formed(),
-        old(state).captures@.len() + 2 <= 10,
-        old(state).markers.deep_view().len() + 1 <= 3,
-    ensures
-        result ==> ipv6_search_state_22(input@, old(state).deep_view()) == Some(final(state).deep_view())
-            && search_state_bounded(final(state).deep_view(), input@.len())
-            && final(state).storage_well_formed()
-            && final(state).semantic_cache.matches_input(input@),
-        !result ==> ipv6_search_state_22(input@, old(state).deep_view()).is_none()
-            && final(state).deep_view() == old(state).deep_view()
-            && final(state).storage_well_formed()
-            && final(state).semantic_cache.matches_input(input@),
-{
-    proof { reveal_with_fuel(ipv6_search_state_22, 1); }
-    search_save_exec(state);
-    if ipv6_search_state_23_exec(input, input_length, input_ascii, state) {
-        true
-    } else {
-        search_restore_save_exec(state);
-        false
-    }
-}
-
-pub closed spec fn ipv6_search_state_21(
-    input: Seq<char>,
-    state: SearchStateSpec,
-) -> Option<SearchStateSpec> {
-    if literal_matches_at(input, state.end, "/"@) {
-        ipv6_search_state_22(
-            input,
-            search_advance(state, state.end + "/"@.len()),
-        )
-    } else {
-        None
-    }
-}
-
-fn ipv6_search_state_21_exec(
-    input: &str,
-    input_length: usize,
-    input_ascii: bool,
-    state: &mut SearchState,
-) -> (result: bool)
-    requires
-        input@.len() < usize::MAX,
-        input_length == input@.len(),
-        input_ascii == input.is_ascii(),
-        old(state).semantic_cache.matches_input(input@),
-        search_state_bounded(old(state).deep_view(), input@.len()),
-        old(state).storage_well_formed(),
-        old(state).captures@.len() + 2 <= 10,
-        old(state).markers.deep_view().len() + 1 <= 3,
-    ensures
-        result ==> ipv6_search_state_21(input@, old(state).deep_view()) == Some(final(state).deep_view())
-            && search_state_bounded(final(state).deep_view(), input@.len())
-            && final(state).storage_well_formed()
-            && final(state).semantic_cache.matches_input(input@),
-        !result ==> ipv6_search_state_21(input@, old(state).deep_view()).is_none()
-            && final(state).deep_view() == old(state).deep_view()
-            && final(state).storage_well_formed()
-            && final(state).semantic_cache.matches_input(input@),
-{
-    proof { reveal_with_fuel(ipv6_search_state_21, 1); }
-    match search_match_literal_at(
-        input,
-        input_length,
-        input_ascii,
-        state.end,
-        "/",
-    ) {
-        Some(found) => {
-            let previous_end = state.end;
-            search_advance_exec(state, found.end);
-            if ipv6_search_state_22_exec(input, input_length, input_ascii, state) {
-                true
-            } else {
-                search_restore_end_exec(state, previous_end);
-                false
-            }
-        },
-        None => false,
-    }
-}
-
-pub closed spec fn ipv6_search_state_20(
-    input: Seq<char>,
-    state: SearchStateSpec,
-) -> Option<SearchStateSpec> {
-    match search_close_capture_one(state, CaptureKey::Production(5)) {
-        Some(closed) => ipv6_search_state_21(input, closed),
-        None => None,
-    }
-}
-
-#[inline(always)]
-fn ipv6_search_state_20_exec(
-    input: &str,
-    input_length: usize,
-    input_ascii: bool,
-    state: &mut SearchState,
-) -> (result: bool)
-    requires
-        input@.len() < usize::MAX,
-        input_length == input@.len(),
-        input_ascii == input.is_ascii(),
-        old(state).semantic_cache.matches_input(input@),
-        search_state_bounded(old(state).deep_view(), input@.len()),
-        old(state).storage_well_formed(),
-        old(state).captures@.len() + 2 <= 10,
-        old(state).markers.deep_view().len() + 1 <= 3,
-    ensures
-        result ==> ipv6_search_state_20(input@, old(state).deep_view()) == Some(final(state).deep_view())
-            && search_state_bounded(final(state).deep_view(), input@.len())
-            && final(state).storage_well_formed()
-            && final(state).semantic_cache.matches_input(input@),
-        !result ==> ipv6_search_state_20(input@, old(state).deep_view()).is_none()
-            && final(state).deep_view() == old(state).deep_view()
-            && final(state).storage_well_formed()
-            && final(state).semantic_cache.matches_input(input@),
-{
-    proof { reveal_with_fuel(ipv6_search_state_20, 1); }
-    let original = Ghost(state.deep_view());
-    if state.markers.len() == 0 {
-        return false;
-    }
-    let marker = state.markers.get(state.markers.len() - 1);
-    if !search_close_capture_one_exec(state, CaptureKey::Production(5), Ghost(input@.len())) {
-        return false;
-    }
-
-    if ipv6_search_state_21_exec(input, input_length, input_ascii, state) {
-        true
-    } else {
-        search_reopen_capture_one_exec(state, marker, CaptureKey::Production(5), original);
-        false
-    }
-}
-
-pub closed spec fn ipv6_search_state_19_item(
-    input: Seq<char>,
-    state: SearchStateSpec,
-) -> Option<SearchStateSpec> {
-    let input_length = input.len() as int;
-    let remaining = input_length - state.end;
-    let limit = if 4 < remaining {
-        state.end + 4
-    } else {
-        input_length
-    };
-    let end = search_token_prefix_end_spec(
-        input,
-        state.end,
-        limit,
-        TokenClass::HexDigit,
-    );
-    let width = end - state.end;
-    if terminal_matches_at(
-        input,
-        state.end,
-        width,
-        TokenClass::HexDigit,
-        LengthSpec::Between { lower: 1, upper: 4 },
-    ) {
-        Some(search_advance(state, end))
-    } else {
-        None
-    }
-}
-
-#[inline(always)]
-fn ipv6_search_state_19_item_exec(
-    input: &str,
-    input_length: usize,
-    input_ascii: bool,
-    state: &mut SearchState,
-) -> (result: Option<SemanticHexPrefixSummary>)
-    requires
-        input@.len() < usize::MAX,
-        input_length == input@.len(),
-        input_ascii == input.is_ascii(),
-        old(state).semantic_cache.matches_input(input@),
-        search_state_bounded(old(state).deep_view(), input@.len()),
-        old(state).storage_well_formed(),
-        old(state).captures@.len() + 0 <= 10,
-        old(state).markers.deep_view().len() <= 3,
-    ensures
-        match result {
-            Some(summary) =>
-                ipv6_search_state_19_item(input@, old(state).deep_view())
-                    == Some(final(state).deep_view())
-                && search_state_bounded(final(state).deep_view(), input@.len())
-                && final(state).storage_well_formed()
-                && final(state).captures@.len()
-                    == old(state).captures@.len() + 0
-                && final(state).captures@.take(old(state).captures@.len() as int)
-                    == old(state).captures@
-                && final(state).markers.deep_view()
-                    == old(state).markers.deep_view()
-                && final(state).semantic_cache.matches_input(input@)
-                && old(state).end < summary.end
-                && summary.end == final(state).end
-                && summary.value as int == triptych_hex_seq_of(
-                    input@.subrange(old(state).end as int, summary.end as int)
-                )
-                && forall|index: int| old(state).end <= index < summary.end ==>
-                    #[trigger] input@[index] != ':',
-            None =>
-                ipv6_search_state_19_item(input@, old(state).deep_view()).is_none()
-                && final(state).deep_view() == old(state).deep_view()
-                && final(state).storage_well_formed()
-                && final(state).semantic_cache.matches_input(input@),
-        },
-{
-    proof { reveal_with_fuel(ipv6_search_state_19_item, 1); }
-    let capture_start = state.end;
-    let prefix_limit = if 4 < input_length - state.end {
-        state.end + 4
-    } else {
-        input_length
-    };
-    proof {
-        assert((prefix_limit as int) - (capture_start as int) <= 4);
-    }
-    let prefix = semantic_hex_prefix_summary(
-        input,
-        input_length,
-        input_ascii,
-        capture_start,
-        prefix_limit,
-    );
-    let width = prefix.end - capture_start;
-    if let Some(found) = search_match_terminal_from_prefix(
-        input,
-        capture_start,
-        width,
-        TokenClass::HexDigit,
-        LengthSpec::Between { lower: 1, upper: 4 },
-        prefix_limit,
-        prefix.end,
-    ) {
-        search_advance_exec(state, found.end);
-        proof {
-            assert(found.end == prefix.end);
-            reveal(terminal_matches_at);
-            reveal(length_accepts);
-            assert(capture_start < prefix.end);
-        }
-        return Some(prefix);
-    }
-    None
-}
-
-pub closed spec fn ipv6_search_state_19_tail(
-    input: Seq<char>,
-    state: SearchStateSpec,
-    remaining: nat,
-    count: nat,
-) -> SearchRepeatResultSpec
-    decreases remaining,
-{
-    if remaining == 0 {
-        SearchRepeatResultSpec { state, count }
-    } else if literal_matches_at(input, state.end, ":"@) {
-        let separated = search_advance(
-            state,
-            state.end + ":"@.len(),
-        );
-        match ipv6_search_state_19_item(input, separated) {
-            Some(found) =>
-                ipv6_search_state_19_tail(
-                    input,
-                    found,
-                    (remaining - 1) as nat,
-                    count + 1,
-                ),
-            None => SearchRepeatResultSpec { state, count },
-        }
-    } else {
-        SearchRepeatResultSpec { state, count }
-    }
-}
-
-fn ipv6_search_state_19_tail_exec(
-    input: &str,
-    input_length: usize,
-    input_ascii: bool,
-    state: &mut SearchState,
-    remaining: usize,
-    count: usize,
-    accumulator: &mut SemanticHexSequenceAccumulator,
-) -> (result: usize)
-    requires
-        input@.len() < usize::MAX,
-        input_length == input@.len(),
-        input_ascii == input.is_ascii(),
-        old(state).semantic_cache.matches_input(input@),
-        old(accumulator).source_matches(input@),
-        old(accumulator).end == old(state).end,
-        search_state_bounded(old(state).deep_view(), input@.len()),
-        old(state).storage_well_formed(),
-        old(state).captures@.len()
-            + 0 * remaining <= 10,
-        old(state).markers.deep_view().len() <= 3,
-        count + remaining < usize::MAX,
-    ensures
-        ipv6_search_state_19_tail(
-            input@,
-            old(state).deep_view(),
-            remaining as nat,
-            count as nat,
-        ) == (SearchRepeatResultSpec {
-            state: final(state).deep_view(),
-            count: result as nat,
-        }),
-        search_state_bounded(final(state).deep_view(), input@.len()),
-        final(state).storage_well_formed(),
-        final(state).captures@.len()
-            == old(state).captures@.len()
-                + 0 * (result - count),
-        final(state).captures@.take(old(state).captures@.len() as int)
-            == old(state).captures@,
-        final(state).markers.deep_view() == old(state).markers.deep_view(),
-        final(state).semantic_cache.matches_input(input@),
-        final(accumulator).source_matches(input@),
-        final(accumulator).start == old(accumulator).start,
-        final(accumulator).end == final(state).end,
-        count <= result <= count + remaining,
-    decreases remaining,
-{
-    proof { reveal_with_fuel(ipv6_search_state_19_tail, 1); }
-    if remaining == 0 {
-        return count;
-    }
-    let previous_end = state.end;
-    proof {
-        reveal_strlit(":");
-        assert(":"@.len() == 1);
-    }
-    match search_match_single_literal_at(
-        input,
-        input_length,
-        input_ascii,
-        state.end,
-        ":",
-    ) {
-        Some(found) => {
-            let group_start = found.end;
-            search_advance_exec(state, group_start);
-            match ipv6_search_state_19_item_exec(input, input_length, input_ascii, state) {
-                Some(prefix) => {
-                    proof {
-                        assert(
-                            0 * (remaining - 1)
-                                + 0
-                            == 0 * remaining
-                        );
-                        reveal(literal_matches_at);
-                        reveal_strlit(":");
-                        assert(":"@.len() == 1);
-                        assert(group_start == previous_end + 1);
-                        assert(input@.subrange(
-                            previous_end as int,
-                            previous_end as int + 1,
-                        ) == ":"@);
-                        assert(input@[previous_end as int]
-                            == ":"@[0]);
-                        assert(":"@[0] == ':');
-                        assert(input@[previous_end as int] == ':');
-                    }
-                    accumulator.push_group(Ghost(input@), group_start, prefix);
-                    return ipv6_search_state_19_tail_exec(
-                        input,
-                        input_length,
-                        input_ascii,
-                        state,
-                        remaining - 1,
-                        count + 1,
-                        accumulator,
-                    );
-                },
-                None => {},
-            }
-            search_restore_end_exec(state, previous_end);
-        },
-        None => {},
-    }
-    count
-}
-
-pub closed spec fn ipv6_search_state_19(
-    input: Seq<char>,
-    state: SearchStateSpec,
-) -> Option<SearchStateSpec> {
-    match ipv6_search_state_19_item(input, search_save(state)) {
-        Some(first) => {
-            let repeated = ipv6_search_state_19_tail(input, first, 6, 1);
-            if 1 <= repeated.count {
-                match search_close_count_capture(
-                    repeated.state,
-                    CaptureKey::Repetition(14),
-                    repeated.count as usize,
-                ) {
-                    Some(closed) => ipv6_search_state_20(input, closed),
-                    None => None,
-                }
-            } else {
-                None
-            }
-        },
-        None => None,
-    }
-}
-
-#[verifier::rlimit(200)]
-#[inline(always)]
-fn ipv6_search_state_19_exec(
-    input: &str,
-    input_length: usize,
-    input_ascii: bool,
-    state: &mut SearchState,
-) -> (result: bool)
-    requires
-        input@.len() < usize::MAX,
-        input_length == input@.len(),
-        input_ascii == input.is_ascii(),
-        old(state).semantic_cache.matches_input(input@),
-        search_state_bounded(old(state).deep_view(), input@.len()),
-        old(state).storage_well_formed(),
-        old(state).captures@.len() + 4 <= 10,
-        old(state).markers.deep_view().len() + 1 <= 3,
-    ensures
-        result ==> ipv6_search_state_19(input@, old(state).deep_view()) == Some(final(state).deep_view())
-            && search_state_bounded(final(state).deep_view(), input@.len())
-            && final(state).storage_well_formed()
-            && final(state).semantic_cache.matches_input(input@),
-        !result ==> ipv6_search_state_19(input@, old(state).deep_view()).is_none()
-            && final(state).deep_view() == old(state).deep_view()
-            && final(state).storage_well_formed()
-            && final(state).semantic_cache.matches_input(input@),
-{
-    let checkpoint = search_checkpoint(state);
-    let ghost original_view = state.deep_view();
-    proof {
-        reveal_with_fuel(ipv6_search_state_19, 1);
-    }
-    search_save_exec(state);
-    let ghost saved_view = state.deep_view();
-    proof {
-        search_save_preserves_checkpoint(
-            checkpoint,
-            original_view,
-            original_view,
-        );
-        assert(search_checkpoint_matches(
-            checkpoint,
-            original_view,
-            saved_view,
-        ));
-    }
-    let sequence_start = state.end;
-    let first_prefix = match ipv6_search_state_19_item_exec(input, input_length, input_ascii, state) {
-        Some(prefix) => prefix,
-        None => {
-            search_restore_checkpoint_to_exec(
-                state,
-                checkpoint,
-                Ghost(original_view),
-            );
-            return false;
-        },
-    };
-    let mut semantic_accumulator = SemanticHexSequenceAccumulator::first(
-        Ghost(input@),
-        sequence_start,
-        first_prefix,
-    );
-    proof {
-        search_checkpoint_matches_transitive(
-            checkpoint,
-            original_view,
-            saved_view,
-            state.deep_view(),
-        );
-    }
-    let ghost first_view = state.deep_view();
-    let count = ipv6_search_state_19_tail_exec(
-        input,
-        input_length,
-        input_ascii,
-        state,
-        6,
-        1,
-        &mut semantic_accumulator,
-    );
-    proof {
-        search_checkpoint_matches_transitive(
-            checkpoint,
-            original_view,
-            first_view,
-            state.deep_view(),
-        );
-    }
-    let ghost repeated_view = state.deep_view();
-    if count < 1 {
-        search_restore_checkpoint_to_exec(
-            state,
-            checkpoint,
-            Ghost(original_view),
-        );
-        return false;
-    }
-    let ghost repeated_marker = state.deep_view().markers.last();
-    if !search_close_count_capture_exec(
-        state,
-        CaptureKey::Repetition(14),
-        count,
-        Ghost(input@.len()),
-    ) {
-        search_restore_checkpoint_to_exec(
-            state,
-            checkpoint,
-            Ghost(original_view),
-        );
-        return false;
-    }
-    proof {
-        assert(checkpoint.capture_length <= repeated_marker.capture_count);
-        assert(repeated_marker.capture_count < repeated_marker.second_capture_count);
-        assert(checkpoint.marker_length < repeated_view.markers.len());
-        search_close_count_capture_preserves_checkpoint(
-            checkpoint,
-            original_view,
-            repeated_view,
-            CaptureKey::Repetition(14),
-            count,
-            state.deep_view(),
-        );
-    }
-    if let Some(cached_value) = CachedSemanticHexSequence::from_accumulator(
-        Ghost(input@),
-        semantic_accumulator,
-    ) {
-        state.semantic_cache.set_cache_1(Ghost(input@), cached_value);
-    }
-    if ipv6_search_state_20_exec(input, input_length, input_ascii, state) {
-        true
-    } else {
-        search_restore_checkpoint_to_exec(
-            state,
-            checkpoint,
-            Ghost(original_view),
-        );
-        false
-    }
-}
-
-pub closed spec fn ipv6_search_state_18(
-    input: Seq<char>,
-    state: SearchStateSpec,
-) -> Option<SearchStateSpec> {
-    ipv6_search_state_19(input, search_save(state))
-}
-
-#[inline(always)]
-fn ipv6_search_state_18_exec(
-    input: &str,
-    input_length: usize,
-    input_ascii: bool,
-    state: &mut SearchState,
-) -> (result: bool)
-    requires
-        input@.len() < usize::MAX,
-        input_length == input@.len(),
-        input_ascii == input.is_ascii(),
-        old(state).semantic_cache.matches_input(input@),
-        search_state_bounded(old(state).deep_view(), input@.len()),
-        old(state).storage_well_formed(),
-        old(state).captures@.len() + 6 <= 10,
-        old(state).markers.deep_view().len() + 2 <= 3,
-    ensures
-        result ==> ipv6_search_state_18(input@, old(state).deep_view()) == Some(final(state).deep_view())
-            && search_state_bounded(final(state).deep_view(), input@.len())
-            && final(state).storage_well_formed()
-            && final(state).semantic_cache.matches_input(input@),
-        !result ==> ipv6_search_state_18(input@, old(state).deep_view()).is_none()
-            && final(state).deep_view() == old(state).deep_view()
-            && final(state).storage_well_formed()
-            && final(state).semantic_cache.matches_input(input@),
-{
-    proof { reveal_with_fuel(ipv6_search_state_18, 1); }
-    search_save_exec(state);
-    if ipv6_search_state_19_exec(input, input_length, input_ascii, state) {
-        true
-    } else {
-        search_restore_save_exec(state);
-        false
-    }
-}
-
-pub closed spec fn ipv6_search_state_17(
-    input: Seq<char>,
-    state: SearchStateSpec,
-) -> Option<SearchStateSpec> {
-    match ipv6_search_state_18(input, state) {
-        Some(found) => Some(found),
-        None => ipv6_search_state_21(input, state),
-    }
-}
-
-#[inline(always)]
-fn ipv6_search_state_17_exec(
-    input: &str,
-    input_length: usize,
-    input_ascii: bool,
-    state: &mut SearchState,
-) -> (result: bool)
-    requires
-        input@.len() < usize::MAX,
-        input_length == input@.len(),
-        input_ascii == input.is_ascii(),
-        old(state).semantic_cache.matches_input(input@),
-        search_state_bounded(old(state).deep_view(), input@.len()),
-        old(state).storage_well_formed(),
-        old(state).captures@.len() + 6 <= 10,
-        old(state).markers.deep_view().len() + 2 <= 3,
-    ensures
-        result ==> ipv6_search_state_17(input@, old(state).deep_view()) == Some(final(state).deep_view())
-            && search_state_bounded(final(state).deep_view(), input@.len())
-            && final(state).storage_well_formed()
-            && final(state).semantic_cache.matches_input(input@),
-        !result ==> ipv6_search_state_17(input@, old(state).deep_view()).is_none()
-            && final(state).deep_view() == old(state).deep_view()
-            && final(state).storage_well_formed()
-            && final(state).semantic_cache.matches_input(input@),
-{
-    proof { reveal_with_fuel(ipv6_search_state_17, 1); }
-    if ipv6_search_state_18_exec(input, input_length, input_ascii, state) {
-        true
-    } else {
-    ipv6_search_state_21_exec(input, input_length, input_ascii, state)
-    }
-}
-
-pub closed spec fn ipv6_search_state_16(
-    input: Seq<char>,
-    state: SearchStateSpec,
-) -> Option<SearchStateSpec> {
-    if literal_matches_at(input, state.end, "::"@) {
-        ipv6_search_state_17(
-            input,
-            search_advance(state, state.end + "::"@.len()),
-        )
-    } else {
-        None
-    }
-}
-
-fn ipv6_search_state_16_exec(
-    input: &str,
-    input_length: usize,
-    input_ascii: bool,
-    state: &mut SearchState,
-) -> (result: bool)
-    requires
-        input@.len() < usize::MAX,
-        input_length == input@.len(),
-        input_ascii == input.is_ascii(),
-        old(state).semantic_cache.matches_input(input@),
-        search_state_bounded(old(state).deep_view(), input@.len()),
-        old(state).storage_well_formed(),
-        old(state).captures@.len() + 6 <= 10,
-        old(state).markers.deep_view().len() + 2 <= 3,
-    ensures
-        result ==> ipv6_search_state_16(input@, old(state).deep_view()) == Some(final(state).deep_view())
-            && search_state_bounded(final(state).deep_view(), input@.len())
-            && final(state).storage_well_formed()
-            && final(state).semantic_cache.matches_input(input@),
-        !result ==> ipv6_search_state_16(input@, old(state).deep_view()).is_none()
-            && final(state).deep_view() == old(state).deep_view()
-            && final(state).storage_well_formed()
-            && final(state).semantic_cache.matches_input(input@),
-{
-    proof { reveal_with_fuel(ipv6_search_state_16, 1); }
-    match search_match_literal_at(
-        input,
-        input_length,
-        input_ascii,
-        state.end,
-        "::",
-    ) {
-        Some(found) => {
-            let previous_end = state.end;
-            search_advance_exec(state, found.end);
-            if ipv6_search_state_17_exec(input, input_length, input_ascii, state) {
-                true
-            } else {
-                search_restore_end_exec(state, previous_end);
-                false
-            }
-        },
-        None => false,
-    }
-}
-
 pub closed spec fn ipv6_search_state_15(
     input: Seq<char>,
     state: SearchStateSpec,
 ) -> Option<SearchStateSpec> {
-    match search_close_capture_one(state, CaptureKey::Production(4)) {
-        Some(closed) => ipv6_search_state_16(input, closed),
+    match search_close_capture_one(state, CaptureKey::Production(5)) {
+        Some(closed) => ipv6_search_state_6(input, closed),
         None => None,
     }
 }
@@ -7266,8 +5633,8 @@ fn ipv6_search_state_15_exec(
         old(state).semantic_cache.matches_input(input@),
         search_state_bounded(old(state).deep_view(), input@.len()),
         old(state).storage_well_formed(),
-        old(state).captures@.len() + 6 <= 10,
-        old(state).markers.deep_view().len() + 2 <= 3,
+        old(state).captures@.len() + 0 <= 10,
+        old(state).markers.deep_view().len() + 0 <= 3,
     ensures
         result ==> ipv6_search_state_15(input@, old(state).deep_view()) == Some(final(state).deep_view())
             && search_state_bounded(final(state).deep_view(), input@.len())
@@ -7284,14 +5651,14 @@ fn ipv6_search_state_15_exec(
         return false;
     }
     let marker = state.markers.get(state.markers.len() - 1);
-    if !search_close_capture_one_exec(state, CaptureKey::Production(4), Ghost(input@.len())) {
+    if !search_close_capture_one_exec(state, CaptureKey::Production(5), Ghost(input@.len())) {
         return false;
     }
 
-    if ipv6_search_state_16_exec(input, input_length, input_ascii, state) {
+    if ipv6_search_state_6_exec(input, input_length, input_ascii, state) {
         true
     } else {
-        search_reopen_capture_one_exec(state, marker, CaptureKey::Production(4), original);
+        search_reopen_capture_one_exec(state, marker, CaptureKey::Production(5), original);
         false
     }
 }
@@ -7557,7 +5924,7 @@ pub closed spec fn ipv6_search_state_14(
             if 1 <= repeated.count {
                 match search_close_count_capture(
                     repeated.state,
-                    CaptureKey::Repetition(12),
+                    CaptureKey::Repetition(14),
                     repeated.count as usize,
                 ) {
                     Some(closed) => ipv6_search_state_15(input, closed),
@@ -7586,8 +5953,8 @@ fn ipv6_search_state_14_exec(
         old(state).semantic_cache.matches_input(input@),
         search_state_bounded(old(state).deep_view(), input@.len()),
         old(state).storage_well_formed(),
-        old(state).captures@.len() + 8 <= 10,
-        old(state).markers.deep_view().len() + 2 <= 3,
+        old(state).captures@.len() + 2 <= 10,
+        old(state).markers.deep_view().len() + 1 <= 3,
     ensures
         result ==> ipv6_search_state_14(input@, old(state).deep_view()) == Some(final(state).deep_view())
             && search_state_bounded(final(state).deep_view(), input@.len())
@@ -7672,7 +6039,7 @@ fn ipv6_search_state_14_exec(
     let ghost repeated_marker = state.deep_view().markers.last();
     if !search_close_count_capture_exec(
         state,
-        CaptureKey::Repetition(12),
+        CaptureKey::Repetition(14),
         count,
         Ghost(input@.len()),
     ) {
@@ -7691,7 +6058,7 @@ fn ipv6_search_state_14_exec(
             checkpoint,
             original_view,
             repeated_view,
-            CaptureKey::Repetition(12),
+            CaptureKey::Repetition(14),
             count,
             state.deep_view(),
         );
@@ -7700,7 +6067,7 @@ fn ipv6_search_state_14_exec(
         Ghost(input@),
         semantic_accumulator,
     ) {
-        state.semantic_cache.set_cache_0(Ghost(input@), cached_value);
+        state.semantic_cache.set_cache_1(Ghost(input@), cached_value);
     }
     if ipv6_search_state_15_exec(input, input_length, input_ascii, state) {
         true
@@ -7735,8 +6102,8 @@ fn ipv6_search_state_13_exec(
         old(state).semantic_cache.matches_input(input@),
         search_state_bounded(old(state).deep_view(), input@.len()),
         old(state).storage_well_formed(),
-        old(state).captures@.len() + 10 <= 10,
-        old(state).markers.deep_view().len() + 3 <= 3,
+        old(state).captures@.len() + 4 <= 10,
+        old(state).markers.deep_view().len() + 2 <= 3,
     ensures
         result ==> ipv6_search_state_13(input@, old(state).deep_view()) == Some(final(state).deep_view())
             && search_state_bounded(final(state).deep_view(), input@.len())
@@ -7763,7 +6130,7 @@ pub closed spec fn ipv6_search_state_12(
 ) -> Option<SearchStateSpec> {
     match ipv6_search_state_13(input, state) {
         Some(found) => Some(found),
-        None => ipv6_search_state_16(input, state),
+        None => ipv6_search_state_6(input, state),
     }
 }
 
@@ -7781,8 +6148,8 @@ fn ipv6_search_state_12_exec(
         old(state).semantic_cache.matches_input(input@),
         search_state_bounded(old(state).deep_view(), input@.len()),
         old(state).storage_well_formed(),
-        old(state).captures@.len() + 10 <= 10,
-        old(state).markers.deep_view().len() + 3 <= 3,
+        old(state).captures@.len() + 4 <= 10,
+        old(state).markers.deep_view().len() + 2 <= 3,
     ensures
         result ==> ipv6_search_state_12(input@, old(state).deep_view()) == Some(final(state).deep_view())
             && search_state_bounded(final(state).deep_view(), input@.len())
@@ -7797,22 +6164,25 @@ fn ipv6_search_state_12_exec(
     if ipv6_search_state_13_exec(input, input_length, input_ascii, state) {
         true
     } else {
-    ipv6_search_state_16_exec(input, input_length, input_ascii, state)
+    ipv6_search_state_6_exec(input, input_length, input_ascii, state)
     }
 }
 
-pub closed spec fn ipv6_search_state_1(
+pub closed spec fn ipv6_search_state_11(
     input: Seq<char>,
     state: SearchStateSpec,
 ) -> Option<SearchStateSpec> {
-    match ipv6_search_state_2(input, state) {
-        Some(found) => Some(found),
-        None => ipv6_search_state_12(input, state),
+    if literal_matches_at(input, state.end, "::"@) {
+        ipv6_search_state_12(
+            input,
+            search_advance(state, state.end + "::"@.len()),
+        )
+    } else {
+        None
     }
 }
 
-#[inline(always)]
-fn ipv6_search_state_1_exec(
+fn ipv6_search_state_11_exec(
     input: &str,
     input_length: usize,
     input_ascii: bool,
@@ -7825,38 +6195,897 @@ fn ipv6_search_state_1_exec(
         old(state).semantic_cache.matches_input(input@),
         search_state_bounded(old(state).deep_view(), input@.len()),
         old(state).storage_well_formed(),
-        old(state).captures@.len() + 10 <= 10,
-        old(state).markers.deep_view().len() + 3 <= 3,
+        old(state).captures@.len() + 4 <= 10,
+        old(state).markers.deep_view().len() + 2 <= 3,
     ensures
-        result ==> ipv6_search_state_1(input@, old(state).deep_view()) == Some(final(state).deep_view())
+        result ==> ipv6_search_state_11(input@, old(state).deep_view()) == Some(final(state).deep_view())
             && search_state_bounded(final(state).deep_view(), input@.len())
             && final(state).storage_well_formed()
             && final(state).semantic_cache.matches_input(input@),
-        !result ==> ipv6_search_state_1(input@, old(state).deep_view()).is_none()
+        !result ==> ipv6_search_state_11(input@, old(state).deep_view()).is_none()
             && final(state).deep_view() == old(state).deep_view()
             && final(state).storage_well_formed()
             && final(state).semantic_cache.matches_input(input@),
 {
-    proof { reveal_with_fuel(ipv6_search_state_1, 1); }
-    if ipv6_search_state_2_exec(input, input_length, input_ascii, state) {
-        true
-    } else {
-    ipv6_search_state_12_exec(input, input_length, input_ascii, state)
+    proof { reveal_with_fuel(ipv6_search_state_11, 1); }
+    match search_match_literal_at(
+        input,
+        input_length,
+        input_ascii,
+        state.end,
+        "::",
+    ) {
+        Some(found) => {
+            let previous_end = state.end;
+            search_advance_exec(state, found.end);
+            if ipv6_search_state_12_exec(input, input_length, input_ascii, state) {
+                true
+            } else {
+                search_restore_end_exec(state, previous_end);
+                false
+            }
+        },
+        None => false,
     }
 }
 
-pub closed spec fn ipv6_search_state_28(
+pub closed spec fn ipv6_search_state_10(
     input: Seq<char>,
     state: SearchStateSpec,
 ) -> Option<SearchStateSpec> {
-    match ipv6_search_state_11(input, state) {
-        Some(found) => Some(found),
-        None => ipv6_search_state_21(input, state),
+    match search_close_capture_one(state, CaptureKey::Production(4)) {
+        Some(closed) => ipv6_search_state_11(input, closed),
+        None => None,
     }
 }
 
 #[inline(always)]
-fn ipv6_search_state_28_exec(
+fn ipv6_search_state_10_exec(
+    input: &str,
+    input_length: usize,
+    input_ascii: bool,
+    state: &mut SearchState,
+) -> (result: bool)
+    requires
+        input@.len() < usize::MAX,
+        input_length == input@.len(),
+        input_ascii == input.is_ascii(),
+        old(state).semantic_cache.matches_input(input@),
+        search_state_bounded(old(state).deep_view(), input@.len()),
+        old(state).storage_well_formed(),
+        old(state).captures@.len() + 4 <= 10,
+        old(state).markers.deep_view().len() + 2 <= 3,
+    ensures
+        result ==> ipv6_search_state_10(input@, old(state).deep_view()) == Some(final(state).deep_view())
+            && search_state_bounded(final(state).deep_view(), input@.len())
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache.matches_input(input@),
+        !result ==> ipv6_search_state_10(input@, old(state).deep_view()).is_none()
+            && final(state).deep_view() == old(state).deep_view()
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache.matches_input(input@),
+{
+    proof { reveal_with_fuel(ipv6_search_state_10, 1); }
+    let original = Ghost(state.deep_view());
+    if state.markers.len() == 0 {
+        return false;
+    }
+    let marker = state.markers.get(state.markers.len() - 1);
+    if !search_close_capture_one_exec(state, CaptureKey::Production(4), Ghost(input@.len())) {
+        return false;
+    }
+
+    if ipv6_search_state_11_exec(input, input_length, input_ascii, state) {
+        true
+    } else {
+        search_reopen_capture_one_exec(state, marker, CaptureKey::Production(4), original);
+        false
+    }
+}
+
+pub closed spec fn ipv6_search_state_9_item(
+    input: Seq<char>,
+    state: SearchStateSpec,
+) -> Option<SearchStateSpec> {
+    let input_length = input.len() as int;
+    let remaining = input_length - state.end;
+    let limit = if 4 < remaining {
+        state.end + 4
+    } else {
+        input_length
+    };
+    let end = search_token_prefix_end_spec(
+        input,
+        state.end,
+        limit,
+        TokenClass::HexDigit,
+    );
+    let width = end - state.end;
+    if terminal_matches_at(
+        input,
+        state.end,
+        width,
+        TokenClass::HexDigit,
+        LengthSpec::Between { lower: 1, upper: 4 },
+    ) {
+        Some(search_advance(state, end))
+    } else {
+        None
+    }
+}
+
+#[inline(always)]
+fn ipv6_search_state_9_item_exec(
+    input: &str,
+    input_length: usize,
+    input_ascii: bool,
+    state: &mut SearchState,
+) -> (result: Option<SemanticHexPrefixSummary>)
+    requires
+        input@.len() < usize::MAX,
+        input_length == input@.len(),
+        input_ascii == input.is_ascii(),
+        old(state).semantic_cache.matches_input(input@),
+        search_state_bounded(old(state).deep_view(), input@.len()),
+        old(state).storage_well_formed(),
+        old(state).captures@.len() + 0 <= 10,
+        old(state).markers.deep_view().len() <= 3,
+    ensures
+        match result {
+            Some(summary) =>
+                ipv6_search_state_9_item(input@, old(state).deep_view())
+                    == Some(final(state).deep_view())
+                && search_state_bounded(final(state).deep_view(), input@.len())
+                && final(state).storage_well_formed()
+                && final(state).captures@.len()
+                    == old(state).captures@.len() + 0
+                && final(state).captures@.take(old(state).captures@.len() as int)
+                    == old(state).captures@
+                && final(state).markers.deep_view()
+                    == old(state).markers.deep_view()
+                && final(state).semantic_cache.matches_input(input@)
+                && old(state).end < summary.end
+                && summary.end == final(state).end
+                && summary.value as int == triptych_hex_seq_of(
+                    input@.subrange(old(state).end as int, summary.end as int)
+                )
+                && forall|index: int| old(state).end <= index < summary.end ==>
+                    #[trigger] input@[index] != ':',
+            None =>
+                ipv6_search_state_9_item(input@, old(state).deep_view()).is_none()
+                && final(state).deep_view() == old(state).deep_view()
+                && final(state).storage_well_formed()
+                && final(state).semantic_cache.matches_input(input@),
+        },
+{
+    proof { reveal_with_fuel(ipv6_search_state_9_item, 1); }
+    let capture_start = state.end;
+    let prefix_limit = if 4 < input_length - state.end {
+        state.end + 4
+    } else {
+        input_length
+    };
+    proof {
+        assert((prefix_limit as int) - (capture_start as int) <= 4);
+    }
+    let prefix = semantic_hex_prefix_summary(
+        input,
+        input_length,
+        input_ascii,
+        capture_start,
+        prefix_limit,
+    );
+    let width = prefix.end - capture_start;
+    if let Some(found) = search_match_terminal_from_prefix(
+        input,
+        capture_start,
+        width,
+        TokenClass::HexDigit,
+        LengthSpec::Between { lower: 1, upper: 4 },
+        prefix_limit,
+        prefix.end,
+    ) {
+        search_advance_exec(state, found.end);
+        proof {
+            assert(found.end == prefix.end);
+            reveal(terminal_matches_at);
+            reveal(length_accepts);
+            assert(capture_start < prefix.end);
+        }
+        return Some(prefix);
+    }
+    None
+}
+
+pub closed spec fn ipv6_search_state_9_tail(
+    input: Seq<char>,
+    state: SearchStateSpec,
+    remaining: nat,
+    count: nat,
+) -> SearchRepeatResultSpec
+    decreases remaining,
+{
+    if remaining == 0 {
+        SearchRepeatResultSpec { state, count }
+    } else if literal_matches_at(input, state.end, ":"@) {
+        let separated = search_advance(
+            state,
+            state.end + ":"@.len(),
+        );
+        match ipv6_search_state_9_item(input, separated) {
+            Some(found) =>
+                ipv6_search_state_9_tail(
+                    input,
+                    found,
+                    (remaining - 1) as nat,
+                    count + 1,
+                ),
+            None => SearchRepeatResultSpec { state, count },
+        }
+    } else {
+        SearchRepeatResultSpec { state, count }
+    }
+}
+
+fn ipv6_search_state_9_tail_exec(
+    input: &str,
+    input_length: usize,
+    input_ascii: bool,
+    state: &mut SearchState,
+    remaining: usize,
+    count: usize,
+    accumulator: &mut SemanticHexSequenceAccumulator,
+) -> (result: usize)
+    requires
+        input@.len() < usize::MAX,
+        input_length == input@.len(),
+        input_ascii == input.is_ascii(),
+        old(state).semantic_cache.matches_input(input@),
+        old(accumulator).source_matches(input@),
+        old(accumulator).end == old(state).end,
+        search_state_bounded(old(state).deep_view(), input@.len()),
+        old(state).storage_well_formed(),
+        old(state).captures@.len()
+            + 0 * remaining <= 10,
+        old(state).markers.deep_view().len() <= 3,
+        count + remaining < usize::MAX,
+    ensures
+        ipv6_search_state_9_tail(
+            input@,
+            old(state).deep_view(),
+            remaining as nat,
+            count as nat,
+        ) == (SearchRepeatResultSpec {
+            state: final(state).deep_view(),
+            count: result as nat,
+        }),
+        search_state_bounded(final(state).deep_view(), input@.len()),
+        final(state).storage_well_formed(),
+        final(state).captures@.len()
+            == old(state).captures@.len()
+                + 0 * (result - count),
+        final(state).captures@.take(old(state).captures@.len() as int)
+            == old(state).captures@,
+        final(state).markers.deep_view() == old(state).markers.deep_view(),
+        final(state).semantic_cache.matches_input(input@),
+        final(accumulator).source_matches(input@),
+        final(accumulator).start == old(accumulator).start,
+        final(accumulator).end == final(state).end,
+        count <= result <= count + remaining,
+    decreases remaining,
+{
+    proof { reveal_with_fuel(ipv6_search_state_9_tail, 1); }
+    if remaining == 0 {
+        return count;
+    }
+    let previous_end = state.end;
+    proof {
+        reveal_strlit(":");
+        assert(":"@.len() == 1);
+    }
+    match search_match_single_literal_at(
+        input,
+        input_length,
+        input_ascii,
+        state.end,
+        ":",
+    ) {
+        Some(found) => {
+            let group_start = found.end;
+            search_advance_exec(state, group_start);
+            match ipv6_search_state_9_item_exec(input, input_length, input_ascii, state) {
+                Some(prefix) => {
+                    proof {
+                        assert(
+                            0 * (remaining - 1)
+                                + 0
+                            == 0 * remaining
+                        );
+                        reveal(literal_matches_at);
+                        reveal_strlit(":");
+                        assert(":"@.len() == 1);
+                        assert(group_start == previous_end + 1);
+                        assert(input@.subrange(
+                            previous_end as int,
+                            previous_end as int + 1,
+                        ) == ":"@);
+                        assert(input@[previous_end as int]
+                            == ":"@[0]);
+                        assert(":"@[0] == ':');
+                        assert(input@[previous_end as int] == ':');
+                    }
+                    accumulator.push_group(Ghost(input@), group_start, prefix);
+                    return ipv6_search_state_9_tail_exec(
+                        input,
+                        input_length,
+                        input_ascii,
+                        state,
+                        remaining - 1,
+                        count + 1,
+                        accumulator,
+                    );
+                },
+                None => {},
+            }
+            search_restore_end_exec(state, previous_end);
+        },
+        None => {},
+    }
+    count
+}
+
+pub closed spec fn ipv6_search_state_9(
+    input: Seq<char>,
+    state: SearchStateSpec,
+) -> Option<SearchStateSpec> {
+    match ipv6_search_state_9_item(input, search_save(state)) {
+        Some(first) => {
+            let repeated = ipv6_search_state_9_tail(input, first, 6, 1);
+            if 1 <= repeated.count {
+                match search_close_count_capture(
+                    repeated.state,
+                    CaptureKey::Repetition(12),
+                    repeated.count as usize,
+                ) {
+                    Some(closed) => ipv6_search_state_10(input, closed),
+                    None => None,
+                }
+            } else {
+                None
+            }
+        },
+        None => None,
+    }
+}
+
+#[verifier::rlimit(200)]
+#[inline(always)]
+fn ipv6_search_state_9_exec(
+    input: &str,
+    input_length: usize,
+    input_ascii: bool,
+    state: &mut SearchState,
+) -> (result: bool)
+    requires
+        input@.len() < usize::MAX,
+        input_length == input@.len(),
+        input_ascii == input.is_ascii(),
+        old(state).semantic_cache.matches_input(input@),
+        search_state_bounded(old(state).deep_view(), input@.len()),
+        old(state).storage_well_formed(),
+        old(state).captures@.len() + 6 <= 10,
+        old(state).markers.deep_view().len() + 2 <= 3,
+    ensures
+        result ==> ipv6_search_state_9(input@, old(state).deep_view()) == Some(final(state).deep_view())
+            && search_state_bounded(final(state).deep_view(), input@.len())
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache.matches_input(input@),
+        !result ==> ipv6_search_state_9(input@, old(state).deep_view()).is_none()
+            && final(state).deep_view() == old(state).deep_view()
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache.matches_input(input@),
+{
+    let checkpoint = search_checkpoint(state);
+    let ghost original_view = state.deep_view();
+    proof {
+        reveal_with_fuel(ipv6_search_state_9, 1);
+    }
+    search_save_exec(state);
+    let ghost saved_view = state.deep_view();
+    proof {
+        search_save_preserves_checkpoint(
+            checkpoint,
+            original_view,
+            original_view,
+        );
+        assert(search_checkpoint_matches(
+            checkpoint,
+            original_view,
+            saved_view,
+        ));
+    }
+    let sequence_start = state.end;
+    let first_prefix = match ipv6_search_state_9_item_exec(input, input_length, input_ascii, state) {
+        Some(prefix) => prefix,
+        None => {
+            search_restore_checkpoint_to_exec(
+                state,
+                checkpoint,
+                Ghost(original_view),
+            );
+            return false;
+        },
+    };
+    let mut semantic_accumulator = SemanticHexSequenceAccumulator::first(
+        Ghost(input@),
+        sequence_start,
+        first_prefix,
+    );
+    proof {
+        search_checkpoint_matches_transitive(
+            checkpoint,
+            original_view,
+            saved_view,
+            state.deep_view(),
+        );
+    }
+    let ghost first_view = state.deep_view();
+    let count = ipv6_search_state_9_tail_exec(
+        input,
+        input_length,
+        input_ascii,
+        state,
+        6,
+        1,
+        &mut semantic_accumulator,
+    );
+    proof {
+        search_checkpoint_matches_transitive(
+            checkpoint,
+            original_view,
+            first_view,
+            state.deep_view(),
+        );
+    }
+    let ghost repeated_view = state.deep_view();
+    if count < 1 {
+        search_restore_checkpoint_to_exec(
+            state,
+            checkpoint,
+            Ghost(original_view),
+        );
+        return false;
+    }
+    let ghost repeated_marker = state.deep_view().markers.last();
+    if !search_close_count_capture_exec(
+        state,
+        CaptureKey::Repetition(12),
+        count,
+        Ghost(input@.len()),
+    ) {
+        search_restore_checkpoint_to_exec(
+            state,
+            checkpoint,
+            Ghost(original_view),
+        );
+        return false;
+    }
+    proof {
+        assert(checkpoint.capture_length <= repeated_marker.capture_count);
+        assert(repeated_marker.capture_count < repeated_marker.second_capture_count);
+        assert(checkpoint.marker_length < repeated_view.markers.len());
+        search_close_count_capture_preserves_checkpoint(
+            checkpoint,
+            original_view,
+            repeated_view,
+            CaptureKey::Repetition(12),
+            count,
+            state.deep_view(),
+        );
+    }
+    if let Some(cached_value) = CachedSemanticHexSequence::from_accumulator(
+        Ghost(input@),
+        semantic_accumulator,
+    ) {
+        state.semantic_cache.set_cache_0(Ghost(input@), cached_value);
+    }
+    if ipv6_search_state_10_exec(input, input_length, input_ascii, state) {
+        true
+    } else {
+        search_restore_checkpoint_to_exec(
+            state,
+            checkpoint,
+            Ghost(original_view),
+        );
+        false
+    }
+}
+
+pub closed spec fn ipv6_search_state_8(
+    input: Seq<char>,
+    state: SearchStateSpec,
+) -> Option<SearchStateSpec> {
+    ipv6_search_state_9(input, search_save(state))
+}
+
+#[inline(always)]
+fn ipv6_search_state_8_exec(
+    input: &str,
+    input_length: usize,
+    input_ascii: bool,
+    state: &mut SearchState,
+) -> (result: bool)
+    requires
+        input@.len() < usize::MAX,
+        input_length == input@.len(),
+        input_ascii == input.is_ascii(),
+        old(state).semantic_cache.matches_input(input@),
+        search_state_bounded(old(state).deep_view(), input@.len()),
+        old(state).storage_well_formed(),
+        old(state).captures@.len() + 8 <= 10,
+        old(state).markers.deep_view().len() + 3 <= 3,
+    ensures
+        result ==> ipv6_search_state_8(input@, old(state).deep_view()) == Some(final(state).deep_view())
+            && search_state_bounded(final(state).deep_view(), input@.len())
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache.matches_input(input@),
+        !result ==> ipv6_search_state_8(input@, old(state).deep_view()).is_none()
+            && final(state).deep_view() == old(state).deep_view()
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache.matches_input(input@),
+{
+    proof { reveal_with_fuel(ipv6_search_state_8, 1); }
+    search_save_exec(state);
+    if ipv6_search_state_9_exec(input, input_length, input_ascii, state) {
+        true
+    } else {
+        search_restore_save_exec(state);
+        false
+    }
+}
+
+pub closed spec fn ipv6_search_state_7(
+    input: Seq<char>,
+    state: SearchStateSpec,
+) -> Option<SearchStateSpec> {
+    match ipv6_search_state_8(input, state) {
+        Some(found) => Some(found),
+        None => ipv6_search_state_11(input, state),
+    }
+}
+
+#[inline(always)]
+fn ipv6_search_state_7_exec(
+    input: &str,
+    input_length: usize,
+    input_ascii: bool,
+    state: &mut SearchState,
+) -> (result: bool)
+    requires
+        input@.len() < usize::MAX,
+        input_length == input@.len(),
+        input_ascii == input.is_ascii(),
+        old(state).semantic_cache.matches_input(input@),
+        search_state_bounded(old(state).deep_view(), input@.len()),
+        old(state).storage_well_formed(),
+        old(state).captures@.len() + 8 <= 10,
+        old(state).markers.deep_view().len() + 3 <= 3,
+    ensures
+        result ==> ipv6_search_state_7(input@, old(state).deep_view()) == Some(final(state).deep_view())
+            && search_state_bounded(final(state).deep_view(), input@.len())
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache.matches_input(input@),
+        !result ==> ipv6_search_state_7(input@, old(state).deep_view()).is_none()
+            && final(state).deep_view() == old(state).deep_view()
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache.matches_input(input@),
+{
+    proof { reveal_with_fuel(ipv6_search_state_7, 1); }
+    if ipv6_search_state_8_exec(input, input_length, input_ascii, state) {
+        true
+    } else {
+    ipv6_search_state_11_exec(input, input_length, input_ascii, state)
+    }
+}
+
+pub closed spec fn ipv6_search_state_2(
+    input: Seq<char>,
+    state: SearchStateSpec,
+) -> Option<SearchStateSpec> {
+    match ipv6_search_state_3(input, state) {
+        Some(found) => Some(found),
+        None => ipv6_search_state_7(input, state),
+    }
+}
+
+#[inline(always)]
+fn ipv6_search_state_2_exec(
+    input: &str,
+    input_length: usize,
+    input_ascii: bool,
+    state: &mut SearchState,
+) -> (result: bool)
+    requires
+        input@.len() < usize::MAX,
+        input_length == input@.len(),
+        input_ascii == input.is_ascii(),
+        old(state).semantic_cache.matches_input(input@),
+        search_state_bounded(old(state).deep_view(), input@.len()),
+        old(state).storage_well_formed(),
+        old(state).captures@.len() + 8 <= 10,
+        old(state).markers.deep_view().len() + 3 <= 3,
+    ensures
+        result ==> ipv6_search_state_2(input@, old(state).deep_view()) == Some(final(state).deep_view())
+            && search_state_bounded(final(state).deep_view(), input@.len())
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache.matches_input(input@),
+        !result ==> ipv6_search_state_2(input@, old(state).deep_view()).is_none()
+            && final(state).deep_view() == old(state).deep_view()
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache.matches_input(input@),
+{
+    proof { reveal_with_fuel(ipv6_search_state_2, 1); }
+    if ipv6_search_state_3_exec(input, input_length, input_ascii, state) {
+        true
+    } else {
+    ipv6_search_state_7_exec(input, input_length, input_ascii, state)
+    }
+}
+
+pub closed spec fn ipv6_search_state_23(
+    input: Seq<char>,
+    state: SearchStateSpec,
+) -> Option<SearchStateSpec> {
+    match search_close_capture_one(state, CaptureKey::Production(9)) {
+        Some(closed) => ipv6_search_state_6(input, closed),
+        None => None,
+    }
+}
+
+#[inline(always)]
+fn ipv6_search_state_23_exec(
+    input: &str,
+    input_length: usize,
+    input_ascii: bool,
+    state: &mut SearchState,
+) -> (result: bool)
+    requires
+        input@.len() < usize::MAX,
+        input_length == input@.len(),
+        input_ascii == input.is_ascii(),
+        old(state).semantic_cache.matches_input(input@),
+        search_state_bounded(old(state).deep_view(), input@.len()),
+        old(state).storage_well_formed(),
+        old(state).captures@.len() + 0 <= 10,
+        old(state).markers.deep_view().len() + 0 <= 3,
+    ensures
+        result ==> ipv6_search_state_23(input@, old(state).deep_view()) == Some(final(state).deep_view())
+            && search_state_bounded(final(state).deep_view(), input@.len())
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache.matches_input(input@),
+        !result ==> ipv6_search_state_23(input@, old(state).deep_view()).is_none()
+            && final(state).deep_view() == old(state).deep_view()
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache.matches_input(input@),
+{
+    proof { reveal_with_fuel(ipv6_search_state_23, 1); }
+    let original = Ghost(state.deep_view());
+    if state.markers.len() == 0 {
+        return false;
+    }
+    let marker = state.markers.get(state.markers.len() - 1);
+    if !search_close_capture_one_exec(state, CaptureKey::Production(9), Ghost(input@.len())) {
+        return false;
+    }
+
+    if ipv6_search_state_6_exec(input, input_length, input_ascii, state) {
+        true
+    } else {
+        search_reopen_capture_one_exec(state, marker, CaptureKey::Production(9), original);
+        false
+    }
+}
+
+pub closed spec fn ipv6_search_width_22(
+    input: Seq<char>,
+    state: SearchStateSpec,
+    width: nat,
+    fuel: nat,
+) -> Option<SearchStateSpec>
+    recommends
+        search_state_bounded(state, input.len()),
+    decreases fuel,
+{
+    let remaining = (input.len() as int - state.end) as nat;
+    if fuel == 0 || width > remaining {
+        None
+    } else if terminal_matches_at(
+        input,
+        state.end,
+        width as int,
+        TokenClass::Digit,
+        LengthSpec::Between { lower: 1, upper: 3 },
+    ) {
+        match ipv6_search_state_23(
+            input,
+            search_advance(state, state.end + width as int),
+        ) {
+            Some(found) => Some(found),
+            None =>
+                if fuel > 1 {
+                    ipv6_search_width_22(input, state, width + 1, (fuel - 1) as nat)
+                } else {
+                    None
+                },
+        }
+    } else {
+        if fuel > 1 {
+            ipv6_search_width_22(input, state, width + 1, (fuel - 1) as nat)
+        } else {
+            None
+        }
+    }
+}
+
+fn ipv6_search_width_22_exec(
+    input: &str,
+    input_length: usize,
+    input_ascii: bool,
+    state: &mut SearchState,
+    width: usize,
+    fuel: usize,
+    prefix_limit: usize,
+    prefix_end: usize,
+) -> (result: bool)
+    requires
+        input@.len() < usize::MAX,
+        input_length == input@.len(),
+        input_ascii == input.is_ascii(),
+        old(state).semantic_cache.matches_input(input@),
+        search_state_bounded(old(state).deep_view(), input@.len()),
+        old(state).storage_well_formed(),
+        old(state).captures@.len() + 0 <= 10,
+        old(state).markers.deep_view().len() + 0 <= 3,
+        search_token_prefix_valid(
+            input@,
+            old(state).deep_view().end,
+            prefix_limit as int,
+            prefix_end as int,
+            TokenClass::Digit,
+        ),
+        width <= prefix_limit - old(state).end,
+        0 < fuel <= prefix_limit - old(state).end - width + 1,
+    ensures
+        result ==> ipv6_search_width_22(
+            input@,
+            old(state).deep_view(),
+            width as nat,
+            fuel as nat,
+        ) == Some(final(state).deep_view())
+            && search_state_bounded(final(state).deep_view(), input@.len())
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache.matches_input(input@),
+        !result ==> ipv6_search_width_22(
+            input@,
+            old(state).deep_view(),
+            width as nat,
+            fuel as nat,
+        ).is_none()
+            && final(state).deep_view() == old(state).deep_view()
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache.matches_input(input@),
+    decreases fuel,
+{
+    proof { reveal_with_fuel(ipv6_search_width_22, 1); }
+    if let Some(found) = search_match_terminal_from_prefix(
+        input,
+        state.end,
+        width,
+        TokenClass::Digit,
+        LengthSpec::Between { lower: 1, upper: 3 },
+        prefix_limit,
+        prefix_end,
+    ) {
+        let previous_end = state.end;
+        search_advance_exec(state, found.end);
+        if ipv6_search_state_23_exec(input, input_length, input_ascii, state) {
+            return true;
+        }
+        search_restore_end_exec(state, previous_end);
+    }
+    if fuel > 1 {
+        ipv6_search_width_22_exec(
+            input,
+            input_length,
+            input_ascii,
+            state,
+            width + 1,
+            fuel - 1,
+            prefix_limit,
+            prefix_end,
+        )
+    } else {
+        false
+    }
+}
+
+pub closed spec fn ipv6_search_state_22(
+    input: Seq<char>,
+    state: SearchStateSpec,
+) -> Option<SearchStateSpec> {
+    let remaining = (input.len() as int - state.end) as nat;
+    if 1 > remaining {
+        None
+    } else {
+        let limit = if 3 < remaining { 3 } else { remaining };
+        ipv6_search_width_22(input, state, 1, (limit - 1 + 1) as nat)
+    }
+}
+
+#[inline(always)]
+fn ipv6_search_state_22_exec(
+    input: &str,
+    input_length: usize,
+    input_ascii: bool,
+    state: &mut SearchState,
+) -> (result: bool)
+    requires
+        input@.len() < usize::MAX,
+        input_length == input@.len(),
+        input_ascii == input.is_ascii(),
+        old(state).semantic_cache.matches_input(input@),
+        search_state_bounded(old(state).deep_view(), input@.len()),
+        old(state).storage_well_formed(),
+        old(state).captures@.len() + 0 <= 10,
+        old(state).markers.deep_view().len() + 0 <= 3,
+    ensures
+        result ==> ipv6_search_state_22(input@, old(state).deep_view()) == Some(final(state).deep_view())
+            && search_state_bounded(final(state).deep_view(), input@.len())
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache.matches_input(input@),
+        !result ==> ipv6_search_state_22(input@, old(state).deep_view()).is_none()
+            && final(state).deep_view() == old(state).deep_view()
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache.matches_input(input@),
+{
+    proof { reveal_with_fuel(ipv6_search_state_22, 1); }
+    let remaining = input_length - state.end;
+    if 1 > remaining {
+        proof { reveal_with_fuel(ipv6_search_state_22, 1); }
+        false
+    } else {
+        let limit = if 3 < remaining { 3 } else { remaining };
+        let prefix_limit = state.end + limit;
+        let prefix_end = search_token_prefix_end(
+            input,
+            input_length,
+            input_ascii,
+            state.end,
+            prefix_limit,
+            TokenClass::Digit,
+        );
+        ipv6_search_width_22_exec(
+            input,
+            input_length,
+            input_ascii,
+            state,
+            1,
+            limit - 1 + 1,
+            prefix_limit,
+            prefix_end,
+        )
+    }
+}
+
+pub closed spec fn ipv6_search_state_21(
+    input: Seq<char>,
+    state: SearchStateSpec,
+) -> Option<SearchStateSpec> {
+    ipv6_search_state_22(input, search_save(state))
+}
+
+#[inline(always)]
+fn ipv6_search_state_21_exec(
     input: &str,
     input_length: usize,
     input_ascii: bool,
@@ -7872,6 +7101,1190 @@ fn ipv6_search_state_28_exec(
         old(state).captures@.len() + 2 <= 10,
         old(state).markers.deep_view().len() + 1 <= 3,
     ensures
+        result ==> ipv6_search_state_21(input@, old(state).deep_view()) == Some(final(state).deep_view())
+            && search_state_bounded(final(state).deep_view(), input@.len())
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache.matches_input(input@),
+        !result ==> ipv6_search_state_21(input@, old(state).deep_view()).is_none()
+            && final(state).deep_view() == old(state).deep_view()
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache.matches_input(input@),
+{
+    proof { reveal_with_fuel(ipv6_search_state_21, 1); }
+    search_save_exec(state);
+    if ipv6_search_state_22_exec(input, input_length, input_ascii, state) {
+        true
+    } else {
+        search_restore_save_exec(state);
+        false
+    }
+}
+
+pub closed spec fn ipv6_search_state_20(
+    input: Seq<char>,
+    state: SearchStateSpec,
+) -> Option<SearchStateSpec> {
+    if literal_matches_at(input, state.end, "/"@) {
+        ipv6_search_state_21(
+            input,
+            search_advance(state, state.end + "/"@.len()),
+        )
+    } else {
+        None
+    }
+}
+
+fn ipv6_search_state_20_exec(
+    input: &str,
+    input_length: usize,
+    input_ascii: bool,
+    state: &mut SearchState,
+) -> (result: bool)
+    requires
+        input@.len() < usize::MAX,
+        input_length == input@.len(),
+        input_ascii == input.is_ascii(),
+        old(state).semantic_cache.matches_input(input@),
+        search_state_bounded(old(state).deep_view(), input@.len()),
+        old(state).storage_well_formed(),
+        old(state).captures@.len() + 2 <= 10,
+        old(state).markers.deep_view().len() + 1 <= 3,
+    ensures
+        result ==> ipv6_search_state_20(input@, old(state).deep_view()) == Some(final(state).deep_view())
+            && search_state_bounded(final(state).deep_view(), input@.len())
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache.matches_input(input@),
+        !result ==> ipv6_search_state_20(input@, old(state).deep_view()).is_none()
+            && final(state).deep_view() == old(state).deep_view()
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache.matches_input(input@),
+{
+    proof { reveal_with_fuel(ipv6_search_state_20, 1); }
+    match search_match_literal_at(
+        input,
+        input_length,
+        input_ascii,
+        state.end,
+        "/",
+    ) {
+        Some(found) => {
+            let previous_end = state.end;
+            search_advance_exec(state, found.end);
+            if ipv6_search_state_21_exec(input, input_length, input_ascii, state) {
+                true
+            } else {
+                search_restore_end_exec(state, previous_end);
+                false
+            }
+        },
+        None => false,
+    }
+}
+
+pub closed spec fn ipv6_search_state_19(
+    input: Seq<char>,
+    state: SearchStateSpec,
+) -> Option<SearchStateSpec> {
+    match search_close_capture_one(state, CaptureKey::Production(2)) {
+        Some(closed) => ipv6_search_state_20(input, closed),
+        None => None,
+    }
+}
+
+#[inline(always)]
+fn ipv6_search_state_19_exec(
+    input: &str,
+    input_length: usize,
+    input_ascii: bool,
+    state: &mut SearchState,
+) -> (result: bool)
+    requires
+        input@.len() < usize::MAX,
+        input_length == input@.len(),
+        input_ascii == input.is_ascii(),
+        old(state).semantic_cache.matches_input(input@),
+        search_state_bounded(old(state).deep_view(), input@.len()),
+        old(state).storage_well_formed(),
+        old(state).captures@.len() + 2 <= 10,
+        old(state).markers.deep_view().len() + 1 <= 3,
+    ensures
+        result ==> ipv6_search_state_19(input@, old(state).deep_view()) == Some(final(state).deep_view())
+            && search_state_bounded(final(state).deep_view(), input@.len())
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache.matches_input(input@),
+        !result ==> ipv6_search_state_19(input@, old(state).deep_view()).is_none()
+            && final(state).deep_view() == old(state).deep_view()
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache.matches_input(input@),
+{
+    proof { reveal_with_fuel(ipv6_search_state_19, 1); }
+    let original = Ghost(state.deep_view());
+    if state.markers.len() == 0 {
+        return false;
+    }
+    let marker = state.markers.get(state.markers.len() - 1);
+    if !search_close_capture_one_exec(state, CaptureKey::Production(2), Ghost(input@.len())) {
+        return false;
+    }
+
+    if ipv6_search_state_20_exec(input, input_length, input_ascii, state) {
+        true
+    } else {
+        search_reopen_capture_one_exec(state, marker, CaptureKey::Production(2), original);
+        false
+    }
+}
+
+pub closed spec fn ipv6_search_state_18_item(
+    input: Seq<char>,
+    state: SearchStateSpec,
+) -> Option<SearchStateSpec> {
+    let input_length = input.len() as int;
+    let remaining = input_length - state.end;
+    let limit = if 4 < remaining {
+        state.end + 4
+    } else {
+        input_length
+    };
+    let end = search_token_prefix_end_spec(
+        input,
+        state.end,
+        limit,
+        TokenClass::HexDigit,
+    );
+    let width = end - state.end;
+    if terminal_matches_at(
+        input,
+        state.end,
+        width,
+        TokenClass::HexDigit,
+        LengthSpec::Between { lower: 1, upper: 4 },
+    ) {
+        Some(search_advance(state, end))
+    } else {
+        None
+    }
+}
+
+#[inline(always)]
+fn ipv6_search_state_18_item_exec(
+    input: &str,
+    input_length: usize,
+    input_ascii: bool,
+    state: &mut SearchState,
+) -> (result: Option<SemanticHexPrefixSummary>)
+    requires
+        input@.len() < usize::MAX,
+        input_length == input@.len(),
+        input_ascii == input.is_ascii(),
+        old(state).semantic_cache.matches_input(input@),
+        search_state_bounded(old(state).deep_view(), input@.len()),
+        old(state).storage_well_formed(),
+        old(state).captures@.len() + 0 <= 10,
+        old(state).markers.deep_view().len() <= 3,
+    ensures
+        match result {
+            Some(summary) =>
+                ipv6_search_state_18_item(input@, old(state).deep_view())
+                    == Some(final(state).deep_view())
+                && search_state_bounded(final(state).deep_view(), input@.len())
+                && final(state).storage_well_formed()
+                && final(state).captures@.len()
+                    == old(state).captures@.len() + 0
+                && final(state).captures@.take(old(state).captures@.len() as int)
+                    == old(state).captures@
+                && final(state).markers.deep_view()
+                    == old(state).markers.deep_view()
+                && final(state).semantic_cache.matches_input(input@)
+                && old(state).end < summary.end
+                && summary.end == final(state).end
+                && summary.value as int == triptych_hex_seq_of(
+                    input@.subrange(old(state).end as int, summary.end as int)
+                )
+                && forall|index: int| old(state).end <= index < summary.end ==>
+                    #[trigger] input@[index] != ':',
+            None =>
+                ipv6_search_state_18_item(input@, old(state).deep_view()).is_none()
+                && final(state).deep_view() == old(state).deep_view()
+                && final(state).storage_well_formed()
+                && final(state).semantic_cache.matches_input(input@),
+        },
+{
+    proof { reveal_with_fuel(ipv6_search_state_18_item, 1); }
+    let capture_start = state.end;
+    let prefix_limit = if 4 < input_length - state.end {
+        state.end + 4
+    } else {
+        input_length
+    };
+    proof {
+        assert((prefix_limit as int) - (capture_start as int) <= 4);
+    }
+    let prefix = semantic_hex_prefix_summary(
+        input,
+        input_length,
+        input_ascii,
+        capture_start,
+        prefix_limit,
+    );
+    let width = prefix.end - capture_start;
+    if let Some(found) = search_match_terminal_from_prefix(
+        input,
+        capture_start,
+        width,
+        TokenClass::HexDigit,
+        LengthSpec::Between { lower: 1, upper: 4 },
+        prefix_limit,
+        prefix.end,
+    ) {
+        search_advance_exec(state, found.end);
+        proof {
+            assert(found.end == prefix.end);
+            reveal(terminal_matches_at);
+            reveal(length_accepts);
+            assert(capture_start < prefix.end);
+        }
+        return Some(prefix);
+    }
+    None
+}
+
+pub closed spec fn ipv6_search_state_18_tail(
+    input: Seq<char>,
+    state: SearchStateSpec,
+    remaining: nat,
+    count: nat,
+) -> SearchRepeatResultSpec
+    decreases remaining,
+{
+    if remaining == 0 {
+        SearchRepeatResultSpec { state, count }
+    } else if literal_matches_at(input, state.end, ":"@) {
+        let separated = search_advance(
+            state,
+            state.end + ":"@.len(),
+        );
+        match ipv6_search_state_18_item(input, separated) {
+            Some(found) =>
+                ipv6_search_state_18_tail(
+                    input,
+                    found,
+                    (remaining - 1) as nat,
+                    count + 1,
+                ),
+            None => SearchRepeatResultSpec { state, count },
+        }
+    } else {
+        SearchRepeatResultSpec { state, count }
+    }
+}
+
+fn ipv6_search_state_18_tail_exec(
+    input: &str,
+    input_length: usize,
+    input_ascii: bool,
+    state: &mut SearchState,
+    remaining: usize,
+    count: usize,
+    accumulator: &mut SemanticHexSequenceAccumulator,
+) -> (result: usize)
+    requires
+        input@.len() < usize::MAX,
+        input_length == input@.len(),
+        input_ascii == input.is_ascii(),
+        old(state).semantic_cache.matches_input(input@),
+        old(accumulator).source_matches(input@),
+        old(accumulator).end == old(state).end,
+        search_state_bounded(old(state).deep_view(), input@.len()),
+        old(state).storage_well_formed(),
+        old(state).captures@.len()
+            + 0 * remaining <= 10,
+        old(state).markers.deep_view().len() <= 3,
+        count + remaining < usize::MAX,
+    ensures
+        ipv6_search_state_18_tail(
+            input@,
+            old(state).deep_view(),
+            remaining as nat,
+            count as nat,
+        ) == (SearchRepeatResultSpec {
+            state: final(state).deep_view(),
+            count: result as nat,
+        }),
+        search_state_bounded(final(state).deep_view(), input@.len()),
+        final(state).storage_well_formed(),
+        final(state).captures@.len()
+            == old(state).captures@.len()
+                + 0 * (result - count),
+        final(state).captures@.take(old(state).captures@.len() as int)
+            == old(state).captures@,
+        final(state).markers.deep_view() == old(state).markers.deep_view(),
+        final(state).semantic_cache.matches_input(input@),
+        final(accumulator).source_matches(input@),
+        final(accumulator).start == old(accumulator).start,
+        final(accumulator).end == final(state).end,
+        count <= result <= count + remaining,
+    decreases remaining,
+{
+    proof { reveal_with_fuel(ipv6_search_state_18_tail, 1); }
+    if remaining == 0 {
+        return count;
+    }
+    let previous_end = state.end;
+    proof {
+        reveal_strlit(":");
+        assert(":"@.len() == 1);
+    }
+    match search_match_single_literal_at(
+        input,
+        input_length,
+        input_ascii,
+        state.end,
+        ":",
+    ) {
+        Some(found) => {
+            let group_start = found.end;
+            search_advance_exec(state, group_start);
+            match ipv6_search_state_18_item_exec(input, input_length, input_ascii, state) {
+                Some(prefix) => {
+                    proof {
+                        assert(
+                            0 * (remaining - 1)
+                                + 0
+                            == 0 * remaining
+                        );
+                        reveal(literal_matches_at);
+                        reveal_strlit(":");
+                        assert(":"@.len() == 1);
+                        assert(group_start == previous_end + 1);
+                        assert(input@.subrange(
+                            previous_end as int,
+                            previous_end as int + 1,
+                        ) == ":"@);
+                        assert(input@[previous_end as int]
+                            == ":"@[0]);
+                        assert(":"@[0] == ':');
+                        assert(input@[previous_end as int] == ':');
+                    }
+                    accumulator.push_group(Ghost(input@), group_start, prefix);
+                    return ipv6_search_state_18_tail_exec(
+                        input,
+                        input_length,
+                        input_ascii,
+                        state,
+                        remaining - 1,
+                        count + 1,
+                        accumulator,
+                    );
+                },
+                None => {},
+            }
+            search_restore_end_exec(state, previous_end);
+        },
+        None => {},
+    }
+    count
+}
+
+pub closed spec fn ipv6_search_state_18(
+    input: Seq<char>,
+    state: SearchStateSpec,
+) -> Option<SearchStateSpec> {
+    match ipv6_search_state_18_item(input, search_save(state)) {
+        Some(first) => {
+            let repeated = ipv6_search_state_18_tail(input, first, 7, 1);
+            if 8 <= repeated.count {
+                match search_close_count_capture(
+                    repeated.state,
+                    CaptureKey::Repetition(7),
+                    repeated.count as usize,
+                ) {
+                    Some(closed) => ipv6_search_state_19(input, closed),
+                    None => None,
+                }
+            } else {
+                None
+            }
+        },
+        None => None,
+    }
+}
+
+#[verifier::rlimit(200)]
+#[inline(always)]
+fn ipv6_search_state_18_exec(
+    input: &str,
+    input_length: usize,
+    input_ascii: bool,
+    state: &mut SearchState,
+) -> (result: bool)
+    requires
+        input@.len() < usize::MAX,
+        input_length == input@.len(),
+        input_ascii == input.is_ascii(),
+        old(state).semantic_cache.matches_input(input@),
+        search_state_bounded(old(state).deep_view(), input@.len()),
+        old(state).storage_well_formed(),
+        old(state).captures@.len() + 4 <= 10,
+        old(state).markers.deep_view().len() + 1 <= 3,
+    ensures
+        result ==> ipv6_search_state_18(input@, old(state).deep_view()) == Some(final(state).deep_view())
+            && search_state_bounded(final(state).deep_view(), input@.len())
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache.matches_input(input@),
+        !result ==> ipv6_search_state_18(input@, old(state).deep_view()).is_none()
+            && final(state).deep_view() == old(state).deep_view()
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache.matches_input(input@),
+{
+    let checkpoint = search_checkpoint(state);
+    let ghost original_view = state.deep_view();
+    proof {
+        reveal_with_fuel(ipv6_search_state_18, 1);
+    }
+    search_save_exec(state);
+    let ghost saved_view = state.deep_view();
+    proof {
+        search_save_preserves_checkpoint(
+            checkpoint,
+            original_view,
+            original_view,
+        );
+        assert(search_checkpoint_matches(
+            checkpoint,
+            original_view,
+            saved_view,
+        ));
+    }
+    let sequence_start = state.end;
+    let first_prefix = match ipv6_search_state_18_item_exec(input, input_length, input_ascii, state) {
+        Some(prefix) => prefix,
+        None => {
+            search_restore_checkpoint_to_exec(
+                state,
+                checkpoint,
+                Ghost(original_view),
+            );
+            return false;
+        },
+    };
+    let mut semantic_accumulator = SemanticHexSequenceAccumulator::first(
+        Ghost(input@),
+        sequence_start,
+        first_prefix,
+    );
+    proof {
+        search_checkpoint_matches_transitive(
+            checkpoint,
+            original_view,
+            saved_view,
+            state.deep_view(),
+        );
+    }
+    let ghost first_view = state.deep_view();
+    let count = ipv6_search_state_18_tail_exec(
+        input,
+        input_length,
+        input_ascii,
+        state,
+        7,
+        1,
+        &mut semantic_accumulator,
+    );
+    proof {
+        search_checkpoint_matches_transitive(
+            checkpoint,
+            original_view,
+            first_view,
+            state.deep_view(),
+        );
+    }
+    let ghost repeated_view = state.deep_view();
+    if count < 8 {
+        search_restore_checkpoint_to_exec(
+            state,
+            checkpoint,
+            Ghost(original_view),
+        );
+        return false;
+    }
+    let ghost repeated_marker = state.deep_view().markers.last();
+    if !search_close_count_capture_exec(
+        state,
+        CaptureKey::Repetition(7),
+        count,
+        Ghost(input@.len()),
+    ) {
+        search_restore_checkpoint_to_exec(
+            state,
+            checkpoint,
+            Ghost(original_view),
+        );
+        return false;
+    }
+    proof {
+        assert(checkpoint.capture_length <= repeated_marker.capture_count);
+        assert(repeated_marker.capture_count < repeated_marker.second_capture_count);
+        assert(checkpoint.marker_length < repeated_view.markers.len());
+        search_close_count_capture_preserves_checkpoint(
+            checkpoint,
+            original_view,
+            repeated_view,
+            CaptureKey::Repetition(7),
+            count,
+            state.deep_view(),
+        );
+    }
+    if let Some(cached_value) = CachedSemanticHexSequence::from_accumulator(
+        Ghost(input@),
+        semantic_accumulator,
+    ) {
+        state.semantic_cache.set_cache_2(Ghost(input@), cached_value);
+    }
+    if ipv6_search_state_19_exec(input, input_length, input_ascii, state) {
+        true
+    } else {
+        search_restore_checkpoint_to_exec(
+            state,
+            checkpoint,
+            Ghost(original_view),
+        );
+        false
+    }
+}
+
+pub closed spec fn ipv6_search_state_17(
+    input: Seq<char>,
+    state: SearchStateSpec,
+) -> Option<SearchStateSpec> {
+    ipv6_search_state_18(input, search_save(state))
+}
+
+#[inline(always)]
+fn ipv6_search_state_17_exec(
+    input: &str,
+    input_length: usize,
+    input_ascii: bool,
+    state: &mut SearchState,
+) -> (result: bool)
+    requires
+        input@.len() < usize::MAX,
+        input_length == input@.len(),
+        input_ascii == input.is_ascii(),
+        old(state).semantic_cache.matches_input(input@),
+        search_state_bounded(old(state).deep_view(), input@.len()),
+        old(state).storage_well_formed(),
+        old(state).captures@.len() + 6 <= 10,
+        old(state).markers.deep_view().len() + 2 <= 3,
+    ensures
+        result ==> ipv6_search_state_17(input@, old(state).deep_view()) == Some(final(state).deep_view())
+            && search_state_bounded(final(state).deep_view(), input@.len())
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache.matches_input(input@),
+        !result ==> ipv6_search_state_17(input@, old(state).deep_view()).is_none()
+            && final(state).deep_view() == old(state).deep_view()
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache.matches_input(input@),
+{
+    proof { reveal_with_fuel(ipv6_search_state_17, 1); }
+    search_save_exec(state);
+    if ipv6_search_state_18_exec(input, input_length, input_ascii, state) {
+        true
+    } else {
+        search_restore_save_exec(state);
+        false
+    }
+}
+
+pub closed spec fn ipv6_search_state_32(
+    input: Seq<char>,
+    state: SearchStateSpec,
+) -> Option<SearchStateSpec> {
+    match search_close_capture_one(state, CaptureKey::Production(5)) {
+        Some(closed) => ipv6_search_state_20(input, closed),
+        None => None,
+    }
+}
+
+#[inline(always)]
+fn ipv6_search_state_32_exec(
+    input: &str,
+    input_length: usize,
+    input_ascii: bool,
+    state: &mut SearchState,
+) -> (result: bool)
+    requires
+        input@.len() < usize::MAX,
+        input_length == input@.len(),
+        input_ascii == input.is_ascii(),
+        old(state).semantic_cache.matches_input(input@),
+        search_state_bounded(old(state).deep_view(), input@.len()),
+        old(state).storage_well_formed(),
+        old(state).captures@.len() + 2 <= 10,
+        old(state).markers.deep_view().len() + 1 <= 3,
+    ensures
+        result ==> ipv6_search_state_32(input@, old(state).deep_view()) == Some(final(state).deep_view())
+            && search_state_bounded(final(state).deep_view(), input@.len())
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache.matches_input(input@),
+        !result ==> ipv6_search_state_32(input@, old(state).deep_view()).is_none()
+            && final(state).deep_view() == old(state).deep_view()
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache.matches_input(input@),
+{
+    proof { reveal_with_fuel(ipv6_search_state_32, 1); }
+    let original = Ghost(state.deep_view());
+    if state.markers.len() == 0 {
+        return false;
+    }
+    let marker = state.markers.get(state.markers.len() - 1);
+    if !search_close_capture_one_exec(state, CaptureKey::Production(5), Ghost(input@.len())) {
+        return false;
+    }
+
+    if ipv6_search_state_20_exec(input, input_length, input_ascii, state) {
+        true
+    } else {
+        search_reopen_capture_one_exec(state, marker, CaptureKey::Production(5), original);
+        false
+    }
+}
+
+pub closed spec fn ipv6_search_state_31_item(
+    input: Seq<char>,
+    state: SearchStateSpec,
+) -> Option<SearchStateSpec> {
+    let input_length = input.len() as int;
+    let remaining = input_length - state.end;
+    let limit = if 4 < remaining {
+        state.end + 4
+    } else {
+        input_length
+    };
+    let end = search_token_prefix_end_spec(
+        input,
+        state.end,
+        limit,
+        TokenClass::HexDigit,
+    );
+    let width = end - state.end;
+    if terminal_matches_at(
+        input,
+        state.end,
+        width,
+        TokenClass::HexDigit,
+        LengthSpec::Between { lower: 1, upper: 4 },
+    ) {
+        Some(search_advance(state, end))
+    } else {
+        None
+    }
+}
+
+#[inline(always)]
+fn ipv6_search_state_31_item_exec(
+    input: &str,
+    input_length: usize,
+    input_ascii: bool,
+    state: &mut SearchState,
+) -> (result: Option<SemanticHexPrefixSummary>)
+    requires
+        input@.len() < usize::MAX,
+        input_length == input@.len(),
+        input_ascii == input.is_ascii(),
+        old(state).semantic_cache.matches_input(input@),
+        search_state_bounded(old(state).deep_view(), input@.len()),
+        old(state).storage_well_formed(),
+        old(state).captures@.len() + 0 <= 10,
+        old(state).markers.deep_view().len() <= 3,
+    ensures
+        match result {
+            Some(summary) =>
+                ipv6_search_state_31_item(input@, old(state).deep_view())
+                    == Some(final(state).deep_view())
+                && search_state_bounded(final(state).deep_view(), input@.len())
+                && final(state).storage_well_formed()
+                && final(state).captures@.len()
+                    == old(state).captures@.len() + 0
+                && final(state).captures@.take(old(state).captures@.len() as int)
+                    == old(state).captures@
+                && final(state).markers.deep_view()
+                    == old(state).markers.deep_view()
+                && final(state).semantic_cache.matches_input(input@)
+                && old(state).end < summary.end
+                && summary.end == final(state).end
+                && summary.value as int == triptych_hex_seq_of(
+                    input@.subrange(old(state).end as int, summary.end as int)
+                )
+                && forall|index: int| old(state).end <= index < summary.end ==>
+                    #[trigger] input@[index] != ':',
+            None =>
+                ipv6_search_state_31_item(input@, old(state).deep_view()).is_none()
+                && final(state).deep_view() == old(state).deep_view()
+                && final(state).storage_well_formed()
+                && final(state).semantic_cache.matches_input(input@),
+        },
+{
+    proof { reveal_with_fuel(ipv6_search_state_31_item, 1); }
+    let capture_start = state.end;
+    let prefix_limit = if 4 < input_length - state.end {
+        state.end + 4
+    } else {
+        input_length
+    };
+    proof {
+        assert((prefix_limit as int) - (capture_start as int) <= 4);
+    }
+    let prefix = semantic_hex_prefix_summary(
+        input,
+        input_length,
+        input_ascii,
+        capture_start,
+        prefix_limit,
+    );
+    let width = prefix.end - capture_start;
+    if let Some(found) = search_match_terminal_from_prefix(
+        input,
+        capture_start,
+        width,
+        TokenClass::HexDigit,
+        LengthSpec::Between { lower: 1, upper: 4 },
+        prefix_limit,
+        prefix.end,
+    ) {
+        search_advance_exec(state, found.end);
+        proof {
+            assert(found.end == prefix.end);
+            reveal(terminal_matches_at);
+            reveal(length_accepts);
+            assert(capture_start < prefix.end);
+        }
+        return Some(prefix);
+    }
+    None
+}
+
+pub closed spec fn ipv6_search_state_31_tail(
+    input: Seq<char>,
+    state: SearchStateSpec,
+    remaining: nat,
+    count: nat,
+) -> SearchRepeatResultSpec
+    decreases remaining,
+{
+    if remaining == 0 {
+        SearchRepeatResultSpec { state, count }
+    } else if literal_matches_at(input, state.end, ":"@) {
+        let separated = search_advance(
+            state,
+            state.end + ":"@.len(),
+        );
+        match ipv6_search_state_31_item(input, separated) {
+            Some(found) =>
+                ipv6_search_state_31_tail(
+                    input,
+                    found,
+                    (remaining - 1) as nat,
+                    count + 1,
+                ),
+            None => SearchRepeatResultSpec { state, count },
+        }
+    } else {
+        SearchRepeatResultSpec { state, count }
+    }
+}
+
+fn ipv6_search_state_31_tail_exec(
+    input: &str,
+    input_length: usize,
+    input_ascii: bool,
+    state: &mut SearchState,
+    remaining: usize,
+    count: usize,
+    accumulator: &mut SemanticHexSequenceAccumulator,
+) -> (result: usize)
+    requires
+        input@.len() < usize::MAX,
+        input_length == input@.len(),
+        input_ascii == input.is_ascii(),
+        old(state).semantic_cache.matches_input(input@),
+        old(accumulator).source_matches(input@),
+        old(accumulator).end == old(state).end,
+        search_state_bounded(old(state).deep_view(), input@.len()),
+        old(state).storage_well_formed(),
+        old(state).captures@.len()
+            + 0 * remaining <= 10,
+        old(state).markers.deep_view().len() <= 3,
+        count + remaining < usize::MAX,
+    ensures
+        ipv6_search_state_31_tail(
+            input@,
+            old(state).deep_view(),
+            remaining as nat,
+            count as nat,
+        ) == (SearchRepeatResultSpec {
+            state: final(state).deep_view(),
+            count: result as nat,
+        }),
+        search_state_bounded(final(state).deep_view(), input@.len()),
+        final(state).storage_well_formed(),
+        final(state).captures@.len()
+            == old(state).captures@.len()
+                + 0 * (result - count),
+        final(state).captures@.take(old(state).captures@.len() as int)
+            == old(state).captures@,
+        final(state).markers.deep_view() == old(state).markers.deep_view(),
+        final(state).semantic_cache.matches_input(input@),
+        final(accumulator).source_matches(input@),
+        final(accumulator).start == old(accumulator).start,
+        final(accumulator).end == final(state).end,
+        count <= result <= count + remaining,
+    decreases remaining,
+{
+    proof { reveal_with_fuel(ipv6_search_state_31_tail, 1); }
+    if remaining == 0 {
+        return count;
+    }
+    let previous_end = state.end;
+    proof {
+        reveal_strlit(":");
+        assert(":"@.len() == 1);
+    }
+    match search_match_single_literal_at(
+        input,
+        input_length,
+        input_ascii,
+        state.end,
+        ":",
+    ) {
+        Some(found) => {
+            let group_start = found.end;
+            search_advance_exec(state, group_start);
+            match ipv6_search_state_31_item_exec(input, input_length, input_ascii, state) {
+                Some(prefix) => {
+                    proof {
+                        assert(
+                            0 * (remaining - 1)
+                                + 0
+                            == 0 * remaining
+                        );
+                        reveal(literal_matches_at);
+                        reveal_strlit(":");
+                        assert(":"@.len() == 1);
+                        assert(group_start == previous_end + 1);
+                        assert(input@.subrange(
+                            previous_end as int,
+                            previous_end as int + 1,
+                        ) == ":"@);
+                        assert(input@[previous_end as int]
+                            == ":"@[0]);
+                        assert(":"@[0] == ':');
+                        assert(input@[previous_end as int] == ':');
+                    }
+                    accumulator.push_group(Ghost(input@), group_start, prefix);
+                    return ipv6_search_state_31_tail_exec(
+                        input,
+                        input_length,
+                        input_ascii,
+                        state,
+                        remaining - 1,
+                        count + 1,
+                        accumulator,
+                    );
+                },
+                None => {},
+            }
+            search_restore_end_exec(state, previous_end);
+        },
+        None => {},
+    }
+    count
+}
+
+pub closed spec fn ipv6_search_state_31(
+    input: Seq<char>,
+    state: SearchStateSpec,
+) -> Option<SearchStateSpec> {
+    match ipv6_search_state_31_item(input, search_save(state)) {
+        Some(first) => {
+            let repeated = ipv6_search_state_31_tail(input, first, 6, 1);
+            if 1 <= repeated.count {
+                match search_close_count_capture(
+                    repeated.state,
+                    CaptureKey::Repetition(14),
+                    repeated.count as usize,
+                ) {
+                    Some(closed) => ipv6_search_state_32(input, closed),
+                    None => None,
+                }
+            } else {
+                None
+            }
+        },
+        None => None,
+    }
+}
+
+#[verifier::rlimit(200)]
+#[inline(always)]
+fn ipv6_search_state_31_exec(
+    input: &str,
+    input_length: usize,
+    input_ascii: bool,
+    state: &mut SearchState,
+) -> (result: bool)
+    requires
+        input@.len() < usize::MAX,
+        input_length == input@.len(),
+        input_ascii == input.is_ascii(),
+        old(state).semantic_cache.matches_input(input@),
+        search_state_bounded(old(state).deep_view(), input@.len()),
+        old(state).storage_well_formed(),
+        old(state).captures@.len() + 4 <= 10,
+        old(state).markers.deep_view().len() + 1 <= 3,
+    ensures
+        result ==> ipv6_search_state_31(input@, old(state).deep_view()) == Some(final(state).deep_view())
+            && search_state_bounded(final(state).deep_view(), input@.len())
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache.matches_input(input@),
+        !result ==> ipv6_search_state_31(input@, old(state).deep_view()).is_none()
+            && final(state).deep_view() == old(state).deep_view()
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache.matches_input(input@),
+{
+    let checkpoint = search_checkpoint(state);
+    let ghost original_view = state.deep_view();
+    proof {
+        reveal_with_fuel(ipv6_search_state_31, 1);
+    }
+    search_save_exec(state);
+    let ghost saved_view = state.deep_view();
+    proof {
+        search_save_preserves_checkpoint(
+            checkpoint,
+            original_view,
+            original_view,
+        );
+        assert(search_checkpoint_matches(
+            checkpoint,
+            original_view,
+            saved_view,
+        ));
+    }
+    let sequence_start = state.end;
+    let first_prefix = match ipv6_search_state_31_item_exec(input, input_length, input_ascii, state) {
+        Some(prefix) => prefix,
+        None => {
+            search_restore_checkpoint_to_exec(
+                state,
+                checkpoint,
+                Ghost(original_view),
+            );
+            return false;
+        },
+    };
+    let mut semantic_accumulator = SemanticHexSequenceAccumulator::first(
+        Ghost(input@),
+        sequence_start,
+        first_prefix,
+    );
+    proof {
+        search_checkpoint_matches_transitive(
+            checkpoint,
+            original_view,
+            saved_view,
+            state.deep_view(),
+        );
+    }
+    let ghost first_view = state.deep_view();
+    let count = ipv6_search_state_31_tail_exec(
+        input,
+        input_length,
+        input_ascii,
+        state,
+        6,
+        1,
+        &mut semantic_accumulator,
+    );
+    proof {
+        search_checkpoint_matches_transitive(
+            checkpoint,
+            original_view,
+            first_view,
+            state.deep_view(),
+        );
+    }
+    let ghost repeated_view = state.deep_view();
+    if count < 1 {
+        search_restore_checkpoint_to_exec(
+            state,
+            checkpoint,
+            Ghost(original_view),
+        );
+        return false;
+    }
+    let ghost repeated_marker = state.deep_view().markers.last();
+    if !search_close_count_capture_exec(
+        state,
+        CaptureKey::Repetition(14),
+        count,
+        Ghost(input@.len()),
+    ) {
+        search_restore_checkpoint_to_exec(
+            state,
+            checkpoint,
+            Ghost(original_view),
+        );
+        return false;
+    }
+    proof {
+        assert(checkpoint.capture_length <= repeated_marker.capture_count);
+        assert(repeated_marker.capture_count < repeated_marker.second_capture_count);
+        assert(checkpoint.marker_length < repeated_view.markers.len());
+        search_close_count_capture_preserves_checkpoint(
+            checkpoint,
+            original_view,
+            repeated_view,
+            CaptureKey::Repetition(14),
+            count,
+            state.deep_view(),
+        );
+    }
+    if let Some(cached_value) = CachedSemanticHexSequence::from_accumulator(
+        Ghost(input@),
+        semantic_accumulator,
+    ) {
+        state.semantic_cache.set_cache_1(Ghost(input@), cached_value);
+    }
+    if ipv6_search_state_32_exec(input, input_length, input_ascii, state) {
+        true
+    } else {
+        search_restore_checkpoint_to_exec(
+            state,
+            checkpoint,
+            Ghost(original_view),
+        );
+        false
+    }
+}
+
+pub closed spec fn ipv6_search_state_30(
+    input: Seq<char>,
+    state: SearchStateSpec,
+) -> Option<SearchStateSpec> {
+    ipv6_search_state_31(input, search_save(state))
+}
+
+#[inline(always)]
+fn ipv6_search_state_30_exec(
+    input: &str,
+    input_length: usize,
+    input_ascii: bool,
+    state: &mut SearchState,
+) -> (result: bool)
+    requires
+        input@.len() < usize::MAX,
+        input_length == input@.len(),
+        input_ascii == input.is_ascii(),
+        old(state).semantic_cache.matches_input(input@),
+        search_state_bounded(old(state).deep_view(), input@.len()),
+        old(state).storage_well_formed(),
+        old(state).captures@.len() + 6 <= 10,
+        old(state).markers.deep_view().len() + 2 <= 3,
+    ensures
+        result ==> ipv6_search_state_30(input@, old(state).deep_view()) == Some(final(state).deep_view())
+            && search_state_bounded(final(state).deep_view(), input@.len())
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache.matches_input(input@),
+        !result ==> ipv6_search_state_30(input@, old(state).deep_view()).is_none()
+            && final(state).deep_view() == old(state).deep_view()
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache.matches_input(input@),
+{
+    proof { reveal_with_fuel(ipv6_search_state_30, 1); }
+    search_save_exec(state);
+    if ipv6_search_state_31_exec(input, input_length, input_ascii, state) {
+        true
+    } else {
+        search_restore_save_exec(state);
+        false
+    }
+}
+
+pub closed spec fn ipv6_search_state_29(
+    input: Seq<char>,
+    state: SearchStateSpec,
+) -> Option<SearchStateSpec> {
+    match ipv6_search_state_30(input, state) {
+        Some(found) => Some(found),
+        None => ipv6_search_state_20(input, state),
+    }
+}
+
+#[inline(always)]
+fn ipv6_search_state_29_exec(
+    input: &str,
+    input_length: usize,
+    input_ascii: bool,
+    state: &mut SearchState,
+) -> (result: bool)
+    requires
+        input@.len() < usize::MAX,
+        input_length == input@.len(),
+        input_ascii == input.is_ascii(),
+        old(state).semantic_cache.matches_input(input@),
+        search_state_bounded(old(state).deep_view(), input@.len()),
+        old(state).storage_well_formed(),
+        old(state).captures@.len() + 6 <= 10,
+        old(state).markers.deep_view().len() + 2 <= 3,
+    ensures
+        result ==> ipv6_search_state_29(input@, old(state).deep_view()) == Some(final(state).deep_view())
+            && search_state_bounded(final(state).deep_view(), input@.len())
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache.matches_input(input@),
+        !result ==> ipv6_search_state_29(input@, old(state).deep_view()).is_none()
+            && final(state).deep_view() == old(state).deep_view()
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache.matches_input(input@),
+{
+    proof { reveal_with_fuel(ipv6_search_state_29, 1); }
+    if ipv6_search_state_30_exec(input, input_length, input_ascii, state) {
+        true
+    } else {
+    ipv6_search_state_20_exec(input, input_length, input_ascii, state)
+    }
+}
+
+pub closed spec fn ipv6_search_state_28(
+    input: Seq<char>,
+    state: SearchStateSpec,
+) -> Option<SearchStateSpec> {
+    if literal_matches_at(input, state.end, "::"@) {
+        ipv6_search_state_29(
+            input,
+            search_advance(state, state.end + "::"@.len()),
+        )
+    } else {
+        None
+    }
+}
+
+fn ipv6_search_state_28_exec(
+    input: &str,
+    input_length: usize,
+    input_ascii: bool,
+    state: &mut SearchState,
+) -> (result: bool)
+    requires
+        input@.len() < usize::MAX,
+        input_length == input@.len(),
+        input_ascii == input.is_ascii(),
+        old(state).semantic_cache.matches_input(input@),
+        search_state_bounded(old(state).deep_view(), input@.len()),
+        old(state).storage_well_formed(),
+        old(state).captures@.len() + 6 <= 10,
+        old(state).markers.deep_view().len() + 2 <= 3,
+    ensures
         result ==> ipv6_search_state_28(input@, old(state).deep_view()) == Some(final(state).deep_view())
             && search_state_bounded(final(state).deep_view(), input@.len())
             && final(state).storage_well_formed()
@@ -7882,10 +8295,24 @@ fn ipv6_search_state_28_exec(
             && final(state).semantic_cache.matches_input(input@),
 {
     proof { reveal_with_fuel(ipv6_search_state_28, 1); }
-    if ipv6_search_state_11_exec(input, input_length, input_ascii, state) {
-        true
-    } else {
-    ipv6_search_state_21_exec(input, input_length, input_ascii, state)
+    match search_match_literal_at(
+        input,
+        input_length,
+        input_ascii,
+        state.end,
+        "::",
+    ) {
+        Some(found) => {
+            let previous_end = state.end;
+            search_advance_exec(state, found.end);
+            if ipv6_search_state_29_exec(input, input_length, input_ascii, state) {
+                true
+            } else {
+                search_restore_end_exec(state, previous_end);
+                false
+            }
+        },
+        None => false,
     }
 }
 
@@ -7893,7 +8320,7 @@ pub closed spec fn ipv6_search_state_27(
     input: Seq<char>,
     state: SearchStateSpec,
 ) -> Option<SearchStateSpec> {
-    match search_close_capture_one(state, CaptureKey::Production(2)) {
+    match search_close_capture_one(state, CaptureKey::Production(4)) {
         Some(closed) => ipv6_search_state_28(input, closed),
         None => None,
     }
@@ -7913,8 +8340,8 @@ fn ipv6_search_state_27_exec(
         old(state).semantic_cache.matches_input(input@),
         search_state_bounded(old(state).deep_view(), input@.len()),
         old(state).storage_well_formed(),
-        old(state).captures@.len() + 2 <= 10,
-        old(state).markers.deep_view().len() + 1 <= 3,
+        old(state).captures@.len() + 6 <= 10,
+        old(state).markers.deep_view().len() + 2 <= 3,
     ensures
         result ==> ipv6_search_state_27(input@, old(state).deep_view()) == Some(final(state).deep_view())
             && search_state_bounded(final(state).deep_view(), input@.len())
@@ -7931,14 +8358,14 @@ fn ipv6_search_state_27_exec(
         return false;
     }
     let marker = state.markers.get(state.markers.len() - 1);
-    if !search_close_capture_one_exec(state, CaptureKey::Production(2), Ghost(input@.len())) {
+    if !search_close_capture_one_exec(state, CaptureKey::Production(4), Ghost(input@.len())) {
         return false;
     }
 
     if ipv6_search_state_28_exec(input, input_length, input_ascii, state) {
         true
     } else {
-        search_reopen_capture_one_exec(state, marker, CaptureKey::Production(2), original);
+        search_reopen_capture_one_exec(state, marker, CaptureKey::Production(4), original);
         false
     }
 }
@@ -8200,11 +8627,11 @@ pub closed spec fn ipv6_search_state_26(
 ) -> Option<SearchStateSpec> {
     match ipv6_search_state_26_item(input, search_save(state)) {
         Some(first) => {
-            let repeated = ipv6_search_state_26_tail(input, first, 7, 1);
-            if 8 <= repeated.count {
+            let repeated = ipv6_search_state_26_tail(input, first, 6, 1);
+            if 1 <= repeated.count {
                 match search_close_count_capture(
                     repeated.state,
-                    CaptureKey::Repetition(7),
+                    CaptureKey::Repetition(12),
                     repeated.count as usize,
                 ) {
                     Some(closed) => ipv6_search_state_27(input, closed),
@@ -8233,8 +8660,8 @@ fn ipv6_search_state_26_exec(
         old(state).semantic_cache.matches_input(input@),
         search_state_bounded(old(state).deep_view(), input@.len()),
         old(state).storage_well_formed(),
-        old(state).captures@.len() + 4 <= 10,
-        old(state).markers.deep_view().len() + 1 <= 3,
+        old(state).captures@.len() + 8 <= 10,
+        old(state).markers.deep_view().len() + 2 <= 3,
     ensures
         result ==> ipv6_search_state_26(input@, old(state).deep_view()) == Some(final(state).deep_view())
             && search_state_bounded(final(state).deep_view(), input@.len())
@@ -8295,6 +8722,697 @@ fn ipv6_search_state_26_exec(
         input_length,
         input_ascii,
         state,
+        6,
+        1,
+        &mut semantic_accumulator,
+    );
+    proof {
+        search_checkpoint_matches_transitive(
+            checkpoint,
+            original_view,
+            first_view,
+            state.deep_view(),
+        );
+    }
+    let ghost repeated_view = state.deep_view();
+    if count < 1 {
+        search_restore_checkpoint_to_exec(
+            state,
+            checkpoint,
+            Ghost(original_view),
+        );
+        return false;
+    }
+    let ghost repeated_marker = state.deep_view().markers.last();
+    if !search_close_count_capture_exec(
+        state,
+        CaptureKey::Repetition(12),
+        count,
+        Ghost(input@.len()),
+    ) {
+        search_restore_checkpoint_to_exec(
+            state,
+            checkpoint,
+            Ghost(original_view),
+        );
+        return false;
+    }
+    proof {
+        assert(checkpoint.capture_length <= repeated_marker.capture_count);
+        assert(repeated_marker.capture_count < repeated_marker.second_capture_count);
+        assert(checkpoint.marker_length < repeated_view.markers.len());
+        search_close_count_capture_preserves_checkpoint(
+            checkpoint,
+            original_view,
+            repeated_view,
+            CaptureKey::Repetition(12),
+            count,
+            state.deep_view(),
+        );
+    }
+    if let Some(cached_value) = CachedSemanticHexSequence::from_accumulator(
+        Ghost(input@),
+        semantic_accumulator,
+    ) {
+        state.semantic_cache.set_cache_0(Ghost(input@), cached_value);
+    }
+    if ipv6_search_state_27_exec(input, input_length, input_ascii, state) {
+        true
+    } else {
+        search_restore_checkpoint_to_exec(
+            state,
+            checkpoint,
+            Ghost(original_view),
+        );
+        false
+    }
+}
+
+pub closed spec fn ipv6_search_state_25(
+    input: Seq<char>,
+    state: SearchStateSpec,
+) -> Option<SearchStateSpec> {
+    ipv6_search_state_26(input, search_save(state))
+}
+
+#[inline(always)]
+fn ipv6_search_state_25_exec(
+    input: &str,
+    input_length: usize,
+    input_ascii: bool,
+    state: &mut SearchState,
+) -> (result: bool)
+    requires
+        input@.len() < usize::MAX,
+        input_length == input@.len(),
+        input_ascii == input.is_ascii(),
+        old(state).semantic_cache.matches_input(input@),
+        search_state_bounded(old(state).deep_view(), input@.len()),
+        old(state).storage_well_formed(),
+        old(state).captures@.len() + 10 <= 10,
+        old(state).markers.deep_view().len() + 3 <= 3,
+    ensures
+        result ==> ipv6_search_state_25(input@, old(state).deep_view()) == Some(final(state).deep_view())
+            && search_state_bounded(final(state).deep_view(), input@.len())
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache.matches_input(input@),
+        !result ==> ipv6_search_state_25(input@, old(state).deep_view()).is_none()
+            && final(state).deep_view() == old(state).deep_view()
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache.matches_input(input@),
+{
+    proof { reveal_with_fuel(ipv6_search_state_25, 1); }
+    search_save_exec(state);
+    if ipv6_search_state_26_exec(input, input_length, input_ascii, state) {
+        true
+    } else {
+        search_restore_save_exec(state);
+        false
+    }
+}
+
+pub closed spec fn ipv6_search_state_24(
+    input: Seq<char>,
+    state: SearchStateSpec,
+) -> Option<SearchStateSpec> {
+    match ipv6_search_state_25(input, state) {
+        Some(found) => Some(found),
+        None => ipv6_search_state_28(input, state),
+    }
+}
+
+#[inline(always)]
+fn ipv6_search_state_24_exec(
+    input: &str,
+    input_length: usize,
+    input_ascii: bool,
+    state: &mut SearchState,
+) -> (result: bool)
+    requires
+        input@.len() < usize::MAX,
+        input_length == input@.len(),
+        input_ascii == input.is_ascii(),
+        old(state).semantic_cache.matches_input(input@),
+        search_state_bounded(old(state).deep_view(), input@.len()),
+        old(state).storage_well_formed(),
+        old(state).captures@.len() + 10 <= 10,
+        old(state).markers.deep_view().len() + 3 <= 3,
+    ensures
+        result ==> ipv6_search_state_24(input@, old(state).deep_view()) == Some(final(state).deep_view())
+            && search_state_bounded(final(state).deep_view(), input@.len())
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache.matches_input(input@),
+        !result ==> ipv6_search_state_24(input@, old(state).deep_view()).is_none()
+            && final(state).deep_view() == old(state).deep_view()
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache.matches_input(input@),
+{
+    proof { reveal_with_fuel(ipv6_search_state_24, 1); }
+    if ipv6_search_state_25_exec(input, input_length, input_ascii, state) {
+        true
+    } else {
+    ipv6_search_state_28_exec(input, input_length, input_ascii, state)
+    }
+}
+
+pub closed spec fn ipv6_search_state_16(
+    input: Seq<char>,
+    state: SearchStateSpec,
+) -> Option<SearchStateSpec> {
+    match ipv6_search_state_17(input, state) {
+        Some(found) => Some(found),
+        None => ipv6_search_state_24(input, state),
+    }
+}
+
+#[inline(always)]
+fn ipv6_search_state_16_exec(
+    input: &str,
+    input_length: usize,
+    input_ascii: bool,
+    state: &mut SearchState,
+) -> (result: bool)
+    requires
+        input@.len() < usize::MAX,
+        input_length == input@.len(),
+        input_ascii == input.is_ascii(),
+        old(state).semantic_cache.matches_input(input@),
+        search_state_bounded(old(state).deep_view(), input@.len()),
+        old(state).storage_well_formed(),
+        old(state).captures@.len() + 10 <= 10,
+        old(state).markers.deep_view().len() + 3 <= 3,
+    ensures
+        result ==> ipv6_search_state_16(input@, old(state).deep_view()) == Some(final(state).deep_view())
+            && search_state_bounded(final(state).deep_view(), input@.len())
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache.matches_input(input@),
+        !result ==> ipv6_search_state_16(input@, old(state).deep_view()).is_none()
+            && final(state).deep_view() == old(state).deep_view()
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache.matches_input(input@),
+{
+    proof { reveal_with_fuel(ipv6_search_state_16, 1); }
+    if ipv6_search_state_17_exec(input, input_length, input_ascii, state) {
+        true
+    } else {
+    ipv6_search_state_24_exec(input, input_length, input_ascii, state)
+    }
+}
+
+pub closed spec fn ipv6_search_state_1(
+    input: Seq<char>,
+    state: SearchStateSpec,
+) -> Option<SearchStateSpec> {
+    match ipv6_search_state_2(input, state) {
+        Some(found) => Some(found),
+        None => ipv6_search_state_16(input, state),
+    }
+}
+
+#[inline(always)]
+fn ipv6_search_state_1_exec(
+    input: &str,
+    input_length: usize,
+    input_ascii: bool,
+    state: &mut SearchState,
+) -> (result: bool)
+    requires
+        input@.len() < usize::MAX,
+        input_length == input@.len(),
+        input_ascii == input.is_ascii(),
+        old(state).semantic_cache.matches_input(input@),
+        search_state_bounded(old(state).deep_view(), input@.len()),
+        old(state).storage_well_formed(),
+        old(state).captures@.len() + 10 <= 10,
+        old(state).markers.deep_view().len() + 3 <= 3,
+    ensures
+        result ==> ipv6_search_state_1(input@, old(state).deep_view()) == Some(final(state).deep_view())
+            && search_state_bounded(final(state).deep_view(), input@.len())
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache.matches_input(input@),
+        !result ==> ipv6_search_state_1(input@, old(state).deep_view()).is_none()
+            && final(state).deep_view() == old(state).deep_view()
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache.matches_input(input@),
+{
+    proof { reveal_with_fuel(ipv6_search_state_1, 1); }
+    if ipv6_search_state_2_exec(input, input_length, input_ascii, state) {
+        true
+    } else {
+    ipv6_search_state_16_exec(input, input_length, input_ascii, state)
+    }
+}
+
+pub closed spec fn ipv6_search_state_36(
+    input: Seq<char>,
+    state: SearchStateSpec,
+) -> Option<SearchStateSpec> {
+    match ipv6_search_state_6(input, state) {
+        Some(found) => Some(found),
+        None => ipv6_search_state_20(input, state),
+    }
+}
+
+#[inline(always)]
+fn ipv6_search_state_36_exec(
+    input: &str,
+    input_length: usize,
+    input_ascii: bool,
+    state: &mut SearchState,
+) -> (result: bool)
+    requires
+        input@.len() < usize::MAX,
+        input_length == input@.len(),
+        input_ascii == input.is_ascii(),
+        old(state).semantic_cache.matches_input(input@),
+        search_state_bounded(old(state).deep_view(), input@.len()),
+        old(state).storage_well_formed(),
+        old(state).captures@.len() + 2 <= 10,
+        old(state).markers.deep_view().len() + 1 <= 3,
+    ensures
+        result ==> ipv6_search_state_36(input@, old(state).deep_view()) == Some(final(state).deep_view())
+            && search_state_bounded(final(state).deep_view(), input@.len())
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache.matches_input(input@),
+        !result ==> ipv6_search_state_36(input@, old(state).deep_view()).is_none()
+            && final(state).deep_view() == old(state).deep_view()
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache.matches_input(input@),
+{
+    proof { reveal_with_fuel(ipv6_search_state_36, 1); }
+    if ipv6_search_state_6_exec(input, input_length, input_ascii, state) {
+        true
+    } else {
+    ipv6_search_state_20_exec(input, input_length, input_ascii, state)
+    }
+}
+
+pub closed spec fn ipv6_search_state_35(
+    input: Seq<char>,
+    state: SearchStateSpec,
+) -> Option<SearchStateSpec> {
+    match search_close_capture_one(state, CaptureKey::Production(2)) {
+        Some(closed) => ipv6_search_state_36(input, closed),
+        None => None,
+    }
+}
+
+#[inline(always)]
+fn ipv6_search_state_35_exec(
+    input: &str,
+    input_length: usize,
+    input_ascii: bool,
+    state: &mut SearchState,
+) -> (result: bool)
+    requires
+        input@.len() < usize::MAX,
+        input_length == input@.len(),
+        input_ascii == input.is_ascii(),
+        old(state).semantic_cache.matches_input(input@),
+        search_state_bounded(old(state).deep_view(), input@.len()),
+        old(state).storage_well_formed(),
+        old(state).captures@.len() + 2 <= 10,
+        old(state).markers.deep_view().len() + 1 <= 3,
+    ensures
+        result ==> ipv6_search_state_35(input@, old(state).deep_view()) == Some(final(state).deep_view())
+            && search_state_bounded(final(state).deep_view(), input@.len())
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache.matches_input(input@),
+        !result ==> ipv6_search_state_35(input@, old(state).deep_view()).is_none()
+            && final(state).deep_view() == old(state).deep_view()
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache.matches_input(input@),
+{
+    proof { reveal_with_fuel(ipv6_search_state_35, 1); }
+    let original = Ghost(state.deep_view());
+    if state.markers.len() == 0 {
+        return false;
+    }
+    let marker = state.markers.get(state.markers.len() - 1);
+    if !search_close_capture_one_exec(state, CaptureKey::Production(2), Ghost(input@.len())) {
+        return false;
+    }
+
+    if ipv6_search_state_36_exec(input, input_length, input_ascii, state) {
+        true
+    } else {
+        search_reopen_capture_one_exec(state, marker, CaptureKey::Production(2), original);
+        false
+    }
+}
+
+pub closed spec fn ipv6_search_state_34_item(
+    input: Seq<char>,
+    state: SearchStateSpec,
+) -> Option<SearchStateSpec> {
+    let input_length = input.len() as int;
+    let remaining = input_length - state.end;
+    let limit = if 4 < remaining {
+        state.end + 4
+    } else {
+        input_length
+    };
+    let end = search_token_prefix_end_spec(
+        input,
+        state.end,
+        limit,
+        TokenClass::HexDigit,
+    );
+    let width = end - state.end;
+    if terminal_matches_at(
+        input,
+        state.end,
+        width,
+        TokenClass::HexDigit,
+        LengthSpec::Between { lower: 1, upper: 4 },
+    ) {
+        Some(search_advance(state, end))
+    } else {
+        None
+    }
+}
+
+#[inline(always)]
+fn ipv6_search_state_34_item_exec(
+    input: &str,
+    input_length: usize,
+    input_ascii: bool,
+    state: &mut SearchState,
+) -> (result: Option<SemanticHexPrefixSummary>)
+    requires
+        input@.len() < usize::MAX,
+        input_length == input@.len(),
+        input_ascii == input.is_ascii(),
+        old(state).semantic_cache.matches_input(input@),
+        search_state_bounded(old(state).deep_view(), input@.len()),
+        old(state).storage_well_formed(),
+        old(state).captures@.len() + 0 <= 10,
+        old(state).markers.deep_view().len() <= 3,
+    ensures
+        match result {
+            Some(summary) =>
+                ipv6_search_state_34_item(input@, old(state).deep_view())
+                    == Some(final(state).deep_view())
+                && search_state_bounded(final(state).deep_view(), input@.len())
+                && final(state).storage_well_formed()
+                && final(state).captures@.len()
+                    == old(state).captures@.len() + 0
+                && final(state).captures@.take(old(state).captures@.len() as int)
+                    == old(state).captures@
+                && final(state).markers.deep_view()
+                    == old(state).markers.deep_view()
+                && final(state).semantic_cache.matches_input(input@)
+                && old(state).end < summary.end
+                && summary.end == final(state).end
+                && summary.value as int == triptych_hex_seq_of(
+                    input@.subrange(old(state).end as int, summary.end as int)
+                )
+                && forall|index: int| old(state).end <= index < summary.end ==>
+                    #[trigger] input@[index] != ':',
+            None =>
+                ipv6_search_state_34_item(input@, old(state).deep_view()).is_none()
+                && final(state).deep_view() == old(state).deep_view()
+                && final(state).storage_well_formed()
+                && final(state).semantic_cache.matches_input(input@),
+        },
+{
+    proof { reveal_with_fuel(ipv6_search_state_34_item, 1); }
+    let capture_start = state.end;
+    let prefix_limit = if 4 < input_length - state.end {
+        state.end + 4
+    } else {
+        input_length
+    };
+    proof {
+        assert((prefix_limit as int) - (capture_start as int) <= 4);
+    }
+    let prefix = semantic_hex_prefix_summary(
+        input,
+        input_length,
+        input_ascii,
+        capture_start,
+        prefix_limit,
+    );
+    let width = prefix.end - capture_start;
+    if let Some(found) = search_match_terminal_from_prefix(
+        input,
+        capture_start,
+        width,
+        TokenClass::HexDigit,
+        LengthSpec::Between { lower: 1, upper: 4 },
+        prefix_limit,
+        prefix.end,
+    ) {
+        search_advance_exec(state, found.end);
+        proof {
+            assert(found.end == prefix.end);
+            reveal(terminal_matches_at);
+            reveal(length_accepts);
+            assert(capture_start < prefix.end);
+        }
+        return Some(prefix);
+    }
+    None
+}
+
+pub closed spec fn ipv6_search_state_34_tail(
+    input: Seq<char>,
+    state: SearchStateSpec,
+    remaining: nat,
+    count: nat,
+) -> SearchRepeatResultSpec
+    decreases remaining,
+{
+    if remaining == 0 {
+        SearchRepeatResultSpec { state, count }
+    } else if literal_matches_at(input, state.end, ":"@) {
+        let separated = search_advance(
+            state,
+            state.end + ":"@.len(),
+        );
+        match ipv6_search_state_34_item(input, separated) {
+            Some(found) =>
+                ipv6_search_state_34_tail(
+                    input,
+                    found,
+                    (remaining - 1) as nat,
+                    count + 1,
+                ),
+            None => SearchRepeatResultSpec { state, count },
+        }
+    } else {
+        SearchRepeatResultSpec { state, count }
+    }
+}
+
+fn ipv6_search_state_34_tail_exec(
+    input: &str,
+    input_length: usize,
+    input_ascii: bool,
+    state: &mut SearchState,
+    remaining: usize,
+    count: usize,
+    accumulator: &mut SemanticHexSequenceAccumulator,
+) -> (result: usize)
+    requires
+        input@.len() < usize::MAX,
+        input_length == input@.len(),
+        input_ascii == input.is_ascii(),
+        old(state).semantic_cache.matches_input(input@),
+        old(accumulator).source_matches(input@),
+        old(accumulator).end == old(state).end,
+        search_state_bounded(old(state).deep_view(), input@.len()),
+        old(state).storage_well_formed(),
+        old(state).captures@.len()
+            + 0 * remaining <= 10,
+        old(state).markers.deep_view().len() <= 3,
+        count + remaining < usize::MAX,
+    ensures
+        ipv6_search_state_34_tail(
+            input@,
+            old(state).deep_view(),
+            remaining as nat,
+            count as nat,
+        ) == (SearchRepeatResultSpec {
+            state: final(state).deep_view(),
+            count: result as nat,
+        }),
+        search_state_bounded(final(state).deep_view(), input@.len()),
+        final(state).storage_well_formed(),
+        final(state).captures@.len()
+            == old(state).captures@.len()
+                + 0 * (result - count),
+        final(state).captures@.take(old(state).captures@.len() as int)
+            == old(state).captures@,
+        final(state).markers.deep_view() == old(state).markers.deep_view(),
+        final(state).semantic_cache.matches_input(input@),
+        final(accumulator).source_matches(input@),
+        final(accumulator).start == old(accumulator).start,
+        final(accumulator).end == final(state).end,
+        count <= result <= count + remaining,
+    decreases remaining,
+{
+    proof { reveal_with_fuel(ipv6_search_state_34_tail, 1); }
+    if remaining == 0 {
+        return count;
+    }
+    let previous_end = state.end;
+    proof {
+        reveal_strlit(":");
+        assert(":"@.len() == 1);
+    }
+    match search_match_single_literal_at(
+        input,
+        input_length,
+        input_ascii,
+        state.end,
+        ":",
+    ) {
+        Some(found) => {
+            let group_start = found.end;
+            search_advance_exec(state, group_start);
+            match ipv6_search_state_34_item_exec(input, input_length, input_ascii, state) {
+                Some(prefix) => {
+                    proof {
+                        assert(
+                            0 * (remaining - 1)
+                                + 0
+                            == 0 * remaining
+                        );
+                        reveal(literal_matches_at);
+                        reveal_strlit(":");
+                        assert(":"@.len() == 1);
+                        assert(group_start == previous_end + 1);
+                        assert(input@.subrange(
+                            previous_end as int,
+                            previous_end as int + 1,
+                        ) == ":"@);
+                        assert(input@[previous_end as int]
+                            == ":"@[0]);
+                        assert(":"@[0] == ':');
+                        assert(input@[previous_end as int] == ':');
+                    }
+                    accumulator.push_group(Ghost(input@), group_start, prefix);
+                    return ipv6_search_state_34_tail_exec(
+                        input,
+                        input_length,
+                        input_ascii,
+                        state,
+                        remaining - 1,
+                        count + 1,
+                        accumulator,
+                    );
+                },
+                None => {},
+            }
+            search_restore_end_exec(state, previous_end);
+        },
+        None => {},
+    }
+    count
+}
+
+pub closed spec fn ipv6_search_state_34(
+    input: Seq<char>,
+    state: SearchStateSpec,
+) -> Option<SearchStateSpec> {
+    match ipv6_search_state_34_item(input, search_save(state)) {
+        Some(first) => {
+            let repeated = ipv6_search_state_34_tail(input, first, 7, 1);
+            if 8 <= repeated.count {
+                match search_close_count_capture(
+                    repeated.state,
+                    CaptureKey::Repetition(7),
+                    repeated.count as usize,
+                ) {
+                    Some(closed) => ipv6_search_state_35(input, closed),
+                    None => None,
+                }
+            } else {
+                None
+            }
+        },
+        None => None,
+    }
+}
+
+#[verifier::rlimit(200)]
+#[inline(always)]
+fn ipv6_search_state_34_exec(
+    input: &str,
+    input_length: usize,
+    input_ascii: bool,
+    state: &mut SearchState,
+) -> (result: bool)
+    requires
+        input@.len() < usize::MAX,
+        input_length == input@.len(),
+        input_ascii == input.is_ascii(),
+        old(state).semantic_cache.matches_input(input@),
+        search_state_bounded(old(state).deep_view(), input@.len()),
+        old(state).storage_well_formed(),
+        old(state).captures@.len() + 4 <= 10,
+        old(state).markers.deep_view().len() + 1 <= 3,
+    ensures
+        result ==> ipv6_search_state_34(input@, old(state).deep_view()) == Some(final(state).deep_view())
+            && search_state_bounded(final(state).deep_view(), input@.len())
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache.matches_input(input@),
+        !result ==> ipv6_search_state_34(input@, old(state).deep_view()).is_none()
+            && final(state).deep_view() == old(state).deep_view()
+            && final(state).storage_well_formed()
+            && final(state).semantic_cache.matches_input(input@),
+{
+    let checkpoint = search_checkpoint(state);
+    let ghost original_view = state.deep_view();
+    proof {
+        reveal_with_fuel(ipv6_search_state_34, 1);
+    }
+    search_save_exec(state);
+    let ghost saved_view = state.deep_view();
+    proof {
+        search_save_preserves_checkpoint(
+            checkpoint,
+            original_view,
+            original_view,
+        );
+        assert(search_checkpoint_matches(
+            checkpoint,
+            original_view,
+            saved_view,
+        ));
+    }
+    let sequence_start = state.end;
+    let first_prefix = match ipv6_search_state_34_item_exec(input, input_length, input_ascii, state) {
+        Some(prefix) => prefix,
+        None => {
+            search_restore_checkpoint_to_exec(
+                state,
+                checkpoint,
+                Ghost(original_view),
+            );
+            return false;
+        },
+    };
+    let mut semantic_accumulator = SemanticHexSequenceAccumulator::first(
+        Ghost(input@),
+        sequence_start,
+        first_prefix,
+    );
+    proof {
+        search_checkpoint_matches_transitive(
+            checkpoint,
+            original_view,
+            saved_view,
+            state.deep_view(),
+        );
+    }
+    let ghost first_view = state.deep_view();
+    let count = ipv6_search_state_34_tail_exec(
+        input,
+        input_length,
+        input_ascii,
+        state,
         7,
         1,
         &mut semantic_accumulator,
@@ -8349,7 +9467,7 @@ fn ipv6_search_state_26_exec(
     ) {
         state.semantic_cache.set_cache_2(Ghost(input@), cached_value);
     }
-    if ipv6_search_state_27_exec(input, input_length, input_ascii, state) {
+    if ipv6_search_state_35_exec(input, input_length, input_ascii, state) {
         true
     } else {
         search_restore_checkpoint_to_exec(
@@ -8361,15 +9479,15 @@ fn ipv6_search_state_26_exec(
     }
 }
 
-pub closed spec fn ipv6_search_state_25(
+pub closed spec fn ipv6_search_state_33(
     input: Seq<char>,
     state: SearchStateSpec,
 ) -> Option<SearchStateSpec> {
-    ipv6_search_state_26(input, search_save(state))
+    ipv6_search_state_34(input, search_save(state))
 }
 
 #[inline(always)]
-fn ipv6_search_state_25_exec(
+fn ipv6_search_state_33_exec(
     input: &str,
     input_length: usize,
     input_ascii: bool,
@@ -8385,18 +9503,18 @@ fn ipv6_search_state_25_exec(
         old(state).captures@.len() + 6 <= 10,
         old(state).markers.deep_view().len() + 2 <= 3,
     ensures
-        result ==> ipv6_search_state_25(input@, old(state).deep_view()) == Some(final(state).deep_view())
+        result ==> ipv6_search_state_33(input@, old(state).deep_view()) == Some(final(state).deep_view())
             && search_state_bounded(final(state).deep_view(), input@.len())
             && final(state).storage_well_formed()
             && final(state).semantic_cache.matches_input(input@),
-        !result ==> ipv6_search_state_25(input@, old(state).deep_view()).is_none()
+        !result ==> ipv6_search_state_33(input@, old(state).deep_view()).is_none()
             && final(state).deep_view() == old(state).deep_view()
             && final(state).storage_well_formed()
             && final(state).semantic_cache.matches_input(input@),
 {
-    proof { reveal_with_fuel(ipv6_search_state_25, 1); }
+    proof { reveal_with_fuel(ipv6_search_state_33, 1); }
     search_save_exec(state);
-    if ipv6_search_state_26_exec(input, input_length, input_ascii, state) {
+    if ipv6_search_state_34_exec(input, input_length, input_ascii, state) {
         true
     } else {
         search_restore_save_exec(state);
@@ -8415,10 +9533,10 @@ pub closed spec fn ipv6_search_state_0(
     ) {
         match ipv6_search_state_1(input, state) {
             Some(found) => Some(found),
-            None => ipv6_search_state_25(input, state),
+            None => ipv6_search_state_33(input, state),
         }
     } else {
-        ipv6_search_state_25(input, state)
+        ipv6_search_state_33(input, state)
     }
 }
 
@@ -8458,10 +9576,10 @@ fn ipv6_search_state_0_exec(
         if ipv6_search_state_1_exec(input, input_length, input_ascii, state) {
             true
         } else {
-            ipv6_search_state_25_exec(input, input_length, input_ascii, state)
+            ipv6_search_state_33_exec(input, input_length, input_ascii, state)
         }
     } else {
-        ipv6_search_state_25_exec(input, input_length, input_ascii, state)
+        ipv6_search_state_33_exec(input, input_length, input_ascii, state)
     }
 }
 

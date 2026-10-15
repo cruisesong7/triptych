@@ -147,6 +147,24 @@ individual executable artifact in stages:
 6. build a direct Verus parser backend only if Vest cannot preserve the required textual
    behavior, API, or performance.
 
+### Link search-path Rust parsers to the readable specification
+
+Cursor-path Rust parsers (Decimal) are proved against `spec.rs`. Search-path parsers (Duration,
+Datetime, IPv4, IPv6) are proved only against a spec-function copy of their own generated state
+machine, so a backend-only rewrite can change behavior without any proof failing. The ordered
+choice regression in `verus-experiments/search-order/` was such a case. Close the gap in Lean
+rather than with per-format Verus proofs:
+
+1. move the Verus-only machine passes into Lean with semantic-preservation theorems: dead-capture
+   erasure (`lowerLiveSearchCode`, preserved modulo live-key projection), bounded repetition
+   unrolling and direct repetition (`compileVerusSearchCode`), captured-token fusion,
+   literal-guided dispatch, and deterministic merging;
+2. give the emitted state graph and the emitted `spec.rs` predicates a Lean semantics and prove
+   that the rendered machine agrees with `SearchMachine` and that `*_is_wf_*` agrees with `IsWf`,
+   extending the existing value-expression `Preservation` theorems;
+3. compose these with `SearchMachine = scan = decode ↔ IsWf`, leaving only the pretty-printer and
+   Verus's reading of the rendered AST as trusted components.
+
 ## 4. Maintain the Cedar baseline
 
 - complete: discharge Datetime's three external-parser obligations;
