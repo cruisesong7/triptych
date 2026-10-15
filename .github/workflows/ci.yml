@@ -59,7 +59,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: cruisesong7/cedar-spec
-          ref: 4ad1a5c532b6ca05656dec8638227d9411bd6acc
+          ref: 241e40b14c25240f5cb28b1fa1f0c5f9fcd85603
           path: cedar-spec
       - name: Prepare Lean and SubVerso
         uses: leanprover/lean-action@v1
