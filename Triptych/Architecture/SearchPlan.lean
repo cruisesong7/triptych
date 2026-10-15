@@ -30,7 +30,7 @@ while retaining the scanner's source ordering:
 * references are resolved and inlined at generation time.
 
 The executor is continuation based. It never materializes the candidate lists used by the
-archived reference decoder, and it never performs a production-name lookup at runtime.
+reference decoder, and it never performs a production-name lookup at runtime.
 
 Compilation is proof carrying in the same sense as `ScanPlan`: an independently executable
 validator reconstructs a `MirrorsGrammar` witness. The theorem layer uses that witness to prove

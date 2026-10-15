@@ -15,14 +15,14 @@
 -/
 
 import Triptych.Architecture.Dependent
-import Triptych.Archive.ScannerProfile
+import Triptych.Reference.ScannerProfile
 import Triptych.Theorems.Scanner
 
 /-!
 # Correctness of dependent scanning
 
 The reference semantics enumerates header-prefix candidates in source order and runs the
-archived complete decoder on the tail grammar selected by each candidate. The executable
+reference complete decoder on the tail grammar selected by each candidate. The executable
 dependent scanner fuses the header enumeration with its continuation and uses the verified
 runtime scanner for each selected tail.
 -/
@@ -142,7 +142,7 @@ private theorem profileDependentCandidates_checks_le (body : CaptureMap → Gram
           omega
 
 /-- Every dependent scan performs no more completed header/tail candidate checks than its
-    finite archived candidate budget. -/
+    finite reference candidate budget. -/
 theorem dependentCandidateChecks_le (header : Grammar) (body : CaptureMap → Grammar)
     (input : String) :
     (dependentScanProfile header body input).headerCandidateChecks +

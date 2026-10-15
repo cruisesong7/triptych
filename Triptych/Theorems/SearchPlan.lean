@@ -124,7 +124,7 @@ theorem compileSearchPlan_decode_eq_scanSearch {grammar : Grammar} {plan : Searc
     plan.decode source = scanSearch grammar source :=
   decode_eq_scanSearch (compileSearchPlan_mirrorsGrammar hcompile) source
 
-/-- Every successfully compiled ordered plan agrees with the archived parser semantics. -/
+/-- Every successfully compiled ordered plan agrees with the reference parser semantics. -/
 theorem compileSearchPlan_decode_eq_decode {grammar : Grammar} {plan : SearchPlan}
     (hcompile : compileSearchPlan grammar = .ok plan) (source : String) :
     plan.decode source = Triptych.decode grammar source := by

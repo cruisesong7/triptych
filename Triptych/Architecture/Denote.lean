@@ -33,7 +33,7 @@ that); the fuel is a definitional device, not an operational one — this is a `
 not a parser.
 
 The computational inverse is the verified runtime scanner. Its agreement proof factors through
-an archived list-producing reference decoder, which keeps this denotation independent of the
+a list-producing reference decoder, which keeps this denotation independent of the
 optimized execution strategy.
 -/
 

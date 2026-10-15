@@ -19,7 +19,7 @@ import Triptych.Architecture.Grammar
 import Triptych.Architecture.Classify
 import Triptych.Architecture.Derivation
 import Triptych.Architecture.Denote
-import Triptych.Archive.DecodeLemmas
+import Triptych.Reference.DecodeLemmas
 import Triptych.Theorems.Derivation
 import Triptych.Theorems.Reconcile
 import Triptych.Theorems.RelationalParser
@@ -1796,6 +1796,103 @@ private partial def mirrorsSequenceTerm (grammarId : TSyntax `ident) (grammar : 
   | _, _ =>
       throwError "internal error: compiled scan pattern does not mirror its grammar sequence"
 
+mutual
+
+/-- Reify the structural proof that one resolved search pattern mirrors its source symbol. As for
+    scan plans, the emitter only selects constructors; Lean's kernel checks the witness. -/
+private partial def searchMirrorsSymbolTerm (grammarId : TSyntax `ident) (grammar : Grammar)
+    (qual : String) (fuel : Nat) (symbol : Sym) (pattern : SearchPattern) :
+    CommandElabM (TSyntax `term) := do
+  match symbol, pattern with
+  | .lit text, .literal found => do
+      unless text = found do
+        throwError "internal error: literal search pattern does not mirror the grammar"
+      `(SearchPattern.MirrorsSymbol.literal)
+  | .str, .stringLiteral =>
+      `(SearchPattern.MirrorsSymbol.stringLiteral)
+  | .term token length, .tokenRun foundToken foundLength => do
+      unless token = foundToken && length = foundLength do
+        throwError "internal error: token-run search pattern does not mirror the grammar"
+      `(SearchPattern.MirrorsSymbol.tokenRun)
+  | .rep separator item lower upper,
+      .repetition foundSeparator body foundLower foundUpper countKey => do
+      unless separator = foundSeparator && lower = foundLower && upper = foundUpper &&
+          countKey = item.refName?.getD qual do
+        throwError "internal error: repetition search pattern does not mirror the grammar"
+      let bodyProof ← searchMirrorsSymbolTerm grammarId grammar qual fuel item body
+      `(SearchPattern.MirrorsSymbol.repetition (by rfl) $bodyProof)
+  | .ref name, .capture foundName keys alternatives => do
+      unless name = foundName && keys = SearchPattern.expectedCaptureKeys qual name do
+        throwError "internal error: capture search pattern does not mirror the grammar"
+      let remainingFuel ←
+        match fuel with
+        | 0 => throwError "internal error: capture search pattern exhausted grammar fuel"
+        | remaining + 1 => pure remaining
+      let production ←
+        match grammar.prod? name with
+        | some production => pure production
+        | none => throwError m!"internal error: unresolved search-plan production `{name}`"
+      let productionTerm ← prodLit production
+      let bodyProof ←
+        searchMirrorsAlternativesTerm grammarId grammar name remainingFuel
+          production.alts alternatives
+      `(SearchPattern.MirrorsSymbol.capture (grammar := $grammarId)
+          (fuel := $(quote remainingFuel)) (production := $productionTerm)
+          (by rfl) (by rfl) $bodyProof)
+  | _, _ =>
+      throwError "internal error: compiled search pattern does not mirror its grammar symbol"
+
+/-- Reify the structural proof for one resolved search sequence. -/
+private partial def searchMirrorsSequenceTerm (grammarId : TSyntax `ident) (grammar : Grammar)
+    (qual : String) (fuel : Nat) (sequence : Triptych.Seq) (patterns : List SearchPattern) :
+    CommandElabM (TSyntax `term) := do
+  match sequence, patterns with
+  | [], [] =>
+      `(SearchPattern.MirrorsSequence.empty)
+  | { sym := symbol, optional := true } :: rest, .optional pattern :: patterns => do
+      let headProof ← searchMirrorsSymbolTerm grammarId grammar qual fuel symbol pattern
+      let tailProof ← searchMirrorsSequenceTerm grammarId grammar qual fuel rest patterns
+      `(SearchPattern.MirrorsSequence.optional $headProof $tailProof)
+  | { sym := symbol, optional := false } :: rest, pattern :: patterns => do
+      let headProof ← searchMirrorsSymbolTerm grammarId grammar qual fuel symbol pattern
+      let tailProof ← searchMirrorsSequenceTerm grammarId grammar qual fuel rest patterns
+      `(SearchPattern.MirrorsSequence.required $headProof $tailProof)
+  | _, _ =>
+      throwError "internal error: compiled search sequence does not mirror its grammar sequence"
+
+/-- Reify the structural proof for source-ordered resolved alternatives. -/
+private partial def searchMirrorsAlternativesTerm (grammarId : TSyntax `ident)
+    (grammar : Grammar) (qual : String) (fuel : Nat) (alternatives : List Triptych.Seq)
+    (patterns : List (List SearchPattern)) : CommandElabM (TSyntax `term) := do
+  match alternatives, patterns with
+  | [], [] =>
+      `(SearchPattern.MirrorsAlternatives.empty)
+  | alternative :: alternatives, pattern :: patterns => do
+      let headProof ←
+        searchMirrorsSequenceTerm grammarId grammar qual fuel alternative pattern
+      let tailProof ←
+        searchMirrorsAlternativesTerm grammarId grammar qual fuel alternatives patterns
+      `(SearchPattern.MirrorsAlternatives.cons $headProof $tailProof)
+  | _, _ =>
+      throwError "internal error: compiled search alternatives do not mirror the grammar"
+
+end
+
+/-- Reify the root-level structural certificate for an ordered search plan. -/
+private def searchMirrorsGrammarTerm (grammarId : TSyntax `ident) (grammar : Grammar)
+    (plan : SearchPlan) : CommandElabM (TSyntax `term) := do
+  unless plan.start = grammar.start do
+    throwError "internal error: search plan and grammar have different start productions"
+  let production ←
+    match grammar.startProd? with
+    | some production => pure production
+    | none => throwError "internal error: search-plan grammar has no start production"
+  let productionTerm ← prodLit production
+  let alternativesProof ←
+    searchMirrorsAlternativesTerm grammarId grammar "" grammar.prods.length
+      production.alts plan.alternatives
+  `(SearchPlan.MirrorsGrammar.intro (by rfl) $productionTerm (by rfl) $alternativesProof)
+
 /-- Reify the root-level structural certificate checked by staged parser correctness. -/
 private def mirrorsGrammarTerm (grammarId : TSyntax `ident) (grammar : Grammar)
     (plan : ScanPlan) : CommandElabM (TSyntax `term) := do
@@ -2121,7 +2218,7 @@ def directLeanParserCommands (specName : Name) (grammar : Grammar) (plan : ScanP
 /-- Emit a grammar-lookup-free ordered-search parser and its checked bridge to the complete
     scanner. Unlike the cursor tier, this retains branching and bounded backtracking, but all
     references and capture keys have already been resolved by the generator. -/
-def directSearchParserCommands (specName : Name) (_grammar : Grammar) (plan : SearchPlan) :
+def directSearchParserCommands (specName : Name) (grammar : Grammar) (plan : SearchPlan) :
     CommandElabM (Array (TSyntax `command)) := do
   let program := lowerSearchPlan plan
   let grammarId := mkIdent (specName ++ `grammar)
@@ -2141,6 +2238,7 @@ def directSearchParserCommands (specName : Name) (_grammar : Grammar) (plan : Se
   let viewOfMapId := mkIdent (specName ++ `View ++ `ofMap)
   let decodeViewId := mkIdent (specName ++ `decodeView)
   let planTerm ← searchPlanTerm plan
+  let planMirrorsTerm ← searchMirrorsGrammarTerm grammarId grammar plan
   let programTerm ← searchProgramTerm program
   let programLoweredRw ←
     `(Lean.Parser.Tactic.rwRule| $programLoweredId:ident)
@@ -2161,12 +2259,12 @@ def directSearchParserCommands (specName : Name) (_grammar : Grammar) (plan : Se
   let planMirrors ←
     `(private theorem $planMirrorsId :
         SearchPlan.MirrorsGrammar $planId $grammarId :=
-      SearchPlan.mirrorsGrammar_of_matchesGrammar (by native_decide))
+      $planMirrorsTerm)
   let programDef ← `(private abbrev $programId : SearchProgram := $programTerm)
   let programLowered ←
     `(private theorem $programLoweredId :
         lowerSearchPlan $planId = $programId := by
-      native_decide)
+      decide)
   let directDecodeDef ←
     `(private def $directDecodeId (source : String) : Option CaptureMap :=
         let $input := source.toList

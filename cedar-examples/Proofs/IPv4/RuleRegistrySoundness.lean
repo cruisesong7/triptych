@@ -135,7 +135,7 @@ private theorem prefix_of_toNat (pre : IPv4Prefix) :
 private theorem prefix_toNat_of_le (n : Nat) (h : n ≤ 32) :
     (n : IPv4Prefix).toNat = n := by
   have hall : ∀ i : Fin 33, (i.val : IPv4Prefix).toNat = i.val := by
-    native_decide
+    decide
   exact hall ⟨n, by omega⟩
 
 private theorem prefix_toNat_le (pre : IPv4Prefix) : pre.toNat ≤ 32 := by

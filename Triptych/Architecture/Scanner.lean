@@ -21,7 +21,7 @@ import Triptych.Architecture.Value
 /-!
 # Executable scanner
 
-`decode` is the archived reference semantics: it materializes every possible prefix match and
+`decode` is the reference semantics: it materializes every possible prefix match and
 then selects the first complete parse. This module implements the same ordered search directly.
 Continuations fuse symbol, sequence, and production matching, so failed candidates are discarded
 immediately and the first complete parse stops the search.
@@ -260,7 +260,7 @@ def scanSearch (g : Grammar) (input : String) : Option CaptureMap :=
 
 /-- Runtime scanner used by generated parsers. A certified deterministic grammar first uses the
     boundary-driven specialization; every other request uses the complete continuation scanner.
-    Both paths are proved equal to the archived reference decoder. -/
+    Both paths are proved equal to the reference decoder. -/
 def scan (g : Grammar) (input : String) : Option CaptureMap :=
   if g.staticUnique then
     (fastScan g input).orElse fun _ => scanSearch g input

@@ -93,7 +93,7 @@ def merge : SearchCode → SearchCode → SearchCode
       else
         .choice first second
   | first, second => .choice first second
-termination_by first second => sizeOf first + sizeOf second
+termination_by structural first _ => first
 
 /-- Number of control-flow constructors in a staged search program. This is a static generated-code
     size measure, not a runtime step count. -/
@@ -124,7 +124,7 @@ def reduce : SearchCode → SearchCode
   | .choice first second => merge first.reduce second.reduce
   | .repetition separator item lower upper countKey next =>
       .repetition separator item.reduce lower upper countKey next.reduce
-termination_by code => sizeOf code
+termination_by structural code => code
 
 mutual
 

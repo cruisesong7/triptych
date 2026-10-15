@@ -518,7 +518,7 @@ private theorem addressCode_eq (c : AddrComponents) (hc : c.Valid) :
 private theorem prefix_toNat_of_le (n : Nat) (h : n ≤ 128) :
     (n : IPv6Prefix).toNat = n := by
   have hall : ∀ i : Fin 129, (i.val : IPv6Prefix).toNat = i.val := by
-    native_decide
+    decide
   exact hall ⟨n, by omega⟩
 
 private theorem prefixValue_toNat (pre : Option String) (h : OptionalPrefixValid pre) :

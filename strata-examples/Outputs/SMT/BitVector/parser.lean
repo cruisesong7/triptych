@@ -8,7 +8,10 @@ import Triptych.Architecture.Constraint
 import Triptych.Architecture.Assemble
 import Triptych.Theorems.Reconcile
 import Triptych.Theorems.Value
-import Triptych.Archive.DecodeLemmas
+import Triptych.Theorems.ParsePlan
+import Triptych.Theorems.ScanPlan
+import Triptych.Theorems.SearchPlan
+import Triptych.Reference.DecodeLemmas
 import Triptych.Theorems.Derivation
 import Triptych.Theorems.Scanner
 import Outputs.SMT.BitVector.spec
@@ -23,7 +26,7 @@ set_option linter.unnecessarySeqFocus false
 
 /- ══════════════════════════════ engine ══════════════════════════════
 The executable counterpart of the spec. A verified scanner extracts captured
-components and stops at the first complete parse. The archived reference `decode`
+components and stops at the first complete parse. The reference `decode`
 is used only in the agreement proof, not as a runtime fallback. `computeValue`
 evaluates the value function on those captures. Generated `DecidablePred` instances
 make the readable `IsWf` and `IsValid` predicates directly executable.
@@ -101,6 +104,18 @@ def BitVector.computeValue (s : String) :=
 
 def BitVector.View.ofMap (input : String) (m : Triptych.CaptureMap) : BitVector.View :=
   BitVector.View.mk input (Triptych.CaptureMap.toEnv m "BinaryDigits") (Triptych.CaptureMap.toEnv m "HexDigits")
+
+private def BitVector.View.ofSpans (input : String) (chars : List Char) (spans : Triptych.LeanSpanCursor.SpanMap) :
+    BitVector.View :=
+  BitVector.View.mk input (Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "BinaryDigits")
+    (Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "HexDigits")
+
+private theorem BitVector.View.ofSpans_eq_ofMap (input : String) (chars : List Char)
+    (spans : Triptych.LeanSpanCursor.SpanMap) :
+    BitVector.View.ofSpans input chars spans = BitVector.View.ofMap input (spans.materialize chars) :=
+  by
+  unfold BitVector.View.ofSpans BitVector.View.ofMap
+  simp only [Triptych.LeanSpanCursor.SpanMap.captureMap_toEnv, Triptych.LeanSpanCursor.SpanMap.captureMap_toEnvList]
 
 def BitVector.decodeView (s : String) : Option BitVector.View :=
   (scan BitVector.grammar s).map (BitVector.View.ofMap s)
@@ -496,7 +511,8 @@ theorem BitVector.IsWf_equiv (s : String) :
   simp only [Triptych.component, Triptych.componentList, Triptych.envOf, Triptych.captureMapOf, Triptych.scan_eq_decode,
     List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const, ConstraintEntry.wfPart,
     Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD,
-    Env.countVal, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
+    hexOf_getD, hexSeqOf_getD, segmentsOf_getD, Env.countVal, and_true, true_and, false_implies, implies_true,
+    Bool.false_eq_true]
   try grind
 
 theorem BitVector.IsValid_equiv (s : String) :
@@ -558,7 +574,10 @@ theorem BitVector.computeValue_eq (s : String) :
   rw [Triptych.scan_eq_decode]
   cases h : decode BitVector.grammar s with
   | none => simp [h]
-  | some m => simp [h, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, Env.countVal, ValExpr.eval]
+  | some m =>
+    simp [h, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, hexOf_getD, hexSeqOf_getD, segmentsOf_getD,
+        Env.countVal, ValExpr.eval] <;>
+      ac_rfl
 
 theorem BitVector.computeValue_of_decode {s : String} {m : Triptych.CaptureMap}
     (h : decode BitVector.grammar s = some m) :
@@ -590,9 +609,11 @@ theorem BitVector.computeValue_view (s : String) :
 
 /- ═══════════════════════════════ parser ══════════════════════════════
 The generated correct-by-construction parser `parse` uses a certified staged cursor
-program when the grammar supports one, checks constraints on its capture map, and
-computes the result from those captures. The complete scanner remains the checked
-fallback. `parse_eq_scanner` and `parse_eq_gated` prove equality with the generic
+program when the grammar supports one, projects its captures once into the typed
+`View`, checks `View.Valid`, and computes `View.denotation`. Certified cursor rejection
+is final; grammar
+shapes outside that fragment use the complete scanner. `parse_eq_scanner` and
+`parse_eq_gated` prove equality with the generic
 scanner and readable validity-gated presentation. Its correctness and search-cost
 guarantees — `parse_sound`, `parse_complete`, `parse_reject`,
 `parse_profile_result`, `parse_candidateChecks_le`, `parse_view`, and typed
@@ -601,6 +622,235 @@ AUTO-DISCHARGED here.
 When an external parser is declared, `checkedExtParse` additionally validates each
 external result against this parser and ships an AUTO-DISCHARGED soundness theorem.
 A verified parser, no `sorry`. -/
+
+private abbrev BitVector.searchPlan : SearchPlan :=
+  ({ start := "BitVector",
+      alternatives :=
+        [[SearchPattern.literal "#",
+            SearchPattern.capture "Payload" ["Payload"]
+              [[SearchPattern.capture "Binary" ["Binary", "Payload.Binary"]
+                    [[SearchPattern.literal "b",
+                        SearchPattern.capture "BinaryDigits" ["BinaryDigits", "Binary.BinaryDigits"]
+                          [[SearchPattern.tokenRun TokClass.bit LenSpec.atLeastOne]]]]],
+                [SearchPattern.capture "Hexadecimal" ["Hexadecimal", "Payload.Hexadecimal"]
+                    [[SearchPattern.literal "x",
+                        SearchPattern.capture "HexDigits" ["HexDigits", "Hexadecimal.HexDigits"]
+                          [[SearchPattern.tokenRun TokClass.hexDigit LenSpec.atLeastOne]]]]]]]] } :
+    SearchPlan)
+
+private abbrev BitVector.parsePlan : ParsePlan :=
+  ParsePlan.search BitVector.searchPlan
+
+private theorem BitVector.searchPlan_mirrorsGrammar :
+    SearchPlan.MirrorsGrammar BitVector.searchPlan BitVector.grammar :=
+  SearchPlan.MirrorsGrammar.intro (by rfl)
+    (Production.mk "BitVector" [[SymItem.mk (Sym.lit "#") false, SymItem.mk (Sym.ref "Payload") false]]) (by rfl)
+    (SearchPattern.MirrorsAlternatives.cons
+      (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+        (SearchPattern.MirrorsSequence.required
+          (SearchPattern.MirrorsSymbol.capture («grammar» := BitVector.grammar) (fuel := 5) (production :=
+            Production.mk "Payload" [[SymItem.mk (Sym.ref "Binary") false], [SymItem.mk (Sym.ref "Hexadecimal") false]])
+            (by rfl) (by rfl)
+            (SearchPattern.MirrorsAlternatives.cons
+              (SearchPattern.MirrorsSequence.required
+                (SearchPattern.MirrorsSymbol.capture («grammar» := BitVector.grammar) (fuel := 4) (production :=
+                  Production.mk "Binary" [[SymItem.mk (Sym.lit "b") false, SymItem.mk (Sym.ref "BinaryDigits") false]])
+                  (by rfl) (by rfl)
+                  (SearchPattern.MirrorsAlternatives.cons
+                    (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                      (SearchPattern.MirrorsSequence.required
+                        (SearchPattern.MirrorsSymbol.capture («grammar» := BitVector.grammar) (fuel := 3) (production :=
+                          Production.mk "BinaryDigits" [[SymItem.mk (Sym.term TokClass.bit LenSpec.atLeastOne) false]])
+                          (by rfl) (by rfl)
+                          (SearchPattern.MirrorsAlternatives.cons
+                            (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                              SearchPattern.MirrorsSequence.empty)
+                            SearchPattern.MirrorsAlternatives.empty))
+                        SearchPattern.MirrorsSequence.empty))
+                    SearchPattern.MirrorsAlternatives.empty))
+                SearchPattern.MirrorsSequence.empty)
+              (SearchPattern.MirrorsAlternatives.cons
+                (SearchPattern.MirrorsSequence.required
+                  (SearchPattern.MirrorsSymbol.capture («grammar» := BitVector.grammar) (fuel := 4) (production :=
+                    Production.mk "Hexadecimal"
+                      [[SymItem.mk (Sym.lit "x") false, SymItem.mk (Sym.ref "HexDigits") false]])
+                    (by rfl) (by rfl)
+                    (SearchPattern.MirrorsAlternatives.cons
+                      (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                        (SearchPattern.MirrorsSequence.required
+                          (SearchPattern.MirrorsSymbol.capture («grammar» := BitVector.grammar) (fuel := 3)
+                            (production :=
+                            Production.mk "HexDigits"
+                              [[SymItem.mk (Sym.term TokClass.hexDigit LenSpec.atLeastOne) false]])
+                            (by rfl) (by rfl)
+                            (SearchPattern.MirrorsAlternatives.cons
+                              (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                SearchPattern.MirrorsSequence.empty)
+                              SearchPattern.MirrorsAlternatives.empty))
+                          SearchPattern.MirrorsSequence.empty))
+                      SearchPattern.MirrorsAlternatives.empty))
+                  SearchPattern.MirrorsSequence.empty)
+                SearchPattern.MirrorsAlternatives.empty)))
+          SearchPattern.MirrorsSequence.empty))
+      SearchPattern.MirrorsAlternatives.empty)
+
+private abbrev BitVector.searchProgram : SearchProgram :=
+  ({ start := "BitVector",
+      code :=
+        SearchCode.literal "#"
+          (SearchCode.capture ["Payload"]
+            (SearchCode.choice
+              (SearchCode.capture ["Binary", "Payload.Binary"]
+                (SearchCode.literal "b"
+                  (SearchCode.capture ["BinaryDigits", "Binary.BinaryDigits"]
+                    (SearchCode.tokenRun TokClass.bit LenSpec.atLeastOne SearchCode.accept) SearchCode.accept))
+                SearchCode.accept)
+              (SearchCode.capture ["Hexadecimal", "Payload.Hexadecimal"]
+                (SearchCode.literal "x"
+                  (SearchCode.capture ["HexDigits", "Hexadecimal.HexDigits"]
+                    (SearchCode.tokenRun TokClass.hexDigit LenSpec.atLeastOne SearchCode.accept) SearchCode.accept))
+                SearchCode.accept))
+            SearchCode.accept) } :
+    SearchProgram)
+
+private theorem BitVector.searchProgram_lowered : lowerSearchPlan BitVector.searchPlan = BitVector.searchProgram := by
+  decide
+
+private def BitVector.directDecode (source : String) : Option CaptureMap :=
+  let input := source.toList
+  let characters_root := "#".toList
+  if (characters_root).isPrefixOf input then
+    scanOrElse
+      (let characters_rootnblb := "b".toList
+      if (characters_rootnblb).isPrefixOf ((input).drop (characters_root).length) then
+        (List.range ((((input).drop (characters_root).length).drop (characters_rootnblb).length).length + 1)).findSome?
+          fun width_rootnblbnb =>
+          if
+              termPrefixOk TokClass.bit LenSpec.atLeastOne
+                (((input).drop (characters_root).length).drop (characters_rootnblb).length) width_rootnblbnb then
+            (fun (bodyCaptures_rootnblbn : CaptureMap) (remaining_rootnblbn : List Char) =>
+                let ownCaptures_rootnblbn :=
+                  (["BinaryDigits", "Binary.BinaryDigits"]).map fun key =>
+                    (key,
+                      String.ofList
+                        ((((input).drop (characters_root).length).drop (characters_rootnblb).length).take
+                          ((((input).drop (characters_root).length).drop (characters_rootnblb).length).length -
+                            (remaining_rootnblbn).length)))
+                (fun (tailCaptures_rootnblbn : CaptureMap) (suffix_rootnblbn : List Char) =>
+                    (fun (bodyCaptures_rootnbl : CaptureMap) (remaining_rootnbl : List Char) =>
+                        let ownCaptures_rootnbl :=
+                          (["Binary", "Payload.Binary"]).map fun key =>
+                            (key,
+                              String.ofList
+                                (((input).drop (characters_root).length).take
+                                  (((input).drop (characters_root).length).length - (remaining_rootnbl).length)))
+                        (fun (tailCaptures_rootnbl : CaptureMap) (suffix_rootnbl : List Char) =>
+                            (fun (bodyCaptures_rootn : CaptureMap) (remaining_rootn : List Char) =>
+                                let ownCaptures_rootn :=
+                                  (["Payload"]).map fun key =>
+                                    (key,
+                                      String.ofList
+                                        (((input).drop (characters_root).length).take
+                                          (((input).drop (characters_root).length).length - (remaining_rootn).length)))
+                                (fun (tailCaptures_rootn : CaptureMap) (suffix_rootn : List Char) =>
+                                    (fun (captures : CaptureMap) (remaining : List Char) =>
+                                        if (remaining).isEmpty then some captures else none)
+                                      (ownCaptures_rootn ++ bodyCaptures_rootn ++ tailCaptures_rootn) suffix_rootn)
+                                  ([] : CaptureMap) remaining_rootn)
+                              (ownCaptures_rootnbl ++ bodyCaptures_rootnbl ++ tailCaptures_rootnbl) suffix_rootnbl)
+                          ([] : CaptureMap) remaining_rootnbl)
+                      (ownCaptures_rootnblbn ++ bodyCaptures_rootnblbn ++ tailCaptures_rootnblbn) suffix_rootnblbn)
+                  ([] : CaptureMap) remaining_rootnblbn)
+              ([] : CaptureMap)
+              ((((input).drop (characters_root).length).drop (characters_rootnblb).length).drop width_rootnblbnb)
+          else none
+      else none)
+      fun _ =>
+      let characters_rootnbrb := "x".toList
+      if (characters_rootnbrb).isPrefixOf ((input).drop (characters_root).length) then
+        (List.range ((((input).drop (characters_root).length).drop (characters_rootnbrb).length).length + 1)).findSome?
+          fun width_rootnbrbnb =>
+          if
+              termPrefixOk TokClass.hexDigit LenSpec.atLeastOne
+                (((input).drop (characters_root).length).drop (characters_rootnbrb).length) width_rootnbrbnb then
+            (fun (bodyCaptures_rootnbrbn : CaptureMap) (remaining_rootnbrbn : List Char) =>
+                let ownCaptures_rootnbrbn :=
+                  (["HexDigits", "Hexadecimal.HexDigits"]).map fun key =>
+                    (key,
+                      String.ofList
+                        ((((input).drop (characters_root).length).drop (characters_rootnbrb).length).take
+                          ((((input).drop (characters_root).length).drop (characters_rootnbrb).length).length -
+                            (remaining_rootnbrbn).length)))
+                (fun (tailCaptures_rootnbrbn : CaptureMap) (suffix_rootnbrbn : List Char) =>
+                    (fun (bodyCaptures_rootnbr : CaptureMap) (remaining_rootnbr : List Char) =>
+                        let ownCaptures_rootnbr :=
+                          (["Hexadecimal", "Payload.Hexadecimal"]).map fun key =>
+                            (key,
+                              String.ofList
+                                (((input).drop (characters_root).length).take
+                                  (((input).drop (characters_root).length).length - (remaining_rootnbr).length)))
+                        (fun (tailCaptures_rootnbr : CaptureMap) (suffix_rootnbr : List Char) =>
+                            (fun (bodyCaptures_rootn : CaptureMap) (remaining_rootn : List Char) =>
+                                let ownCaptures_rootn :=
+                                  (["Payload"]).map fun key =>
+                                    (key,
+                                      String.ofList
+                                        (((input).drop (characters_root).length).take
+                                          (((input).drop (characters_root).length).length - (remaining_rootn).length)))
+                                (fun (tailCaptures_rootn : CaptureMap) (suffix_rootn : List Char) =>
+                                    (fun (captures : CaptureMap) (remaining : List Char) =>
+                                        if (remaining).isEmpty then some captures else none)
+                                      (ownCaptures_rootn ++ bodyCaptures_rootn ++ tailCaptures_rootn) suffix_rootn)
+                                  ([] : CaptureMap) remaining_rootn)
+                              (ownCaptures_rootnbr ++ bodyCaptures_rootnbr ++ tailCaptures_rootnbr) suffix_rootnbr)
+                          ([] : CaptureMap) remaining_rootnbr)
+                      (ownCaptures_rootnbrbn ++ bodyCaptures_rootnbrbn ++ tailCaptures_rootnbrbn) suffix_rootnbrbn)
+                  ([] : CaptureMap) remaining_rootnbrbn)
+              ([] : CaptureMap)
+              ((((input).drop (characters_root).length).drop (characters_rootnbrb).length).drop width_rootnbrbnb)
+          else none
+      else none
+  else none
+
+private theorem BitVector.directDecode_eq_searchProgram (source : String) :
+    BitVector.directDecode source = SearchProgram.decode BitVector.searchProgram source :=
+  by
+  unfold BitVector.directDecode SearchProgram.decode BitVector.searchProgram
+  simp only [SearchCode.runK]
+
+private def BitVector.decodeCaptures (source : String) : Option CaptureMap :=
+  BitVector.directDecode source
+
+private theorem BitVector.decodeCaptures_eq_parsePlan (source : String) :
+    BitVector.decodeCaptures source = ParsePlan.decode BitVector.parsePlan BitVector.grammar source := by
+  calc
+    BitVector.decodeCaptures source = SearchProgram.decode BitVector.searchProgram source := by
+      exact BitVector.directDecode_eq_searchProgram source
+    _ = SearchProgram.decode (lowerSearchPlan BitVector.searchPlan) source := by rw [BitVector.searchProgram_lowered]
+    _ = ParsePlan.decode BitVector.parsePlan BitVector.grammar source := by rfl
+
+private theorem BitVector.decodeCaptures_eq_scan (source : String) :
+    BitVector.decodeCaptures source = scan BitVector.grammar source := by
+  calc
+    BitVector.decodeCaptures source = ParsePlan.decode BitVector.parsePlan BitVector.grammar source :=
+      BitVector.decodeCaptures_eq_parsePlan source
+    _ = scan BitVector.grammar source :=
+      ParsePlan.decode_eq_scan (ParsePlan.CertifiedFor.search BitVector.searchPlan_mirrorsGrammar) source
+
+private def BitVector.directView (source : String) : Option BitVector.View :=
+  (BitVector.directDecode source).map (BitVector.View.ofMap source)
+
+private theorem BitVector.directView_eq_decodeView (source : String) :
+    BitVector.directView source = BitVector.decodeView source :=
+  by
+  unfold BitVector.directView BitVector.decodeView
+  rw [show BitVector.directDecode source = scan BitVector.grammar source by
+      exact BitVector.decodeCaptures_eq_scan source]
+
+private instance BitVector.instDecidableViewValid : DecidablePred BitVector.View.Valid := fun _ =>
+  by
+  unfold BitVector.View.Valid
+  infer_instance
 
 theorem BitVector.computeValue_isSome (s : String) : BitVector.IsValid s → (BitVector.computeValue s).isSome :=
   by
@@ -612,11 +862,26 @@ theorem BitVector.computeValue_isSome (s : String) : BitVector.IsValid s → (Bi
   exact hengine.1.1
 
 def BitVector.parse (s : String) :=
-  Triptych.scannerParseMap BitVector.grammar BitVector.constraints BitVector.valueFn id s
+  Triptych.decodedViewParse BitVector.directView BitVector.View.Valid BitVector.View.denotation id s
 
 theorem BitVector.parse_eq_scanner (s : String) :
     BitVector.parse s = Triptych.scannerParseMap BitVector.grammar BitVector.constraints BitVector.valueFn id s := by
-  rfl
+  calc
+    BitVector.parse s = Triptych.gatedParseOfSpec BitVector.IsValid BitVector.computeValue id s :=
+      by
+      unfold BitVector.parse
+      exact
+        Triptych.decodedViewParse_eq_gatedParseOfSpec BitVector.directView BitVector.decodeView BitVector.View.Valid
+          BitVector.View.denotation id BitVector.IsValid BitVector.computeValue BitVector.directView_eq_decodeView
+          BitVector.IsValid_view BitVector.computeValue_view s
+    _ = Triptych.gatedParse BitVector.IsValid BitVector.computeValue s := by simp [Triptych.gatedParseOfSpec]
+    _ = Triptych.scannerParseMap BitVector.grammar BitVector.constraints BitVector.valueFn id s :=
+      by
+      symm
+      unfold BitVector.computeValue
+      exact
+        Triptych.scannerParseMap_eq_surfaceGated BitVector.grammar BitVector.constraints BitVector.valueFn
+          BitVector.IsValid BitVector.IsValid_equiv s
 
 theorem BitVector.parse_eq_gated (s : String) :
     BitVector.parse s = Triptych.gatedParse BitVector.IsValid BitVector.computeValue s :=
@@ -647,13 +912,13 @@ theorem BitVector.parse_candidateChecks_eq_zero_of_fastScan (s : String)
   Triptych.scannerParseMap_candidateChecks_eq_zero_of_fastScan BitVector.grammar BitVector.constraints BitVector.valueFn
     id s hunique hscan
 
-theorem BitVector.parse_sound (s : String) (v : Value) :
+theorem BitVector.parse_sound (s : String) (v : StrataExamples.SMT.BitVector.Value) :
     BitVector.parse s = some v → BitVector.IsValid s ∧ BitVector.computeValue s = some v :=
   by
   rw [BitVector.parse_eq_gated]
   exact Triptych.gatedParse_sound _ _ s v
 
-theorem BitVector.parse_complete (s : String) (v : Value) :
+theorem BitVector.parse_complete (s : String) (v : StrataExamples.SMT.BitVector.Value) :
     BitVector.IsValid s → BitVector.computeValue s = some v → BitVector.parse s = some v :=
   by
   rw [BitVector.parse_eq_gated]
@@ -672,7 +937,7 @@ theorem BitVector.parse_view (s : String) :
   unfold Triptych.gatedParse
   rw [BitVector.computeValue_view]
 
-theorem BitVector.parse_eq_some_iff_view (s : String) (v : Value) :
+theorem BitVector.parse_eq_some_iff_view (s : String) (v : StrataExamples.SMT.BitVector.Value) :
     BitVector.parse s = some v ↔
       ∃ decodedView : BitVector.View,
         BitVector.decodeView s = some decodedView ∧

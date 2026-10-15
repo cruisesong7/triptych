@@ -1878,7 +1878,7 @@ def elabTriptych : CommandElab := fun stx => do
           let parserImports := ["Triptych.Architecture.GeneratedLinter"]
             ++ libImports
             ++ directParserImports
-            ++ ["Triptych.Archive.DecodeLemmas", "Triptych.Theorems.Derivation",
+            ++ ["Triptych.Reference.DecodeLemmas", "Triptych.Theorems.Derivation",
               "Triptych.Theorems.Scanner"]
             ++ (if grammarStaticallyUnique then
                   ["Triptych.Theorems.RelationalParser", "Triptych.Theorems.Unambiguity"]
@@ -1890,7 +1890,7 @@ def elabTriptych : CommandElab := fun stx => do
               "set_option linter.unnecessarySeqFocus false\n"
           let engineBanner := "/- ══════════════════════════════ engine ══════════════════════════════\n\
             The executable counterpart of the spec. A verified scanner extracts captured\n\
-            components and stops at the first complete parse. The archived reference `decode`\n\
+            components and stops at the first complete parse. The reference `decode`\n\
             is used only in the agreement proof, not as a runtime fallback. `computeValue`\n\
             evaluates the value function on those captures. Generated `DecidablePred` instances\n\
             make the readable `IsWf` and `IsValid` predicates directly executable.\n\

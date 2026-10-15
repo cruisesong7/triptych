@@ -12,7 +12,7 @@ triptych GrammarCoverage where
     Upper           ::= ascii[65,90]{2}
     Rows            ::= rep Row sepBy ";" {1,2}
     Row             ::= rep Cell sepBy ":" {1,3}
-    Csv             ::= rep Cell sepBy "," +
+    Csv             ::= rep Cell sepBy "," {1,8}
     Cell            ::= bit{1}
   value
     len Payload + count Item

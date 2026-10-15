@@ -18,7 +18,7 @@ import Triptych.Architecture.Prefix
 import Triptych.Architecture.Value
 
 /-!
-# Archived reference decoder and value computation
+# Reference decoder and value computation
 
 `IsWf` (from `Denote`) *recognizes* a string existentially. `computeValue` needs the
 *witnessing* capture assignment: which substring each nonterminal matched. `decode`
@@ -30,8 +30,8 @@ tries every way to split the string across a sequence's items, records each matc
 nonterminal's substring, and keeps assignments that consume the whole string. It is the
 *reference* decoder (simple, obviously-correct-by-inspection), not the generated runtime path.
 `Triptych.Architecture.Scanner` implements the same ordered search with continuations and proves
-exact equality to this definition. This module is archived intentionally: generated parsers do
-not import it as their runtime engine.
+exact equality to this definition. Generated parsers do not use it as their runtime engine; it is
+kept as the specification that the scanner and every staged parser are proved equal to.
 
 Status: a total `def` — fuel-bounded (fuel = #productions, a DAG-depth backstop), so it
 needs no `partial`. It remains executable for proofs, `#eval` diagnostics, differential

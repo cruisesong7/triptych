@@ -29,7 +29,7 @@ analysis. Generated Lean parsers emit staged cursor code for deterministic gramm
 continuation-fused `SearchProgram` code for supported branching grammars. Structural
 `MirrorsGrammar` witnesses let Lean check that each specialized program represents the generated
 grammar. Every staged parser is proved equal to the scanner, which is proved extensionally equal
-to the archived list decoder. Search-program reduction is also proved not to increase its static
+to the reference list decoder. Search-program reduction is also proved not to increase its static
 control-flow node count. The tool does not claim streaming or error recovery. Its formal
 performance model bounds completed root-candidate checks for every grammar and records zero such
 backtracking when the certified fast path succeeds; ambiguous grammars can still have exponential
@@ -591,11 +591,23 @@ Unsupported direct shapes are rejected during generation with the recorded lower
 diagnostic. The generic scanner remains the executable specification used by equivalence proofs,
 not a silent production fallback.
 The generated parser-equivalence theorems prove that these choices do not change behavior, while
-`scan_eq_decode` connects the scanner to the archived executable reference semantics. A project
+`scan_eq_decode` connects the scanner to the executable reference semantics. A project
 that wants to replace a production parser should still benchmark its workloads and integration
 requirements. Triptych does not claim streaming or error recovery. Its generic complexity
 theorem bounds completed candidate checks by the finite candidate tree; it deliberately does not
-claim a polynomial bound for ambiguous grammars.
+claim a polynomial bound for ambiguous grammars. It is not a bound on runtime steps: the search
+path tries token widths and repetition counts by backtracking, and no automaton construction is
+performed.
+
+**Trust boundary of the Verus backend.** Lean proves that the value/constraint translation into
+the Verus IR preserves meaning (`Backend/Verus/Preservation.lean`). The parser control flow,
+pretty-printer, `*.rs.in` templates, and the Verus-only search-code rewrites (`fuse`,
+`boundedRepetition`, literal dispatch, interning) are checked only by Verus, and only when
+`verus-experiments/verify.sh` is run; CI does not run Verus. Cursor-path parsers (Decimal) are
+proved against the readable `*_is_wf_*` grammar predicate in `spec.rs`. Search-path parsers
+(Duration, Datetime, IPv4, IPv6) are proved against a spec-function copy of their own generated
+state machine, not yet against `spec.rs`. Completeness of the semantic stage is conditional on
+the generated `*_runtime_safe` predicate.
 
 ## 16. The implemented `triptych` DSL
 

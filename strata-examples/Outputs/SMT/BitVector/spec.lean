@@ -128,7 +128,7 @@ abbrev BitVector.IsWf (s : String) : Prop :=
 abbrev BitVector.IsValid (s : String) : Prop :=
   BitVector.IsWf s
 
-def BitVector.Denotes (s : String) (v : Value) : Prop :=
+def BitVector.Denotes (s : String) (v : StrataExamples.SMT.BitVector.Value) : Prop :=
   BitVector.IsValid s ∧
     v =
       BitVector.value (Triptych.component BitVector.grammar s "BinaryDigits")

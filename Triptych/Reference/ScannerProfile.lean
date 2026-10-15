@@ -16,12 +16,12 @@
 
 import Triptych.Architecture.Assemble
 import Triptych.Architecture.Dependent
-import Triptych.Archive.ReferenceDecoder
+import Triptych.Reference.Decoder
 
 /-!
 # Proof-only scanner profiles
 
-This module connects runtime scanning to the archived candidate tree for proofs, diagnostics,
+This module connects runtime scanning to the reference candidate tree for proofs, diagnostics,
 and benchmarks. Importing `Triptych.Architecture.Scanner` alone does not import the decoder.
 -/
 

@@ -326,7 +326,7 @@ This capture map is an engine representation. Ordinary clients use the typed
 {name}`Decimal.View` introduced in §2.2 instead of looking up these string keys.
 
 The scanner performs ordered search directly and stops at the first complete parse. The
-archived {name}`Triptych.decode` definition instead constructs lists of candidate splits; it is
+reference {name}`Triptych.decode` definition instead constructs lists of candidate splits; it is
 kept as a transparent reference semantics. The checked theorem {name}`Triptych.scan_eq_decode`
 proves that both select exactly the same capture map on every input, so replacing the runtime
 engine does not change the readable specification, computed value, or parser contracts.

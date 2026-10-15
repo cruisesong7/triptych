@@ -52,7 +52,7 @@ grammar
 selected captures -> ExecutableSemanticPlan -> constraints, value, and domain result
 ```
 
-The archived reference decoder is small and proof-oriented. The continuation scanner is the
+The reference decoder is small and proof-oriented. The continuation scanner is the
 complete executable specification. {name}`Triptych.ParsePlan` then chooses a straight-line
 cursor compiler for a deterministic layout or an ordered search compiler for a supported
 branching layout. Neither generated parser traverses the source grammar at runtime.
@@ -60,7 +60,7 @@ branching layout. Neither generated parser traverses the source grammar at runti
 The search track resolves production references, fuses sequence continuations, reduces shared
 prefixes, and lowers the result to callback-free states. The cursor track lowers known field
 boundaries to direct operations. Checked equivalence theorems connect both tracks to the same
-scanner and archived decoder, so the choice changes implementation strategy without changing
+scanner and reference decoder, so the choice changes implementation strategy without changing
 the public parser contract.
 
 The compiler records this choice once as a {name}`Triptych.ParsePlan`. A {lit}`cursor` plan
@@ -91,7 +91,7 @@ That transparency has a runtime cost. Variable-width terminals can produce many 
 alternatives, optionals, and repetitions can multiply those candidates. Most candidates are
 allocated only to be discarded later.
 
-The decoder now lives under {lit}`Triptych/Archive/ReferenceDecoder.lean`. The runtime scanner
+The decoder now lives under {lit}`Triptych/Reference/Decoder.lean`. The runtime scanner
 implementation does not import it. Proof modules import it explicitly as an executable reference
 semantics for verification, diagnostics, and differential benchmarks.
 
@@ -105,7 +105,7 @@ stop-before-continue repetition policy.
 For grammars accepted by the conservative {name}`Triptych.Grammar.staticUnique` checker, the
 scanner first attempts a boundary-driven path. Fixed widths and following literals determine
 field boundaries without enumerating every prefix. Unsupported shapes fall back to the complete
-continuation scanner, not to the archived decoder.
+continuation scanner, not to the reference decoder.
 
 # Certified parser plans
 
@@ -324,8 +324,8 @@ unconsumed remainder. It explores the input from left to right:
 The following checked equation exposes the two candidates that reach the root:
 
 ```lean (name := decimalDecoderCandidates)
-example :
-    decimalRootCandidates "-12.34" =
+#guard
+    decimalRootCandidates "-12.34" ==
       [([("Sign", "-"),
          ("Natural", "12"),
          ("Fraction", "3")],
@@ -333,8 +333,7 @@ example :
        ([("Sign", "-"),
          ("Natural", "12"),
          ("Fraction", "34")],
-        "")] := by
-  native_decide
+        "")]
 ```
 
 {name}`Triptych.decode` constructs this candidate list, keeps only entries with an empty
@@ -365,18 +364,17 @@ backtracking.
 The two implementations therefore return exactly the same observable result:
 
 ```lean (name := decimalDecoderScannerResult)
-example :
-    decode Decimal.grammar "-12.34" =
+#guard
+    decode Decimal.grammar "-12.34" ==
       some
         [("Sign", "-"),
          ("Natural", "12"),
-         ("Fraction", "34")] ∧
-    scan Decimal.grammar "-12.34" =
+         ("Fraction", "34")] &&
+    scan Decimal.grammar "-12.34" ==
       some
         [("Sign", "-"),
          ("Natural", "12"),
-         ("Fraction", "34")] := by
-  native_decide
+         ("Fraction", "34")]
 ```
 
 The generated parser then checks the constraints and computes the value from this one capture
@@ -538,12 +536,12 @@ The representations are intentionally retained:
 - The *staged cursor parser* favors generated runtime code. It removes grammar and instruction-list
   traversal for certified plans and rejects directly without invoking the generic scanner.
 
-Keeping the decoder as an archived model gives the scanner a simple independent specification.
+Keeping the decoder as a reference model gives the scanner a simple independent specification.
 Generated Lean applications execute a cursor plan when available, otherwise a resolved search
 program. The Verus backend emits cursor plans and supported search machines directly. Both
 backends fail generation when specialized lowering or rendering cannot cover the grammar, rather
 than silently changing to a generic runtime implementation.
-Proof and benchmark modules may import {lit}`Triptych.Archive` when they need the reference model
+Proof and benchmark modules may import {lit}`Triptych.Reference` when they need the reference model
 or cost profile.
 
 # Measured evidence

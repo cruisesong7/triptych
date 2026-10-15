@@ -143,7 +143,7 @@ pub open spec fn grammar_coverage_rep_3_matches(input: Seq<char>, count: int) ->
     decreases (input.len() as int),
 {
     exists|split: int|
-        (0int) <= split && split <= (input.len() as int) && grammar_coverage_is_wf_Cell(input.subrange((0int), split)) && ((1int) <= count + (1int) && true && split == (input.len() as int) || true && split + (1int) <= (input.len() as int) && input.subrange(split, split + (1int)) == seq!['\u{2c}'] && grammar_coverage_rep_3_matches(input.subrange(split + (1int), (input.len() as int)), count + (1int)))
+        (0int) <= split && split <= (input.len() as int) && grammar_coverage_is_wf_Cell(input.subrange((0int), split)) && ((1int) <= count + (1int) && count + (1int) <= (8int) && split == (input.len() as int) || count + (1int) < (8int) && split + (1int) <= (input.len() as int) && input.subrange(split, split + (1int)) == seq!['\u{2c}'] && grammar_coverage_rep_3_matches(input.subrange(split + (1int), (input.len() as int)), count + (1int)))
 }
 
 /** Recognition predicate exposing the number of separated-repetition items. */
@@ -183,7 +183,7 @@ pub open spec fn grammar_coverage_rep_3_matches_count(input: Seq<char>, count: i
     decreases (input.len() as int),
 {
     exists|split: int|
-        (0int) <= split && split <= (input.len() as int) && grammar_coverage_is_wf_Cell(input.subrange((0int), split)) && ((1int) <= count + (1int) && true && split == (input.len() as int) && target == count + (1int) || true && split + (1int) <= (input.len() as int) && input.subrange(split, split + (1int)) == seq!['\u{2c}'] && grammar_coverage_rep_3_matches_count(input.subrange(split + (1int), (input.len() as int)), count + (1int), target))
+        (0int) <= split && split <= (input.len() as int) && grammar_coverage_is_wf_Cell(input.subrange((0int), split)) && ((1int) <= count + (1int) && count + (1int) <= (8int) && split == (input.len() as int) && target == count + (1int) || count + (1int) < (8int) && split + (1int) <= (input.len() as int) && input.subrange(split, split + (1int)) == seq!['\u{2c}'] && grammar_coverage_rep_3_matches_count(input.subrange(split + (1int), (input.len() as int)), count + (1int), target))
 }
 
 /** Lean counterpart: `GrammarCoverage.IsWf.GrammarCoverage`. */

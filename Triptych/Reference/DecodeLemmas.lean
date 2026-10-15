@@ -2,7 +2,7 @@ import Triptych.Architecture.Assemble
 import Triptych.Theorems.Scanner
 
 /-!
-# Archived exact decoder membership lemmas
+# Exact reference-decoder membership lemmas
 
 Small structural facts about `matchSym` and `matchSeq` that preserve capture maps.
 `Triptych.Theorems.Roundtrip` intentionally quantifies captures away when proving recognition

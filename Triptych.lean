@@ -45,7 +45,7 @@ import Triptych.Theorems.Dependent
 import Triptych.Theorems.RelationalParser
 import Triptych.Theorems.Unambiguity
 import Triptych.Theorems.Reconcile
-import Triptych.Archive.DecodeLemmas
+import Triptych.Reference.DecodeLemmas
 import Triptych.Theorems.String
 import Triptych.Theorems.Value
 import Triptych.Automation.ExternalParser
@@ -67,7 +67,7 @@ See `Docs/DESIGN.md` for the full design.
 Module layout:
 * `Triptych.Architecture.*` — grammar, classifier, denotation, scanner, value/constraint
                                 DSLs, assembly, emission, and `triptych` syntax
-* `Triptych.Archive.*`      — executable reference semantics retained for proofs and comparison
+* `Triptych.Reference.*`    — executable reference semantics that all parser theorems target
 * `Triptych.Theorems.*`     — reusable scanner, roundtrip, coherence, unambiguity, and
                                 reconciliation theorems
 * `Triptych.Automation.*`   — extensible static external-parser proof rules and tactics

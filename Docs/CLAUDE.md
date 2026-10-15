@@ -16,7 +16,7 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
 
 ## Build / environment
 
-- `lake build Triptych` — Cedar-free core build (~37 jobs). Lean **v4.31.0**,
+- `lake build Triptych` — Cedar-free core build. Lean **v4.34.0** (see `lean-toolchain`),
   **batteries only, NO Mathlib** (deliberate, for now).
 - `cd other-examples && lake build` — Cedar-free Graph example package.
 - `cd cedar-examples && lake build` — optional Cedar bridges, soundness
@@ -59,7 +59,15 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
   axiom-clean `checkedExtParse` fallback and its soundness/view theorems whenever the spec value
   has `DecidableEq`; these introduce no additional obligation.
 - Verify axiom-cleanliness with a temp `#print axioms <name>` file, then delete it.
-- `simp` config syntax (v4.31): `simp (config := { maxSteps := N }) only [...]` — config
+- Emitted per-instance certificates must be kernel-checked: quote explicit witness terms
+  (`mirrorsGrammarTerm`, `searchMirrorsGrammarTerm`) instead of running a `partial` validator in
+  a proof, and keep functions that generated proofs `decide` (e.g. `SearchCode.merge`/`reduce`)
+  structurally recursive. Well-founded definitions such as `scan`/`decode` do not reduce in the
+  kernel; test concrete inputs with `#guard`, not `native_decide`.
+- `include_str` templates (`Triptych/Backend/Verus/*.rs.in`) are not tracked by Lake. After editing
+  one, delete `.lake/build/lib/lean/Triptych/Backend/Verus.*` (touching the file is not enough:
+  Lake rebuilds on content hash).
+- `simp` config syntax: `simp (config := { maxSteps := N }) only [...]` — config
   BEFORE `only`. `grind` is available; `tauto` is NOT (no Mathlib).
 - Use `git ci` (commit --signoff), not `git commit`.
 
@@ -76,10 +84,17 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
 - `Constraint.lean` — `Constraint`/`ConstraintEntry` AST, explicit
   `.wellFormed`/`.value` phase classification, `card`/`presentCount`, and the `opaque`
   internal node used by the surface `constraints'` escape (`opaqueEnvClosure`).
-- `Archive/ReferenceDecoder.lean` — archived executable reference semantics:
+- `Reference/Decoder.lean` — executable reference semantics (the target of every parser theorem):
   `decode`/`matchSym`/`matchStar`/`matchRep`, plus the reference `computeValue` functions.
 - `Scanner.lean` — runtime continuation scanner, deterministic fast path, and proof-only
   candidate-cost profile. `CaptureMap`/`Env`.
+- `ParsePlan.lean` — the one backend-neutral strategy decision: `.cursor ScanPlan` (deterministic,
+  lowered to `CursorProgram` and unrolled via `LeanSpanCursor`), `.search SearchPlan` (lowered to
+  continuation-fused `SearchProgram`; Verus further lowers to `SearchMachine` states), or
+  `.scanner reason` (a compile-time diagnostic, never a runtime fallback). Plan compilers are
+  untrusted `partial` code; `MirrorsGrammar` witnesses plus the generic lowering theorems in
+  `Theorems/{ScanPlan,SearchPlan,SearchProgram,SearchMachine,ParsePlan}.lean` connect every
+  emitted parser to `scan`, and `scan_eq_decode` connects `scan` to the reference decoder.
 - `Roundtrip.lean` — `decodeSome_iff_IsWf` (decode ↔ IsWf), `rep_iter`/`matchStar_iter`,
   `decIsWf` (conditional `DecidablePred (IsWf g)`, needs `g.repOk = true`).
 - `Coherence.lean` — value is grammar-determined, not decoder-selected: `fullParses`

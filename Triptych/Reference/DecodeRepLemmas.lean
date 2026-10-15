@@ -14,11 +14,11 @@
  limitations under the License.
 -/
 
-import Triptych.Archive.DecodeLemmas
+import Triptych.Reference.DecodeLemmas
 import Triptych.Theorems.Roundtrip
 
 /-!
-# Archived capture-preserving repetition lemmas
+# Capture-preserving reference-decoder repetition lemmas
 
 `Roundtrip` characterizes the language recognized by separated repetitions while intentionally
 quantifying capture maps away. External-parser agreement also needs the repeated captures

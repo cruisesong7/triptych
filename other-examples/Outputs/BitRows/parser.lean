@@ -11,7 +11,7 @@ import Triptych.Theorems.Value
 import Triptych.Theorems.ParsePlan
 import Triptych.Theorems.ScanPlan
 import Triptych.Theorems.SearchPlan
-import Triptych.Archive.DecodeLemmas
+import Triptych.Reference.DecodeLemmas
 import Triptych.Theorems.Derivation
 import Triptych.Theorems.Scanner
 import Outputs.BitRows.spec
@@ -26,7 +26,7 @@ set_option linter.unnecessarySeqFocus false
 
 /- ══════════════════════════════ engine ══════════════════════════════
 The executable counterpart of the spec. A verified scanner extracts captured
-components and stops at the first complete parse. The archived reference `decode`
+components and stops at the first complete parse. The reference `decode`
 is used only in the agreement proof, not as a runtime fallback. `computeValue`
 evaluates the value function on those captures. Generated `DecidablePred` instances
 make the readable `IsWf` and `IsValid` predicates directly executable.
@@ -595,7 +595,48 @@ private abbrev BitRows.parsePlan : ParsePlan :=
   ParsePlan.search BitRows.searchPlan
 
 private theorem BitRows.searchPlan_mirrorsGrammar : SearchPlan.MirrorsGrammar BitRows.searchPlan BitRows.grammar :=
-  SearchPlan.mirrorsGrammar_of_matchesGrammar (by native_decide)
+  SearchPlan.MirrorsGrammar.intro (by rfl)
+    (Production.mk "Rows"
+      [[SymItem.mk (Sym.ref "Width") false, SymItem.mk (Sym.lit ":") false, SymItem.mk (Sym.ref "First") false,
+          SymItem.mk (Sym.lit "/") false, SymItem.mk (Sym.ref "Second") false]])
+    (by rfl)
+    (SearchPattern.MirrorsAlternatives.cons
+      (SearchPattern.MirrorsSequence.required
+        (SearchPattern.MirrorsSymbol.capture («grammar» := BitRows.grammar) (fuel := 3) (production :=
+          Production.mk "Width" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.between 1 2)) false]]) (by rfl) (by rfl)
+          (SearchPattern.MirrorsAlternatives.cons
+            (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+              SearchPattern.MirrorsSequence.empty)
+            SearchPattern.MirrorsAlternatives.empty))
+        (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+          (SearchPattern.MirrorsSequence.required
+            (SearchPattern.MirrorsSymbol.capture («grammar» := BitRows.grammar) (fuel := 3) (production :=
+              Production.mk "First"
+                [[SymItem.mk (Sym.lit "") false], [SymItem.mk (Sym.term TokClass.bit LenSpec.atLeastOne) false]])
+              (by rfl) (by rfl)
+              (SearchPattern.MirrorsAlternatives.cons
+                (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                  SearchPattern.MirrorsSequence.empty)
+                (SearchPattern.MirrorsAlternatives.cons
+                  (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                    SearchPattern.MirrorsSequence.empty)
+                  SearchPattern.MirrorsAlternatives.empty)))
+            (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+              (SearchPattern.MirrorsSequence.required
+                (SearchPattern.MirrorsSymbol.capture («grammar» := BitRows.grammar) (fuel := 3) (production :=
+                  Production.mk "Second"
+                    [[SymItem.mk (Sym.lit "") false],
+                      [SymItem.mk (Sym.term TokClass.hexDigit LenSpec.atLeastOne) false]])
+                  (by rfl) (by rfl)
+                  (SearchPattern.MirrorsAlternatives.cons
+                    (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                      SearchPattern.MirrorsSequence.empty)
+                    (SearchPattern.MirrorsAlternatives.cons
+                      (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                        SearchPattern.MirrorsSequence.empty)
+                      SearchPattern.MirrorsAlternatives.empty)))
+                SearchPattern.MirrorsSequence.empty)))))
+      SearchPattern.MirrorsAlternatives.empty)
 
 private abbrev BitRows.searchProgram : SearchProgram :=
   ({ start := "Rows",
@@ -612,8 +653,7 @@ private abbrev BitRows.searchProgram : SearchProgram :=
                   SearchCode.accept)))) } :
     SearchProgram)
 
-private theorem BitRows.searchProgram_lowered : lowerSearchPlan BitRows.searchPlan = BitRows.searchProgram := by
-  native_decide
+private theorem BitRows.searchProgram_lowered : lowerSearchPlan BitRows.searchPlan = BitRows.searchProgram := by decide
 
 private def BitRows.directDecode (source : String) : Option CaptureMap :=
   let input := source.toList

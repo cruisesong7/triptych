@@ -103,8 +103,8 @@ the out-of-range intermediate value `2^128`.
 Unsupported conversion or constraint combinations do not prevent grammar-parser generation. They
 omit the final-value entry point and retain the certified candidate parser.
 
-The retired bytecode-style `RuntimeProgram` interpreter is archived under
-`Triptych/Archive/Verus/`. It is not used by either production path.
+The retired bytecode-style `RuntimeProgram` interpreter and the generic table-driven runtime
+parser were removed after commit `597381b`; consult that commit for their design history.
 
 ## Readable specification
 
@@ -204,8 +204,9 @@ rejection imply its negation. The generated semantic function then proves succes
 
 `grammar-coverage/` is generated from one declaration that combines every shared grammar
 constructor: Unicode literals, quoted strings, all token classes and length forms, references,
-alternatives, optionals, bounded and unbounded repetition, nested named repetition, and an
-ambiguous token alternative. Its Verus and Rust tests exercise accepted and rejected inputs.
+alternatives, optionals, bounded repetition, nested named repetition, and an ambiguous token
+alternative. Unbounded separated repetition (`rep X sepBy "," +`) is accepted by the Lean backend
+but rejected by Verus state emission, so this crate bounds its CSV repetition at eight cells. Its Verus and Rust tests exercise accepted and rejected inputs.
 
 `direct-coverage/` exercises the specialized path beyond Decimal: nested captures, an optional
 literal, required delimiters, fixed and greedy runs, and every direct token class. Verus checks

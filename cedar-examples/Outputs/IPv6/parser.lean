@@ -11,7 +11,7 @@ import Triptych.Theorems.Value
 import Triptych.Theorems.ParsePlan
 import Triptych.Theorems.ScanPlan
 import Triptych.Theorems.SearchPlan
-import Triptych.Archive.DecodeLemmas
+import Triptych.Reference.DecodeLemmas
 import Triptych.Theorems.Derivation
 import Triptych.Theorems.Scanner
 import Outputs.IPv6.spec
@@ -26,7 +26,7 @@ set_option linter.unnecessarySeqFocus false
 
 /- ══════════════════════════════ engine ══════════════════════════════
 The executable counterpart of the spec. A verified scanner extracts captured
-components and stops at the first complete parse. The archived reference `decode`
+components and stops at the first complete parse. The reference `decode`
 is used only in the agreement proof, not as a runtime fallback. `computeValue`
 evaluates the value function on those captures. Generated `DecidablePred` instances
 make the readable `IsWf` and `IsValid` predicates directly executable.
@@ -1009,7 +1009,165 @@ private abbrev IPv6.parsePlan : ParsePlan :=
   ParsePlan.search IPv6.searchPlan
 
 private theorem IPv6.searchPlan_mirrorsGrammar : SearchPlan.MirrorsGrammar IPv6.searchPlan IPv6.grammar :=
-  SearchPlan.mirrorsGrammar_of_matchesGrammar (by native_decide)
+  SearchPlan.MirrorsGrammar.intro (by rfl)
+    (Production.mk "V6Net"
+      [[SymItem.mk (Sym.ref "V6Addr") false],
+        [SymItem.mk (Sym.ref "V6Addr") false, SymItem.mk (Sym.lit "/") false, SymItem.mk (Sym.ref "Prefix") false]])
+    (by rfl)
+    (SearchPattern.MirrorsAlternatives.cons
+      (SearchPattern.MirrorsSequence.required
+        (SearchPattern.MirrorsSymbol.capture («grammar» := IPv6.grammar) (fuel := 9) (production :=
+          Production.mk "V6Addr" [[SymItem.mk (Sym.ref "Full") false], [SymItem.mk (Sym.ref "Compressed") false]])
+          (by rfl) (by rfl)
+          (SearchPattern.MirrorsAlternatives.cons
+            (SearchPattern.MirrorsSequence.required
+              (SearchPattern.MirrorsSymbol.capture («grammar» := IPv6.grammar) (fuel := 8) (production :=
+                Production.mk "Full" [[SymItem.mk (Sym.rep ":" (Sym.ref "H16") 8 (some 8)) false]]) (by rfl) (by rfl)
+                (SearchPattern.MirrorsAlternatives.cons
+                  (SearchPattern.MirrorsSequence.required
+                    (SearchPattern.MirrorsSymbol.repetition (by rfl)
+                      (SearchPattern.MirrorsSymbol.capture («grammar» := IPv6.grammar) (fuel := 7) (production :=
+                        Production.mk "H16" [[SymItem.mk (Sym.term TokClass.hexDigit (LenSpec.between 1 4)) false]])
+                        (by rfl) (by rfl)
+                        (SearchPattern.MirrorsAlternatives.cons
+                          (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                            SearchPattern.MirrorsSequence.empty)
+                          SearchPattern.MirrorsAlternatives.empty)))
+                    SearchPattern.MirrorsSequence.empty)
+                  SearchPattern.MirrorsAlternatives.empty))
+              SearchPattern.MirrorsSequence.empty)
+            (SearchPattern.MirrorsAlternatives.cons
+              (SearchPattern.MirrorsSequence.required
+                (SearchPattern.MirrorsSymbol.capture («grammar» := IPv6.grammar) (fuel := 8) (production :=
+                  Production.mk "Compressed"
+                    [[SymItem.mk (Sym.ref "Left") true, SymItem.mk (Sym.lit "::") false,
+                        SymItem.mk (Sym.ref "Right") true]])
+                  (by rfl) (by rfl)
+                  (SearchPattern.MirrorsAlternatives.cons
+                    (SearchPattern.MirrorsSequence.optional
+                      (SearchPattern.MirrorsSymbol.capture («grammar» := IPv6.grammar) (fuel := 7) (production :=
+                        Production.mk "Left" [[SymItem.mk (Sym.rep ":" (Sym.ref "H16L") 1 (some 7)) false]]) (by rfl)
+                        (by rfl)
+                        (SearchPattern.MirrorsAlternatives.cons
+                          (SearchPattern.MirrorsSequence.required
+                            (SearchPattern.MirrorsSymbol.repetition (by rfl)
+                              (SearchPattern.MirrorsSymbol.capture («grammar» := IPv6.grammar) (fuel := 6)
+                                (production :=
+                                Production.mk "H16L"
+                                  [[SymItem.mk (Sym.term TokClass.hexDigit (LenSpec.between 1 4)) false]])
+                                (by rfl) (by rfl)
+                                (SearchPattern.MirrorsAlternatives.cons
+                                  (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                    SearchPattern.MirrorsSequence.empty)
+                                  SearchPattern.MirrorsAlternatives.empty)))
+                            SearchPattern.MirrorsSequence.empty)
+                          SearchPattern.MirrorsAlternatives.empty))
+                      (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                        (SearchPattern.MirrorsSequence.optional
+                          (SearchPattern.MirrorsSymbol.capture («grammar» := IPv6.grammar) (fuel := 7) (production :=
+                            Production.mk "Right" [[SymItem.mk (Sym.rep ":" (Sym.ref "H16R") 1 (some 7)) false]])
+                            (by rfl) (by rfl)
+                            (SearchPattern.MirrorsAlternatives.cons
+                              (SearchPattern.MirrorsSequence.required
+                                (SearchPattern.MirrorsSymbol.repetition (by rfl)
+                                  (SearchPattern.MirrorsSymbol.capture («grammar» := IPv6.grammar) (fuel := 6)
+                                    (production :=
+                                    Production.mk "H16R"
+                                      [[SymItem.mk (Sym.term TokClass.hexDigit (LenSpec.between 1 4)) false]])
+                                    (by rfl) (by rfl)
+                                    (SearchPattern.MirrorsAlternatives.cons
+                                      (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                        SearchPattern.MirrorsSequence.empty)
+                                      SearchPattern.MirrorsAlternatives.empty)))
+                                SearchPattern.MirrorsSequence.empty)
+                              SearchPattern.MirrorsAlternatives.empty))
+                          SearchPattern.MirrorsSequence.empty)))
+                    SearchPattern.MirrorsAlternatives.empty))
+                SearchPattern.MirrorsSequence.empty)
+              SearchPattern.MirrorsAlternatives.empty)))
+        SearchPattern.MirrorsSequence.empty)
+      (SearchPattern.MirrorsAlternatives.cons
+        (SearchPattern.MirrorsSequence.required
+          (SearchPattern.MirrorsSymbol.capture («grammar» := IPv6.grammar) (fuel := 9) (production :=
+            Production.mk "V6Addr" [[SymItem.mk (Sym.ref "Full") false], [SymItem.mk (Sym.ref "Compressed") false]])
+            (by rfl) (by rfl)
+            (SearchPattern.MirrorsAlternatives.cons
+              (SearchPattern.MirrorsSequence.required
+                (SearchPattern.MirrorsSymbol.capture («grammar» := IPv6.grammar) (fuel := 8) (production :=
+                  Production.mk "Full" [[SymItem.mk (Sym.rep ":" (Sym.ref "H16") 8 (some 8)) false]]) (by rfl) (by rfl)
+                  (SearchPattern.MirrorsAlternatives.cons
+                    (SearchPattern.MirrorsSequence.required
+                      (SearchPattern.MirrorsSymbol.repetition (by rfl)
+                        (SearchPattern.MirrorsSymbol.capture («grammar» := IPv6.grammar) (fuel := 7) (production :=
+                          Production.mk "H16" [[SymItem.mk (Sym.term TokClass.hexDigit (LenSpec.between 1 4)) false]])
+                          (by rfl) (by rfl)
+                          (SearchPattern.MirrorsAlternatives.cons
+                            (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                              SearchPattern.MirrorsSequence.empty)
+                            SearchPattern.MirrorsAlternatives.empty)))
+                      SearchPattern.MirrorsSequence.empty)
+                    SearchPattern.MirrorsAlternatives.empty))
+                SearchPattern.MirrorsSequence.empty)
+              (SearchPattern.MirrorsAlternatives.cons
+                (SearchPattern.MirrorsSequence.required
+                  (SearchPattern.MirrorsSymbol.capture («grammar» := IPv6.grammar) (fuel := 8) (production :=
+                    Production.mk "Compressed"
+                      [[SymItem.mk (Sym.ref "Left") true, SymItem.mk (Sym.lit "::") false,
+                          SymItem.mk (Sym.ref "Right") true]])
+                    (by rfl) (by rfl)
+                    (SearchPattern.MirrorsAlternatives.cons
+                      (SearchPattern.MirrorsSequence.optional
+                        (SearchPattern.MirrorsSymbol.capture («grammar» := IPv6.grammar) (fuel := 7) (production :=
+                          Production.mk "Left" [[SymItem.mk (Sym.rep ":" (Sym.ref "H16L") 1 (some 7)) false]]) (by rfl)
+                          (by rfl)
+                          (SearchPattern.MirrorsAlternatives.cons
+                            (SearchPattern.MirrorsSequence.required
+                              (SearchPattern.MirrorsSymbol.repetition (by rfl)
+                                (SearchPattern.MirrorsSymbol.capture («grammar» := IPv6.grammar) (fuel := 6)
+                                  (production :=
+                                  Production.mk "H16L"
+                                    [[SymItem.mk (Sym.term TokClass.hexDigit (LenSpec.between 1 4)) false]])
+                                  (by rfl) (by rfl)
+                                  (SearchPattern.MirrorsAlternatives.cons
+                                    (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                      SearchPattern.MirrorsSequence.empty)
+                                    SearchPattern.MirrorsAlternatives.empty)))
+                              SearchPattern.MirrorsSequence.empty)
+                            SearchPattern.MirrorsAlternatives.empty))
+                        (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                          (SearchPattern.MirrorsSequence.optional
+                            (SearchPattern.MirrorsSymbol.capture («grammar» := IPv6.grammar) (fuel := 7) (production :=
+                              Production.mk "Right" [[SymItem.mk (Sym.rep ":" (Sym.ref "H16R") 1 (some 7)) false]])
+                              (by rfl) (by rfl)
+                              (SearchPattern.MirrorsAlternatives.cons
+                                (SearchPattern.MirrorsSequence.required
+                                  (SearchPattern.MirrorsSymbol.repetition (by rfl)
+                                    (SearchPattern.MirrorsSymbol.capture («grammar» := IPv6.grammar) (fuel := 6)
+                                      (production :=
+                                      Production.mk "H16R"
+                                        [[SymItem.mk (Sym.term TokClass.hexDigit (LenSpec.between 1 4)) false]])
+                                      (by rfl) (by rfl)
+                                      (SearchPattern.MirrorsAlternatives.cons
+                                        (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                          SearchPattern.MirrorsSequence.empty)
+                                        SearchPattern.MirrorsAlternatives.empty)))
+                                  SearchPattern.MirrorsSequence.empty)
+                                SearchPattern.MirrorsAlternatives.empty))
+                            SearchPattern.MirrorsSequence.empty)))
+                      SearchPattern.MirrorsAlternatives.empty))
+                  SearchPattern.MirrorsSequence.empty)
+                SearchPattern.MirrorsAlternatives.empty)))
+          (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+            (SearchPattern.MirrorsSequence.required
+              (SearchPattern.MirrorsSymbol.capture («grammar» := IPv6.grammar) (fuel := 9) (production :=
+                Production.mk "Prefix" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.between 1 3)) false]]) (by rfl)
+                (by rfl)
+                (SearchPattern.MirrorsAlternatives.cons
+                  (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                    SearchPattern.MirrorsSequence.empty)
+                  SearchPattern.MirrorsAlternatives.empty))
+              SearchPattern.MirrorsSequence.empty)))
+        SearchPattern.MirrorsAlternatives.empty))
 
 private abbrev IPv6.searchProgram : SearchProgram :=
   ({ start := "V6Net",
@@ -1095,7 +1253,7 @@ private abbrev IPv6.searchProgram : SearchProgram :=
                 (SearchCode.tokenRun TokClass.digit (LenSpec.between 1 3) SearchCode.accept) SearchCode.accept))) } :
     SearchProgram)
 
-private theorem IPv6.searchProgram_lowered : lowerSearchPlan IPv6.searchPlan = IPv6.searchProgram := by native_decide
+private theorem IPv6.searchProgram_lowered : lowerSearchPlan IPv6.searchPlan = IPv6.searchProgram := by decide
 
 private def IPv6.directDecode (source : String) : Option CaptureMap :=
   let input := source.toList

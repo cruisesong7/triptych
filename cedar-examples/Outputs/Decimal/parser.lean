@@ -11,7 +11,7 @@ import Triptych.Theorems.Value
 import Triptych.Theorems.ParsePlan
 import Triptych.Theorems.ScanPlan
 import Triptych.Theorems.SearchPlan
-import Triptych.Archive.DecodeLemmas
+import Triptych.Reference.DecodeLemmas
 import Triptych.Theorems.Derivation
 import Triptych.Theorems.Scanner
 import Triptych.Theorems.RelationalParser
@@ -27,7 +27,7 @@ set_option linter.unnecessarySeqFocus false
 
 /- ══════════════════════════════ engine ══════════════════════════════
 The executable counterpart of the spec. A verified scanner extracts captured
-components and stops at the first complete parse. The archived reference `decode`
+components and stops at the first complete parse. The reference `decode`
 is used only in the agreement proof, not as a runtime fallback. `computeValue`
 evaluates the value function on those captures. Generated `DecidablePred` instances
 make the readable `IsWf` and `IsValid` predicates directly executable.

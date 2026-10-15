@@ -15,7 +15,7 @@
 -/
 
 import Triptych.Architecture.CursorProgram
-import Triptych.Archive.DecodeLemmas
+import Triptych.Reference.DecodeLemmas
 import Triptych.Theorems.Scanner
 import Triptych.Theorems.Unambiguity
 
@@ -23,7 +23,7 @@ import Triptych.Theorems.Unambiguity
 # Scan-plan correctness
 
 The architecture layer proves that structured scan patterns flatten to cursor programs without
-changing execution. This module connects the structured pattern back to the archived reference
+changing execution. This module connects the structured pattern back to the reference
 grammar semantics. Every successful direct match is a reference match, and every reference match
 induces the same boundary-certified direct consumer path. Together these directions yield direct
 soundness, completeness, and exact rejection for every successfully compiled plan.

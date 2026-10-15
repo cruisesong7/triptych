@@ -9,21 +9,10 @@ package triptych
 lean_lib Triptych where
   globs := #[
     .one `Triptych,
-    .submodules `Triptych.Archive,
+    .submodules `Triptych.Reference,
     .submodules `Triptych.Architecture,
     .submodules `Triptych.Automation,
     .submodules `Triptych.Backend,
-    .one `Triptych.Theorems.Coherence,
-    .one `Triptych.Theorems.Derivation,
-    .one `Triptych.Theorems.Dependent,
-    .one `Triptych.Theorems.DecodeLemmas,
-    .one `Triptych.Theorems.DecodeRepLemmas,
-    .one `Triptych.Theorems.Reconcile,
-    .one `Triptych.Theorems.RelationalParser,
-    .one `Triptych.Theorems.Roundtrip,
-    .one `Triptych.Theorems.Scanner,
-    .one `Triptych.Theorems.String,
-    .one `Triptych.Theorems.Unambiguity,
-    .one `Triptych.Theorems.Value
+    .submodules `Triptych.Theorems
   ]
   defaultFacets := #[LeanLib.staticFacet]

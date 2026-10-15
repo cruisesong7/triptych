@@ -116,13 +116,12 @@ example (s : String) :
     SignedInteger.IsWf.Root s ↔ SignedInteger.Production s :=
   Iff.rfl
 
-example : SignedInteger.Denotes "-42" (-42) := by
-  unfold SignedInteger.Denotes
-  native_decide
-
-example : ¬SignedInteger.Denotes "--42" (-42) := by
-  unfold SignedInteger.Denotes
-  native_decide
+#guard decide (SignedInteger.IsValid "-42" ∧
+  -42 = SignedInteger.value (component SignedInteger.grammar "-42" "Sign")
+    (component SignedInteger.grammar "-42" "Digits"))
+#guard !decide (SignedInteger.IsValid "--42" ∧
+  -42 = SignedInteger.value (component SignedInteger.grammar "--42" "Sign")
+    (component SignedInteger.grammar "--42" "Digits"))
 
 example (s : String) :
     SignedInteger.parse s =
@@ -277,9 +276,8 @@ triptych ValueResult where
 
 #guard ValueResult.parse "42" = some { digits := "42" }
 
-example : ValueResult.Denotes "42" { digits := "42" } := by
-  unfold ValueResult.Denotes
-  native_decide
+#guard decide (ValueResult.IsValid "42" ∧
+  { digits := "42" } = ValueResult.value (component ValueResult.grammar "42" "Digits"))
 
 end ValueResultBinderExample
 

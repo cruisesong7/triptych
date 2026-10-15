@@ -24,7 +24,7 @@ DAG of named productions in an EBNF subset, matching the `::=` grammars written 
 
 Deliberately *not* here: the value function. An analyzable `value` clause elaborates to the
 separate `ValExpr` AST, while a `value'` escape supplies a Lean function over captures.
-Generated computation composes either form with `scan`; the archived reference decoder is used
+Generated computation composes either form with `scan`; the reference decoder is used
 only in proofs of the scanner and reconciliation layer.
 
 The class encoded here:

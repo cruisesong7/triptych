@@ -11,7 +11,7 @@ import Triptych.Theorems.Value
 import Triptych.Theorems.ParsePlan
 import Triptych.Theorems.ScanPlan
 import Triptych.Theorems.SearchPlan
-import Triptych.Archive.DecodeLemmas
+import Triptych.Reference.DecodeLemmas
 import Triptych.Theorems.Derivation
 import Triptych.Theorems.Scanner
 import Outputs.IPv4.spec
@@ -26,7 +26,7 @@ set_option linter.unnecessarySeqFocus false
 
 /- ══════════════════════════════ engine ══════════════════════════════
 The executable counterpart of the spec. A verified scanner extracts captured
-components and stops at the first complete parse. The archived reference `decode`
+components and stops at the first complete parse. The reference `decode`
 is used only in the agreement proof, not as a runtime fallback. `computeValue`
 evaluates the value function on those captures. Generated `DecidablePred` instances
 make the readable `IsWf` and `IsValid` predicates directly executable.
@@ -867,7 +867,115 @@ private abbrev IPv4.parsePlan : ParsePlan :=
   ParsePlan.search IPv4.searchPlan
 
 private theorem IPv4.searchPlan_mirrorsGrammar : SearchPlan.MirrorsGrammar IPv4.searchPlan IPv4.grammar :=
-  SearchPlan.mirrorsGrammar_of_matchesGrammar (by native_decide)
+  SearchPlan.MirrorsGrammar.intro (by rfl)
+    (Production.mk "V4Net"
+      [[SymItem.mk (Sym.ref "V4Addr") false],
+        [SymItem.mk (Sym.ref "V4Addr") false, SymItem.mk (Sym.lit "/") false, SymItem.mk (Sym.ref "Prefix") false]])
+    (by rfl)
+    (SearchPattern.MirrorsAlternatives.cons
+      (SearchPattern.MirrorsSequence.required
+        (SearchPattern.MirrorsSymbol.capture («grammar» := IPv4.grammar) (fuel := 6) (production :=
+          Production.mk "V4Addr"
+            [[SymItem.mk (Sym.ref "Oct1") false, SymItem.mk (Sym.lit ".") false, SymItem.mk (Sym.ref "Oct2") false,
+                SymItem.mk (Sym.lit ".") false, SymItem.mk (Sym.ref "Oct3") false, SymItem.mk (Sym.lit ".") false,
+                SymItem.mk (Sym.ref "Oct4") false]])
+          (by rfl) (by rfl)
+          (SearchPattern.MirrorsAlternatives.cons
+            (SearchPattern.MirrorsSequence.required
+              (SearchPattern.MirrorsSymbol.capture («grammar» := IPv4.grammar) (fuel := 5) (production :=
+                Production.mk "Oct1" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.between 1 3)) false]]) (by rfl)
+                (by rfl)
+                (SearchPattern.MirrorsAlternatives.cons
+                  (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                    SearchPattern.MirrorsSequence.empty)
+                  SearchPattern.MirrorsAlternatives.empty))
+              (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                (SearchPattern.MirrorsSequence.required
+                  (SearchPattern.MirrorsSymbol.capture («grammar» := IPv4.grammar) (fuel := 5) (production :=
+                    Production.mk "Oct2" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.between 1 3)) false]]) (by rfl)
+                    (by rfl)
+                    (SearchPattern.MirrorsAlternatives.cons
+                      (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                        SearchPattern.MirrorsSequence.empty)
+                      SearchPattern.MirrorsAlternatives.empty))
+                  (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                    (SearchPattern.MirrorsSequence.required
+                      (SearchPattern.MirrorsSymbol.capture («grammar» := IPv4.grammar) (fuel := 5) (production :=
+                        Production.mk "Oct3" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.between 1 3)) false]])
+                        (by rfl) (by rfl)
+                        (SearchPattern.MirrorsAlternatives.cons
+                          (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                            SearchPattern.MirrorsSequence.empty)
+                          SearchPattern.MirrorsAlternatives.empty))
+                      (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                        (SearchPattern.MirrorsSequence.required
+                          (SearchPattern.MirrorsSymbol.capture («grammar» := IPv4.grammar) (fuel := 5) (production :=
+                            Production.mk "Oct4" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.between 1 3)) false]])
+                            (by rfl) (by rfl)
+                            (SearchPattern.MirrorsAlternatives.cons
+                              (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                SearchPattern.MirrorsSequence.empty)
+                              SearchPattern.MirrorsAlternatives.empty))
+                          SearchPattern.MirrorsSequence.empty)))))))
+            SearchPattern.MirrorsAlternatives.empty))
+        SearchPattern.MirrorsSequence.empty)
+      (SearchPattern.MirrorsAlternatives.cons
+        (SearchPattern.MirrorsSequence.required
+          (SearchPattern.MirrorsSymbol.capture («grammar» := IPv4.grammar) (fuel := 6) (production :=
+            Production.mk "V4Addr"
+              [[SymItem.mk (Sym.ref "Oct1") false, SymItem.mk (Sym.lit ".") false, SymItem.mk (Sym.ref "Oct2") false,
+                  SymItem.mk (Sym.lit ".") false, SymItem.mk (Sym.ref "Oct3") false, SymItem.mk (Sym.lit ".") false,
+                  SymItem.mk (Sym.ref "Oct4") false]])
+            (by rfl) (by rfl)
+            (SearchPattern.MirrorsAlternatives.cons
+              (SearchPattern.MirrorsSequence.required
+                (SearchPattern.MirrorsSymbol.capture («grammar» := IPv4.grammar) (fuel := 5) (production :=
+                  Production.mk "Oct1" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.between 1 3)) false]]) (by rfl)
+                  (by rfl)
+                  (SearchPattern.MirrorsAlternatives.cons
+                    (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                      SearchPattern.MirrorsSequence.empty)
+                    SearchPattern.MirrorsAlternatives.empty))
+                (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                  (SearchPattern.MirrorsSequence.required
+                    (SearchPattern.MirrorsSymbol.capture («grammar» := IPv4.grammar) (fuel := 5) (production :=
+                      Production.mk "Oct2" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.between 1 3)) false]])
+                      (by rfl) (by rfl)
+                      (SearchPattern.MirrorsAlternatives.cons
+                        (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                          SearchPattern.MirrorsSequence.empty)
+                        SearchPattern.MirrorsAlternatives.empty))
+                    (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                      (SearchPattern.MirrorsSequence.required
+                        (SearchPattern.MirrorsSymbol.capture («grammar» := IPv4.grammar) (fuel := 5) (production :=
+                          Production.mk "Oct3" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.between 1 3)) false]])
+                          (by rfl) (by rfl)
+                          (SearchPattern.MirrorsAlternatives.cons
+                            (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                              SearchPattern.MirrorsSequence.empty)
+                            SearchPattern.MirrorsAlternatives.empty))
+                        (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                          (SearchPattern.MirrorsSequence.required
+                            (SearchPattern.MirrorsSymbol.capture («grammar» := IPv4.grammar) (fuel := 5) (production :=
+                              Production.mk "Oct4" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.between 1 3)) false]])
+                              (by rfl) (by rfl)
+                              (SearchPattern.MirrorsAlternatives.cons
+                                (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                  SearchPattern.MirrorsSequence.empty)
+                                SearchPattern.MirrorsAlternatives.empty))
+                            SearchPattern.MirrorsSequence.empty)))))))
+              SearchPattern.MirrorsAlternatives.empty))
+          (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+            (SearchPattern.MirrorsSequence.required
+              (SearchPattern.MirrorsSymbol.capture («grammar» := IPv4.grammar) (fuel := 6) (production :=
+                Production.mk "Prefix" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.between 1 2)) false]]) (by rfl)
+                (by rfl)
+                (SearchPattern.MirrorsAlternatives.cons
+                  (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                    SearchPattern.MirrorsSequence.empty)
+                  SearchPattern.MirrorsAlternatives.empty))
+              SearchPattern.MirrorsSequence.empty)))
+        SearchPattern.MirrorsAlternatives.empty))
 
 private abbrev IPv4.searchProgram : SearchProgram :=
   ({ start := "V4Net",
@@ -905,7 +1013,7 @@ private abbrev IPv4.searchProgram : SearchProgram :=
                 (SearchCode.tokenRun TokClass.digit (LenSpec.between 1 2) SearchCode.accept) SearchCode.accept))) } :
     SearchProgram)
 
-private theorem IPv4.searchProgram_lowered : lowerSearchPlan IPv4.searchPlan = IPv4.searchProgram := by native_decide
+private theorem IPv4.searchProgram_lowered : lowerSearchPlan IPv4.searchPlan = IPv4.searchProgram := by decide
 
 private def IPv4.directDecode (source : String) : Option CaptureMap :=
   let input := source.toList

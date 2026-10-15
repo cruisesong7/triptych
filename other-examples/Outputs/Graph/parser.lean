@@ -11,7 +11,7 @@ import Triptych.Theorems.Value
 import Triptych.Theorems.ParsePlan
 import Triptych.Theorems.ScanPlan
 import Triptych.Theorems.SearchPlan
-import Triptych.Archive.DecodeLemmas
+import Triptych.Reference.DecodeLemmas
 import Triptych.Theorems.Derivation
 import Triptych.Theorems.Scanner
 import Outputs.Graph.spec
@@ -26,7 +26,7 @@ set_option linter.unnecessarySeqFocus false
 
 /- ══════════════════════════════ engine ══════════════════════════════
 The executable counterpart of the spec. A verified scanner extracts captured
-components and stops at the first complete parse. The archived reference `decode`
+components and stops at the first complete parse. The reference `decode`
 is used only in the agreement proof, not as a runtime fallback. `computeValue`
 evaluates the value function on those captures. Generated `DecidablePred` instances
 make the readable `IsWf` and `IsValid` predicates directly executable.
@@ -479,7 +479,33 @@ private abbrev Graph.parsePlan : ParsePlan :=
   ParsePlan.search Graph.searchPlan
 
 private theorem Graph.searchPlan_mirrorsGrammar : SearchPlan.MirrorsGrammar Graph.searchPlan Graph.grammar :=
-  SearchPlan.mirrorsGrammar_of_matchesGrammar (by native_decide)
+  SearchPlan.MirrorsGrammar.intro (by rfl)
+    (Production.mk "Graph"
+      [[SymItem.mk (Sym.ref "Order") false, SymItem.mk (Sym.lit ":") false, SymItem.mk (Sym.ref "Cells") false]])
+    (by rfl)
+    (SearchPattern.MirrorsAlternatives.cons
+      (SearchPattern.MirrorsSequence.required
+        (SearchPattern.MirrorsSymbol.capture («grammar» := Graph.grammar) (fuel := 2) (production :=
+          Production.mk "Order" [[SymItem.mk (Sym.term TokClass.digit LenSpec.atLeastOne) false]]) (by rfl) (by rfl)
+          (SearchPattern.MirrorsAlternatives.cons
+            (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+              SearchPattern.MirrorsSequence.empty)
+            SearchPattern.MirrorsAlternatives.empty))
+        (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+          (SearchPattern.MirrorsSequence.required
+            (SearchPattern.MirrorsSymbol.capture («grammar» := Graph.grammar) (fuel := 2) (production :=
+              Production.mk "Cells"
+                [[SymItem.mk (Sym.lit "") false], [SymItem.mk (Sym.term TokClass.bit LenSpec.atLeastOne) false]])
+              (by rfl) (by rfl)
+              (SearchPattern.MirrorsAlternatives.cons
+                (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                  SearchPattern.MirrorsSequence.empty)
+                (SearchPattern.MirrorsAlternatives.cons
+                  (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                    SearchPattern.MirrorsSequence.empty)
+                  SearchPattern.MirrorsAlternatives.empty)))
+            SearchPattern.MirrorsSequence.empty)))
+      SearchPattern.MirrorsAlternatives.empty)
 
 private abbrev Graph.searchProgram : SearchProgram :=
   ({ start := "Graph",
@@ -492,7 +518,7 @@ private abbrev Graph.searchProgram : SearchProgram :=
               SearchCode.accept)) } :
     SearchProgram)
 
-private theorem Graph.searchProgram_lowered : lowerSearchPlan Graph.searchPlan = Graph.searchProgram := by native_decide
+private theorem Graph.searchProgram_lowered : lowerSearchPlan Graph.searchPlan = Graph.searchProgram := by decide
 
 private def Graph.directDecode (source : String) : Option CaptureMap :=
   let input := source.toList

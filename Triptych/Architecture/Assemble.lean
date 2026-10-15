@@ -39,7 +39,7 @@ its `Env` view and collection entries retain repeated spans. Constraints of a no
 string are vacuously satisfied (decoding fails ⟹ the constraint list is checked against the
 empty map, matching "constraints only constrain well-formed strings").
 
-`scan` is the verified runtime capture extractor. The archived `decode` remains a transparent
+`scan` is the verified runtime capture extractor. The reference `decode` remains a transparent
 list semantics used by proofs and differential benchmarks. These remain definitions for
 *running*/bundling. The grammar-only `Triptych.IsWf` lives in `Denote`;
 generated equivalence theorems relate it to both the readable layout predicate and the
@@ -97,7 +97,7 @@ passed as an abstract `accepted : String → Prop` and the value function as
 `value : String → Option Int`. The generated command instantiates these with the READABLE
 `<Name>.IsValid` and `<Name>.computeValue` — so the human-facing contract says exactly
 "the real parser accepts iff the readable spec is valid, with matching value". The proof is
-still discharged operationally by using `scan_eq_decode` to reach the archived reference
+still discharged operationally by using `scan_eq_decode` to reach the reference
 semantics via `<Name>.IsWf_equiv`; i.e. the statement is surface-level, while the proof may
 drop to the reference semantics where its list structure is convenient.
 
@@ -256,7 +256,7 @@ theorem captureAccepts_iff_of_scan_eq_some (g : Grammar) (constraints : List Con
   unfold isWf satisfiesConstraints captureMapOf CaptureAccepts
   simp [hscan, forall_and]
 
-/-! ## Archived gated-parser presentation
+/-! ## Reference gated-parser presentation
 
 `gatedParse` is retained as a simple specification combinator and compatibility API. Generated
 parsers no longer execute it: `scannerParseMap` is proved equal to this presentation while

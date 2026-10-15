@@ -15,13 +15,13 @@
 -/
 
 import Triptych.Architecture.Scanner
-import Triptych.Archive.ScannerProfile
+import Triptych.Reference.ScannerProfile
 import Triptych.Theorems.Unambiguity
 
 /-!
 # Correctness of the executable scanner
 
-The complete scanner is a continuation-fused implementation of the archived list decoder.
+The complete scanner is a continuation-fused implementation of the reference list decoder.
 The fusion theorems below prove that scanning a symbol, sequence, or production is exactly
 `List.findSome?` over the corresponding reference candidates. At the root, the continuation
 accepts only an empty suffix, so `scanSearch` returns exactly `decode`'s first complete parse.
@@ -223,7 +223,7 @@ private theorem findSome?_complete_eq_head
         cases remaining <;> simp_all
   rw [← List.head?_filterMap, hfilter, List.head?_map]
 
-/-- The complete continuation scanner is exactly the archived reference decoder. -/
+/-- The complete continuation scanner is exactly the reference decoder. -/
 theorem scanSearch_eq_decode (g : Grammar) (input : String) :
     scanSearch g input = decode g input := by
   unfold scanSearch decode
@@ -425,7 +425,7 @@ theorem decode_eq_fastScan_of_staticUnique (g : Grammar) (input : String)
 
 /-! ## Public scanner equivalence -/
 
-/-- The generated runtime scanner is extensionally identical to the archived decoder. -/
+/-- The generated runtime scanner is extensionally identical to the reference decoder. -/
 @[simp] theorem scan_eq_decode (g : Grammar) (input : String) :
     scan g input = decode g input := by
   unfold scan
@@ -481,7 +481,7 @@ private theorem profileCompleteCandidates_checks_le_length
         (matchProd g "" g.prods.length production input.toList)
 
 /-- For every grammar and input, the continuation scanner tests no more complete root
-    candidates than exist in the archived candidate tree. This is a finite, executable upper
+    candidates than exist in the reference candidate tree. This is a finite, executable upper
     bound; ambiguous choices may make the bound exponential in the input length. -/
 theorem scanSearch_candidateChecks_le (g : Grammar) (input : String) :
     (scanSearchProfile g input).candidateChecks ≤ scannerCandidateBudget g input := by
@@ -554,7 +554,7 @@ theorem scannerCandidateChecks_eq_zero_of_fastScan
       scannerCandidateChecks g input := by
   rfl
 
-/-- Every generated parser execution stays within the archived finite candidate budget. -/
+/-- Every generated parser execution stays within the reference finite candidate budget. -/
 theorem scannerParseMap_candidateChecks_le {β δ : Type} (g : Grammar)
     (constraints : List ConstraintEntry) (valueFn : CaptureMap → β)
     (ofSpec : β → δ) (input : String) :

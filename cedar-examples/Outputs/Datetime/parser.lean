@@ -11,7 +11,7 @@ import Triptych.Theorems.Value
 import Triptych.Theorems.ParsePlan
 import Triptych.Theorems.ScanPlan
 import Triptych.Theorems.SearchPlan
-import Triptych.Archive.DecodeLemmas
+import Triptych.Reference.DecodeLemmas
 import Triptych.Theorems.Derivation
 import Triptych.Theorems.Scanner
 import Outputs.Datetime.spec
@@ -26,7 +26,7 @@ set_option linter.unnecessarySeqFocus false
 
 /- ══════════════════════════════ engine ══════════════════════════════
 The executable counterpart of the spec. A verified scanner extracts captured
-components and stops at the first complete parse. The archived reference `decode`
+components and stops at the first complete parse. The reference `decode`
 is used only in the agreement proof, not as a runtime fallback. `computeValue`
 evaluates the value function on those captures. Generated `DecidablePred` instances
 make the readable `IsWf` and `IsValid` predicates directly executable.
@@ -1710,7 +1710,491 @@ private abbrev Datetime.parsePlan : ParsePlan :=
   ParsePlan.search Datetime.searchPlan
 
 private theorem Datetime.searchPlan_mirrorsGrammar : SearchPlan.MirrorsGrammar Datetime.searchPlan Datetime.grammar :=
-  SearchPlan.mirrorsGrammar_of_matchesGrammar (by native_decide)
+  SearchPlan.MirrorsGrammar.intro (by rfl)
+    (Production.mk "Datetime"
+      [[SymItem.mk (Sym.ref "Date") false],
+        [SymItem.mk (Sym.ref "Date") false, SymItem.mk (Sym.lit "T") false, SymItem.mk (Sym.ref "Time") false,
+          SymItem.mk (Sym.lit "Z") false],
+        [SymItem.mk (Sym.ref "Date") false, SymItem.mk (Sym.lit "T") false, SymItem.mk (Sym.ref "Time") false,
+          SymItem.mk (Sym.lit ".") false, SymItem.mk (Sym.ref "SSS") false, SymItem.mk (Sym.lit "Z") false],
+        [SymItem.mk (Sym.ref "Date") false, SymItem.mk (Sym.lit "T") false, SymItem.mk (Sym.ref "Time") false,
+          SymItem.mk (Sym.ref "Offset") false],
+        [SymItem.mk (Sym.ref "Date") false, SymItem.mk (Sym.lit "T") false, SymItem.mk (Sym.ref "Time") false,
+          SymItem.mk (Sym.lit ".") false, SymItem.mk (Sym.ref "SSS") false, SymItem.mk (Sym.ref "Offset") false]])
+    (by rfl)
+    (SearchPattern.MirrorsAlternatives.cons
+      (SearchPattern.MirrorsSequence.required
+        (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 10) (production :=
+          Production.mk "Date"
+            [[SymItem.mk (Sym.ref "YYYY") false, SymItem.mk (Sym.lit "-") false, SymItem.mk (Sym.ref "MM") false,
+                SymItem.mk (Sym.lit "-") false, SymItem.mk (Sym.ref "DD") false]])
+          (by rfl) (by rfl)
+          (SearchPattern.MirrorsAlternatives.cons
+            (SearchPattern.MirrorsSequence.required
+              (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9) (production :=
+                Production.mk "YYYY" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 4)) false]]) (by rfl)
+                (by rfl)
+                (SearchPattern.MirrorsAlternatives.cons
+                  (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                    SearchPattern.MirrorsSequence.empty)
+                  SearchPattern.MirrorsAlternatives.empty))
+              (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                (SearchPattern.MirrorsSequence.required
+                  (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9) (production :=
+                    Production.mk "MM" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]]) (by rfl)
+                    (by rfl)
+                    (SearchPattern.MirrorsAlternatives.cons
+                      (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                        SearchPattern.MirrorsSequence.empty)
+                      SearchPattern.MirrorsAlternatives.empty))
+                  (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                    (SearchPattern.MirrorsSequence.required
+                      (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9) (production :=
+                        Production.mk "DD" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]]) (by rfl)
+                        (by rfl)
+                        (SearchPattern.MirrorsAlternatives.cons
+                          (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                            SearchPattern.MirrorsSequence.empty)
+                          SearchPattern.MirrorsAlternatives.empty))
+                      SearchPattern.MirrorsSequence.empty)))))
+            SearchPattern.MirrorsAlternatives.empty))
+        SearchPattern.MirrorsSequence.empty)
+      (SearchPattern.MirrorsAlternatives.cons
+        (SearchPattern.MirrorsSequence.required
+          (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 10) (production :=
+            Production.mk "Date"
+              [[SymItem.mk (Sym.ref "YYYY") false, SymItem.mk (Sym.lit "-") false, SymItem.mk (Sym.ref "MM") false,
+                  SymItem.mk (Sym.lit "-") false, SymItem.mk (Sym.ref "DD") false]])
+            (by rfl) (by rfl)
+            (SearchPattern.MirrorsAlternatives.cons
+              (SearchPattern.MirrorsSequence.required
+                (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9) (production :=
+                  Production.mk "YYYY" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 4)) false]]) (by rfl)
+                  (by rfl)
+                  (SearchPattern.MirrorsAlternatives.cons
+                    (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                      SearchPattern.MirrorsSequence.empty)
+                    SearchPattern.MirrorsAlternatives.empty))
+                (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                  (SearchPattern.MirrorsSequence.required
+                    (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9) (production :=
+                      Production.mk "MM" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]]) (by rfl)
+                      (by rfl)
+                      (SearchPattern.MirrorsAlternatives.cons
+                        (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                          SearchPattern.MirrorsSequence.empty)
+                        SearchPattern.MirrorsAlternatives.empty))
+                    (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                      (SearchPattern.MirrorsSequence.required
+                        (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9) (production :=
+                          Production.mk "DD" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]])
+                          (by rfl) (by rfl)
+                          (SearchPattern.MirrorsAlternatives.cons
+                            (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                              SearchPattern.MirrorsSequence.empty)
+                            SearchPattern.MirrorsAlternatives.empty))
+                        SearchPattern.MirrorsSequence.empty)))))
+              SearchPattern.MirrorsAlternatives.empty))
+          (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+            (SearchPattern.MirrorsSequence.required
+              (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 10) (production :=
+                Production.mk "Time"
+                  [[SymItem.mk (Sym.ref "hh") false, SymItem.mk (Sym.lit ":") false, SymItem.mk (Sym.ref "mm") false,
+                      SymItem.mk (Sym.lit ":") false, SymItem.mk (Sym.ref "ss") false]])
+                (by rfl) (by rfl)
+                (SearchPattern.MirrorsAlternatives.cons
+                  (SearchPattern.MirrorsSequence.required
+                    (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9) (production :=
+                      Production.mk "hh" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]]) (by rfl)
+                      (by rfl)
+                      (SearchPattern.MirrorsAlternatives.cons
+                        (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                          SearchPattern.MirrorsSequence.empty)
+                        SearchPattern.MirrorsAlternatives.empty))
+                    (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                      (SearchPattern.MirrorsSequence.required
+                        (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9) (production :=
+                          Production.mk "mm" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]])
+                          (by rfl) (by rfl)
+                          (SearchPattern.MirrorsAlternatives.cons
+                            (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                              SearchPattern.MirrorsSequence.empty)
+                            SearchPattern.MirrorsAlternatives.empty))
+                        (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                          (SearchPattern.MirrorsSequence.required
+                            (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9)
+                              (production :=
+                              Production.mk "ss" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]])
+                              (by rfl) (by rfl)
+                              (SearchPattern.MirrorsAlternatives.cons
+                                (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                  SearchPattern.MirrorsSequence.empty)
+                                SearchPattern.MirrorsAlternatives.empty))
+                            SearchPattern.MirrorsSequence.empty)))))
+                  SearchPattern.MirrorsAlternatives.empty))
+              (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                SearchPattern.MirrorsSequence.empty))))
+        (SearchPattern.MirrorsAlternatives.cons
+          (SearchPattern.MirrorsSequence.required
+            (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 10) (production :=
+              Production.mk "Date"
+                [[SymItem.mk (Sym.ref "YYYY") false, SymItem.mk (Sym.lit "-") false, SymItem.mk (Sym.ref "MM") false,
+                    SymItem.mk (Sym.lit "-") false, SymItem.mk (Sym.ref "DD") false]])
+              (by rfl) (by rfl)
+              (SearchPattern.MirrorsAlternatives.cons
+                (SearchPattern.MirrorsSequence.required
+                  (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9) (production :=
+                    Production.mk "YYYY" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 4)) false]]) (by rfl)
+                    (by rfl)
+                    (SearchPattern.MirrorsAlternatives.cons
+                      (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                        SearchPattern.MirrorsSequence.empty)
+                      SearchPattern.MirrorsAlternatives.empty))
+                  (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                    (SearchPattern.MirrorsSequence.required
+                      (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9) (production :=
+                        Production.mk "MM" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]]) (by rfl)
+                        (by rfl)
+                        (SearchPattern.MirrorsAlternatives.cons
+                          (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                            SearchPattern.MirrorsSequence.empty)
+                          SearchPattern.MirrorsAlternatives.empty))
+                      (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                        (SearchPattern.MirrorsSequence.required
+                          (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9)
+                            (production :=
+                            Production.mk "DD" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]])
+                            (by rfl) (by rfl)
+                            (SearchPattern.MirrorsAlternatives.cons
+                              (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                SearchPattern.MirrorsSequence.empty)
+                              SearchPattern.MirrorsAlternatives.empty))
+                          SearchPattern.MirrorsSequence.empty)))))
+                SearchPattern.MirrorsAlternatives.empty))
+            (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+              (SearchPattern.MirrorsSequence.required
+                (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 10) (production :=
+                  Production.mk "Time"
+                    [[SymItem.mk (Sym.ref "hh") false, SymItem.mk (Sym.lit ":") false, SymItem.mk (Sym.ref "mm") false,
+                        SymItem.mk (Sym.lit ":") false, SymItem.mk (Sym.ref "ss") false]])
+                  (by rfl) (by rfl)
+                  (SearchPattern.MirrorsAlternatives.cons
+                    (SearchPattern.MirrorsSequence.required
+                      (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9) (production :=
+                        Production.mk "hh" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]]) (by rfl)
+                        (by rfl)
+                        (SearchPattern.MirrorsAlternatives.cons
+                          (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                            SearchPattern.MirrorsSequence.empty)
+                          SearchPattern.MirrorsAlternatives.empty))
+                      (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                        (SearchPattern.MirrorsSequence.required
+                          (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9)
+                            (production :=
+                            Production.mk "mm" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]])
+                            (by rfl) (by rfl)
+                            (SearchPattern.MirrorsAlternatives.cons
+                              (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                SearchPattern.MirrorsSequence.empty)
+                              SearchPattern.MirrorsAlternatives.empty))
+                          (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                            (SearchPattern.MirrorsSequence.required
+                              (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9)
+                                (production :=
+                                Production.mk "ss" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]])
+                                (by rfl) (by rfl)
+                                (SearchPattern.MirrorsAlternatives.cons
+                                  (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                    SearchPattern.MirrorsSequence.empty)
+                                  SearchPattern.MirrorsAlternatives.empty))
+                              SearchPattern.MirrorsSequence.empty)))))
+                    SearchPattern.MirrorsAlternatives.empty))
+                (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                  (SearchPattern.MirrorsSequence.required
+                    (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 10) (production :=
+                      Production.mk "SSS" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 3)) false]]) (by rfl)
+                      (by rfl)
+                      (SearchPattern.MirrorsAlternatives.cons
+                        (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                          SearchPattern.MirrorsSequence.empty)
+                        SearchPattern.MirrorsAlternatives.empty))
+                    (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                      SearchPattern.MirrorsSequence.empty))))))
+          (SearchPattern.MirrorsAlternatives.cons
+            (SearchPattern.MirrorsSequence.required
+              (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 10) (production :=
+                Production.mk "Date"
+                  [[SymItem.mk (Sym.ref "YYYY") false, SymItem.mk (Sym.lit "-") false, SymItem.mk (Sym.ref "MM") false,
+                      SymItem.mk (Sym.lit "-") false, SymItem.mk (Sym.ref "DD") false]])
+                (by rfl) (by rfl)
+                (SearchPattern.MirrorsAlternatives.cons
+                  (SearchPattern.MirrorsSequence.required
+                    (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9) (production :=
+                      Production.mk "YYYY" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 4)) false]]) (by rfl)
+                      (by rfl)
+                      (SearchPattern.MirrorsAlternatives.cons
+                        (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                          SearchPattern.MirrorsSequence.empty)
+                        SearchPattern.MirrorsAlternatives.empty))
+                    (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                      (SearchPattern.MirrorsSequence.required
+                        (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9) (production :=
+                          Production.mk "MM" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]])
+                          (by rfl) (by rfl)
+                          (SearchPattern.MirrorsAlternatives.cons
+                            (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                              SearchPattern.MirrorsSequence.empty)
+                            SearchPattern.MirrorsAlternatives.empty))
+                        (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                          (SearchPattern.MirrorsSequence.required
+                            (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9)
+                              (production :=
+                              Production.mk "DD" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]])
+                              (by rfl) (by rfl)
+                              (SearchPattern.MirrorsAlternatives.cons
+                                (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                  SearchPattern.MirrorsSequence.empty)
+                                SearchPattern.MirrorsAlternatives.empty))
+                            SearchPattern.MirrorsSequence.empty)))))
+                  SearchPattern.MirrorsAlternatives.empty))
+              (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                (SearchPattern.MirrorsSequence.required
+                  (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 10) (production :=
+                    Production.mk "Time"
+                      [[SymItem.mk (Sym.ref "hh") false, SymItem.mk (Sym.lit ":") false,
+                          SymItem.mk (Sym.ref "mm") false, SymItem.mk (Sym.lit ":") false,
+                          SymItem.mk (Sym.ref "ss") false]])
+                    (by rfl) (by rfl)
+                    (SearchPattern.MirrorsAlternatives.cons
+                      (SearchPattern.MirrorsSequence.required
+                        (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9) (production :=
+                          Production.mk "hh" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]])
+                          (by rfl) (by rfl)
+                          (SearchPattern.MirrorsAlternatives.cons
+                            (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                              SearchPattern.MirrorsSequence.empty)
+                            SearchPattern.MirrorsAlternatives.empty))
+                        (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                          (SearchPattern.MirrorsSequence.required
+                            (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9)
+                              (production :=
+                              Production.mk "mm" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]])
+                              (by rfl) (by rfl)
+                              (SearchPattern.MirrorsAlternatives.cons
+                                (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                  SearchPattern.MirrorsSequence.empty)
+                                SearchPattern.MirrorsAlternatives.empty))
+                            (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                              (SearchPattern.MirrorsSequence.required
+                                (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9)
+                                  (production :=
+                                  Production.mk "ss" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]])
+                                  (by rfl) (by rfl)
+                                  (SearchPattern.MirrorsAlternatives.cons
+                                    (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                      SearchPattern.MirrorsSequence.empty)
+                                    SearchPattern.MirrorsAlternatives.empty))
+                                SearchPattern.MirrorsSequence.empty)))))
+                      SearchPattern.MirrorsAlternatives.empty))
+                  (SearchPattern.MirrorsSequence.required
+                    (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 10) (production :=
+                      Production.mk "Offset"
+                        [[SymItem.mk (Sym.lit "+") false, SymItem.mk (Sym.ref "hh") false,
+                            SymItem.mk (Sym.ref "mm") false],
+                          [SymItem.mk (Sym.lit "-") false, SymItem.mk (Sym.ref "hh") false,
+                            SymItem.mk (Sym.ref "mm") false]])
+                      (by rfl) (by rfl)
+                      (SearchPattern.MirrorsAlternatives.cons
+                        (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                          (SearchPattern.MirrorsSequence.required
+                            (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9)
+                              (production :=
+                              Production.mk "hh" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]])
+                              (by rfl) (by rfl)
+                              (SearchPattern.MirrorsAlternatives.cons
+                                (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                  SearchPattern.MirrorsSequence.empty)
+                                SearchPattern.MirrorsAlternatives.empty))
+                            (SearchPattern.MirrorsSequence.required
+                              (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9)
+                                (production :=
+                                Production.mk "mm" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]])
+                                (by rfl) (by rfl)
+                                (SearchPattern.MirrorsAlternatives.cons
+                                  (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                    SearchPattern.MirrorsSequence.empty)
+                                  SearchPattern.MirrorsAlternatives.empty))
+                              SearchPattern.MirrorsSequence.empty)))
+                        (SearchPattern.MirrorsAlternatives.cons
+                          (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                            (SearchPattern.MirrorsSequence.required
+                              (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9)
+                                (production :=
+                                Production.mk "hh" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]])
+                                (by rfl) (by rfl)
+                                (SearchPattern.MirrorsAlternatives.cons
+                                  (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                    SearchPattern.MirrorsSequence.empty)
+                                  SearchPattern.MirrorsAlternatives.empty))
+                              (SearchPattern.MirrorsSequence.required
+                                (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9)
+                                  (production :=
+                                  Production.mk "mm" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]])
+                                  (by rfl) (by rfl)
+                                  (SearchPattern.MirrorsAlternatives.cons
+                                    (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                      SearchPattern.MirrorsSequence.empty)
+                                    SearchPattern.MirrorsAlternatives.empty))
+                                SearchPattern.MirrorsSequence.empty)))
+                          SearchPattern.MirrorsAlternatives.empty)))
+                    SearchPattern.MirrorsSequence.empty))))
+            (SearchPattern.MirrorsAlternatives.cons
+              (SearchPattern.MirrorsSequence.required
+                (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 10) (production :=
+                  Production.mk "Date"
+                    [[SymItem.mk (Sym.ref "YYYY") false, SymItem.mk (Sym.lit "-") false,
+                        SymItem.mk (Sym.ref "MM") false, SymItem.mk (Sym.lit "-") false,
+                        SymItem.mk (Sym.ref "DD") false]])
+                  (by rfl) (by rfl)
+                  (SearchPattern.MirrorsAlternatives.cons
+                    (SearchPattern.MirrorsSequence.required
+                      (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9) (production :=
+                        Production.mk "YYYY" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 4)) false]])
+                        (by rfl) (by rfl)
+                        (SearchPattern.MirrorsAlternatives.cons
+                          (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                            SearchPattern.MirrorsSequence.empty)
+                          SearchPattern.MirrorsAlternatives.empty))
+                      (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                        (SearchPattern.MirrorsSequence.required
+                          (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9)
+                            (production :=
+                            Production.mk "MM" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]])
+                            (by rfl) (by rfl)
+                            (SearchPattern.MirrorsAlternatives.cons
+                              (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                SearchPattern.MirrorsSequence.empty)
+                              SearchPattern.MirrorsAlternatives.empty))
+                          (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                            (SearchPattern.MirrorsSequence.required
+                              (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9)
+                                (production :=
+                                Production.mk "DD" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]])
+                                (by rfl) (by rfl)
+                                (SearchPattern.MirrorsAlternatives.cons
+                                  (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                    SearchPattern.MirrorsSequence.empty)
+                                  SearchPattern.MirrorsAlternatives.empty))
+                              SearchPattern.MirrorsSequence.empty)))))
+                    SearchPattern.MirrorsAlternatives.empty))
+                (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                  (SearchPattern.MirrorsSequence.required
+                    (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 10) (production :=
+                      Production.mk "Time"
+                        [[SymItem.mk (Sym.ref "hh") false, SymItem.mk (Sym.lit ":") false,
+                            SymItem.mk (Sym.ref "mm") false, SymItem.mk (Sym.lit ":") false,
+                            SymItem.mk (Sym.ref "ss") false]])
+                      (by rfl) (by rfl)
+                      (SearchPattern.MirrorsAlternatives.cons
+                        (SearchPattern.MirrorsSequence.required
+                          (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9)
+                            (production :=
+                            Production.mk "hh" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]])
+                            (by rfl) (by rfl)
+                            (SearchPattern.MirrorsAlternatives.cons
+                              (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                SearchPattern.MirrorsSequence.empty)
+                              SearchPattern.MirrorsAlternatives.empty))
+                          (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                            (SearchPattern.MirrorsSequence.required
+                              (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9)
+                                (production :=
+                                Production.mk "mm" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]])
+                                (by rfl) (by rfl)
+                                (SearchPattern.MirrorsAlternatives.cons
+                                  (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                    SearchPattern.MirrorsSequence.empty)
+                                  SearchPattern.MirrorsAlternatives.empty))
+                              (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                                (SearchPattern.MirrorsSequence.required
+                                  (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9)
+                                    (production :=
+                                    Production.mk "ss"
+                                      [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]])
+                                    (by rfl) (by rfl)
+                                    (SearchPattern.MirrorsAlternatives.cons
+                                      (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                        SearchPattern.MirrorsSequence.empty)
+                                      SearchPattern.MirrorsAlternatives.empty))
+                                  SearchPattern.MirrorsSequence.empty)))))
+                        SearchPattern.MirrorsAlternatives.empty))
+                    (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                      (SearchPattern.MirrorsSequence.required
+                        (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 10) (production :=
+                          Production.mk "SSS" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 3)) false]])
+                          (by rfl) (by rfl)
+                          (SearchPattern.MirrorsAlternatives.cons
+                            (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                              SearchPattern.MirrorsSequence.empty)
+                            SearchPattern.MirrorsAlternatives.empty))
+                        (SearchPattern.MirrorsSequence.required
+                          (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 10)
+                            (production :=
+                            Production.mk "Offset"
+                              [[SymItem.mk (Sym.lit "+") false, SymItem.mk (Sym.ref "hh") false,
+                                  SymItem.mk (Sym.ref "mm") false],
+                                [SymItem.mk (Sym.lit "-") false, SymItem.mk (Sym.ref "hh") false,
+                                  SymItem.mk (Sym.ref "mm") false]])
+                            (by rfl) (by rfl)
+                            (SearchPattern.MirrorsAlternatives.cons
+                              (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                                (SearchPattern.MirrorsSequence.required
+                                  (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9)
+                                    (production :=
+                                    Production.mk "hh"
+                                      [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]])
+                                    (by rfl) (by rfl)
+                                    (SearchPattern.MirrorsAlternatives.cons
+                                      (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                        SearchPattern.MirrorsSequence.empty)
+                                      SearchPattern.MirrorsAlternatives.empty))
+                                  (SearchPattern.MirrorsSequence.required
+                                    (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9)
+                                      (production :=
+                                      Production.mk "mm"
+                                        [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]])
+                                      (by rfl) (by rfl)
+                                      (SearchPattern.MirrorsAlternatives.cons
+                                        (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                          SearchPattern.MirrorsSequence.empty)
+                                        SearchPattern.MirrorsAlternatives.empty))
+                                    SearchPattern.MirrorsSequence.empty)))
+                              (SearchPattern.MirrorsAlternatives.cons
+                                (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                                  (SearchPattern.MirrorsSequence.required
+                                    (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9)
+                                      (production :=
+                                      Production.mk "hh"
+                                        [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]])
+                                      (by rfl) (by rfl)
+                                      (SearchPattern.MirrorsAlternatives.cons
+                                        (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                          SearchPattern.MirrorsSequence.empty)
+                                        SearchPattern.MirrorsAlternatives.empty))
+                                    (SearchPattern.MirrorsSequence.required
+                                      (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9)
+                                        (production :=
+                                        Production.mk "mm"
+                                          [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]])
+                                        (by rfl) (by rfl)
+                                        (SearchPattern.MirrorsAlternatives.cons
+                                          (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                            SearchPattern.MirrorsSequence.empty)
+                                          SearchPattern.MirrorsAlternatives.empty))
+                                      SearchPattern.MirrorsSequence.empty)))
+                                SearchPattern.MirrorsAlternatives.empty)))
+                          SearchPattern.MirrorsSequence.empty))))))
+              SearchPattern.MirrorsAlternatives.empty)))))
 
 private abbrev Datetime.searchProgram : SearchProgram :=
   ({ start := "Datetime",
@@ -1779,7 +2263,7 @@ private abbrev Datetime.searchProgram : SearchProgram :=
     SearchProgram)
 
 private theorem Datetime.searchProgram_lowered : lowerSearchPlan Datetime.searchPlan = Datetime.searchProgram := by
-  native_decide
+  decide
 
 private def Datetime.directDecode (source : String) : Option CaptureMap :=
   let input := source.toList

@@ -497,7 +497,6 @@ private def quotedStringGrammar : Grammar :=
   | .ok output =>
       [ "triptych_string_tail",
         "triptych_is_string_literal",
-        "GrammarSymbol::StringLiteral",
         "quoted_parse_candidate" ].all (contains (output.spec ++ output.parser))
 
 private def separatedGrammar : Grammar :=

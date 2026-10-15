@@ -2,7 +2,7 @@ import Outputs.IPv4.parser
 import CedarSupport.IPAddrInternals
 import CedarSupport.String
 import CedarSupport.StringInternals
-import Triptych.Archive.DecodeLemmas
+import Triptych.Reference.DecodeLemmas
 import Triptych.Theorems.String
 
 /-!
@@ -606,7 +606,7 @@ private theorem value_constraints_of_parts {o₁ o₂ o₃ o₄ : String} {pre :
     IPv4.Constraints o₁ o₂ o₃ o₄ (pre.getD "") := by
   have nonneg (s : String) : (0 : Int) ≤ natOf s := by
     simp [natOf]
-  have hpow : (2 : Int) ^ ((32 : Int).toNat) = 4294967296 := by native_decide
+  have hpow : (2 : Int) ^ ((32 : Int).toNat) = 4294967296 := by decide
   unfold IPv4.Constraints IPv4.value
   rw [hpow]
   cases pre with

@@ -11,7 +11,7 @@ import Triptych.Theorems.Value
 import Triptych.Theorems.ParsePlan
 import Triptych.Theorems.ScanPlan
 import Triptych.Theorems.SearchPlan
-import Triptych.Archive.DecodeLemmas
+import Triptych.Reference.DecodeLemmas
 import Triptych.Theorems.Derivation
 import Triptych.Theorems.Scanner
 import Outputs.Duration.spec
@@ -26,7 +26,7 @@ set_option linter.unnecessarySeqFocus false
 
 /- ══════════════════════════════ engine ══════════════════════════════
 The executable counterpart of the spec. A verified scanner extracts captured
-components and stops at the first complete parse. The archived reference `decode`
+components and stops at the first complete parse. The reference `decode`
 is used only in the agreement proof, not as a runtime fallback. `computeValue`
 evaluates the value function on those captures. Generated `DecidablePred` instances
 make the readable `IsWf` and `IsValid` predicates directly executable.
@@ -1158,7 +1158,115 @@ private abbrev Duration.parsePlan : ParsePlan :=
   ParsePlan.search Duration.searchPlan
 
 private theorem Duration.searchPlan_mirrorsGrammar : SearchPlan.MirrorsGrammar Duration.searchPlan Duration.grammar :=
-  SearchPlan.mirrorsGrammar_of_matchesGrammar (by native_decide)
+  SearchPlan.MirrorsGrammar.intro (by rfl)
+    (Production.mk "Duration" [[SymItem.mk (Sym.ref "Sign") false, SymItem.mk (Sym.ref "Components") false]]) (by rfl)
+    (SearchPattern.MirrorsAlternatives.cons
+      (SearchPattern.MirrorsSequence.required
+        (SearchPattern.MirrorsSymbol.capture («grammar» := Duration.grammar) (fuel := 12) (production :=
+          Production.mk "Sign" [[SymItem.mk (Sym.lit "-") true]]) (by rfl) (by rfl)
+          (SearchPattern.MirrorsAlternatives.cons
+            (SearchPattern.MirrorsSequence.optional SearchPattern.MirrorsSymbol.literal
+              SearchPattern.MirrorsSequence.empty)
+            SearchPattern.MirrorsAlternatives.empty))
+        (SearchPattern.MirrorsSequence.required
+          (SearchPattern.MirrorsSymbol.capture («grammar» := Duration.grammar) (fuel := 12) (production :=
+            Production.mk "Components"
+              [[SymItem.mk (Sym.ref "Days") true, SymItem.mk (Sym.ref "Hours") true,
+                  SymItem.mk (Sym.ref "Minutes") true, SymItem.mk (Sym.ref "Seconds") true,
+                  SymItem.mk (Sym.ref "Millis") true]])
+            (by rfl) (by rfl)
+            (SearchPattern.MirrorsAlternatives.cons
+              (SearchPattern.MirrorsSequence.optional
+                (SearchPattern.MirrorsSymbol.capture («grammar» := Duration.grammar) (fuel := 11) (production :=
+                  Production.mk "Days" [[SymItem.mk (Sym.ref "DDays") false, SymItem.mk (Sym.lit "d") false]]) (by rfl)
+                  (by rfl)
+                  (SearchPattern.MirrorsAlternatives.cons
+                    (SearchPattern.MirrorsSequence.required
+                      (SearchPattern.MirrorsSymbol.capture («grammar» := Duration.grammar) (fuel := 10) (production :=
+                        Production.mk "DDays" [[SymItem.mk (Sym.term TokClass.digit LenSpec.atLeastOne) false]])
+                        (by rfl) (by rfl)
+                        (SearchPattern.MirrorsAlternatives.cons
+                          (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                            SearchPattern.MirrorsSequence.empty)
+                          SearchPattern.MirrorsAlternatives.empty))
+                      (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                        SearchPattern.MirrorsSequence.empty))
+                    SearchPattern.MirrorsAlternatives.empty))
+                (SearchPattern.MirrorsSequence.optional
+                  (SearchPattern.MirrorsSymbol.capture («grammar» := Duration.grammar) (fuel := 11) (production :=
+                    Production.mk "Hours" [[SymItem.mk (Sym.ref "DHours") false, SymItem.mk (Sym.lit "h") false]])
+                    (by rfl) (by rfl)
+                    (SearchPattern.MirrorsAlternatives.cons
+                      (SearchPattern.MirrorsSequence.required
+                        (SearchPattern.MirrorsSymbol.capture («grammar» := Duration.grammar) (fuel := 10) (production :=
+                          Production.mk "DHours" [[SymItem.mk (Sym.term TokClass.digit LenSpec.atLeastOne) false]])
+                          (by rfl) (by rfl)
+                          (SearchPattern.MirrorsAlternatives.cons
+                            (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                              SearchPattern.MirrorsSequence.empty)
+                            SearchPattern.MirrorsAlternatives.empty))
+                        (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                          SearchPattern.MirrorsSequence.empty))
+                      SearchPattern.MirrorsAlternatives.empty))
+                  (SearchPattern.MirrorsSequence.optional
+                    (SearchPattern.MirrorsSymbol.capture («grammar» := Duration.grammar) (fuel := 11) (production :=
+                      Production.mk "Minutes" [[SymItem.mk (Sym.ref "DMinutes") false, SymItem.mk (Sym.lit "m") false]])
+                      (by rfl) (by rfl)
+                      (SearchPattern.MirrorsAlternatives.cons
+                        (SearchPattern.MirrorsSequence.required
+                          (SearchPattern.MirrorsSymbol.capture («grammar» := Duration.grammar) (fuel := 10)
+                            (production :=
+                            Production.mk "DMinutes" [[SymItem.mk (Sym.term TokClass.digit LenSpec.atLeastOne) false]])
+                            (by rfl) (by rfl)
+                            (SearchPattern.MirrorsAlternatives.cons
+                              (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                SearchPattern.MirrorsSequence.empty)
+                              SearchPattern.MirrorsAlternatives.empty))
+                          (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                            SearchPattern.MirrorsSequence.empty))
+                        SearchPattern.MirrorsAlternatives.empty))
+                    (SearchPattern.MirrorsSequence.optional
+                      (SearchPattern.MirrorsSymbol.capture («grammar» := Duration.grammar) (fuel := 11) (production :=
+                        Production.mk "Seconds"
+                          [[SymItem.mk (Sym.ref "DSeconds") false, SymItem.mk (Sym.lit "s") false]])
+                        (by rfl) (by rfl)
+                        (SearchPattern.MirrorsAlternatives.cons
+                          (SearchPattern.MirrorsSequence.required
+                            (SearchPattern.MirrorsSymbol.capture («grammar» := Duration.grammar) (fuel := 10)
+                              (production :=
+                              Production.mk "DSeconds"
+                                [[SymItem.mk (Sym.term TokClass.digit LenSpec.atLeastOne) false]])
+                              (by rfl) (by rfl)
+                              (SearchPattern.MirrorsAlternatives.cons
+                                (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                  SearchPattern.MirrorsSequence.empty)
+                                SearchPattern.MirrorsAlternatives.empty))
+                            (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                              SearchPattern.MirrorsSequence.empty))
+                          SearchPattern.MirrorsAlternatives.empty))
+                      (SearchPattern.MirrorsSequence.optional
+                        (SearchPattern.MirrorsSymbol.capture («grammar» := Duration.grammar) (fuel := 11) (production :=
+                          Production.mk "Millis"
+                            [[SymItem.mk (Sym.ref "DMillis") false, SymItem.mk (Sym.lit "ms") false]])
+                          (by rfl) (by rfl)
+                          (SearchPattern.MirrorsAlternatives.cons
+                            (SearchPattern.MirrorsSequence.required
+                              (SearchPattern.MirrorsSymbol.capture («grammar» := Duration.grammar) (fuel := 10)
+                                (production :=
+                                Production.mk "DMillis"
+                                  [[SymItem.mk (Sym.term TokClass.digit LenSpec.atLeastOne) false]])
+                                (by rfl) (by rfl)
+                                (SearchPattern.MirrorsAlternatives.cons
+                                  (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                    SearchPattern.MirrorsSequence.empty)
+                                  SearchPattern.MirrorsAlternatives.empty))
+                              (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                                SearchPattern.MirrorsSequence.empty))
+                            SearchPattern.MirrorsAlternatives.empty))
+                        SearchPattern.MirrorsSequence.empty)))))
+              SearchPattern.MirrorsAlternatives.empty))
+          SearchPattern.MirrorsSequence.empty))
+      SearchPattern.MirrorsAlternatives.empty)
 
 private abbrev Duration.searchProgram : SearchProgram :=
   ({ start := "Duration",
@@ -1356,7 +1464,7 @@ private abbrev Duration.searchProgram : SearchProgram :=
     SearchProgram)
 
 private theorem Duration.searchProgram_lowered : lowerSearchPlan Duration.searchPlan = Duration.searchProgram := by
-  native_decide
+  decide
 
 private def Duration.directDecode (source : String) : Option CaptureMap :=
   let input := source.toList
