@@ -127,10 +127,13 @@ syntax withPosition(atomic(rawIdent " ::= ") sepBy1(fmtSeq, " | ")) : fmtProd
     `value` refine `SatisfiesConstraints`. -/
 syntax fmtConstraints := withPosition("constraints" (colGt constraintExpr)+)
 
-/-- An escape argument: `X` passes its first capture; `[X]` passes every repeated capture. -/
+/-- An escape argument: `X` passes its first capture; `[X]` passes every repeated capture; and
+    `[P ⟨a, …⟩]` passes, for each occurrence of the repeated production `P`, the tuple of the
+    arguments `a, …` read inside that occurrence. -/
 declare_syntax_cat fmtEscArg
 syntax rawIdent         : fmtEscArg
 syntax "[" rawIdent "]" : fmtEscArg
+syntax "[" rawIdent "⟨" fmtEscArg,+ "⟩" "]" : fmtEscArg
 
 /-- A Lean function applied to capture arguments in `value'` or `constraints'`. -/
 declare_syntax_cat fmtEscEntry
@@ -649,20 +652,56 @@ def parseProd : TSyntax `fmtProd → CommandElabM Production
       pure { name := lhs.getId.toString, alts := ← alts.getElems.toList.mapM parseSeq }
   | s => throwErrorAt s "unrecognized production"
 
-/-- Destructure an ESCAPE entry `f X [Y] …` into its head function ident and its capture args,
-    each paired with a LIST flag (`true` for a bracketed `[X]`, i.e. all repeated spans; `false`
-    for a scalar `X`). Shared by `value'` (list args allowed) and `constraints'`. -/
+/-- Parse one escape argument into its capture ident and reading shape. Group fields are parsed
+    recursively; their `inside` sets are filled from the grammar by `ArgShape.resolve`. -/
+partial def parseEscArg : TSyntax `fmtEscArg → CommandElabM (TSyntax `ident × ArgShape)
+  | `(fmtEscArg| $i:ident) => do
+      validateCaptureIdent i
+      pure (i, .scalar)
+  | `(fmtEscArg| [ $i:ident ]) => do
+      validateCaptureIdent i
+      pure (i, .list)
+  | `(fmtEscArg| [ $i:ident ⟨ $fields,* ⟩ ]) => do
+      validateCaptureIdent i
+      let parsed ← fields.getElems.mapM parseEscArg
+      pure (i, .group [] (parsed.toList.map fun (field, shape) => (field.getId.toString, shape)))
+  | s => throwErrorAt s "unrecognized escape argument"
+
+/-- Fill every group's `inside` set with the productions reachable below its production. -/
+partial def ArgShape.resolve (g : Grammar) (capture : String) : ArgShape → ArgShape
+  | .group _ fields =>
+      .group (g.descendants capture) (fields.map fun (field, shape) =>
+        (field, shape.resolve g field))
+  | shape => shape
+
+/-- Check escape argument shapes. With `strictLists`, a list argument must name a repeated item
+    (the historical `constraints'` rule). A group must name a production, and its fields must be
+    productions inside that group. -/
+partial def validateEscArgShape (g : Grammar) (repeated : List String) (strictLists : Bool)
+    (arg : TSyntax `ident) (capture : String) : ArgShape → CommandElabM Unit
+  | .scalar => pure ()
+  | .list =>
+      if strictLists && !repeated.contains capture then
+        throwErrorAt arg m!"list argument `[{capture}]` does not name a repeated item. \
+          Declare `rep {capture} sepBy \"...\" <len>` before reading all of its spans."
+      else
+        pure ()
+  | .group _ fields => do
+      unless (g.prod? capture).isSome do
+        throwErrorAt arg m!"group argument `[{capture} ⟨…⟩]` does not name a production"
+      let below := g.descendants capture
+      for (field, shape) in fields do
+        unless below.contains field do
+          throwErrorAt arg m!"group field `{field}` is not a production inside `{capture}`; \
+            a group reads only captures recorded within each `{capture}` occurrence"
+        validateEscArgShape g repeated false arg field shape
+
+/-- Destructure an ESCAPE entry `f X [Y] [P ⟨…⟩] …` into its head function ident and its capture
+    args, each with its reading shape. Shared by `value'` and `constraints'`. -/
 def parseEscEntryArgs :
-    TSyntax `fmtEscEntry → CommandElabM (TSyntax `ident × Array (TSyntax `ident × Bool))
+    TSyntax `fmtEscEntry → CommandElabM (TSyntax `ident × Array (TSyntax `ident × ArgShape))
   | `(fmtEscEntry| $f:ident $args:fmtEscArg*) => do
-      let parsed ← args.mapM fun a => match a with
-        | `(fmtEscArg| $i:ident) => do
-            validateCaptureIdent i
-            pure (i, false)
-        | `(fmtEscArg| [ $i:ident ]) => do
-            validateCaptureIdent i
-            pure (i, true)
-        | s => throwErrorAt s "unrecognized escape argument"
+      let parsed ← args.mapM parseEscArg
       pure (f, parsed)
   | s => throwErrorAt s "unrecognized escape entry"
 
@@ -672,9 +711,9 @@ def parseEscEntry (ctx : String := "escape") :
     TSyntax `fmtEscEntry → CommandElabM (TSyntax `ident × Array (TSyntax `ident))
   | e => do
       let (f, args) ← parseEscEntryArgs e
-      let is ← args.mapM fun (i, isList) => do
-        if isList then
-          throwErrorAt i s!"list argument `[{i.getId}]` is not supported in a `{ctx}` entry \
+      let is ← args.mapM fun (i, shape) => do
+        if shape.isCollection then
+          throwErrorAt i s!"collection argument `{i.getId}` is not supported in a `{ctx}` entry \
             (this caller accepts scalar captures only); use a scalar `{i.getId}`"
         pure i
       pure (f, is)
@@ -998,12 +1037,12 @@ def elabTriptych : CommandElab := fun stx => do
       -- For a `value'` escape: each value capture paired with its LIST flag (`[X]` ⟹ `true`).
       -- Drives the escape's `computeValue_eq` (a list arg reads via `componentList`, a scalar
       -- via `component`). Empty for the DSL tier (all scalar).
-      let mut valueCapArgs : List (String × Bool) := []
+      let mut valueCapArgs : List (String × ArgShape) := []
       let mut hasValueEsc : Bool := false
       -- Capture binders for the two readable constraint phases. `none` means that phase has no
       -- entries and no phase-specific surface predicate is emitted.
-      let mut wfConstrCaps : Option (List (String × Bool)) := none
-      let mut valueConstrCaps : Option (List (String × Bool)) := none
+      let mut wfConstrCaps : Option (List (String × ArgShape)) := none
+      let mut valueConstrCaps : Option (List (String × ArgShape)) := none
       if let some vStx := v then
         let ve : TSyntax `valExpr := ⟨vStx.raw[1]⟩
         for i in captureIdents ve.raw do
@@ -1050,7 +1089,10 @@ def elabTriptych : CommandElab := fun stx => do
         | `(fmtValueEsc|
             value' $e:fmtEscEntry $[$_:fmtOfSpec]? $[$_:fmtToSpec]?
               $[$_:fmtOfSpecToSpec]?) =>
-          let (f, args) ← parseEscEntryArgs e
+          let (f, rawArgs) ← parseEscEntryArgs e
+          let args := rawArgs.map fun (i, shape) => (i, shape.resolve gval i.getId.toString)
+          for (i, shape) in args do
+            validateEscArgShape gval repeatedCaptures false i i.getId.toString shape
           hasValueEsc := true
           let vfnIdent := mkIdentFrom name (name.getId ++ `valueFn)
           -- ARBITRARY value type: no `: Env → Int` ascription — the author's `f` return type
@@ -1063,14 +1105,14 @@ def elabTriptych : CommandElab := fun stx => do
           -- spec: a READABLE `<Name>.value` — the author's call over the surface binders (return
           -- type inferred from `f`; each binder's type inferred too — `String` for a scalar arg,
           -- `List String` for a `[X]` list arg).
-          let capArgs := args.toList.map (fun (i, isList) => (i.getId.toString, isList))
+          let capArgs := args.toList.map (fun (i, shape) => (i.getId.toString, shape))
           validateSurfaceBinders veStx.raw "the `value'` function" (capArgs.map (·.1)) true
           -- Typed binders: `String` for a scalar arg, `List String` for a `[X]` list arg.
           let tBinders : Array (TSyntax ``Lean.Parser.Term.bracketedBinder) ←
-            args.mapM (fun (i, isList) => do
+            args.mapM (fun (i, shape) => do
               let b := mkIdent (Name.mkSimple (Triptych.surfaceBinder i.getId.toString))
-              if isList then `(bracketedBinder| ($b : List String))
-              else `(bracketedBinder| ($b : String)))
+              let ty ← liftMacroM shape.typeTerm
+              `(bracketedBinder| ($b : $ty)))
           let bArgs : Array (TSyntax `term) := args.map (fun (i, _) =>
             ⟨(mkIdent (Name.mkSimple (Triptych.surfaceBinder i.getId.toString))).raw⟩)
           let valIdent := mkIdentFrom name (name.getId ++ `value)
@@ -1104,16 +1146,16 @@ def elabTriptych : CommandElab := fun stx => do
       -- `constraints'` escape entries (`cse`): each is a raw `f X [Y] …`; every capture carries
       -- its list flag so mixed scalar/collection predicates retain their source types.
       let escEntries :
-          Array (TSyntax `ident × Array (TSyntax `ident × Bool)) ← match cse with
+          Array (TSyntax `ident × Array (TSyntax `ident × ArgShape)) ← match cse with
         | some cseStx =>
           let lines : Array (TSyntax `fmtEscEntry) := cseStx.raw[1].getArgs.map (⟨·⟩)
-          lines.mapM parseEscEntryArgs
+          lines.mapM fun line => do
+            let (f, args) ← parseEscEntryArgs line
+            pure (f, args.map fun (i, shape) => (i, shape.resolve gval i.getId.toString))
         | none => pure #[]
       for (_, args) in escEntries do
-        for (i, isList) in args do
-          if isList && !repeatedCaptures.contains i.getId.toString then
-            throwErrorAt i m!"list argument `[{i.getId}]` does not name a repeated item. \
-              Declare `rep {i.getId} sepBy \"...\" <len>` before reading all of its spans."
+        for (i, shape) in args do
+          validateEscArgShape gval repeatedCaptures true i i.getId.toString shape
       let hasOpaque := !escEntries.isEmpty || !sizedTerminals.isEmpty
       -- DSL constraint exprs (may be empty even when `constraints'` is present).
       let dslExprs : Array (TSyntax `constraintExpr) := match cs with
@@ -1142,10 +1184,10 @@ def elabTriptych : CommandElab := fun stx => do
           ⟨(mkIdent
             (Name.mkSimple (Triptych.surfaceBinder argument.getId.toString))).raw⟩
         `(($payload).length = $sized.widthFn $widthArgs*)
-      let sizedCaps : List (String × Bool) :=
+      let sizedCaps : List (String × ArgShape) :=
         sizedTerminals.toList.flatMap fun sized =>
-          (sized.production, false) ::
-            sized.widthArgs.toList.map fun argument => (argument.getId.toString, false)
+          (sized.production, .scalar) ::
+            sized.widthArgs.toList.map fun argument => (argument.getId.toString, .scalar)
       -- `parseConstraintEntryWith` preserves whether the ORIGINAL expression mentioned `value`
       -- while producing its semantic `Constraint` AST. Every downstream artifact consumes this
       -- one parsed array.
@@ -1186,14 +1228,15 @@ def elabTriptych : CommandElab := fun stx => do
             ⟨(mkIdent (Name.mkSimple (Triptych.surfaceBinder i.getId.toString))).raw⟩)
           `($f $bArgs* = true))
         let escCaps := escEntries.toList.flatMap (fun (_, is) =>
-          is.toList.map (fun (i, isList) => (i.getId.toString, isList)))
+          is.toList.map (fun (i, shape) => (i.getId.toString, shape)))
         let wfCaps :=
-          ((wfConstraintAsts.toList.flatMap Constraint.captures).map (·, false) ++ escCaps ++
+          ((wfConstraintAsts.toList.flatMap Constraint.captures).map (·, ArgShape.scalar) ++
+              escCaps ++
               sizedCaps)
             |>.eraseDups
         let valCaps :=
           (valueConstraintAsts.toList.flatMap Constraint.captures ++ valueCaps).eraseDups
-            |>.map (·, false)
+            |>.map (·, ArgShape.scalar)
         let constraintLoc := match cs, cse with
           | some constraintsSection, _ => constraintsSection.raw
           | _, some constraintsSection => constraintsSection.raw
@@ -1206,10 +1249,10 @@ def elabTriptych : CommandElab := fun stx => do
             | []      => `(True)
             | x :: xs => xs.foldlM (fun acc p => `($acc ∧ $p)) x
           let wfBinders : Array (TSyntax ``Lean.Parser.Term.bracketedBinder) ←
-            wfCaps.toArray.mapM (fun (c, isList) => do
+            wfCaps.toArray.mapM (fun (c, shape) => do
               let b := mkIdent (Name.mkSimple (Triptych.surfaceBinder c))
-              if isList then `(bracketedBinder| ($b : List String))
-              else `(bracketedBinder| ($b : String)))
+              let ty ← liftMacroM shape.typeTerm
+              `(bracketedBinder| ($b : $ty)))
           let wfRIdent := mkIdentFrom name (name.getId ++ `WfConstraints)
           emitSpec (← `(def $wfRIdent $wfBinders* : Prop := $wfBody))
           wfConstrCaps := some wfCaps
@@ -1259,9 +1302,9 @@ def elabTriptych : CommandElab := fun stx => do
         emitSpec (← `(abbrev $wfSurf (s : String) : Prop := $grammarWf s))
       | some caps =>
         let wfRIdent := mkIdentFrom name (name.getId ++ `WfConstraints)
-        let args : Array (TSyntax `term) ← caps.toArray.mapM (fun (c, isList) =>
-          if isList then `(Triptych.componentList $grammarIdent s $(Syntax.mkStrLit c))
-          else `(Triptych.component $grammarIdent s $(Syntax.mkStrLit c)))
+        let sTerm ← `(s)
+        let args : Array (TSyntax `term) ← caps.toArray.mapM (fun (c, shape) =>
+          liftMacroM (shape.readableTerm grammarIdent sTerm c))
         emitSpec (← `(def $wfScSurf (s : String) : Prop := $wfRIdent $args*))
         emitSpec (← `(abbrev $wfSurf (s : String) : Prop := $grammarWf s ∧ $wfScSurf s))
       match valueConstrCaps with
@@ -1274,20 +1317,17 @@ def elabTriptych : CommandElab := fun stx => do
         emitSpec (← `(def $scSurf (s : String) : Prop := $cRIdent $args*))
         emitSpec (← `(abbrev $accSurf (s : String) : Prop := $wfSurf s ∧ $scSurf s))
       let hasGeneratedValue := veIdent?.isSome || hasValueEsc
-      let resolvedValueCaps : List (String × Bool) :=
-        if veIdent?.isSome then valueCaps.map (·, false) else valueCapArgs
+      let resolvedValueCaps : List (String × ArgShape) :=
+        if veIdent?.isSome then valueCaps.map (·, ArgShape.scalar) else valueCapArgs
       if hasGeneratedValue then
         let cvIdent := mkIdentFrom name (name.getId ++ `computeValue)
         let valueIdent := mkIdentFrom name (name.getId ++ `value)
         let denotesIdent := mkIdentFrom name (name.getId ++ `Denotes)
         let (valueType, valueBinderName) ← Triptych.optionPayloadBinder cvIdent
         let valueBinder := mkIdent valueBinderName
+        let sTerm ← `(s)
         let args : Array (TSyntax `term) ← resolvedValueCaps.toArray.mapM
-          (fun (capture, isList) =>
-            if isList then
-              `(Triptych.componentList $grammarIdent s $(Syntax.mkStrLit capture))
-            else
-              `(Triptych.component $grammarIdent s $(Syntax.mkStrLit capture)))
+          (fun (capture, shape) => liftMacroM (shape.readableTerm grammarIdent sTerm capture))
         emitSpec (←
           `(def $denotesIdent (s : String) ($valueBinder : $valueType) : Prop :=
               $accSurf s ∧ $valueBinder = $valueIdent $args*))

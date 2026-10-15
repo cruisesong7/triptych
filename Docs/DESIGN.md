@@ -691,7 +691,16 @@ triptych IPv4 where
   with `[X]`, ordered lists of repeated captures. Scalar and list arguments may be mixed.
 - **`value`** is the scalar `Int` expression AST described below.
 - **`value'`** applies an arbitrary typed Lean function to scalar capture strings and,
-  with `[X]`, ordered lists of repeated captures.
+  with `[X]`, ordered lists of repeated captures. A group `[P ⟨a, …⟩]` passes one tuple of the
+  arguments `a, …` per occurrence of the repeated production `P`, each read inside that
+  occurrence; groups nest, so `[Line ⟨Id, [Lit], [RatStep ⟨RatPivot, [RatHint]⟩]⟩]` gives a
+  `List (String × List String × List (String × List String))`. `CaptureMap.groups` computes the
+  occurrences generically: capture maps are preorder and grammars are acyclic, so each
+  occurrence owns the following run of captures from productions reachable below `P`. Group
+  fields must be such productions. The readable specification reads groups through
+  `componentWith`, applying the same reader as the engine, so value agreement stays definitional.
+  Groups are also accepted by `constraints'`. The LRAT example in `other-examples` builds
+  `Std`'s `Array IntAction` this way and agrees with `Std`'s text parser on its corpus.
 - **`parser`** names an external `String → Option δ` implementation to validate.
 - **`printer`** names a canonical serializer, or `printer auto` requests synthesis for a
   supported invertible scalar pattern.

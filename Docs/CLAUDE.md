@@ -236,6 +236,11 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
   General analyzable `sum X`/`forall X` reductions still require collection-aware AST semantics.
   Both `value'` and `constraints'` accept `[X]`; the latter supports mixed scalar/list predicates,
   evaluates against the full `CaptureMap`, and exposes list arguments in generated views.
+  Both also accept nested groups `[P ⟨a, …⟩]` (one tuple per occurrence of `P`, fields read
+  inside it via `CaptureMap.groups`); argument shapes are `ArgShape` (`Constraint.lean`), and the
+  readable side reads groups with `componentWith`. Give distinct productions to distinct roles
+  (e.g. `RupHint` vs `RatHint`): a group field collects every capture of that production inside
+  the occurrence, including nested ones. Example: `other-examples/Inputs/Lrat.lean`.
 
 ## Open next steps
 

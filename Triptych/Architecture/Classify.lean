@@ -44,6 +44,18 @@ namespace Triptych
 def Production.directRefs (p : Production) : List String :=
   p.alts.flatMap (fun seq => seq.flatMap (fun item => item.sym.allRefs))
 
+/-- Productions reachable strictly below `name` through references, including repetition items.
+    Grammars are acyclic, so `name` itself is never included; `fuel` bounds malformed inputs. -/
+def Grammar.descendants (g : Grammar) (name : String) : List String :=
+  let rec go : Nat → List String → List String → List String
+    | 0, _, seen => seen
+    | _ + 1, [], seen => seen
+    | fuel + 1, current :: pending, seen =>
+        let children := ((g.prod? current).map Production.directRefs).getD []
+        let fresh := children.filter fun child => !seen.contains child && child != name
+        go fuel (pending ++ fresh) (seen ++ fresh)
+  go (g.prods.length * (g.prods.length + 1) + 1) [name] []
+
 /-- Depth-first check that the reference graph reachable from `name` is acyclic.
     `stack` is the current DFS path for cycle detection. -/
 partial def Grammar.acyclicFrom (g : Grammar) (name : String) (stack : List String) : Bool :=

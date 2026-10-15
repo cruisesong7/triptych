@@ -341,24 +341,113 @@ def opaqueEnvClosure (f : TSyntax `ident) (is : Array (TSyntax `ident)) :
     `(((env : Env) $(Syntax.mkStrLit i.getId.toString)).getD ""))
   `(fun env : Env => $f $args*)
 
+/-- How an escape argument reads captures. `X` reads its first span, `[X]` every span, and the
+    group `[P ⟨args⟩]` one tuple of `args` per occurrence of the repeated production `P`, each
+    read inside that occurrence (`CaptureMap.groups`). `inside` lists the productions reachable
+    below `P`; the elaborator fills it from the grammar. -/
+inductive ArgShape where
+  | scalar
+  | list
+  | group (inside : List String) (fields : List (String × ArgShape))
+  deriving BEq, Inhabited, Repr
+
+namespace ArgShape
+
+/-- Whether the argument reads a collection (and therefore is never an optional scalar). -/
+def isCollection : ArgShape → Bool
+  | .scalar => false
+  | _ => true
+
+/-- Combine field terms into a right-nested tuple; one field is passed unchanged. -/
+def tupleTerm : List (TSyntax `term) → MacroM (TSyntax `term)
+  | [] => `(())
+  | [single] => pure single
+  | first :: rest => do `(($first, $(← tupleTerm rest)))
+
+/-- The reader of one argument over the capture-map term `m`. -/
+partial def mapRead (m : TSyntax `term) (capture : String) : ArgShape → MacroM (TSyntax `term)
+  | .scalar =>
+      `(($(mkIdent `Triptych.CaptureMap.toEnv) $m $(Syntax.mkStrLit capture)).getD "")
+  | .list => `($(mkIdent `Triptych.CaptureMap.toEnvList) $m $(Syntax.mkStrLit capture))
+  | .group inside fields => do
+      let segment := mkIdent `segment
+      let parts ← fields.mapM fun (field, shape) => shape.mapRead segment field
+      let tuple ← tupleTerm parts
+      let insideTerms : Array (TSyntax `term) :=
+        inside.toArray.map fun name => ⟨(Syntax.mkStrLit name).raw⟩
+      let countKey := Syntax.mkStrLit (capture ++ "#count")
+      let key := mkIdent `key
+      `(($(mkIdent `Triptych.CaptureMap.groups) $(Syntax.mkStrLit capture)
+          (fun $key =>
+            [$insideTerms,*].contains ($(mkIdent `Triptych.CaptureMap.keyProduction) $key) ||
+              $key == $countKey)
+          $m).map fun $segment => $tuple)
+
+/-- Lean type of an argument, as syntax. -/
+partial def typeTerm : ArgShape → MacroM (TSyntax `term)
+  | .scalar => `(String)
+  | .list => `(List String)
+  | .group _ fields => do
+      let types ← fields.mapM (·.2.typeTerm)
+      let rec product : List (TSyntax `term) → MacroM (TSyntax `term)
+        | [] => `(Unit)
+        | [single] => pure single
+        | first :: rest => do `($first × $(← product rest))
+      `(List $(← product types))
+
+/-- Lean type of an argument, as source text for generated structure declarations. -/
+partial def typeString : ArgShape → String
+  | .scalar => "String"
+  | .list => "List String"
+  | .group _ fields =>
+      match fields with
+      | [] => "List Unit"
+      | _ => "List (" ++ " × ".intercalate (fields.map (·.2.typeString)) ++ ")"
+
+/-- The readable specification reader of one argument for grammar `g` and input `s`. Global names
+    are built with `mkIdent` because they are declared in modules this file does not import. -/
+def readableTerm (g s : TSyntax `term) (capture : String) (shape : ArgShape) :
+    MacroM (TSyntax `term) :=
+  match shape with
+  | .scalar =>
+      `($(mkIdent `Triptych.component) $g $s $(Syntax.mkStrLit capture))
+  | .list =>
+      `($(mkIdent `Triptych.componentList) $g $s $(Syntax.mkStrLit capture))
+  | .group .. => do
+      let m := mkIdent `m
+      let read ← shape.mapRead m capture
+      `($(mkIdent `Triptych.componentWith) $g $s (fun $m => $read))
+
+/-- The lemma rewriting `readableTerm` once `h : decode g s = some m` is known. -/
+def decodeRewrite (h : TSyntax `term) (capture : String) (shape : ArgShape) :
+    MacroM (TSyntax `term) :=
+  match shape with
+  | .scalar =>
+      `($(mkIdent `Triptych.component_eq_of_decode) $h $(Syntax.mkStrLit capture))
+  | .list =>
+      `($(mkIdent `Triptych.componentList_eq_of_decode) $h $(Syntax.mkStrLit capture))
+  | .group .. => do
+      let m := mkIdent `m
+      let read ← shape.mapRead m capture
+      `($(mkIdent `Triptych.componentWith_eq_of_decode) $h (fun $m => $read))
+
+end ArgShape
+
 /-- Build a `CaptureMap → α` closure from the author's `f` applied to capture args, where each
     arg is either SCALAR (its matched string, `(m.toEnv "X").getD ""` — same as `opaqueEnvClosure`
     reads) or a LIST (`CaptureMap.toEnvList m "X"`, every substring `X` matched, in order). The
     `isList` flag per arg comes from the surface `[X]` marker. The `value'` escape uses this
     (via `computeValueMap`) so it can consume a `rep`-repeated capture as `List String` — the
     individual repeated elements the scalar `Env` reader collapses. -/
-def opaqueMapClosure (f : TSyntax `ident) (is : Array (TSyntax `ident × Bool)) :
+def opaqueMapClosure (f : TSyntax `ident) (is : Array (TSyntax `ident × ArgShape)) :
     MacroM (TSyntax `term) := do
   -- `mkIdent` (not a literal in the quotation) so these carry NO macro scope — the generated
   -- `def valueFn` elaborates cleanly both in-place and in the written file (which `open Triptych`).
-  let toEnvListId := mkIdent `Triptych.CaptureMap.toEnvList
-  let toEnvId     := mkIdent `Triptych.CaptureMap.toEnv
   let capMapId    := mkIdent `Triptych.CaptureMap
-  let args : Array (TSyntax `term) ← is.mapM (fun (i, isList) =>
-    let key := Syntax.mkStrLit i.getId.toString
-    if isList then `($toEnvListId m $key)
-    else `(($toEnvId m $key).getD ""))
-  `(fun m : $capMapId => $f $args*)
+  let m := mkIdent `m
+  let args : Array (TSyntax `term) ← is.mapM (fun (i, shape) =>
+    shape.mapRead m i.getId.toString)
+  `(fun $m : $capMapId => $f $args*)
 
 /-- Parse a constraint once and reify its AST and source-determined phase. -/
 def elabEntryWith (valueSub : Option ValExpr) (c : TSyntax `constraintExpr) :

@@ -574,4 +574,41 @@ triptych LratText where
 
 end NestedSearchScalingExample
 
+
+namespace GroupedValueExample
+
+/-! Grouped `value'` arguments: one tuple per occurrence of a repeated production, with nested
+    groups read inside each occurrence. -/
+
+private def rowShape (rows : List (String × List String)) : List (String × Nat) :=
+  rows.map fun (label, cells) => (label, cells.length)
+
+triptych Rows where
+  grammar
+    Table ::= rep Row sepBy ";" +
+    Row   ::= Label ":" Cells
+    Label ::= ascii[97,122]+
+    Cells ::= rep Cell sepBy "," +
+    Cell  ::= digit+
+  value'
+    rowShape [Row ⟨Label, [Cell]⟩]
+
+#guard Rows.parse "a:1,2;bc:3" = some [("a", 2), ("bc", 1)]
+#guard Rows.parse "a:1,2,3" = some [("a", 3)]
+#guard Rows.parse "a:" = none
+
+/--
+error: group field `Table` is not a production inside `Row`; a group reads only captures recorded within each `Row` occurrence
+-/
+#guard_msgs in
+triptych RowsBadField where
+  grammar
+    Table ::= rep Row sepBy ";" +
+    Row   ::= Cell
+    Cell  ::= digit+
+  value'
+    List.length [Row ⟨Table⟩]
+
+end GroupedValueExample
+
 end Triptych.Tests

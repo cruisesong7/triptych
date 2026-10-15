@@ -260,6 +260,35 @@ def CaptureMap.toEnv (m : CaptureMap) : Env :=
 def CaptureMap.toEnvList (m : CaptureMap) (k : String) : List String :=
   (m.filter (·.1 == k)).map (·.2)
 
+/-- The production a capture key belongs to: `Parent.X`, `X`, and `X#count` all name `X`. -/
+def CaptureMap.keyProduction (key : String) : String :=
+  let unqualified := (key.splitOn ".").getLast?.getD key
+  (unqualified.dropSuffix? "#count").map (·.toString) |>.getD unqualified
+
+/-- Split a capture map into the captures recorded inside each occurrence of `key`.
+
+Capture maps are preorder: an occurrence's own entries (`key` and its qualified `Parent.key`)
+precede the captures of its subtree. Because Triptych grammars are acyclic, `key` never occurs
+inside its own subtree, so each occurrence owns the maximal run of following entries accepted by
+`inside`; the generator supplies `inside` from the productions reachable below `key`. -/
+def CaptureMap.groups (key : String) (inside : String → Bool) (m : CaptureMap) :
+    List CaptureMap :=
+  match m with
+  | [] => []
+  | (k, _) :: rest =>
+      if k == key then
+        let body := rest.dropWhile (·.1.endsWith ("." ++ key))
+        body.takeWhile (inside ·.1) :: groups key inside (body.dropWhile (inside ·.1))
+      else
+        groups key inside rest
+termination_by m.length
+decreasing_by
+  all_goals simp_wf
+  all_goals first
+    | omega
+    | exact Nat.lt_succ_of_le
+        (Nat.le_trans (List.dropWhile_suffix _).length_le (List.dropWhile_suffix _).length_le)
+
 /-! ## Readable field readers
 
 These are the per-field-reference cases of `ValExpr.eval`, named to read like the doc's

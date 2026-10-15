@@ -31,6 +31,12 @@ theorem componentList_eq_of_decode {g : Grammar} {s : String} {m : CaptureMap}
     componentList g s name = m.toEnvList name := by
   simp [componentList, captureMapOf, scan_eq_decode, h]
 
+/-- Rewrite a structured surface component once the selected decoder result is known. -/
+theorem componentWith_eq_of_decode {α : Type} {g : Grammar} {s : String} {m : CaptureMap}
+    (h : decode g s = some m) (read : CaptureMap → α) :
+    componentWith g s read = read m := by
+  simp [componentWith, captureMapOf, scan_eq_decode, h]
+
 /-- Eliminate `computeValue` after identifying the selected decoder result. -/
 theorem computeValue_eq_of_decode {g : Grammar} {ve : ValExpr} {s : String}
     {m : CaptureMap} (h : decode g s = some m) :

@@ -184,7 +184,9 @@ analyzable value and constraint tiers with operations such as:
 - per-element predicates such as `forall X`;
 - list arguments for `constraints'` (complete, including mixed scalar/list predicates and typed
   generated views);
-- richer access to repeated values beyond the completed generated count reader.
+- nested collection values: grouped `[P ⟨…⟩]` arguments for `value'` and `constraints'`
+  (complete; exercised by the LRAT text-proof example against `Std`'s parser);
+- LRAT comment lines, which need a negated character class, and a binary-format mode.
 
 ## 6. Broader capture-functionality certificates
 

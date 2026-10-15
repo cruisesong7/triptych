@@ -71,6 +71,12 @@ def component (g : Grammar) (s : String) (c : String) : String := (envOf g s c).
 def componentList (g : Grammar) (s : String) (c : String) : List String :=
   (captureMapOf g s).toEnvList c
 
+/-- Apply a structured capture reader to the selected capture map of `s`. Grouped `value'`
+    arguments such as `[Line ⟨Id, [Lit]⟩]` read through this, so the readable specification and
+    the engine evaluate the same reader. -/
+def componentWith {α : Type} (g : Grammar) (s : String) (read : CaptureMap → α) : α :=
+  read (captureMapOf g s)
+
 /-- Well-formedness: the grammar recognizes `s` AND every constraint that does not explicitly
     reference the final computed value holds on its capture environment. -/
 def isWf (g : Grammar) (cs : List ConstraintEntry) (s : String) : Prop :=

@@ -947,7 +947,7 @@ def isWfEquivProof (specName : Name) (hasWfConstraints : Bool) :
       rw [Triptych.scan_eq_decode]
       rw [← $grammarEq, ← decodeSome_iff_IsWf $grammarId (by decide)]
       unfold $[$unfolds:ident]*
-      simp only [Triptych.component, Triptych.componentList, Triptych.envOf,
+      simp only [Triptych.component, Triptych.componentList, Triptych.componentWith, Triptych.envOf,
         Triptych.captureMapOf, Triptych.scan_eq_decode,
         List.forall_mem_cons, List.forall_mem_singleton,
         List.not_mem_nil, forall_const, ConstraintEntry.wfPart, Constraint.eval, ValExpr.eval,
@@ -1028,16 +1028,16 @@ def isValidEquivProof (specName : Name) (hasValueConstraints : Bool) :
     `value'` escape unfolds `valueFn` (surface and engine share the author's fn, so the two
     sides are defeq after `Option.map_some`). -/
 def computeValueEqProof (specName : Name) (grammarId : TSyntax `ident)
-    (caps : List (String × Bool)) (isDsl : Bool) : CommandElabM (TSyntax `command) := do
+    (caps : List (String × ArgShape)) (isDsl : Bool) : CommandElabM (TSyntax `command) := do
   let equivId := mkIdent (specName ++ `computeValue_eq)
   let cvId    := mkIdent (specName ++ `computeValue)
   let valId   := mkIdent (specName ++ `value)
   -- `value <reader g s "c₀"> …` — the readable value on decoded components. A SCALAR cap reads
   -- via `component` (its string), a LIST cap (`[X]`, escape tier only) via `componentList` (all
   -- its repeated spans) — matching how `valueFn` reads the `CaptureMap` (`toEnv`/`toEnvList`).
-  let compArgs : Array (TSyntax `term) ← caps.toArray.mapM (fun (c, isList) =>
-    if isList then `(Triptych.componentList $grammarId s $(Syntax.mkStrLit c))
-    else `(Triptych.component $grammarId s $(Syntax.mkStrLit c)))
+  let sTerm ← `(s)
+  let compArgs : Array (TSyntax `term) ← caps.toArray.mapM (fun (c, shape) =>
+    liftMacroM (shape.readableTerm grammarId sTerm c))
   -- Tier-specific unfolds: the engine value entry point + the value definition it reduces to.
   -- DSL → `computeValue`/`valueExpr`; escape → `computeValueMap`/`valueFn`. Both readers
   -- (`component` = `(toEnv m ·).getD ""`, `componentList` = `toEnvList m ·`) unfold to the same
@@ -1047,9 +1047,11 @@ def computeValueEqProof (specName : Name) (grammarId : TSyntax `ident)
   let valDef   := mkIdent (specName ++ (if isDsl then `valueExpr else `valueFn))
   -- Only unfold a reader that actually appears in the goal (`unfold` errors on an absent target):
   -- `component` iff some scalar cap, `componentList` iff some list cap.
-  let hasScalar := caps.any (!·.2)
+  let hasScalar := caps.any (·.2 == .scalar)
   let compUnf : Array (TSyntax `ident) :=
-    (if caps.any (·.2) then #[mkIdent `Triptych.componentList] else #[])
+    (if caps.any (·.2 == .list) then #[mkIdent `Triptych.componentList] else #[])
+      ++ (if caps.any (fun (_, shape) => shape.isCollection && shape != .list) then
+            #[mkIdent `Triptych.componentWith] else #[])
       -- `component` unfolds through `envOf`, so unfold both (only when a scalar cap is present).
       ++ (if hasScalar then #[mkIdent `Triptych.component, mkIdent `Triptych.envOf] else #[])
       ++ #[mkIdent `Triptych.captureMapOf]
@@ -1067,21 +1069,17 @@ def computeValueEqProof (specName : Name) (grammarId : TSyntax `ident)
     proof identifies the exact selected capture map, this theorem exposes the readable value
     directly, without requiring the user to unfold `computeValue`, `component`, or `envOf`. -/
 def computeValueOfDecodeProof (specName : Name) (grammarId : TSyntax `ident)
-    (caps : List (String × Bool)) : CommandElabM (TSyntax `command) := do
+    (caps : List (String × ArgShape)) : CommandElabM (TSyntax `command) := do
   let theoremId := mkIdent (specName ++ `computeValue_of_decode)
   let computeEqId := mkIdent (specName ++ `computeValue_eq)
   let cvId := mkIdent (specName ++ `computeValue)
   let valId := mkIdent (specName ++ `value)
-  let args : Array (TSyntax `term) ← caps.toArray.mapM (fun (name, isList) =>
-    if isList then
-      `(Triptych.CaptureMap.toEnvList m $(Syntax.mkStrLit name))
-    else
-      `((Triptych.CaptureMap.toEnv m $(Syntax.mkStrLit name)).getD ""))
-  let rewrites : Array (TSyntax `term) ← caps.toArray.mapM (fun (name, isList) =>
-    if isList then
-      `(Triptych.componentList_eq_of_decode h $(Syntax.mkStrLit name))
-    else
-      `(Triptych.component_eq_of_decode h $(Syntax.mkStrLit name)))
+  let mTerm ← `(m)
+  let hTerm ← `(h)
+  let args : Array (TSyntax `term) ← caps.toArray.mapM (fun (name, shape) =>
+    liftMacroM (shape.mapRead mTerm name))
+  let rewrites : Array (TSyntax `term) ← caps.toArray.mapM (fun (name, shape) =>
+    liftMacroM (shape.decodeRewrite hTerm name))
   let asSimp := fun (t : TSyntax `term) =>
     show CommandElabM (TSyntax `Lean.Parser.Tactic.simpLemma) from
       `(Lean.Parser.Tactic.simpLemma| $t:term)
@@ -1098,7 +1096,7 @@ def computeValueOfDecodeProof (specName : Name) (grammarId : TSyntax `ident)
     rewrites the string-level component readers to direct lookups in a known capture map, which
     is the form parse views and external-parser bridges need. -/
 def constraintsOfDecodeProof (specName : Name) (grammarId : TSyntax `ident)
-    (caps : List (String × Bool)) (wellFormed : Bool) :
+    (caps : List (String × ArgShape)) (wellFormed : Bool) :
     CommandElabM (TSyntax `command) := do
   let theoremId := mkIdent
     (specName ++ if wellFormed then `SatisfiesWfConstraints_of_decode
@@ -1107,16 +1105,12 @@ def constraintsOfDecodeProof (specName : Name) (grammarId : TSyntax `ident)
     (specName ++ if wellFormed then `SatisfiesWfConstraints else `SatisfiesConstraints)
   let relationId := mkIdent
     (specName ++ if wellFormed then `WfConstraints else `Constraints)
-  let args : Array (TSyntax `term) ← caps.toArray.mapM (fun (name, isList) =>
-    if isList then
-      `(Triptych.CaptureMap.toEnvList m $(Syntax.mkStrLit name))
-    else
-      `((Triptych.CaptureMap.toEnv m $(Syntax.mkStrLit name)).getD ""))
-  let rewrites : Array (TSyntax `term) ← caps.toArray.mapM (fun (name, isList) =>
-    if isList then
-      `(Triptych.componentList_eq_of_decode h $(Syntax.mkStrLit name))
-    else
-      `(Triptych.component_eq_of_decode h $(Syntax.mkStrLit name)))
+  let mTerm ← `(m)
+  let hTerm ← `(h)
+  let args : Array (TSyntax `term) ← caps.toArray.mapM (fun (name, shape) =>
+    liftMacroM (shape.mapRead mTerm name))
+  let rewrites : Array (TSyntax `term) ← caps.toArray.mapM (fun (name, shape) =>
+    liftMacroM (shape.decodeRewrite hTerm name))
   let asSimp := fun (t : TSyntax `term) =>
     show CommandElabM (TSyntax `Lean.Parser.Tactic.simpLemma) from
       `(Lean.Parser.Tactic.simpLemma| $t:term)
@@ -1130,7 +1124,7 @@ def constraintsOfDecodeProof (specName : Name) (grammarId : TSyntax `ident)
 /-- One field of the generated proof-facing decoded view. -/
 structure ViewFieldSpec where
   capture : String
-  isList : Bool
+  shape : ArgShape
   isOptional : Bool
   fieldName : Name
 
@@ -1171,33 +1165,36 @@ def requiredCaptures (g : Grammar) : List String :=
 
 /-- Turn a capture key into a stable Lean field name. List-valued readers receive an `All`
     suffix so scalar and collection views of the same capture can coexist. -/
-private def viewFieldBase (capture : String) (isList : Bool) : String :=
+private def viewFieldBase (capture : String) (shape : ArgShape) : String :=
   let clean := String.ofList ((surfaceBinder capture).toList.map fun c =>
     if c.isAlphanum || c = '_' then c else '_')
   let clean :=
     match clean.toList with
     | c :: _ => if c.isDigit then "_" ++ clean else clean
     | [] => "component"
-  if isList then clean ++ "All" else clean
+  match shape with
+  | .scalar => clean
+  | .list => clean ++ "All"
+  | .group .. => clean ++ "Groups"
 
 /-- Deduplicate requested capture readers and assign collision-free generated field names.
     Scalar fields become `Option String` exactly when the grammar does not guarantee their
     presence in every complete parse. -/
-def viewFieldSpecs (g : Grammar) (caps : List (String × Bool)) : List ViewFieldSpec := Id.run do
-  let mut seenCaps : List (String × Bool) := []
+def viewFieldSpecs (g : Grammar) (caps : List (String × ArgShape)) : List ViewFieldSpec := Id.run do
+  let mut seenCaps : List (String × ArgShape) := []
   let mut used : Std.HashMap String Nat := {}
   let required := requiredCaptures g
   used := used.insert "input" 1
   let mut out : List ViewFieldSpec := []
-  for (capture, isList) in caps do
-    unless seenCaps.contains (capture, isList) do
-      seenCaps := seenCaps ++ [(capture, isList)]
-      let base := viewFieldBase capture isList
+  for (capture, shape) in caps do
+    unless seenCaps.contains (capture, shape) do
+      seenCaps := seenCaps ++ [(capture, shape)]
+      let base := viewFieldBase capture shape
       let index := used.getD base 0
       used := used.insert base (index + 1)
       let field := if index = 0 then base else base ++ toString index
-      let isOptional := !isList && !(required.contains capture)
-      out := out ++ [⟨capture, isList, isOptional, Name.mkSimple field⟩]
+      let isOptional := !shape.isCollection && !(required.contains capture)
+      out := out ++ [⟨capture, shape, isOptional, Name.mkSimple field⟩]
   return out
 
 /-- Emit `<Name>.View`, the typed component record used by generated bridge theorems. -/
@@ -1205,9 +1202,7 @@ def viewStructureCommand (specName : Name) (fields : List ViewFieldSpec) :
     CommandElabM (TSyntax `command) := do
   let fieldLines := "  input : String" :: fields.map fun field =>
       let ty :=
-        if field.isList then "List String"
-        else if field.isOptional then "Option String"
-        else "String"
+        if field.isOptional then "Option String" else field.shape.typeString
       s!"  «{field.fieldName.toString false}» : {ty}"
   let source :=
     s!"structure {specName.toString true}.View where\n{String.intercalate "\n" fieldLines}"
@@ -1232,7 +1227,7 @@ private def viewFieldValueTerm (specName : Name) (field : ViewFieldSpec)
 /-- Emit the pure, reader-facing operations on `<Name>.View`: only constraint phases that are
     present, `Valid` specialized to those phases, and (when a value exists) `denotation`. -/
 def viewSurfaceCommands (specName : Name) (fields : List ViewFieldSpec)
-    (wfCaps valueConstraintCaps valueCaps : List (String × Bool))
+    (wfCaps valueConstraintCaps valueCaps : List (String × ArgShape))
     (hasValue : Bool) (valueAst? : Option ValExpr)
     (valueConstraintAsts : List Constraint) :
     CommandElabM (Array (TSyntax `command)) := do
@@ -1241,11 +1236,11 @@ def viewSurfaceCommands (specName : Name) (fields : List ViewFieldSpec)
   let wfId := mkIdent (specName ++ `View ++ `WfConstraints)
   let constraintsId := mkIdent (specName ++ `View ++ `Constraints)
   let validId := mkIdent (specName ++ `View ++ `Valid)
-  let findField (capture : String) (isList : Bool) : Option ViewFieldSpec :=
-    fields.find? (fun field => field.capture = capture && field.isList = isList)
-  let captureArgs (caps : List (String × Bool)) : CommandElabM (Array (TSyntax `term)) :=
-    caps.toArray.mapM fun (capture, isList) =>
-      match findField capture isList with
+  let findField (capture : String) (shape : ArgShape) : Option ViewFieldSpec :=
+    fields.find? (fun field => field.capture = capture && field.shape == shape)
+  let captureArgs (caps : List (String × ArgShape)) : CommandElabM (Array (TSyntax `term)) :=
+    caps.toArray.mapM fun (capture, shape) =>
+      match findField capture shape with
       | some field => viewFieldValueTerm specName field v
       | none => throwError "internal error: no generated view field for capture `{capture}`"
   let mut commands : Array (TSyntax `command) := #[]
@@ -1273,8 +1268,8 @@ def viewSurfaceCommands (specName : Name) (fields : List ViewFieldSpec)
   if hasValue then
     let denotationId := mkIdent (specName ++ `View ++ `denotation)
     let valueId := mkIdent (specName ++ `value)
-    let args : Array (TSyntax `term) ← valueCaps.toArray.mapM fun (capture, isList) =>
-      match findField capture isList with
+    let args : Array (TSyntax `term) ← valueCaps.toArray.mapM fun (capture, shape) =>
+      match findField capture shape with
       | some field => viewFieldValueTerm specName field v
       | none => throwError "internal error: no generated view field for capture `{capture}`"
     commands := commands.push
@@ -1292,9 +1287,9 @@ def viewSurfaceCommands (specName : Name) (fields : List ViewFieldSpec)
         let mut body ← match terms.toList with
           | [] => `(True)
           | first :: rest => rest.foldlM (fun acc term => `($acc ∧ $term)) first
-        for (capture, isList) in valueConstraintCaps.reverse do
+        for (capture, shape) in valueConstraintCaps.reverse do
           let field ←
-            match findField capture isList with
+            match findField capture shape with
             | some field => pure field
             | none =>
                 throwError
@@ -1321,15 +1316,17 @@ def viewEngineCommands (specName : Name) (grammarId : TSyntax `ident)
   let ofSpansId := mkIdent (specName ++ `View ++ `ofSpans)
   let ofSpansEqId := mkIdent (specName ++ `View ++ `ofSpans_eq_ofMap)
   let decodeViewId := mkIdent (specName ++ `decodeView)
+  let mTerm ← `(m)
   let mapArgs : Array (TSyntax `term) ← fields.toArray.mapM fun field =>
-    if field.isList then
-      `(Triptych.CaptureMap.toEnvList m $(Syntax.mkStrLit field.capture))
-    else if field.isOptional then
+    if field.isOptional then
       `(Triptych.CaptureMap.toEnv m $(Syntax.mkStrLit field.capture))
     else
-      `((Triptych.CaptureMap.toEnv m $(Syntax.mkStrLit field.capture)).getD "")
+      liftMacroM (field.shape.mapRead mTerm field.capture)
+  let materialized ← `(spans.materialize chars)
   let spanArgs : Array (TSyntax `term) ← fields.toArray.mapM fun field =>
-    if field.isList then
+    if let .group .. := field.shape then
+      liftMacroM (field.shape.mapRead materialized field.capture)
+    else if field.shape == .list then
       `(Triptych.LeanSpanCursor.SpanMap.toEnvList chars spans
           $(Syntax.mkStrLit field.capture))
     else if field.isOptional then
