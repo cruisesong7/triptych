@@ -536,4 +536,42 @@ theorem BitFormat.parse_toString_roundtrip (b : Bool) :
 
 end DefaultPrinterExample
 
+
+namespace NestedSearchScalingExample
+
+/-! Regression for search-path emission at realistic size. This is the LRAT text grammar used by
+    `Std.Tactic.BVDecide.LRAT.Parser`: nested captures, repetitions, and several optionals in one
+    production. Inlining continuations as syntax once produced a 209 MB `directDecode`, and the
+    readable-spec equivalence proof failed on a literal following an optional item. -/
+
+private def lineCount (ids : List String) : Nat := ids.length
+
+triptych LratText where
+  grammar
+    Proof    ::= rep Line sepBy "\n" + "\n"
+    Line     ::= Id " " Body Cr
+    Cr       ::= ["\r"]
+    Body     ::= Delete | Add
+    Delete   ::= "d " [DelIds] "0"
+    DelIds   ::= rep DelId sepBy " " + " "
+    DelId    ::= Pos
+    Add      ::= [Lits] "0 " [Hints] [Rats] "0"
+    Lits     ::= rep Lit sepBy " " + " "
+    Lit      ::= Neg | Pos
+    Hints    ::= rep Hint sepBy " " + " "
+    Hint     ::= Pos
+    Rats     ::= rep Rat sepBy " " + " "
+    Rat      ::= Neg " " [Hints]
+    Neg      ::= "-" Pos
+    Pos      ::= digit+
+    Id       ::= Pos
+  value'
+    lineCount [Id]
+
+#guard LratText.parse "5 1 -2 0 3 4 0\n6 d 1 2 0\n" = some 2
+#guard LratText.parse "7 0 5 6 0\n" = some 1
+#guard LratText.parse "7 0 5 6 0" = none
+
+end NestedSearchScalingExample
+
 end Triptych.Tests

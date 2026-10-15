@@ -885,6 +885,7 @@ def matchesRefProof (specName : Name) (grammarId : TSyntax `ident) (p : Producti
           | apply or_congr
           | (simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left,
                 ← and_assoc, exists_eq_left, exists_eq_left', exists_eq_right, and_true,
+                exists_append_lit_left,
                 Option.some.injEq, forall_eq']
              try grind [String.append_assoc, String.append_empty]))
   else
@@ -897,6 +898,7 @@ def matchesRefProof (specName : Name) (grammarId : TSyntax `ident) (p : Producti
         simp (config := { maxSteps := 1000000 }) only [$allBody,*]
         simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left,
           ← and_assoc, exists_eq_left, exists_eq_left', exists_eq_right, and_true,
+          exists_append_lit_left,
           Option.some.injEq, forall_eq']
         try grind [String.append_assoc, String.append_empty])
 
@@ -1960,112 +1962,175 @@ private def unrolledCursorExecution (state : TSyntax `term) :
           $step
           (fun $next => $tail))
 
-/-- Unroll a continuation-fused search program into generated Lean control flow. The emitted
-    expression preserves `SearchCode.runK` but contains no runtime constructor dispatch. -/
-private def searchBinder (path base : String) : TSyntax `ident :=
-  mkIdent (Name.mkSimple s!"{base}_{path}")
+/-- Names of one emitted search state: its `SearchCode` constant, its specialized function, and
+    the one-step equation lemma relating the two. -/
+private structure SearchNodeNames where
+  code : TSyntax `ident
+  node : TSyntax `ident
+  eq : TSyntax `ident
+  deriving Inhabited
 
-private partial def unrolledSearchExecution (code : SearchCode)
-    (input continuation : TSyntax `term) (path : String) :
-    CommandElabM (TSyntax `term) := do
-  match code with
-  | .accept =>
-      `($continuation ([] : CaptureMap) $input)
-  | .fail =>
-      `(none)
-  | .literal text next => do
-      let characters := searchBinder path "characters"
-      let remaining ← `(($input).drop ($characters).length)
-      let tail ←
-        unrolledSearchExecution next remaining continuation (path ++ "n")
-      `(let $characters := $(Syntax.mkStrLit text).toList
-        if ($characters).isPrefixOf $input then $tail else none)
-  | .stringLiteral next => do
-      let width := searchBinder path "width"
-      let remaining ← `(($input).drop $width)
-      let tail ←
-        unrolledSearchExecution next remaining continuation (path ++ "n")
-      `((List.range (($input).length + 1)).findSome? fun $width =>
-          if stringPrefixOk $input $width then $tail else none)
-  | .tokenRun token length next => do
-      let width := searchBinder path "width"
-      let tokenTerm ← cursorTokenTerm token
-      let lengthSyntax ← lengthTerm length
-      let remaining ← `(($input).drop $width)
-      let tail ←
-        unrolledSearchExecution next remaining continuation (path ++ "n")
-      `((List.range (($input).length + 1)).findSome? fun $width =>
-          if termPrefixOk $tokenTerm $lengthSyntax $input $width then $tail else none)
-  | .capture keys body next => do
-      let bodyCaptures := searchBinder path "bodyCaptures"
-      let remaining := searchBinder path "remaining"
-      let ownCaptures := searchBinder path "ownCaptures"
-      let tailCaptures := searchBinder path "tailCaptures"
-      let suffix := searchBinder path "suffix"
-      let keysTerm ← stringListTerm keys
-      let tailContinuation ←
-        `(fun ($tailCaptures : CaptureMap) ($suffix : List Char) =>
-          $continuation
-            ($ownCaptures ++
-              $bodyCaptures ++ $tailCaptures)
-            $suffix)
-      let tail ←
-        unrolledSearchExecution next (← `($remaining)) tailContinuation
-          (path ++ "t")
-      let bodyContinuation ←
-        `(fun ($bodyCaptures : CaptureMap)
-            ($remaining : List Char) =>
-          let $ownCaptures :=
-            ($keysTerm).map fun key =>
-              (key, String.ofList
-                (($input).take (($input).length - ($remaining).length)))
-          $tail)
-      unrolledSearchExecution body input bodyContinuation (path ++ "b")
-  | .choice first second => do
-      let firstResult ←
-        unrolledSearchExecution first input continuation (path ++ "l")
-      let secondResult ←
-        unrolledSearchExecution second input continuation (path ++ "r")
-      `(scanOrElse $firstResult fun _ => $secondResult)
-  | .repetition separator item lower upper countKey next => do
-      let firstCaptures := searchBinder path "firstCaptures"
-      let remaining := searchBinder path "remaining"
-      let captures := searchBinder path "captures"
-      let suffix := searchBinder path "suffix"
-      let itemCount := searchBinder path "itemCount"
-      let tailCaptures := searchBinder path "tailCaptures"
-      let finalSuffix := searchBinder path "finalSuffix"
-      let itemInput := searchBinder path "itemInput"
-      let itemContinuation := searchBinder path "itemContinuation"
-      let itemExecution ←
-        unrolledSearchExecution item (← `($itemInput)) (← `($itemContinuation))
-          (path ++ "i")
-      let itemFunction ←
-        `(fun $itemInput $itemContinuation => $itemExecution)
-      let upperTerm ←
-        match upper with
-        | none => `(none)
-        | some bound => `(some $(quote bound))
-      let tailContinuation ←
-        `(fun ($tailCaptures : CaptureMap)
-            ($finalSuffix : List Char) =>
-          $continuation
-            ((($(Syntax.mkStrLit countKey) ++ "#count", toString $itemCount) ::
-                $captures) ++ $tailCaptures)
-            $finalSuffix)
-      let tail ←
-        unrolledSearchExecution next (← `($suffix)) tailContinuation
-          (path ++ "n")
-      let repetitionContinuation ←
-        `(fun ($captures : CaptureMap) ($suffix : List Char)
-            ($itemCount : Nat) => $tail)
-      let firstContinuation ←
-        `(fun ($firstCaptures : CaptureMap)
-            ($remaining : List Char) =>
-          scanStarK $itemFunction ($(Syntax.mkStrLit separator)).toList
-            $(quote lower) $upperTerm ($input).length
-            $remaining $firstCaptures 1 $repetitionContinuation)
-      unrolledSearchExecution item input firstContinuation (path ++ "f")
+/-- Rewrite one `runK` step and the successor states of an emitted search state. -/
+private def searchNodeEqTactic (children : Array SearchNodeNames) :
+    CommandElabM (TSyntax `tactic) :=
+  match children.toList with
+  | [] => `(tactic| simp only [SearchCode.runK])
+  | [first] => `(tactic| simp only [SearchCode.runK, $(first.eq):ident])
+  | first :: second :: _ =>
+      `(tactic| simp only [SearchCode.runK, $(first.eq):ident, $(second.eq):ident])
+
+/-- Emission state for hash-consed search states: each distinct subtree is emitted once. -/
+private structure SearchNodeState where
+  assigned : Array (SearchCode × SearchNodeNames) := #[]
+  /-- Per state: its code definition, its function body, its equation lemma, and the number of
+      references its body makes to each successor state. -/
+  pieces : Array (TSyntax `command × TSyntax `term × TSyntax `command) := #[]
+  successors : Array (List Nat) := #[]
+
+/-- Emit one definition per distinct `SearchCode` subtree, children first.
+
+Each state `searchNode_i input k` performs exactly one `SearchCode.runK` step and calls its
+successor states by name, with the continuation `k` passed as an ordinary argument. Generated code
+and proof size are therefore linear in the number of distinct states. Inlining continuations as
+syntax would instead copy the whole remaining parse into every success point of a capture or
+repetition body, which grows exponentially with nesting depth. `searchNode_i_eq` proves the state
+equal to `runK searchCode_i` by unfolding one step and rewriting successors with their own
+equation lemmas. -/
+private partial def emitSearchNodes (specName : Name) (code : SearchCode) :
+    StateT SearchNodeState CommandElabM SearchNodeNames := do
+  if let some (_, names) := (← get).assigned.find? (·.1 == code) then
+    return names
+  let children ← match code with
+    | .accept | .fail => pure #[]
+    | .literal _ next | .stringLiteral next | .tokenRun _ _ next =>
+        pure #[← emitSearchNodes specName next]
+    | .capture _ body next =>
+        pure #[← emitSearchNodes specName body, ← emitSearchNodes specName next]
+    | .choice first second =>
+        pure #[← emitSearchNodes specName first, ← emitSearchNodes specName second]
+    | .repetition _ item _ _ _ next =>
+        pure #[← emitSearchNodes specName item, ← emitSearchNodes specName next]
+  let index := (← get).assigned.size
+  let names : SearchNodeNames :=
+    { code := mkIdent (specName ++ Name.mkSimple s!"searchCode_{index}")
+      node := mkIdent (specName ++ Name.mkSimple s!"searchNode_{index}")
+      eq := mkIdent (specName ++ Name.mkSimple s!"searchNode_{index}_eq") }
+  let child (position : Nat) : SearchNodeNames := children[position]!
+  let input := mkIdent `input
+  let k := mkIdent `k
+  let (codeTerm, body) ← match code with
+    | .accept =>
+        pure (← `(SearchCode.accept), ← `($k [] $input))
+    | .fail =>
+        pure (← `(SearchCode.fail), ← `(none))
+    | .literal text next => do
+        let next := child 0
+        let textTerm := Syntax.mkStrLit text
+        pure (← `(SearchCode.literal $textTerm $(next.code)),
+          ← `(let characters := ($textTerm).toList
+              if characters.isPrefixOf $input then
+                $(next.node) (($input).drop characters.length) $k
+              else
+                none))
+    | .stringLiteral _ => do
+        let next := child 0
+        pure (← `(SearchCode.stringLiteral $(next.code)),
+          ← `((List.range (($input).length + 1)).findSome? fun width =>
+                if stringPrefixOk $input width then
+                  $(next.node) (($input).drop width) $k
+                else
+                  none))
+    | .tokenRun token length _ => do
+        let next := child 0
+        let tokenTerm ← cursorTokenTerm token
+        let lengthSyntax ← lengthTerm length
+        pure (← `(SearchCode.tokenRun $tokenTerm $lengthSyntax $(next.code)),
+          ← `((List.range (($input).length + 1)).findSome? fun width =>
+                if termPrefixOk $tokenTerm $lengthSyntax $input width then
+                  $(next.node) (($input).drop width) $k
+                else
+                  none))
+    | .capture keys _ _ => do
+        let body := child 0
+        let next := child 1
+        let keysTerm ← stringListTerm keys
+        pure (← `(SearchCode.capture $keysTerm $(body.code) $(next.code)),
+          ← `($(body.node) $input fun bodyCaptures remaining =>
+                let consumed := String.ofList (($input).take (($input).length - remaining.length))
+                $(next.node) remaining fun tailCaptures suffix =>
+                  $k (($keysTerm).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix))
+    | .choice _ _ => do
+        let first := child 0
+        let second := child 1
+        pure (← `(SearchCode.choice $(first.code) $(second.code)),
+          ← `(scanOrElse ($(first.node) $input $k) fun _ => $(second.node) $input $k))
+    | .repetition separator _ lower upper countKey _ => do
+        let item := child 0
+        let next := child 1
+        let separatorTerm := Syntax.mkStrLit separator
+        let countKeyTerm := Syntax.mkStrLit countKey
+        let upperTerm ← match upper with
+          | none => `(none)
+          | some bound => `(some $(quote bound))
+        pure (← `(SearchCode.repetition $separatorTerm $(item.code) $(quote lower) $upperTerm
+              $countKeyTerm $(next.code)),
+          ← `($(item.node) $input fun firstCaptures remaining =>
+                scanStarK (fun itemInput itemK => $(item.node) itemInput itemK)
+                  ($separatorTerm).toList $(quote lower) $upperTerm ($input).length
+                  remaining firstCaptures 1 fun captures suffix itemCount =>
+                    $(next.node) suffix fun tailCaptures finalSuffix =>
+                      $k ((($countKeyTerm ++ "#count", toString itemCount) :: captures) ++
+                        tailCaptures) finalSuffix))
+  let codeDef ← `(private def $(names.code) : SearchCode := $codeTerm)
+  let eqTactic ← searchNodeEqTactic children
+  let nodeEq ←
+    `(private theorem $(names.eq) ($input : List Char)
+        ($k : CaptureMap → List Char → Option CaptureMap) :
+        $(names.node) $input $k = SearchCode.runK $(names.code) $input $k := by
+      unfold $(names.node) $(names.code)
+      $eqTactic:tactic)
+  let assigned := (← get).assigned
+  let indexOf (child : SearchNodeNames) : Nat :=
+    (assigned.findIdx? fun (_, names) => names.node == child.node).getD 0
+  -- A repetition body calls its item twice: once for the first item and once per later item.
+  let successorUses := match code with
+    | .repetition .. => [indexOf (child 0), indexOf (child 0), indexOf (child 1)]
+    | _ => children.toList.map indexOf
+  modify fun state =>
+    { state with
+      assigned := state.assigned.push (code, names)
+      pieces := state.pieces.push (codeDef, body, nodeEq)
+      successors := state.successors.push successorUses }
+  return names
+
+/-- Assemble emitted search states. A state referenced from exactly one place is marked
+    `@[inline]`: inlining it cannot duplicate code, so the compiled parser keeps the straight-line
+    shape of the previous fully unrolled emitter while shared states remain ordinary functions.
+    Shared states of at most six control-flow nodes are also inlined; copying them is cheap and
+    bounded, and avoids a call per alternative for short common suffixes. -/
+private def searchNodeCommands (state : SearchNodeState) (root : Nat) :
+    CommandElabM (Array (TSyntax `command)) := do
+  let uses : Array Nat := state.successors.foldl
+    (fun counts successors => successors.foldl (fun counts index =>
+      counts.modify index (· + 1)) counts)
+    ((Array.replicate state.assigned.size 0).modify root (· + 1))
+  let input := mkIdent `input
+  let k := mkIdent `k
+  let mut commands := #[]
+  for h : index in [0:state.assigned.size] do
+    let names := state.assigned[index]!.2
+    let (codeDef, body, nodeEq) := state.pieces[index]!
+    let nodeDef ←
+      if uses[index]! == 1 || state.assigned[index]!.1.nodeCount ≤ 6 then
+        `(@[inline] private def $(names.node) ($input : List Char)
+            ($k : CaptureMap → List Char → Option CaptureMap) : Option CaptureMap :=
+          $body)
+      else
+        `(private def $(names.node) ($input : List Char)
+            ($k : CaptureMap → List Char → Option CaptureMap) : Option CaptureMap :=
+          $body)
+    commands := commands ++ #[codeDef, nodeDef, nodeEq]
+  return commands
 
 /-- Emit the staged Lean fast path and its generic completeness bridge. The generated execution
     chain contains one statically known call per cursor instruction and no runtime operation-list
@@ -2251,8 +2316,7 @@ def directSearchParserCommands (specName : Name) (grammar : Grammar) (plan : Sea
         some $captures
       else
         none)
-  let execute ←
-    unrolledSearchExecution program.code (← `($input)) rootContinuation "root"
+  let (root, nodeState) ← (emitSearchNodes specName program.code).run {}
   let planDef ← `(private abbrev $planId : SearchPlan := $planTerm)
   let parsePlanDef ←
     `(private abbrev $parsePlanId : ParsePlan := ParsePlan.search $planId)
@@ -2267,13 +2331,13 @@ def directSearchParserCommands (specName : Name) (grammar : Grammar) (plan : Sea
       decide)
   let directDecodeDef ←
     `(private def $directDecodeId (source : String) : Option CaptureMap :=
-        let $input := source.toList
-        $execute)
+        $(root.node) source.toList $rootContinuation)
   let directDecodeEq ←
     `(private theorem $directDecodeEqId (source : String) :
         $directDecodeId source = SearchProgram.decode $programId source := by
-      unfold $directDecodeId SearchProgram.decode $programId
-      simp only [SearchCode.runK])
+      have hcode : $(root.code) = ($programId).code := rfl
+      unfold $directDecodeId SearchProgram.decode
+      rw [$(root.eq):ident, hcode])
   let decodeDef ←
     `(private def $decodeId (source : String) : Option CaptureMap :=
         $directDecodeId source)
@@ -2305,8 +2369,13 @@ def directSearchParserCommands (specName : Name) (grammar : Grammar) (plan : Sea
       unfold $directViewId $decodeViewId
       rw [show $directDecodeId source = scan $grammarId source by
         exact $decodeEqId source])
-  return #[planDef, parsePlanDef, planMirrors, programDef, programLowered, directDecodeDef,
-    directDecodeEq, decodeDef, decodePlanEq, decodeEq, directViewDef, directViewEq]
+  let rootIndex :=
+    (nodeState.assigned.findIdx? fun (_, names) => names.node == root.node).getD 0
+  let nodeCommands ← searchNodeCommands nodeState rootIndex
+  return #[planDef, parsePlanDef, planMirrors, programDef, programLowered] ++
+    nodeCommands ++
+    #[directDecodeDef, directDecodeEq, decodeDef, decodePlanEq, decodeEq, directViewDef,
+      directViewEq]
 
 /-- Emit the Lean implementation selected by the shared parser plan. Valid Triptych grammars are
     acyclic and therefore compile to either the cursor or ordered-search tier. Reaching the

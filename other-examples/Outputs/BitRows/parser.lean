@@ -345,7 +345,7 @@ theorem BitRows.Internal.matchesRef.Width (fuel : Nat) (s : String) :
     ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem BitRows.Internal.matchesRef.First (fuel : Nat) (s : String) :
@@ -368,7 +368,8 @@ theorem BitRows.Internal.matchesRef.First (fuel : Nat) (s : String) :
     first
     | apply or_congr
     | ( simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left,
-          ← and_assoc, exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+          ← and_assoc, exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left,
+          Option.some.injEq, forall_eq']
         try grind [String.append_assoc, String.append_empty])
 
 theorem BitRows.Internal.matchesRef.Second (fuel : Nat) (s : String) :
@@ -391,7 +392,8 @@ theorem BitRows.Internal.matchesRef.Second (fuel : Nat) (s : String) :
     first
     | apply or_congr
     | ( simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left,
-          ← and_assoc, exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+          ← and_assoc, exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left,
+          Option.some.injEq, forall_eq']
         try grind [String.append_assoc, String.append_empty])
 
 theorem BitRows.Internal.matchesRef.Rows (fuel : Nat) (s : String) :
@@ -412,7 +414,7 @@ theorem BitRows.Internal.matchesRef.Rows (fuel : Nat) (s : String) :
     ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     BitRows.Internal.matchesRef.Width, BitRows.Internal.matchesRef.First, BitRows.Internal.matchesRef.Second]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem BitRows.IsWfGrammar_equiv (s : String) : Triptych.IsWf BitRows.grammar s ↔ BitRows.Production s :=
@@ -655,168 +657,202 @@ private abbrev BitRows.searchProgram : SearchProgram :=
 
 private theorem BitRows.searchProgram_lowered : lowerSearchPlan BitRows.searchPlan = BitRows.searchProgram := by decide
 
-private def BitRows.directDecode (source : String) : Option CaptureMap :=
-  let input := source.toList
-  (List.range ((input).length + 1)).findSome? fun width_rootb =>
-    if termPrefixOk TokClass.digit (LenSpec.between 1 2) input width_rootb then
-      (fun (bodyCaptures_root : CaptureMap) (remaining_root : List Char) =>
-          let ownCaptures_root :=
-            (["Width"]).map fun key => (key, String.ofList ((input).take ((input).length - (remaining_root).length)))
-          let characters_roott := ":".toList
-          if (characters_roott).isPrefixOf remaining_root then
-            scanOrElse
-              (let characters_roottnbl := "".toList
-              if (characters_roottnbl).isPrefixOf ((remaining_root).drop (characters_roott).length) then
-                (fun (bodyCaptures_roottn : CaptureMap) (remaining_roottn : List Char) =>
-                    let ownCaptures_roottn :=
-                      (["First"]).map fun key =>
-                        (key,
-                          String.ofList
-                            (((remaining_root).drop (characters_roott).length).take
-                              (((remaining_root).drop (characters_roott).length).length - (remaining_roottn).length)))
-                    let characters_roottnt := "/".toList
-                    if (characters_roottnt).isPrefixOf remaining_roottn then
-                      scanOrElse
-                        (let characters_roottntnbl := "".toList
-                        if (characters_roottntnbl).isPrefixOf ((remaining_roottn).drop (characters_roottnt).length) then
-                          (fun (bodyCaptures_roottntn : CaptureMap) (remaining_roottntn : List Char) =>
-                              let ownCaptures_roottntn :=
-                                (["Second"]).map fun key =>
-                                  (key,
-                                    String.ofList
-                                      (((remaining_roottn).drop (characters_roottnt).length).take
-                                        (((remaining_roottn).drop (characters_roottnt).length).length -
-                                          (remaining_roottntn).length)))
-                              (fun (tailCaptures_roottntn : CaptureMap) (suffix_roottntn : List Char) =>
-                                  (fun (tailCaptures_roottn : CaptureMap) (suffix_roottn : List Char) =>
-                                      (fun (tailCaptures_root : CaptureMap) (suffix_root : List Char) =>
-                                          (fun (captures : CaptureMap) (remaining : List Char) =>
-                                              if (remaining).isEmpty then some captures else none)
-                                            (ownCaptures_root ++ bodyCaptures_root ++ tailCaptures_root) suffix_root)
-                                        (ownCaptures_roottn ++ bodyCaptures_roottn ++ tailCaptures_roottn)
-                                        suffix_roottn)
-                                    (ownCaptures_roottntn ++ bodyCaptures_roottntn ++ tailCaptures_roottntn)
-                                    suffix_roottntn)
-                                ([] : CaptureMap) remaining_roottntn)
-                            ([] : CaptureMap)
-                            (((remaining_roottn).drop (characters_roottnt).length).drop (characters_roottntnbl).length)
-                        else none)
-                        fun _ =>
-                        (List.range (((remaining_roottn).drop (characters_roottnt).length).length + 1)).findSome?
-                          fun width_roottntnbr =>
-                          if
-                              termPrefixOk TokClass.hexDigit LenSpec.atLeastOne
-                                ((remaining_roottn).drop (characters_roottnt).length) width_roottntnbr then
-                            (fun (bodyCaptures_roottntn : CaptureMap) (remaining_roottntn : List Char) =>
-                                let ownCaptures_roottntn :=
-                                  (["Second"]).map fun key =>
-                                    (key,
-                                      String.ofList
-                                        (((remaining_roottn).drop (characters_roottnt).length).take
-                                          (((remaining_roottn).drop (characters_roottnt).length).length -
-                                            (remaining_roottntn).length)))
-                                (fun (tailCaptures_roottntn : CaptureMap) (suffix_roottntn : List Char) =>
-                                    (fun (tailCaptures_roottn : CaptureMap) (suffix_roottn : List Char) =>
-                                        (fun (tailCaptures_root : CaptureMap) (suffix_root : List Char) =>
-                                            (fun (captures : CaptureMap) (remaining : List Char) =>
-                                                if (remaining).isEmpty then some captures else none)
-                                              (ownCaptures_root ++ bodyCaptures_root ++ tailCaptures_root) suffix_root)
-                                          (ownCaptures_roottn ++ bodyCaptures_roottn ++ tailCaptures_roottn)
-                                          suffix_roottn)
-                                      (ownCaptures_roottntn ++ bodyCaptures_roottntn ++ tailCaptures_roottntn)
-                                      suffix_roottntn)
-                                  ([] : CaptureMap) remaining_roottntn)
-                              ([] : CaptureMap)
-                              (((remaining_roottn).drop (characters_roottnt).length).drop width_roottntnbr)
-                          else none
-                    else none)
-                  ([] : CaptureMap)
-                  (((remaining_root).drop (characters_roott).length).drop (characters_roottnbl).length)
-              else none)
-              fun _ =>
-              (List.range (((remaining_root).drop (characters_roott).length).length + 1)).findSome?
-                fun width_roottnbr =>
-                if
-                    termPrefixOk TokClass.bit LenSpec.atLeastOne ((remaining_root).drop (characters_roott).length)
-                      width_roottnbr then
-                  (fun (bodyCaptures_roottn : CaptureMap) (remaining_roottn : List Char) =>
-                      let ownCaptures_roottn :=
-                        (["First"]).map fun key =>
-                          (key,
-                            String.ofList
-                              (((remaining_root).drop (characters_roott).length).take
-                                (((remaining_root).drop (characters_roott).length).length - (remaining_roottn).length)))
-                      let characters_roottnt := "/".toList
-                      if (characters_roottnt).isPrefixOf remaining_roottn then
-                        scanOrElse
-                          (let characters_roottntnbl := "".toList
-                          if
-                              (characters_roottntnbl).isPrefixOf
-                                ((remaining_roottn).drop (characters_roottnt).length) then
-                            (fun (bodyCaptures_roottntn : CaptureMap) (remaining_roottntn : List Char) =>
-                                let ownCaptures_roottntn :=
-                                  (["Second"]).map fun key =>
-                                    (key,
-                                      String.ofList
-                                        (((remaining_roottn).drop (characters_roottnt).length).take
-                                          (((remaining_roottn).drop (characters_roottnt).length).length -
-                                            (remaining_roottntn).length)))
-                                (fun (tailCaptures_roottntn : CaptureMap) (suffix_roottntn : List Char) =>
-                                    (fun (tailCaptures_roottn : CaptureMap) (suffix_roottn : List Char) =>
-                                        (fun (tailCaptures_root : CaptureMap) (suffix_root : List Char) =>
-                                            (fun (captures : CaptureMap) (remaining : List Char) =>
-                                                if (remaining).isEmpty then some captures else none)
-                                              (ownCaptures_root ++ bodyCaptures_root ++ tailCaptures_root) suffix_root)
-                                          (ownCaptures_roottn ++ bodyCaptures_roottn ++ tailCaptures_roottn)
-                                          suffix_roottn)
-                                      (ownCaptures_roottntn ++ bodyCaptures_roottntn ++ tailCaptures_roottntn)
-                                      suffix_roottntn)
-                                  ([] : CaptureMap) remaining_roottntn)
-                              ([] : CaptureMap)
-                              (((remaining_roottn).drop (characters_roottnt).length).drop
-                                (characters_roottntnbl).length)
-                          else none)
-                          fun _ =>
-                          (List.range (((remaining_roottn).drop (characters_roottnt).length).length + 1)).findSome?
-                            fun width_roottntnbr =>
-                            if
-                                termPrefixOk TokClass.hexDigit LenSpec.atLeastOne
-                                  ((remaining_roottn).drop (characters_roottnt).length) width_roottntnbr then
-                              (fun (bodyCaptures_roottntn : CaptureMap) (remaining_roottntn : List Char) =>
-                                  let ownCaptures_roottntn :=
-                                    (["Second"]).map fun key =>
-                                      (key,
-                                        String.ofList
-                                          (((remaining_roottn).drop (characters_roottnt).length).take
-                                            (((remaining_roottn).drop (characters_roottnt).length).length -
-                                              (remaining_roottntn).length)))
-                                  (fun (tailCaptures_roottntn : CaptureMap) (suffix_roottntn : List Char) =>
-                                      (fun (tailCaptures_roottn : CaptureMap) (suffix_roottn : List Char) =>
-                                          (fun (tailCaptures_root : CaptureMap) (suffix_root : List Char) =>
-                                              (fun (captures : CaptureMap) (remaining : List Char) =>
-                                                  if (remaining).isEmpty then some captures else none)
-                                                (ownCaptures_root ++ bodyCaptures_root ++ tailCaptures_root)
-                                                suffix_root)
-                                            (ownCaptures_roottn ++ bodyCaptures_roottn ++ tailCaptures_roottn)
-                                            suffix_roottn)
-                                        (ownCaptures_roottntn ++ bodyCaptures_roottntn ++ tailCaptures_roottntn)
-                                        suffix_roottntn)
-                                    ([] : CaptureMap) remaining_roottntn)
-                                ([] : CaptureMap)
-                                (((remaining_roottn).drop (characters_roottnt).length).drop width_roottntnbr)
-                            else none
-                      else none)
-                    ([] : CaptureMap) (((remaining_root).drop (characters_roott).length).drop width_roottnbr)
-                else none
-          else none)
-        ([] : CaptureMap) ((input).drop width_rootb)
+private def BitRows.searchCode_0 : SearchCode :=
+  SearchCode.accept
+
+@[inline]
+private def BitRows.searchNode_0 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  k [] input
+
+private theorem BitRows.searchNode_0_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    BitRows.searchNode_0 input k = SearchCode.runK BitRows.searchCode_0 input k :=
+  by
+  unfold BitRows.searchNode_0 BitRows.searchCode_0
+  simp only [SearchCode.runK]
+
+private def BitRows.searchCode_1 : SearchCode :=
+  SearchCode.tokenRun TokClass.digit (LenSpec.between 1 2) BitRows.searchCode_0
+
+@[inline]
+private def BitRows.searchNode_1 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  (List.range ((input).length + 1)).findSome? fun width =>
+    if termPrefixOk TokClass.digit (LenSpec.between 1 2) input width then BitRows.searchNode_0 ((input).drop width) k
     else none
+
+private theorem BitRows.searchNode_1_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    BitRows.searchNode_1 input k = SearchCode.runK BitRows.searchCode_1 input k :=
+  by
+  unfold BitRows.searchNode_1 BitRows.searchCode_1
+  simp only [SearchCode.runK, BitRows.searchNode_0_eq]
+
+private def BitRows.searchCode_2 : SearchCode :=
+  SearchCode.literal "" BitRows.searchCode_0
+
+@[inline]
+private def BitRows.searchNode_2 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  let characters := ("").toList
+  if characters.isPrefixOf input then BitRows.searchNode_0 ((input).drop characters.length) k else none
+
+private theorem BitRows.searchNode_2_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    BitRows.searchNode_2 input k = SearchCode.runK BitRows.searchCode_2 input k :=
+  by
+  unfold BitRows.searchNode_2 BitRows.searchCode_2
+  simp only [SearchCode.runK, BitRows.searchNode_0_eq]
+
+private def BitRows.searchCode_3 : SearchCode :=
+  SearchCode.tokenRun TokClass.bit LenSpec.atLeastOne BitRows.searchCode_0
+
+@[inline]
+private def BitRows.searchNode_3 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  (List.range ((input).length + 1)).findSome? fun width =>
+    if termPrefixOk TokClass.bit LenSpec.atLeastOne input width then BitRows.searchNode_0 ((input).drop width) k
+    else none
+
+private theorem BitRows.searchNode_3_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    BitRows.searchNode_3 input k = SearchCode.runK BitRows.searchCode_3 input k :=
+  by
+  unfold BitRows.searchNode_3 BitRows.searchCode_3
+  simp only [SearchCode.runK, BitRows.searchNode_0_eq]
+
+private def BitRows.searchCode_4 : SearchCode :=
+  SearchCode.choice BitRows.searchCode_2 BitRows.searchCode_3
+
+@[inline]
+private def BitRows.searchNode_4 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  scanOrElse (BitRows.searchNode_2 input k) fun _ => BitRows.searchNode_3 input k
+
+private theorem BitRows.searchNode_4_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    BitRows.searchNode_4 input k = SearchCode.runK BitRows.searchCode_4 input k :=
+  by
+  unfold BitRows.searchNode_4 BitRows.searchCode_4
+  simp only [SearchCode.runK, BitRows.searchNode_2_eq, BitRows.searchNode_3_eq]
+
+private def BitRows.searchCode_5 : SearchCode :=
+  SearchCode.tokenRun TokClass.hexDigit LenSpec.atLeastOne BitRows.searchCode_0
+
+@[inline]
+private def BitRows.searchNode_5 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  (List.range ((input).length + 1)).findSome? fun width =>
+    if termPrefixOk TokClass.hexDigit LenSpec.atLeastOne input width then BitRows.searchNode_0 ((input).drop width) k
+    else none
+
+private theorem BitRows.searchNode_5_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    BitRows.searchNode_5 input k = SearchCode.runK BitRows.searchCode_5 input k :=
+  by
+  unfold BitRows.searchNode_5 BitRows.searchCode_5
+  simp only [SearchCode.runK, BitRows.searchNode_0_eq]
+
+private def BitRows.searchCode_6 : SearchCode :=
+  SearchCode.choice BitRows.searchCode_2 BitRows.searchCode_5
+
+@[inline]
+private def BitRows.searchNode_6 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  scanOrElse (BitRows.searchNode_2 input k) fun _ => BitRows.searchNode_5 input k
+
+private theorem BitRows.searchNode_6_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    BitRows.searchNode_6 input k = SearchCode.runK BitRows.searchCode_6 input k :=
+  by
+  unfold BitRows.searchNode_6 BitRows.searchCode_6
+  simp only [SearchCode.runK, BitRows.searchNode_2_eq, BitRows.searchNode_5_eq]
+
+private def BitRows.searchCode_7 : SearchCode :=
+  SearchCode.capture ["Second"] BitRows.searchCode_6 BitRows.searchCode_0
+
+@[inline]
+private def BitRows.searchNode_7 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  BitRows.searchNode_6 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    BitRows.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["Second"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem BitRows.searchNode_7_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    BitRows.searchNode_7 input k = SearchCode.runK BitRows.searchCode_7 input k :=
+  by
+  unfold BitRows.searchNode_7 BitRows.searchCode_7
+  simp only [SearchCode.runK, BitRows.searchNode_6_eq, BitRows.searchNode_0_eq]
+
+private def BitRows.searchCode_8 : SearchCode :=
+  SearchCode.literal "/" BitRows.searchCode_7
+
+@[inline]
+private def BitRows.searchNode_8 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  let characters := ("/").toList
+  if characters.isPrefixOf input then BitRows.searchNode_7 ((input).drop characters.length) k else none
+
+private theorem BitRows.searchNode_8_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    BitRows.searchNode_8 input k = SearchCode.runK BitRows.searchCode_8 input k :=
+  by
+  unfold BitRows.searchNode_8 BitRows.searchCode_8
+  simp only [SearchCode.runK, BitRows.searchNode_7_eq]
+
+private def BitRows.searchCode_9 : SearchCode :=
+  SearchCode.capture ["First"] BitRows.searchCode_4 BitRows.searchCode_8
+
+@[inline]
+private def BitRows.searchNode_9 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  BitRows.searchNode_4 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    BitRows.searchNode_8 remaining fun tailCaptures suffix =>
+      k ((["First"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem BitRows.searchNode_9_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    BitRows.searchNode_9 input k = SearchCode.runK BitRows.searchCode_9 input k :=
+  by
+  unfold BitRows.searchNode_9 BitRows.searchCode_9
+  simp only [SearchCode.runK, BitRows.searchNode_4_eq, BitRows.searchNode_8_eq]
+
+private def BitRows.searchCode_10 : SearchCode :=
+  SearchCode.literal ":" BitRows.searchCode_9
+
+@[inline]
+private def BitRows.searchNode_10 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  let characters := (":").toList
+  if characters.isPrefixOf input then BitRows.searchNode_9 ((input).drop characters.length) k else none
+
+private theorem BitRows.searchNode_10_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    BitRows.searchNode_10 input k = SearchCode.runK BitRows.searchCode_10 input k :=
+  by
+  unfold BitRows.searchNode_10 BitRows.searchCode_10
+  simp only [SearchCode.runK, BitRows.searchNode_9_eq]
+
+private def BitRows.searchCode_11 : SearchCode :=
+  SearchCode.capture ["Width"] BitRows.searchCode_1 BitRows.searchCode_10
+
+@[inline]
+private def BitRows.searchNode_11 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  BitRows.searchNode_1 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    BitRows.searchNode_10 remaining fun tailCaptures suffix =>
+      k ((["Width"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem BitRows.searchNode_11_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    BitRows.searchNode_11 input k = SearchCode.runK BitRows.searchCode_11 input k :=
+  by
+  unfold BitRows.searchNode_11 BitRows.searchCode_11
+  simp only [SearchCode.runK, BitRows.searchNode_1_eq, BitRows.searchNode_10_eq]
+
+private def BitRows.directDecode (source : String) : Option CaptureMap :=
+  BitRows.searchNode_11 source.toList fun (captures : CaptureMap) (remaining : List Char) =>
+    if (remaining).isEmpty then some captures else none
 
 private theorem BitRows.directDecode_eq_searchProgram (source : String) :
     BitRows.directDecode source = SearchProgram.decode BitRows.searchProgram source :=
   by
-  unfold BitRows.directDecode SearchProgram.decode BitRows.searchProgram
-  simp only [SearchCode.runK]
+  have hcode : BitRows.searchCode_11 = (BitRows.searchProgram).code := rfl
+  unfold BitRows.directDecode SearchProgram.decode
+  rw [BitRows.searchNode_11_eq, hcode]
 
 private def BitRows.decodeCaptures (source : String) : Option CaptureMap :=
   BitRows.directDecode source

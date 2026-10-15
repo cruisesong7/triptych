@@ -327,7 +327,7 @@ theorem Decimal.Internal.matchesRef.Sign (fuel : Nat) (s : String) :
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
     ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem Decimal.Internal.matchesRef.Natural (fuel : Nat) (s : String) :
@@ -345,7 +345,7 @@ theorem Decimal.Internal.matchesRef.Natural (fuel : Nat) (s : String) :
     ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem Decimal.Internal.matchesRef.Fraction (fuel : Nat) (s : String) :
@@ -363,7 +363,7 @@ theorem Decimal.Internal.matchesRef.Fraction (fuel : Nat) (s : String) :
     ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem Decimal.Internal.matchesRef.Decimal (fuel : Nat) (s : String) :
@@ -384,7 +384,7 @@ theorem Decimal.Internal.matchesRef.Decimal (fuel : Nat) (s : String) :
     ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     Decimal.Internal.matchesRef.Sign, Decimal.Internal.matchesRef.Natural, Decimal.Internal.matchesRef.Fraction]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem Decimal.IsWfGrammar_equiv (s : String) : Triptych.IsWf Decimal.grammar s ↔ Decimal.Production s :=

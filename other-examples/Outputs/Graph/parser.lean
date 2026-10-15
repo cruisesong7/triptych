@@ -263,7 +263,7 @@ theorem Graph.Internal.matchesRef.Order (fuel : Nat) (s : String) :
     ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem Graph.Internal.matchesRef.Cells (fuel : Nat) (s : String) :
@@ -286,7 +286,8 @@ theorem Graph.Internal.matchesRef.Cells (fuel : Nat) (s : String) :
     first
     | apply or_congr
     | ( simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left,
-          ← and_assoc, exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+          ← and_assoc, exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left,
+          Option.some.injEq, forall_eq']
         try grind [String.append_assoc, String.append_empty])
 
 theorem Graph.Internal.matchesRef.Graph (fuel : Nat) (s : String) :
@@ -306,7 +307,7 @@ theorem Graph.Internal.matchesRef.Graph (fuel : Nat) (s : String) :
     ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     Graph.Internal.matchesRef.Order, Graph.Internal.matchesRef.Cells]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem Graph.IsWfGrammar_equiv (s : String) : Triptych.IsWf Graph.grammar s ↔ Graph.Production s :=
@@ -520,66 +521,139 @@ private abbrev Graph.searchProgram : SearchProgram :=
 
 private theorem Graph.searchProgram_lowered : lowerSearchPlan Graph.searchPlan = Graph.searchProgram := by decide
 
-private def Graph.directDecode (source : String) : Option CaptureMap :=
-  let input := source.toList
-  (List.range ((input).length + 1)).findSome? fun width_rootb =>
-    if termPrefixOk TokClass.digit LenSpec.atLeastOne input width_rootb then
-      (fun (bodyCaptures_root : CaptureMap) (remaining_root : List Char) =>
-          let ownCaptures_root :=
-            (["Order"]).map fun key => (key, String.ofList ((input).take ((input).length - (remaining_root).length)))
-          let characters_roott := ":".toList
-          if (characters_roott).isPrefixOf remaining_root then
-            scanOrElse
-              (let characters_roottnbl := "".toList
-              if (characters_roottnbl).isPrefixOf ((remaining_root).drop (characters_roott).length) then
-                (fun (bodyCaptures_roottn : CaptureMap) (remaining_roottn : List Char) =>
-                    let ownCaptures_roottn :=
-                      (["Cells"]).map fun key =>
-                        (key,
-                          String.ofList
-                            (((remaining_root).drop (characters_roott).length).take
-                              (((remaining_root).drop (characters_roott).length).length - (remaining_roottn).length)))
-                    (fun (tailCaptures_roottn : CaptureMap) (suffix_roottn : List Char) =>
-                        (fun (tailCaptures_root : CaptureMap) (suffix_root : List Char) =>
-                            (fun (captures : CaptureMap) (remaining : List Char) =>
-                                if (remaining).isEmpty then some captures else none)
-                              (ownCaptures_root ++ bodyCaptures_root ++ tailCaptures_root) suffix_root)
-                          (ownCaptures_roottn ++ bodyCaptures_roottn ++ tailCaptures_roottn) suffix_roottn)
-                      ([] : CaptureMap) remaining_roottn)
-                  ([] : CaptureMap)
-                  (((remaining_root).drop (characters_roott).length).drop (characters_roottnbl).length)
-              else none)
-              fun _ =>
-              (List.range (((remaining_root).drop (characters_roott).length).length + 1)).findSome?
-                fun width_roottnbr =>
-                if
-                    termPrefixOk TokClass.bit LenSpec.atLeastOne ((remaining_root).drop (characters_roott).length)
-                      width_roottnbr then
-                  (fun (bodyCaptures_roottn : CaptureMap) (remaining_roottn : List Char) =>
-                      let ownCaptures_roottn :=
-                        (["Cells"]).map fun key =>
-                          (key,
-                            String.ofList
-                              (((remaining_root).drop (characters_roott).length).take
-                                (((remaining_root).drop (characters_roott).length).length - (remaining_roottn).length)))
-                      (fun (tailCaptures_roottn : CaptureMap) (suffix_roottn : List Char) =>
-                          (fun (tailCaptures_root : CaptureMap) (suffix_root : List Char) =>
-                              (fun (captures : CaptureMap) (remaining : List Char) =>
-                                  if (remaining).isEmpty then some captures else none)
-                                (ownCaptures_root ++ bodyCaptures_root ++ tailCaptures_root) suffix_root)
-                            (ownCaptures_roottn ++ bodyCaptures_roottn ++ tailCaptures_roottn) suffix_roottn)
-                        ([] : CaptureMap) remaining_roottn)
-                    ([] : CaptureMap) (((remaining_root).drop (characters_roott).length).drop width_roottnbr)
-                else none
-          else none)
-        ([] : CaptureMap) ((input).drop width_rootb)
+private def Graph.searchCode_0 : SearchCode :=
+  SearchCode.accept
+
+@[inline]
+private def Graph.searchNode_0 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  k [] input
+
+private theorem Graph.searchNode_0_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Graph.searchNode_0 input k = SearchCode.runK Graph.searchCode_0 input k :=
+  by
+  unfold Graph.searchNode_0 Graph.searchCode_0
+  simp only [SearchCode.runK]
+
+private def Graph.searchCode_1 : SearchCode :=
+  SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne Graph.searchCode_0
+
+@[inline]
+private def Graph.searchNode_1 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  (List.range ((input).length + 1)).findSome? fun width =>
+    if termPrefixOk TokClass.digit LenSpec.atLeastOne input width then Graph.searchNode_0 ((input).drop width) k
     else none
+
+private theorem Graph.searchNode_1_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Graph.searchNode_1 input k = SearchCode.runK Graph.searchCode_1 input k :=
+  by
+  unfold Graph.searchNode_1 Graph.searchCode_1
+  simp only [SearchCode.runK, Graph.searchNode_0_eq]
+
+private def Graph.searchCode_2 : SearchCode :=
+  SearchCode.literal "" Graph.searchCode_0
+
+@[inline]
+private def Graph.searchNode_2 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  let characters := ("").toList
+  if characters.isPrefixOf input then Graph.searchNode_0 ((input).drop characters.length) k else none
+
+private theorem Graph.searchNode_2_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Graph.searchNode_2 input k = SearchCode.runK Graph.searchCode_2 input k :=
+  by
+  unfold Graph.searchNode_2 Graph.searchCode_2
+  simp only [SearchCode.runK, Graph.searchNode_0_eq]
+
+private def Graph.searchCode_3 : SearchCode :=
+  SearchCode.tokenRun TokClass.bit LenSpec.atLeastOne Graph.searchCode_0
+
+@[inline]
+private def Graph.searchNode_3 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  (List.range ((input).length + 1)).findSome? fun width =>
+    if termPrefixOk TokClass.bit LenSpec.atLeastOne input width then Graph.searchNode_0 ((input).drop width) k else none
+
+private theorem Graph.searchNode_3_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Graph.searchNode_3 input k = SearchCode.runK Graph.searchCode_3 input k :=
+  by
+  unfold Graph.searchNode_3 Graph.searchCode_3
+  simp only [SearchCode.runK, Graph.searchNode_0_eq]
+
+private def Graph.searchCode_4 : SearchCode :=
+  SearchCode.choice Graph.searchCode_2 Graph.searchCode_3
+
+@[inline]
+private def Graph.searchNode_4 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  scanOrElse (Graph.searchNode_2 input k) fun _ => Graph.searchNode_3 input k
+
+private theorem Graph.searchNode_4_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Graph.searchNode_4 input k = SearchCode.runK Graph.searchCode_4 input k :=
+  by
+  unfold Graph.searchNode_4 Graph.searchCode_4
+  simp only [SearchCode.runK, Graph.searchNode_2_eq, Graph.searchNode_3_eq]
+
+private def Graph.searchCode_5 : SearchCode :=
+  SearchCode.capture ["Cells"] Graph.searchCode_4 Graph.searchCode_0
+
+@[inline]
+private def Graph.searchNode_5 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  Graph.searchNode_4 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Graph.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["Cells"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem Graph.searchNode_5_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Graph.searchNode_5 input k = SearchCode.runK Graph.searchCode_5 input k :=
+  by
+  unfold Graph.searchNode_5 Graph.searchCode_5
+  simp only [SearchCode.runK, Graph.searchNode_4_eq, Graph.searchNode_0_eq]
+
+private def Graph.searchCode_6 : SearchCode :=
+  SearchCode.literal ":" Graph.searchCode_5
+
+@[inline]
+private def Graph.searchNode_6 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  let characters := (":").toList
+  if characters.isPrefixOf input then Graph.searchNode_5 ((input).drop characters.length) k else none
+
+private theorem Graph.searchNode_6_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Graph.searchNode_6 input k = SearchCode.runK Graph.searchCode_6 input k :=
+  by
+  unfold Graph.searchNode_6 Graph.searchCode_6
+  simp only [SearchCode.runK, Graph.searchNode_5_eq]
+
+private def Graph.searchCode_7 : SearchCode :=
+  SearchCode.capture ["Order"] Graph.searchCode_1 Graph.searchCode_6
+
+@[inline]
+private def Graph.searchNode_7 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  Graph.searchNode_1 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Graph.searchNode_6 remaining fun tailCaptures suffix =>
+      k ((["Order"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem Graph.searchNode_7_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Graph.searchNode_7 input k = SearchCode.runK Graph.searchCode_7 input k :=
+  by
+  unfold Graph.searchNode_7 Graph.searchCode_7
+  simp only [SearchCode.runK, Graph.searchNode_1_eq, Graph.searchNode_6_eq]
+
+private def Graph.directDecode (source : String) : Option CaptureMap :=
+  Graph.searchNode_7 source.toList fun (captures : CaptureMap) (remaining : List Char) =>
+    if (remaining).isEmpty then some captures else none
 
 private theorem Graph.directDecode_eq_searchProgram (source : String) :
     Graph.directDecode source = SearchProgram.decode Graph.searchProgram source :=
   by
-  unfold Graph.directDecode SearchProgram.decode Graph.searchProgram
-  simp only [SearchCode.runK]
+  have hcode : Graph.searchCode_7 = (Graph.searchProgram).code := rfl
+  unfold Graph.directDecode SearchProgram.decode
+  rw [Graph.searchNode_7_eq, hcode]
 
 private def Graph.decodeCaptures (source : String) : Option CaptureMap :=
   Graph.directDecode source

@@ -378,7 +378,7 @@ theorem BitVector.Internal.matchesRef.BinaryDigits (fuel : Nat) (s : String) :
     ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsBits_matchesTerm,
     IsFixedBits_matchesTerm, IsBitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem BitVector.Internal.matchesRef.Binary (fuel : Nat) (s : String) :
@@ -396,7 +396,7 @@ theorem BitVector.Internal.matchesRef.Binary (fuel : Nat) (s : String) :
     ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     BitVector.Internal.matchesRef.BinaryDigits]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem BitVector.Internal.matchesRef.HexDigits (fuel : Nat) (s : String) :
@@ -414,7 +414,7 @@ theorem BitVector.Internal.matchesRef.HexDigits (fuel : Nat) (s : String) :
     ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     IsHexDigits_matchesTerm, IsFixedHexDigits_matchesTerm, IsHexDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem BitVector.Internal.matchesRef.Hexadecimal (fuel : Nat) (s : String) :
@@ -432,7 +432,7 @@ theorem BitVector.Internal.matchesRef.Hexadecimal (fuel : Nat) (s : String) :
     ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     BitVector.Internal.matchesRef.HexDigits]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem BitVector.Internal.matchesRef.Payload (fuel : Nat) (s : String) :
@@ -454,7 +454,8 @@ theorem BitVector.Internal.matchesRef.Payload (fuel : Nat) (s : String) :
     first
     | apply or_congr
     | ( simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left,
-          ← and_assoc, exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+          ← and_assoc, exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left,
+          Option.some.injEq, forall_eq']
         try grind [String.append_assoc, String.append_empty])
 
 theorem BitVector.Internal.matchesRef.BitVector (fuel : Nat) (s : String) :
@@ -472,7 +473,7 @@ theorem BitVector.Internal.matchesRef.BitVector (fuel : Nat) (s : String) :
     ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     BitVector.Internal.matchesRef.Payload]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem BitVector.IsWfGrammar_equiv (s : String) : Triptych.IsWf BitVector.grammar s ↔ BitVector.Production s :=
@@ -716,107 +717,206 @@ private abbrev BitVector.searchProgram : SearchProgram :=
 private theorem BitVector.searchProgram_lowered : lowerSearchPlan BitVector.searchPlan = BitVector.searchProgram := by
   decide
 
+private def BitVector.searchCode_0 : SearchCode :=
+  SearchCode.accept
+
+@[inline]
+private def BitVector.searchNode_0 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  k [] input
+
+private theorem BitVector.searchNode_0_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    BitVector.searchNode_0 input k = SearchCode.runK BitVector.searchCode_0 input k :=
+  by
+  unfold BitVector.searchNode_0 BitVector.searchCode_0
+  simp only [SearchCode.runK]
+
+private def BitVector.searchCode_1 : SearchCode :=
+  SearchCode.tokenRun TokClass.bit LenSpec.atLeastOne BitVector.searchCode_0
+
+@[inline]
+private def BitVector.searchNode_1 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  (List.range ((input).length + 1)).findSome? fun width =>
+    if termPrefixOk TokClass.bit LenSpec.atLeastOne input width then BitVector.searchNode_0 ((input).drop width) k
+    else none
+
+private theorem BitVector.searchNode_1_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    BitVector.searchNode_1 input k = SearchCode.runK BitVector.searchCode_1 input k :=
+  by
+  unfold BitVector.searchNode_1 BitVector.searchCode_1
+  simp only [SearchCode.runK, BitVector.searchNode_0_eq]
+
+private def BitVector.searchCode_2 : SearchCode :=
+  SearchCode.capture ["BinaryDigits", "Binary.BinaryDigits"] BitVector.searchCode_1 BitVector.searchCode_0
+
+@[inline]
+private def BitVector.searchNode_2 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  BitVector.searchNode_1 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    BitVector.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["BinaryDigits", "Binary.BinaryDigits"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem BitVector.searchNode_2_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    BitVector.searchNode_2 input k = SearchCode.runK BitVector.searchCode_2 input k :=
+  by
+  unfold BitVector.searchNode_2 BitVector.searchCode_2
+  simp only [SearchCode.runK, BitVector.searchNode_1_eq, BitVector.searchNode_0_eq]
+
+private def BitVector.searchCode_3 : SearchCode :=
+  SearchCode.literal "b" BitVector.searchCode_2
+
+@[inline]
+private def BitVector.searchNode_3 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  let characters := ("b").toList
+  if characters.isPrefixOf input then BitVector.searchNode_2 ((input).drop characters.length) k else none
+
+private theorem BitVector.searchNode_3_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    BitVector.searchNode_3 input k = SearchCode.runK BitVector.searchCode_3 input k :=
+  by
+  unfold BitVector.searchNode_3 BitVector.searchCode_3
+  simp only [SearchCode.runK, BitVector.searchNode_2_eq]
+
+private def BitVector.searchCode_4 : SearchCode :=
+  SearchCode.capture ["Binary", "Payload.Binary"] BitVector.searchCode_3 BitVector.searchCode_0
+
+@[inline]
+private def BitVector.searchNode_4 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  BitVector.searchNode_3 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    BitVector.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["Binary", "Payload.Binary"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem BitVector.searchNode_4_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    BitVector.searchNode_4 input k = SearchCode.runK BitVector.searchCode_4 input k :=
+  by
+  unfold BitVector.searchNode_4 BitVector.searchCode_4
+  simp only [SearchCode.runK, BitVector.searchNode_3_eq, BitVector.searchNode_0_eq]
+
+private def BitVector.searchCode_5 : SearchCode :=
+  SearchCode.tokenRun TokClass.hexDigit LenSpec.atLeastOne BitVector.searchCode_0
+
+@[inline]
+private def BitVector.searchNode_5 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  (List.range ((input).length + 1)).findSome? fun width =>
+    if termPrefixOk TokClass.hexDigit LenSpec.atLeastOne input width then BitVector.searchNode_0 ((input).drop width) k
+    else none
+
+private theorem BitVector.searchNode_5_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    BitVector.searchNode_5 input k = SearchCode.runK BitVector.searchCode_5 input k :=
+  by
+  unfold BitVector.searchNode_5 BitVector.searchCode_5
+  simp only [SearchCode.runK, BitVector.searchNode_0_eq]
+
+private def BitVector.searchCode_6 : SearchCode :=
+  SearchCode.capture ["HexDigits", "Hexadecimal.HexDigits"] BitVector.searchCode_5 BitVector.searchCode_0
+
+@[inline]
+private def BitVector.searchNode_6 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  BitVector.searchNode_5 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    BitVector.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["HexDigits", "Hexadecimal.HexDigits"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem BitVector.searchNode_6_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    BitVector.searchNode_6 input k = SearchCode.runK BitVector.searchCode_6 input k :=
+  by
+  unfold BitVector.searchNode_6 BitVector.searchCode_6
+  simp only [SearchCode.runK, BitVector.searchNode_5_eq, BitVector.searchNode_0_eq]
+
+private def BitVector.searchCode_7 : SearchCode :=
+  SearchCode.literal "x" BitVector.searchCode_6
+
+@[inline]
+private def BitVector.searchNode_7 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  let characters := ("x").toList
+  if characters.isPrefixOf input then BitVector.searchNode_6 ((input).drop characters.length) k else none
+
+private theorem BitVector.searchNode_7_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    BitVector.searchNode_7 input k = SearchCode.runK BitVector.searchCode_7 input k :=
+  by
+  unfold BitVector.searchNode_7 BitVector.searchCode_7
+  simp only [SearchCode.runK, BitVector.searchNode_6_eq]
+
+private def BitVector.searchCode_8 : SearchCode :=
+  SearchCode.capture ["Hexadecimal", "Payload.Hexadecimal"] BitVector.searchCode_7 BitVector.searchCode_0
+
+@[inline]
+private def BitVector.searchNode_8 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  BitVector.searchNode_7 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    BitVector.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["Hexadecimal", "Payload.Hexadecimal"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem BitVector.searchNode_8_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    BitVector.searchNode_8 input k = SearchCode.runK BitVector.searchCode_8 input k :=
+  by
+  unfold BitVector.searchNode_8 BitVector.searchCode_8
+  simp only [SearchCode.runK, BitVector.searchNode_7_eq, BitVector.searchNode_0_eq]
+
+private def BitVector.searchCode_9 : SearchCode :=
+  SearchCode.choice BitVector.searchCode_4 BitVector.searchCode_8
+
+@[inline]
+private def BitVector.searchNode_9 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  scanOrElse (BitVector.searchNode_4 input k) fun _ => BitVector.searchNode_8 input k
+
+private theorem BitVector.searchNode_9_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    BitVector.searchNode_9 input k = SearchCode.runK BitVector.searchCode_9 input k :=
+  by
+  unfold BitVector.searchNode_9 BitVector.searchCode_9
+  simp only [SearchCode.runK, BitVector.searchNode_4_eq, BitVector.searchNode_8_eq]
+
+private def BitVector.searchCode_10 : SearchCode :=
+  SearchCode.capture ["Payload"] BitVector.searchCode_9 BitVector.searchCode_0
+
+@[inline]
+private def BitVector.searchNode_10 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  BitVector.searchNode_9 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    BitVector.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["Payload"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem BitVector.searchNode_10_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    BitVector.searchNode_10 input k = SearchCode.runK BitVector.searchCode_10 input k :=
+  by
+  unfold BitVector.searchNode_10 BitVector.searchCode_10
+  simp only [SearchCode.runK, BitVector.searchNode_9_eq, BitVector.searchNode_0_eq]
+
+private def BitVector.searchCode_11 : SearchCode :=
+  SearchCode.literal "#" BitVector.searchCode_10
+
+@[inline]
+private def BitVector.searchNode_11 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  let characters := ("#").toList
+  if characters.isPrefixOf input then BitVector.searchNode_10 ((input).drop characters.length) k else none
+
+private theorem BitVector.searchNode_11_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    BitVector.searchNode_11 input k = SearchCode.runK BitVector.searchCode_11 input k :=
+  by
+  unfold BitVector.searchNode_11 BitVector.searchCode_11
+  simp only [SearchCode.runK, BitVector.searchNode_10_eq]
+
 private def BitVector.directDecode (source : String) : Option CaptureMap :=
-  let input := source.toList
-  let characters_root := "#".toList
-  if (characters_root).isPrefixOf input then
-    scanOrElse
-      (let characters_rootnblb := "b".toList
-      if (characters_rootnblb).isPrefixOf ((input).drop (characters_root).length) then
-        (List.range ((((input).drop (characters_root).length).drop (characters_rootnblb).length).length + 1)).findSome?
-          fun width_rootnblbnb =>
-          if
-              termPrefixOk TokClass.bit LenSpec.atLeastOne
-                (((input).drop (characters_root).length).drop (characters_rootnblb).length) width_rootnblbnb then
-            (fun (bodyCaptures_rootnblbn : CaptureMap) (remaining_rootnblbn : List Char) =>
-                let ownCaptures_rootnblbn :=
-                  (["BinaryDigits", "Binary.BinaryDigits"]).map fun key =>
-                    (key,
-                      String.ofList
-                        ((((input).drop (characters_root).length).drop (characters_rootnblb).length).take
-                          ((((input).drop (characters_root).length).drop (characters_rootnblb).length).length -
-                            (remaining_rootnblbn).length)))
-                (fun (tailCaptures_rootnblbn : CaptureMap) (suffix_rootnblbn : List Char) =>
-                    (fun (bodyCaptures_rootnbl : CaptureMap) (remaining_rootnbl : List Char) =>
-                        let ownCaptures_rootnbl :=
-                          (["Binary", "Payload.Binary"]).map fun key =>
-                            (key,
-                              String.ofList
-                                (((input).drop (characters_root).length).take
-                                  (((input).drop (characters_root).length).length - (remaining_rootnbl).length)))
-                        (fun (tailCaptures_rootnbl : CaptureMap) (suffix_rootnbl : List Char) =>
-                            (fun (bodyCaptures_rootn : CaptureMap) (remaining_rootn : List Char) =>
-                                let ownCaptures_rootn :=
-                                  (["Payload"]).map fun key =>
-                                    (key,
-                                      String.ofList
-                                        (((input).drop (characters_root).length).take
-                                          (((input).drop (characters_root).length).length - (remaining_rootn).length)))
-                                (fun (tailCaptures_rootn : CaptureMap) (suffix_rootn : List Char) =>
-                                    (fun (captures : CaptureMap) (remaining : List Char) =>
-                                        if (remaining).isEmpty then some captures else none)
-                                      (ownCaptures_rootn ++ bodyCaptures_rootn ++ tailCaptures_rootn) suffix_rootn)
-                                  ([] : CaptureMap) remaining_rootn)
-                              (ownCaptures_rootnbl ++ bodyCaptures_rootnbl ++ tailCaptures_rootnbl) suffix_rootnbl)
-                          ([] : CaptureMap) remaining_rootnbl)
-                      (ownCaptures_rootnblbn ++ bodyCaptures_rootnblbn ++ tailCaptures_rootnblbn) suffix_rootnblbn)
-                  ([] : CaptureMap) remaining_rootnblbn)
-              ([] : CaptureMap)
-              ((((input).drop (characters_root).length).drop (characters_rootnblb).length).drop width_rootnblbnb)
-          else none
-      else none)
-      fun _ =>
-      let characters_rootnbrb := "x".toList
-      if (characters_rootnbrb).isPrefixOf ((input).drop (characters_root).length) then
-        (List.range ((((input).drop (characters_root).length).drop (characters_rootnbrb).length).length + 1)).findSome?
-          fun width_rootnbrbnb =>
-          if
-              termPrefixOk TokClass.hexDigit LenSpec.atLeastOne
-                (((input).drop (characters_root).length).drop (characters_rootnbrb).length) width_rootnbrbnb then
-            (fun (bodyCaptures_rootnbrbn : CaptureMap) (remaining_rootnbrbn : List Char) =>
-                let ownCaptures_rootnbrbn :=
-                  (["HexDigits", "Hexadecimal.HexDigits"]).map fun key =>
-                    (key,
-                      String.ofList
-                        ((((input).drop (characters_root).length).drop (characters_rootnbrb).length).take
-                          ((((input).drop (characters_root).length).drop (characters_rootnbrb).length).length -
-                            (remaining_rootnbrbn).length)))
-                (fun (tailCaptures_rootnbrbn : CaptureMap) (suffix_rootnbrbn : List Char) =>
-                    (fun (bodyCaptures_rootnbr : CaptureMap) (remaining_rootnbr : List Char) =>
-                        let ownCaptures_rootnbr :=
-                          (["Hexadecimal", "Payload.Hexadecimal"]).map fun key =>
-                            (key,
-                              String.ofList
-                                (((input).drop (characters_root).length).take
-                                  (((input).drop (characters_root).length).length - (remaining_rootnbr).length)))
-                        (fun (tailCaptures_rootnbr : CaptureMap) (suffix_rootnbr : List Char) =>
-                            (fun (bodyCaptures_rootn : CaptureMap) (remaining_rootn : List Char) =>
-                                let ownCaptures_rootn :=
-                                  (["Payload"]).map fun key =>
-                                    (key,
-                                      String.ofList
-                                        (((input).drop (characters_root).length).take
-                                          (((input).drop (characters_root).length).length - (remaining_rootn).length)))
-                                (fun (tailCaptures_rootn : CaptureMap) (suffix_rootn : List Char) =>
-                                    (fun (captures : CaptureMap) (remaining : List Char) =>
-                                        if (remaining).isEmpty then some captures else none)
-                                      (ownCaptures_rootn ++ bodyCaptures_rootn ++ tailCaptures_rootn) suffix_rootn)
-                                  ([] : CaptureMap) remaining_rootn)
-                              (ownCaptures_rootnbr ++ bodyCaptures_rootnbr ++ tailCaptures_rootnbr) suffix_rootnbr)
-                          ([] : CaptureMap) remaining_rootnbr)
-                      (ownCaptures_rootnbrbn ++ bodyCaptures_rootnbrbn ++ tailCaptures_rootnbrbn) suffix_rootnbrbn)
-                  ([] : CaptureMap) remaining_rootnbrbn)
-              ([] : CaptureMap)
-              ((((input).drop (characters_root).length).drop (characters_rootnbrb).length).drop width_rootnbrbnb)
-          else none
-      else none
-  else none
+  BitVector.searchNode_11 source.toList fun (captures : CaptureMap) (remaining : List Char) =>
+    if (remaining).isEmpty then some captures else none
 
 private theorem BitVector.directDecode_eq_searchProgram (source : String) :
     BitVector.directDecode source = SearchProgram.decode BitVector.searchProgram source :=
   by
-  unfold BitVector.directDecode SearchProgram.decode BitVector.searchProgram
-  simp only [SearchCode.runK]
+  have hcode : BitVector.searchCode_11 = (BitVector.searchProgram).code := rfl
+  unfold BitVector.directDecode SearchProgram.decode
+  rw [BitVector.searchNode_11_eq, hcode]
 
 private def BitVector.decodeCaptures (source : String) : Option CaptureMap :=
   BitVector.directDecode source

@@ -435,7 +435,7 @@ theorem SpecConstant.Internal.matchesRef.StringLiteral (fuel : Nat) (s : String)
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
     ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem SpecConstant.Internal.matchesRef.Sign (fuel : Nat) (s : String) :
@@ -449,7 +449,7 @@ theorem SpecConstant.Internal.matchesRef.Sign (fuel : Nat) (s : String) :
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
     ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem SpecConstant.Internal.matchesRef.Natural (fuel : Nat) (s : String) :
@@ -467,7 +467,7 @@ theorem SpecConstant.Internal.matchesRef.Natural (fuel : Nat) (s : String) :
     ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem SpecConstant.Internal.matchesRef.Fraction (fuel : Nat) (s : String) :
@@ -485,7 +485,7 @@ theorem SpecConstant.Internal.matchesRef.Fraction (fuel : Nat) (s : String) :
     ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem SpecConstant.Internal.matchesRef.DecimalPart (fuel : Nat) (s : String) :
@@ -503,7 +503,7 @@ theorem SpecConstant.Internal.matchesRef.DecimalPart (fuel : Nat) (s : String) :
     ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     SpecConstant.Internal.matchesRef.Fraction]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem SpecConstant.Internal.matchesRef.NumericLiteral (fuel : Nat) (s : String) :
@@ -525,7 +525,7 @@ theorem SpecConstant.Internal.matchesRef.NumericLiteral (fuel : Nat) (s : String
     SpecConstant.Internal.matchesRef.Sign, SpecConstant.Internal.matchesRef.Natural,
     SpecConstant.Internal.matchesRef.DecimalPart]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem SpecConstant.Internal.matchesRef.SpecConstant (fuel : Nat) (s : String) :
@@ -548,7 +548,8 @@ theorem SpecConstant.Internal.matchesRef.SpecConstant (fuel : Nat) (s : String) 
     first
     | apply or_congr
     | ( simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left,
-          ← and_assoc, exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+          ← and_assoc, exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left,
+          Option.some.injEq, forall_eq']
         try grind [String.append_assoc, String.append_empty])
 
 theorem SpecConstant.IsWfGrammar_equiv (s : String) :
@@ -817,209 +818,235 @@ private abbrev SpecConstant.searchProgram : SearchProgram :=
 private theorem SpecConstant.searchProgram_lowered :
     lowerSearchPlan SpecConstant.searchPlan = SpecConstant.searchProgram := by decide
 
+private def SpecConstant.searchCode_0 : SearchCode :=
+  SearchCode.accept
+
+@[inline]
+private def SpecConstant.searchNode_0 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  k [] input
+
+private theorem SpecConstant.searchNode_0_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    SpecConstant.searchNode_0 input k = SearchCode.runK SpecConstant.searchCode_0 input k :=
+  by
+  unfold SpecConstant.searchNode_0 SpecConstant.searchCode_0
+  simp only [SearchCode.runK]
+
+private def SpecConstant.searchCode_1 : SearchCode :=
+  SearchCode.stringLiteral SpecConstant.searchCode_0
+
+@[inline]
+private def SpecConstant.searchNode_1 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  (List.range ((input).length + 1)).findSome? fun width =>
+    if stringPrefixOk input width then SpecConstant.searchNode_0 ((input).drop width) k else none
+
+private theorem SpecConstant.searchNode_1_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    SpecConstant.searchNode_1 input k = SearchCode.runK SpecConstant.searchCode_1 input k :=
+  by
+  unfold SpecConstant.searchNode_1 SpecConstant.searchCode_1
+  simp only [SearchCode.runK, SpecConstant.searchNode_0_eq]
+
+private def SpecConstant.searchCode_2 : SearchCode :=
+  SearchCode.capture ["StringLiteral"] SpecConstant.searchCode_1 SpecConstant.searchCode_0
+
+@[inline]
+private def SpecConstant.searchNode_2 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  SpecConstant.searchNode_1 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    SpecConstant.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["StringLiteral"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem SpecConstant.searchNode_2_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    SpecConstant.searchNode_2 input k = SearchCode.runK SpecConstant.searchCode_2 input k :=
+  by
+  unfold SpecConstant.searchNode_2 SpecConstant.searchCode_2
+  simp only [SearchCode.runK, SpecConstant.searchNode_1_eq, SpecConstant.searchNode_0_eq]
+
+private def SpecConstant.searchCode_3 : SearchCode :=
+  SearchCode.literal "-" SpecConstant.searchCode_0
+
+@[inline]
+private def SpecConstant.searchNode_3 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  let characters := ("-").toList
+  if characters.isPrefixOf input then SpecConstant.searchNode_0 ((input).drop characters.length) k else none
+
+private theorem SpecConstant.searchNode_3_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    SpecConstant.searchNode_3 input k = SearchCode.runK SpecConstant.searchCode_3 input k :=
+  by
+  unfold SpecConstant.searchNode_3 SpecConstant.searchCode_3
+  simp only [SearchCode.runK, SpecConstant.searchNode_0_eq]
+
+private def SpecConstant.searchCode_4 : SearchCode :=
+  SearchCode.choice SpecConstant.searchCode_3 SpecConstant.searchCode_0
+
+@[inline]
+private def SpecConstant.searchNode_4 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  scanOrElse (SpecConstant.searchNode_3 input k) fun _ => SpecConstant.searchNode_0 input k
+
+private theorem SpecConstant.searchNode_4_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    SpecConstant.searchNode_4 input k = SearchCode.runK SpecConstant.searchCode_4 input k :=
+  by
+  unfold SpecConstant.searchNode_4 SpecConstant.searchCode_4
+  simp only [SearchCode.runK, SpecConstant.searchNode_3_eq, SpecConstant.searchNode_0_eq]
+
+private def SpecConstant.searchCode_5 : SearchCode :=
+  SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SpecConstant.searchCode_0
+
+@[inline]
+private def SpecConstant.searchNode_5 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  (List.range ((input).length + 1)).findSome? fun width =>
+    if termPrefixOk TokClass.digit LenSpec.atLeastOne input width then SpecConstant.searchNode_0 ((input).drop width) k
+    else none
+
+private theorem SpecConstant.searchNode_5_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    SpecConstant.searchNode_5 input k = SearchCode.runK SpecConstant.searchCode_5 input k :=
+  by
+  unfold SpecConstant.searchNode_5 SpecConstant.searchCode_5
+  simp only [SearchCode.runK, SpecConstant.searchNode_0_eq]
+
+private def SpecConstant.searchCode_6 : SearchCode :=
+  SearchCode.capture ["Fraction", "DecimalPart.Fraction"] SpecConstant.searchCode_5 SpecConstant.searchCode_0
+
+@[inline]
+private def SpecConstant.searchNode_6 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  SpecConstant.searchNode_5 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    SpecConstant.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["Fraction", "DecimalPart.Fraction"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem SpecConstant.searchNode_6_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    SpecConstant.searchNode_6 input k = SearchCode.runK SpecConstant.searchCode_6 input k :=
+  by
+  unfold SpecConstant.searchNode_6 SpecConstant.searchCode_6
+  simp only [SearchCode.runK, SpecConstant.searchNode_5_eq, SpecConstant.searchNode_0_eq]
+
+private def SpecConstant.searchCode_7 : SearchCode :=
+  SearchCode.literal "." SpecConstant.searchCode_6
+
+@[inline]
+private def SpecConstant.searchNode_7 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  let characters := (".").toList
+  if characters.isPrefixOf input then SpecConstant.searchNode_6 ((input).drop characters.length) k else none
+
+private theorem SpecConstant.searchNode_7_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    SpecConstant.searchNode_7 input k = SearchCode.runK SpecConstant.searchCode_7 input k :=
+  by
+  unfold SpecConstant.searchNode_7 SpecConstant.searchCode_7
+  simp only [SearchCode.runK, SpecConstant.searchNode_6_eq]
+
+private def SpecConstant.searchCode_8 : SearchCode :=
+  SearchCode.capture ["DecimalPart", "NumericLiteral.DecimalPart"] SpecConstant.searchCode_7 SpecConstant.searchCode_0
+
+@[inline]
+private def SpecConstant.searchNode_8 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  SpecConstant.searchNode_7 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    SpecConstant.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["DecimalPart", "NumericLiteral.DecimalPart"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem SpecConstant.searchNode_8_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    SpecConstant.searchNode_8 input k = SearchCode.runK SpecConstant.searchCode_8 input k :=
+  by
+  unfold SpecConstant.searchNode_8 SpecConstant.searchCode_8
+  simp only [SearchCode.runK, SpecConstant.searchNode_7_eq, SpecConstant.searchNode_0_eq]
+
+private def SpecConstant.searchCode_9 : SearchCode :=
+  SearchCode.choice SpecConstant.searchCode_8 SpecConstant.searchCode_0
+
+@[inline]
+private def SpecConstant.searchNode_9 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  scanOrElse (SpecConstant.searchNode_8 input k) fun _ => SpecConstant.searchNode_0 input k
+
+private theorem SpecConstant.searchNode_9_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    SpecConstant.searchNode_9 input k = SearchCode.runK SpecConstant.searchCode_9 input k :=
+  by
+  unfold SpecConstant.searchNode_9 SpecConstant.searchCode_9
+  simp only [SearchCode.runK, SpecConstant.searchNode_8_eq, SpecConstant.searchNode_0_eq]
+
+private def SpecConstant.searchCode_10 : SearchCode :=
+  SearchCode.capture ["Natural", "NumericLiteral.Natural"] SpecConstant.searchCode_5 SpecConstant.searchCode_9
+
+@[inline]
+private def SpecConstant.searchNode_10 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  SpecConstant.searchNode_5 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    SpecConstant.searchNode_9 remaining fun tailCaptures suffix =>
+      k ((["Natural", "NumericLiteral.Natural"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem SpecConstant.searchNode_10_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    SpecConstant.searchNode_10 input k = SearchCode.runK SpecConstant.searchCode_10 input k :=
+  by
+  unfold SpecConstant.searchNode_10 SpecConstant.searchCode_10
+  simp only [SearchCode.runK, SpecConstant.searchNode_5_eq, SpecConstant.searchNode_9_eq]
+
+private def SpecConstant.searchCode_11 : SearchCode :=
+  SearchCode.capture ["Sign", "NumericLiteral.Sign"] SpecConstant.searchCode_4 SpecConstant.searchCode_10
+
+@[inline]
+private def SpecConstant.searchNode_11 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  SpecConstant.searchNode_4 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    SpecConstant.searchNode_10 remaining fun tailCaptures suffix =>
+      k ((["Sign", "NumericLiteral.Sign"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem SpecConstant.searchNode_11_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    SpecConstant.searchNode_11 input k = SearchCode.runK SpecConstant.searchCode_11 input k :=
+  by
+  unfold SpecConstant.searchNode_11 SpecConstant.searchCode_11
+  simp only [SearchCode.runK, SpecConstant.searchNode_4_eq, SpecConstant.searchNode_10_eq]
+
+private def SpecConstant.searchCode_12 : SearchCode :=
+  SearchCode.capture ["NumericLiteral"] SpecConstant.searchCode_11 SpecConstant.searchCode_0
+
+@[inline]
+private def SpecConstant.searchNode_12 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  SpecConstant.searchNode_11 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    SpecConstant.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["NumericLiteral"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem SpecConstant.searchNode_12_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    SpecConstant.searchNode_12 input k = SearchCode.runK SpecConstant.searchCode_12 input k :=
+  by
+  unfold SpecConstant.searchNode_12 SpecConstant.searchCode_12
+  simp only [SearchCode.runK, SpecConstant.searchNode_11_eq, SpecConstant.searchNode_0_eq]
+
+private def SpecConstant.searchCode_13 : SearchCode :=
+  SearchCode.choice SpecConstant.searchCode_2 SpecConstant.searchCode_12
+
+@[inline]
+private def SpecConstant.searchNode_13 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  scanOrElse (SpecConstant.searchNode_2 input k) fun _ => SpecConstant.searchNode_12 input k
+
+private theorem SpecConstant.searchNode_13_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    SpecConstant.searchNode_13 input k = SearchCode.runK SpecConstant.searchCode_13 input k :=
+  by
+  unfold SpecConstant.searchNode_13 SpecConstant.searchCode_13
+  simp only [SearchCode.runK, SpecConstant.searchNode_2_eq, SpecConstant.searchNode_12_eq]
+
 private def SpecConstant.directDecode (source : String) : Option CaptureMap :=
-  let input := source.toList
-  scanOrElse
-    ((List.range ((input).length + 1)).findSome? fun width_rootlb =>
-      if stringPrefixOk input width_rootlb then
-        (fun (bodyCaptures_rootl : CaptureMap) (remaining_rootl : List Char) =>
-            let ownCaptures_rootl :=
-              (["StringLiteral"]).map fun key =>
-                (key, String.ofList ((input).take ((input).length - (remaining_rootl).length)))
-            (fun (tailCaptures_rootl : CaptureMap) (suffix_rootl : List Char) =>
-                (fun (captures : CaptureMap) (remaining : List Char) =>
-                    if (remaining).isEmpty then some captures else none)
-                  (ownCaptures_rootl ++ bodyCaptures_rootl ++ tailCaptures_rootl) suffix_rootl)
-              ([] : CaptureMap) remaining_rootl)
-          ([] : CaptureMap) ((input).drop width_rootlb)
-      else none)
-    fun _ =>
-    scanOrElse
-      (let characters_rootrbbl := "-".toList
-      if (characters_rootrbbl).isPrefixOf input then
-        (fun (bodyCaptures_rootrb : CaptureMap) (remaining_rootrb : List Char) =>
-            let ownCaptures_rootrb :=
-              (["Sign", "NumericLiteral.Sign"]).map fun key =>
-                (key, String.ofList ((input).take ((input).length - (remaining_rootrb).length)))
-            (List.range ((remaining_rootrb).length + 1)).findSome? fun width_rootrbtb =>
-              if termPrefixOk TokClass.digit LenSpec.atLeastOne remaining_rootrb width_rootrbtb then
-                (fun (bodyCaptures_rootrbt : CaptureMap) (remaining_rootrbt : List Char) =>
-                    let ownCaptures_rootrbt :=
-                      (["Natural", "NumericLiteral.Natural"]).map fun key =>
-                        (key,
-                          String.ofList
-                            ((remaining_rootrb).take ((remaining_rootrb).length - (remaining_rootrbt).length)))
-                    scanOrElse
-                      (let characters_rootrbttlb := ".".toList
-                      if (characters_rootrbttlb).isPrefixOf remaining_rootrbt then
-                        (List.range (((remaining_rootrbt).drop (characters_rootrbttlb).length).length + 1)).findSome?
-                          fun width_rootrbttlbnb =>
-                          if
-                              termPrefixOk TokClass.digit LenSpec.atLeastOne
-                                ((remaining_rootrbt).drop (characters_rootrbttlb).length) width_rootrbttlbnb then
-                            (fun (bodyCaptures_rootrbttlbn : CaptureMap) (remaining_rootrbttlbn : List Char) =>
-                                let ownCaptures_rootrbttlbn :=
-                                  (["Fraction", "DecimalPart.Fraction"]).map fun key =>
-                                    (key,
-                                      String.ofList
-                                        (((remaining_rootrbt).drop (characters_rootrbttlb).length).take
-                                          (((remaining_rootrbt).drop (characters_rootrbttlb).length).length -
-                                            (remaining_rootrbttlbn).length)))
-                                (fun (tailCaptures_rootrbttlbn : CaptureMap) (suffix_rootrbttlbn : List Char) =>
-                                    (fun (bodyCaptures_rootrbttl : CaptureMap) (remaining_rootrbttl : List Char) =>
-                                        let ownCaptures_rootrbttl :=
-                                          (["DecimalPart", "NumericLiteral.DecimalPart"]).map fun key =>
-                                            (key,
-                                              String.ofList
-                                                ((remaining_rootrbt).take
-                                                  ((remaining_rootrbt).length - (remaining_rootrbttl).length)))
-                                        (fun (tailCaptures_rootrbttl : CaptureMap) (suffix_rootrbttl : List Char) =>
-                                            (fun (tailCaptures_rootrbt : CaptureMap) (suffix_rootrbt : List Char) =>
-                                                (fun (tailCaptures_rootrb : CaptureMap) (suffix_rootrb : List Char) =>
-                                                    (fun (bodyCaptures_rootr : CaptureMap)
-                                                          (remaining_rootr : List Char) =>
-                                                        let ownCaptures_rootr :=
-                                                          (["NumericLiteral"]).map fun key =>
-                                                            (key,
-                                                              String.ofList
-                                                                ((input).take
-                                                                  ((input).length - (remaining_rootr).length)))
-                                                        (fun (tailCaptures_rootr : CaptureMap)
-                                                              (suffix_rootr : List Char) =>
-                                                            (fun (captures : CaptureMap) (remaining : List Char) =>
-                                                                if (remaining).isEmpty then some captures else none)
-                                                              (ownCaptures_rootr ++ bodyCaptures_rootr ++
-                                                                tailCaptures_rootr)
-                                                              suffix_rootr)
-                                                          ([] : CaptureMap) remaining_rootr)
-                                                      (ownCaptures_rootrb ++ bodyCaptures_rootrb ++ tailCaptures_rootrb)
-                                                      suffix_rootrb)
-                                                  (ownCaptures_rootrbt ++ bodyCaptures_rootrbt ++ tailCaptures_rootrbt)
-                                                  suffix_rootrbt)
-                                              (ownCaptures_rootrbttl ++ bodyCaptures_rootrbttl ++
-                                                tailCaptures_rootrbttl)
-                                              suffix_rootrbttl)
-                                          ([] : CaptureMap) remaining_rootrbttl)
-                                      (ownCaptures_rootrbttlbn ++ bodyCaptures_rootrbttlbn ++ tailCaptures_rootrbttlbn)
-                                      suffix_rootrbttlbn)
-                                  ([] : CaptureMap) remaining_rootrbttlbn)
-                              ([] : CaptureMap)
-                              (((remaining_rootrbt).drop (characters_rootrbttlb).length).drop width_rootrbttlbnb)
-                          else none
-                      else none)
-                      fun _ =>
-                      (fun (tailCaptures_rootrbt : CaptureMap) (suffix_rootrbt : List Char) =>
-                          (fun (tailCaptures_rootrb : CaptureMap) (suffix_rootrb : List Char) =>
-                              (fun (bodyCaptures_rootr : CaptureMap) (remaining_rootr : List Char) =>
-                                  let ownCaptures_rootr :=
-                                    (["NumericLiteral"]).map fun key =>
-                                      (key, String.ofList ((input).take ((input).length - (remaining_rootr).length)))
-                                  (fun (tailCaptures_rootr : CaptureMap) (suffix_rootr : List Char) =>
-                                      (fun (captures : CaptureMap) (remaining : List Char) =>
-                                          if (remaining).isEmpty then some captures else none)
-                                        (ownCaptures_rootr ++ bodyCaptures_rootr ++ tailCaptures_rootr) suffix_rootr)
-                                    ([] : CaptureMap) remaining_rootr)
-                                (ownCaptures_rootrb ++ bodyCaptures_rootrb ++ tailCaptures_rootrb) suffix_rootrb)
-                            (ownCaptures_rootrbt ++ bodyCaptures_rootrbt ++ tailCaptures_rootrbt) suffix_rootrbt)
-                        ([] : CaptureMap) remaining_rootrbt)
-                  ([] : CaptureMap) ((remaining_rootrb).drop width_rootrbtb)
-              else none)
-          ([] : CaptureMap) ((input).drop (characters_rootrbbl).length)
-      else none)
-      fun _ =>
-      (fun (bodyCaptures_rootrb : CaptureMap) (remaining_rootrb : List Char) =>
-          let ownCaptures_rootrb :=
-            (["Sign", "NumericLiteral.Sign"]).map fun key =>
-              (key, String.ofList ((input).take ((input).length - (remaining_rootrb).length)))
-          (List.range ((remaining_rootrb).length + 1)).findSome? fun width_rootrbtb =>
-            if termPrefixOk TokClass.digit LenSpec.atLeastOne remaining_rootrb width_rootrbtb then
-              (fun (bodyCaptures_rootrbt : CaptureMap) (remaining_rootrbt : List Char) =>
-                  let ownCaptures_rootrbt :=
-                    (["Natural", "NumericLiteral.Natural"]).map fun key =>
-                      (key,
-                        String.ofList
-                          ((remaining_rootrb).take ((remaining_rootrb).length - (remaining_rootrbt).length)))
-                  scanOrElse
-                    (let characters_rootrbttlb := ".".toList
-                    if (characters_rootrbttlb).isPrefixOf remaining_rootrbt then
-                      (List.range (((remaining_rootrbt).drop (characters_rootrbttlb).length).length + 1)).findSome?
-                        fun width_rootrbttlbnb =>
-                        if
-                            termPrefixOk TokClass.digit LenSpec.atLeastOne
-                              ((remaining_rootrbt).drop (characters_rootrbttlb).length) width_rootrbttlbnb then
-                          (fun (bodyCaptures_rootrbttlbn : CaptureMap) (remaining_rootrbttlbn : List Char) =>
-                              let ownCaptures_rootrbttlbn :=
-                                (["Fraction", "DecimalPart.Fraction"]).map fun key =>
-                                  (key,
-                                    String.ofList
-                                      (((remaining_rootrbt).drop (characters_rootrbttlb).length).take
-                                        (((remaining_rootrbt).drop (characters_rootrbttlb).length).length -
-                                          (remaining_rootrbttlbn).length)))
-                              (fun (tailCaptures_rootrbttlbn : CaptureMap) (suffix_rootrbttlbn : List Char) =>
-                                  (fun (bodyCaptures_rootrbttl : CaptureMap) (remaining_rootrbttl : List Char) =>
-                                      let ownCaptures_rootrbttl :=
-                                        (["DecimalPart", "NumericLiteral.DecimalPart"]).map fun key =>
-                                          (key,
-                                            String.ofList
-                                              ((remaining_rootrbt).take
-                                                ((remaining_rootrbt).length - (remaining_rootrbttl).length)))
-                                      (fun (tailCaptures_rootrbttl : CaptureMap) (suffix_rootrbttl : List Char) =>
-                                          (fun (tailCaptures_rootrbt : CaptureMap) (suffix_rootrbt : List Char) =>
-                                              (fun (tailCaptures_rootrb : CaptureMap) (suffix_rootrb : List Char) =>
-                                                  (fun (bodyCaptures_rootr : CaptureMap)
-                                                        (remaining_rootr : List Char) =>
-                                                      let ownCaptures_rootr :=
-                                                        (["NumericLiteral"]).map fun key =>
-                                                          (key,
-                                                            String.ofList
-                                                              ((input).take
-                                                                ((input).length - (remaining_rootr).length)))
-                                                      (fun (tailCaptures_rootr : CaptureMap)
-                                                            (suffix_rootr : List Char) =>
-                                                          (fun (captures : CaptureMap) (remaining : List Char) =>
-                                                              if (remaining).isEmpty then some captures else none)
-                                                            (ownCaptures_rootr ++ bodyCaptures_rootr ++
-                                                              tailCaptures_rootr)
-                                                            suffix_rootr)
-                                                        ([] : CaptureMap) remaining_rootr)
-                                                    (ownCaptures_rootrb ++ bodyCaptures_rootrb ++ tailCaptures_rootrb)
-                                                    suffix_rootrb)
-                                                (ownCaptures_rootrbt ++ bodyCaptures_rootrbt ++ tailCaptures_rootrbt)
-                                                suffix_rootrbt)
-                                            (ownCaptures_rootrbttl ++ bodyCaptures_rootrbttl ++ tailCaptures_rootrbttl)
-                                            suffix_rootrbttl)
-                                        ([] : CaptureMap) remaining_rootrbttl)
-                                    (ownCaptures_rootrbttlbn ++ bodyCaptures_rootrbttlbn ++ tailCaptures_rootrbttlbn)
-                                    suffix_rootrbttlbn)
-                                ([] : CaptureMap) remaining_rootrbttlbn)
-                            ([] : CaptureMap)
-                            (((remaining_rootrbt).drop (characters_rootrbttlb).length).drop width_rootrbttlbnb)
-                        else none
-                    else none)
-                    fun _ =>
-                    (fun (tailCaptures_rootrbt : CaptureMap) (suffix_rootrbt : List Char) =>
-                        (fun (tailCaptures_rootrb : CaptureMap) (suffix_rootrb : List Char) =>
-                            (fun (bodyCaptures_rootr : CaptureMap) (remaining_rootr : List Char) =>
-                                let ownCaptures_rootr :=
-                                  (["NumericLiteral"]).map fun key =>
-                                    (key, String.ofList ((input).take ((input).length - (remaining_rootr).length)))
-                                (fun (tailCaptures_rootr : CaptureMap) (suffix_rootr : List Char) =>
-                                    (fun (captures : CaptureMap) (remaining : List Char) =>
-                                        if (remaining).isEmpty then some captures else none)
-                                      (ownCaptures_rootr ++ bodyCaptures_rootr ++ tailCaptures_rootr) suffix_rootr)
-                                  ([] : CaptureMap) remaining_rootr)
-                              (ownCaptures_rootrb ++ bodyCaptures_rootrb ++ tailCaptures_rootrb) suffix_rootrb)
-                          (ownCaptures_rootrbt ++ bodyCaptures_rootrbt ++ tailCaptures_rootrbt) suffix_rootrbt)
-                      ([] : CaptureMap) remaining_rootrbt)
-                ([] : CaptureMap) ((remaining_rootrb).drop width_rootrbtb)
-            else none)
-        ([] : CaptureMap) input
+  SpecConstant.searchNode_13 source.toList fun (captures : CaptureMap) (remaining : List Char) =>
+    if (remaining).isEmpty then some captures else none
 
 private theorem SpecConstant.directDecode_eq_searchProgram (source : String) :
     SpecConstant.directDecode source = SearchProgram.decode SpecConstant.searchProgram source :=
   by
-  unfold SpecConstant.directDecode SearchProgram.decode SpecConstant.searchProgram
-  simp only [SearchCode.runK]
+  have hcode : SpecConstant.searchCode_13 = (SpecConstant.searchProgram).code := rfl
+  unfold SpecConstant.directDecode SearchProgram.decode
+  rw [SpecConstant.searchNode_13_eq, hcode]
 
 private def SpecConstant.decodeCaptures (source : String) : Option CaptureMap :=
   SpecConstant.directDecode source

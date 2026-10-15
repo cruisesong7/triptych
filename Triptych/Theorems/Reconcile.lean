@@ -161,4 +161,15 @@ theorem readInt_empty : readInt "" = 0 := by unfold readInt; simp [readNat]
   | none => simp [segmentsOf, h]
   | some text => simp [h]
 
+/-- Eliminate the split for a literal that follows earlier items in a sequence. The interpreter
+    denotes a literal item as an existential split whose left part equals the literal; the
+    readable specification substitutes the literal directly. -/
+theorem exists_append_lit_left (t lit : String) (P : String → Prop) :
+    (∃ s1 s2, (t = s1 ++ s2 ∧ s1 = lit) ∧ P s2) ↔ ∃ s2, t = lit ++ s2 ∧ P s2 := by
+  constructor
+  · rintro ⟨s1, s2, ⟨ht, rfl⟩, hp⟩
+    exact ⟨s2, ht, hp⟩
+  · rintro ⟨s2, ht, hp⟩
+    exact ⟨lit, s2, ⟨ht, rfl⟩, hp⟩
+
 end Triptych

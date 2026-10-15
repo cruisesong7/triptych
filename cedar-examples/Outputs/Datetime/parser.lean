@@ -1153,7 +1153,7 @@ theorem Datetime.Internal.matchesRef.YYYY (fuel : Nat) (s : String) :
     ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem Datetime.Internal.matchesRef.MM (fuel : Nat) (s : String) :
@@ -1171,7 +1171,7 @@ theorem Datetime.Internal.matchesRef.MM (fuel : Nat) (s : String) :
     ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem Datetime.Internal.matchesRef.DD (fuel : Nat) (s : String) :
@@ -1189,7 +1189,7 @@ theorem Datetime.Internal.matchesRef.DD (fuel : Nat) (s : String) :
     ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem Datetime.Internal.matchesRef.Date (fuel : Nat) (s : String) :
@@ -1210,7 +1210,7 @@ theorem Datetime.Internal.matchesRef.Date (fuel : Nat) (s : String) :
     ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     Datetime.Internal.matchesRef.YYYY, Datetime.Internal.matchesRef.MM, Datetime.Internal.matchesRef.DD]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem Datetime.Internal.matchesRef.hh (fuel : Nat) (s : String) :
@@ -1228,7 +1228,7 @@ theorem Datetime.Internal.matchesRef.hh (fuel : Nat) (s : String) :
     ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem Datetime.Internal.matchesRef.mm (fuel : Nat) (s : String) :
@@ -1246,7 +1246,7 @@ theorem Datetime.Internal.matchesRef.mm (fuel : Nat) (s : String) :
     ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem Datetime.Internal.matchesRef.ss (fuel : Nat) (s : String) :
@@ -1264,7 +1264,7 @@ theorem Datetime.Internal.matchesRef.ss (fuel : Nat) (s : String) :
     ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem Datetime.Internal.matchesRef.Time (fuel : Nat) (s : String) :
@@ -1285,7 +1285,7 @@ theorem Datetime.Internal.matchesRef.Time (fuel : Nat) (s : String) :
     ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     Datetime.Internal.matchesRef.hh, Datetime.Internal.matchesRef.mm, Datetime.Internal.matchesRef.ss]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem Datetime.Internal.matchesRef.SSS (fuel : Nat) (s : String) :
@@ -1303,7 +1303,7 @@ theorem Datetime.Internal.matchesRef.SSS (fuel : Nat) (s : String) :
     ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem Datetime.Internal.matchesRef.Offset (fuel : Nat) (s : String) :
@@ -1327,7 +1327,8 @@ theorem Datetime.Internal.matchesRef.Offset (fuel : Nat) (s : String) :
     first
     | apply or_congr
     | ( simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left,
-          ← and_assoc, exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+          ← and_assoc, exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left,
+          Option.some.injEq, forall_eq']
         try grind [String.append_assoc, String.append_empty])
 
 theorem Datetime.Internal.matchesRef.Datetime (fuel : Nat) (s : String) :
@@ -1359,7 +1360,8 @@ theorem Datetime.Internal.matchesRef.Datetime (fuel : Nat) (s : String) :
     first
     | apply or_congr
     | ( simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left,
-          ← and_assoc, exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+          ← and_assoc, exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left,
+          Option.some.injEq, forall_eq']
         try grind [String.append_assoc, String.append_empty])
 
 theorem Datetime.IsWfGrammar_equiv (s : String) : Triptych.IsWf Datetime.grammar s ↔ Datetime.Production s :=
@@ -2265,1090 +2267,517 @@ private abbrev Datetime.searchProgram : SearchProgram :=
 private theorem Datetime.searchProgram_lowered : lowerSearchPlan Datetime.searchPlan = Datetime.searchProgram := by
   decide
 
-private def Datetime.directDecode (source : String) : Option CaptureMap :=
-  let input := source.toList
-  (List.range ((input).length + 1)).findSome? fun width_rootbb =>
-    if termPrefixOk TokClass.digit (LenSpec.exactly 4) input width_rootbb then
-      (fun (bodyCaptures_rootb : CaptureMap) (remaining_rootb : List Char) =>
-          let ownCaptures_rootb :=
-            (["YYYY", "Date.YYYY"]).map fun key =>
-              (key, String.ofList ((input).take ((input).length - (remaining_rootb).length)))
-          let characters_rootbt := "-".toList
-          if (characters_rootbt).isPrefixOf remaining_rootb then
-            (List.range (((remaining_rootb).drop (characters_rootbt).length).length + 1)).findSome?
-              fun width_rootbtnb =>
-              if
-                  termPrefixOk TokClass.digit (LenSpec.exactly 2) ((remaining_rootb).drop (characters_rootbt).length)
-                    width_rootbtnb then
-                (fun (bodyCaptures_rootbtn : CaptureMap) (remaining_rootbtn : List Char) =>
-                    let ownCaptures_rootbtn :=
-                      (["MM", "Date.MM"]).map fun key =>
-                        (key,
-                          String.ofList
-                            (((remaining_rootb).drop (characters_rootbt).length).take
-                              (((remaining_rootb).drop (characters_rootbt).length).length -
-                                (remaining_rootbtn).length)))
-                    let characters_rootbtnt := "-".toList
-                    if (characters_rootbtnt).isPrefixOf remaining_rootbtn then
-                      (List.range (((remaining_rootbtn).drop (characters_rootbtnt).length).length + 1)).findSome?
-                        fun width_rootbtntnb =>
-                        if
-                            termPrefixOk TokClass.digit (LenSpec.exactly 2)
-                              ((remaining_rootbtn).drop (characters_rootbtnt).length) width_rootbtntnb then
-                          (fun (bodyCaptures_rootbtntn : CaptureMap) (remaining_rootbtntn : List Char) =>
-                              let ownCaptures_rootbtntn :=
-                                (["DD", "Date.DD"]).map fun key =>
-                                  (key,
-                                    String.ofList
-                                      (((remaining_rootbtn).drop (characters_rootbtnt).length).take
-                                        (((remaining_rootbtn).drop (characters_rootbtnt).length).length -
-                                          (remaining_rootbtntn).length)))
-                              (fun (tailCaptures_rootbtntn : CaptureMap) (suffix_rootbtntn : List Char) =>
-                                  (fun (tailCaptures_rootbtn : CaptureMap) (suffix_rootbtn : List Char) =>
-                                      (fun (tailCaptures_rootb : CaptureMap) (suffix_rootb : List Char) =>
-                                          (fun (bodyCaptures_root : CaptureMap) (remaining_root : List Char) =>
-                                              let ownCaptures_root :=
-                                                (["Date"]).map fun key =>
-                                                  (key,
-                                                    String.ofList
-                                                      ((input).take ((input).length - (remaining_root).length)))
-                                              scanOrElse
-                                                ((fun (tailCaptures_root : CaptureMap) (suffix_root : List Char) =>
-                                                    (fun (captures : CaptureMap) (remaining : List Char) =>
-                                                        if (remaining).isEmpty then some captures else none)
-                                                      (ownCaptures_root ++ bodyCaptures_root ++ tailCaptures_root)
-                                                      suffix_root)
-                                                  ([] : CaptureMap) remaining_root)
-                                                fun _ =>
-                                                let characters_roottr := "T".toList
-                                                if (characters_roottr).isPrefixOf remaining_root then
-                                                  (List.range
-                                                        (((remaining_root).drop (characters_roottr).length).length +
-                                                          1)).findSome?
-                                                    fun width_roottrnbb =>
-                                                    if
-                                                        termPrefixOk TokClass.digit (LenSpec.exactly 2)
-                                                          ((remaining_root).drop (characters_roottr).length)
-                                                          width_roottrnbb then
-                                                      (fun (bodyCaptures_roottrnb : CaptureMap)
-                                                            (remaining_roottrnb : List Char) =>
-                                                          let ownCaptures_roottrnb :=
-                                                            (["hh", "Time.hh"]).map fun key =>
-                                                              (key,
-                                                                String.ofList
-                                                                  (((remaining_root).drop
-                                                                        (characters_roottr).length).take
-                                                                    (((remaining_root).drop
-                                                                          (characters_roottr).length).length -
-                                                                      (remaining_roottrnb).length)))
-                                                          let characters_roottrnbt := ":".toList
-                                                          if (characters_roottrnbt).isPrefixOf remaining_roottrnb then
-                                                            (List.range
-                                                                  (((remaining_roottrnb).drop
-                                                                        (characters_roottrnbt).length).length +
-                                                                    1)).findSome?
-                                                              fun width_roottrnbtnb =>
-                                                              if
-                                                                  termPrefixOk TokClass.digit (LenSpec.exactly 2)
-                                                                    ((remaining_roottrnb).drop
-                                                                      (characters_roottrnbt).length)
-                                                                    width_roottrnbtnb then
-                                                                (fun (bodyCaptures_roottrnbtn : CaptureMap)
-                                                                      (remaining_roottrnbtn : List Char) =>
-                                                                    let ownCaptures_roottrnbtn :=
-                                                                      (["mm", "Time.mm"]).map fun key =>
-                                                                        (key,
-                                                                          String.ofList
-                                                                            (((remaining_roottrnb).drop
-                                                                                  (characters_roottrnbt).length).take
-                                                                              (((remaining_roottrnb).drop
-                                                                                    (characters_roottrnbt).length).length -
-                                                                                (remaining_roottrnbtn).length)))
-                                                                    let characters_roottrnbtnt := ":".toList
-                                                                    if
-                                                                        (characters_roottrnbtnt).isPrefixOf
-                                                                          remaining_roottrnbtn then
-                                                                      (List.range
-                                                                            (((remaining_roottrnbtn).drop
-                                                                                  (characters_roottrnbtnt).length).length +
-                                                                              1)).findSome?
-                                                                        fun width_roottrnbtntnb =>
-                                                                        if
-                                                                            termPrefixOk TokClass.digit
-                                                                              (LenSpec.exactly 2)
-                                                                              ((remaining_roottrnbtn).drop
-                                                                                (characters_roottrnbtnt).length)
-                                                                              width_roottrnbtntnb then
-                                                                          (fun (bodyCaptures_roottrnbtntn : CaptureMap)
-                                                                                (remaining_roottrnbtntn : List Char) =>
-                                                                              let ownCaptures_roottrnbtntn :=
-                                                                                (["ss", "Time.ss"]).map fun key =>
-                                                                                  (key,
-                                                                                    String.ofList
-                                                                                      (((remaining_roottrnbtn).drop
-                                                                                            (characters_roottrnbtnt).length).take
-                                                                                        (((remaining_roottrnbtn).drop
-                                                                                              (characters_roottrnbtnt).length).length -
-                                                                                          (remaining_roottrnbtntn).length)))
-                                                                              (fun
-                                                                                    (tailCaptures_roottrnbtntn :
-                                                                                      CaptureMap)
-                                                                                    (suffix_roottrnbtntn : List Char) =>
-                                                                                  (fun
-                                                                                        (tailCaptures_roottrnbtn :
-                                                                                          CaptureMap)
-                                                                                        (suffix_roottrnbtn :
-                                                                                          List Char) =>
-                                                                                      (fun
-                                                                                            (tailCaptures_roottrnb :
-                                                                                              CaptureMap)
-                                                                                            (suffix_roottrnb :
-                                                                                              List Char) =>
-                                                                                          (fun
-                                                                                                (bodyCaptures_roottrn :
-                                                                                                  CaptureMap)
-                                                                                                (remaining_roottrn :
-                                                                                                  List Char) =>
-                                                                                              let ownCaptures_roottrn :=
-                                                                                                (["Time"]).map
-                                                                                                  fun key =>
-                                                                                                  (key,
-                                                                                                    String.ofList
-                                                                                                      (((remaining_root).drop
-                                                                                                            (characters_roottr).length).take
-                                                                                                        (((remaining_root).drop
-                                                                                                              (characters_roottr).length).length -
-                                                                                                          (remaining_roottrn).length)))
-                                                                                              scanOrElse
-                                                                                                (let
-                                                                                                  characters_roottrntl :=
-                                                                                                  "Z".toList
-                                                                                                if
-                                                                                                    (characters_roottrntl).isPrefixOf
-                                                                                                      remaining_roottrn then
-                                                                                                  (fun
-                                                                                                        (tailCaptures_roottrn :
-                                                                                                          CaptureMap)
-                                                                                                        (suffix_roottrn :
-                                                                                                          List Char) =>
-                                                                                                      (fun
-                                                                                                            (tailCaptures_root :
-                                                                                                              CaptureMap)
-                                                                                                            (suffix_root :
-                                                                                                              List
-                                                                                                                Char) =>
-                                                                                                          (fun
-                                                                                                                (captures :
-                                                                                                                  CaptureMap)
-                                                                                                                (remaining :
-                                                                                                                  List
-                                                                                                                    Char) =>
-                                                                                                              if
-                                                                                                                  (remaining).isEmpty then
-                                                                                                                some
-                                                                                                                  captures
-                                                                                                              else none)
-                                                                                                            (ownCaptures_root ++
-                                                                                                                bodyCaptures_root ++
-                                                                                                              tailCaptures_root)
-                                                                                                            suffix_root)
-                                                                                                        (ownCaptures_roottrn ++
-                                                                                                            bodyCaptures_roottrn ++
-                                                                                                          tailCaptures_roottrn)
-                                                                                                        suffix_roottrn)
-                                                                                                    ([] : CaptureMap)
-                                                                                                    ((remaining_roottrn).drop
-                                                                                                      (characters_roottrntl).length)
-                                                                                                else none)
-                                                                                                fun _ =>
-                                                                                                scanOrElse
-                                                                                                  (let
-                                                                                                    characters_roottrntrl :=
-                                                                                                    ".".toList
-                                                                                                  if
-                                                                                                      (characters_roottrntrl).isPrefixOf
-                                                                                                        remaining_roottrn then
-                                                                                                    (List.range
-                                                                                                          (((remaining_roottrn).drop
-                                                                                                                (characters_roottrntrl).length).length +
-                                                                                                            1)).findSome?
-                                                                                                      fun
-                                                                                                        width_roottrntrlnb =>
-                                                                                                      if
-                                                                                                          termPrefixOk
-                                                                                                            TokClass.digit
-                                                                                                            (LenSpec.exactly
-                                                                                                              3)
-                                                                                                            ((remaining_roottrn).drop
-                                                                                                              (characters_roottrntrl).length)
-                                                                                                            width_roottrntrlnb then
-                                                                                                        (fun
-                                                                                                              (bodyCaptures_roottrntrln :
-                                                                                                                CaptureMap)
-                                                                                                              (remaining_roottrntrln :
-                                                                                                                List
-                                                                                                                  Char) =>
-                                                                                                            let
-                                                                                                              ownCaptures_roottrntrln :=
-                                                                                                              (["SSS"]).map
-                                                                                                                fun
-                                                                                                                  key =>
-                                                                                                                (key,
-                                                                                                                  String.ofList
-                                                                                                                    (((remaining_roottrn).drop
-                                                                                                                          (characters_roottrntrl).length).take
-                                                                                                                      (((remaining_roottrn).drop
-                                                                                                                            (characters_roottrntrl).length).length -
-                                                                                                                        (remaining_roottrntrln).length)))
-                                                                                                            let
-                                                                                                              characters_roottrntrlnt :=
-                                                                                                              "Z".toList
-                                                                                                            if
-                                                                                                                (characters_roottrntrlnt).isPrefixOf
-                                                                                                                  remaining_roottrntrln then
-                                                                                                              (fun
-                                                                                                                    (tailCaptures_roottrntrln :
-                                                                                                                      CaptureMap)
-                                                                                                                    (suffix_roottrntrln :
-                                                                                                                      List
-                                                                                                                        Char) =>
-                                                                                                                  (fun
-                                                                                                                        (tailCaptures_roottrn :
-                                                                                                                          CaptureMap)
-                                                                                                                        (suffix_roottrn :
-                                                                                                                          List
-                                                                                                                            Char) =>
-                                                                                                                      (fun
-                                                                                                                            (tailCaptures_root :
-                                                                                                                              CaptureMap)
-                                                                                                                            (suffix_root :
-                                                                                                                              List
-                                                                                                                                Char) =>
-                                                                                                                          (fun
-                                                                                                                                (captures :
-                                                                                                                                  CaptureMap)
-                                                                                                                                (remaining :
-                                                                                                                                  List
-                                                                                                                                    Char) =>
-                                                                                                                              if
-                                                                                                                                  (remaining).isEmpty then
-                                                                                                                                some
-                                                                                                                                  captures
-                                                                                                                              else
-                                                                                                                                none)
-                                                                                                                            (ownCaptures_root ++
-                                                                                                                                bodyCaptures_root ++
-                                                                                                                              tailCaptures_root)
-                                                                                                                            suffix_root)
-                                                                                                                        (ownCaptures_roottrn ++
-                                                                                                                            bodyCaptures_roottrn ++
-                                                                                                                          tailCaptures_roottrn)
-                                                                                                                        suffix_roottrn)
-                                                                                                                    (ownCaptures_roottrntrln ++
-                                                                                                                        bodyCaptures_roottrntrln ++
-                                                                                                                      tailCaptures_roottrntrln)
-                                                                                                                    suffix_roottrntrln)
-                                                                                                                ([] :
-                                                                                                                  CaptureMap)
-                                                                                                                ((remaining_roottrntrln).drop
-                                                                                                                  (characters_roottrntrlnt).length)
-                                                                                                            else none)
-                                                                                                          ([] :
-                                                                                                            CaptureMap)
-                                                                                                          (((remaining_roottrn).drop
-                                                                                                                (characters_roottrntrl).length).drop
-                                                                                                            width_roottrntrlnb)
-                                                                                                      else none
-                                                                                                  else none)
-                                                                                                  fun _ =>
-                                                                                                  scanOrElse
-                                                                                                    (scanOrElse
-                                                                                                      (let
-                                                                                                        characters_roottrntrrlbl :=
-                                                                                                        "+".toList
-                                                                                                      if
-                                                                                                          (characters_roottrntrrlbl).isPrefixOf
-                                                                                                            remaining_roottrn then
-                                                                                                        (List.range
-                                                                                                              (((remaining_roottrn).drop
-                                                                                                                    (characters_roottrntrrlbl).length).length +
-                                                                                                                1)).findSome?
-                                                                                                          fun
-                                                                                                            width_roottrntrrlblnb =>
-                                                                                                          if
-                                                                                                              termPrefixOk
-                                                                                                                TokClass.digit
-                                                                                                                (LenSpec.exactly
-                                                                                                                  2)
-                                                                                                                ((remaining_roottrn).drop
-                                                                                                                  (characters_roottrntrrlbl).length)
-                                                                                                                width_roottrntrrlblnb then
-                                                                                                            (fun
-                                                                                                                  (bodyCaptures_roottrntrrlbln :
-                                                                                                                    CaptureMap)
-                                                                                                                  (remaining_roottrntrrlbln :
-                                                                                                                    List
-                                                                                                                      Char) =>
-                                                                                                                let
-                                                                                                                  ownCaptures_roottrntrrlbln :=
-                                                                                                                  (["hh",
-                                                                                                                        "Offset.hh"]).map
-                                                                                                                    fun
-                                                                                                                      key =>
-                                                                                                                    (key,
-                                                                                                                      String.ofList
-                                                                                                                        (((remaining_roottrn).drop
-                                                                                                                              (characters_roottrntrrlbl).length).take
-                                                                                                                          (((remaining_roottrn).drop
-                                                                                                                                (characters_roottrntrrlbl).length).length -
-                                                                                                                            (remaining_roottrntrrlbln).length)))
-                                                                                                                (List.range
-                                                                                                                      ((remaining_roottrntrrlbln).length +
-                                                                                                                        1)).findSome?
-                                                                                                                  fun
-                                                                                                                    width_roottrntrrlblntb =>
-                                                                                                                  if
-                                                                                                                      termPrefixOk
-                                                                                                                        TokClass.digit
-                                                                                                                        (LenSpec.exactly
-                                                                                                                          2)
-                                                                                                                        remaining_roottrntrrlbln
-                                                                                                                        width_roottrntrrlblntb then
-                                                                                                                    (fun
-                                                                                                                          (bodyCaptures_roottrntrrlblnt :
-                                                                                                                            CaptureMap)
-                                                                                                                          (remaining_roottrntrrlblnt :
-                                                                                                                            List
-                                                                                                                              Char) =>
-                                                                                                                        let
-                                                                                                                          ownCaptures_roottrntrrlblnt :=
-                                                                                                                          (["mm",
-                                                                                                                                "Offset.mm"]).map
-                                                                                                                            fun
-                                                                                                                              key =>
-                                                                                                                            (key,
-                                                                                                                              String.ofList
-                                                                                                                                ((remaining_roottrntrrlbln).take
-                                                                                                                                  ((remaining_roottrntrrlbln).length -
-                                                                                                                                    (remaining_roottrntrrlblnt).length)))
-                                                                                                                        (fun
-                                                                                                                              (tailCaptures_roottrntrrlblnt :
-                                                                                                                                CaptureMap)
-                                                                                                                              (suffix_roottrntrrlblnt :
-                                                                                                                                List
-                                                                                                                                  Char) =>
-                                                                                                                            (fun
-                                                                                                                                  (tailCaptures_roottrntrrlbln :
-                                                                                                                                    CaptureMap)
-                                                                                                                                  (suffix_roottrntrrlbln :
-                                                                                                                                    List
-                                                                                                                                      Char) =>
-                                                                                                                                (fun
-                                                                                                                                      (bodyCaptures_roottrntrrl :
-                                                                                                                                        CaptureMap)
-                                                                                                                                      (remaining_roottrntrrl :
-                                                                                                                                        List
-                                                                                                                                          Char) =>
-                                                                                                                                    let
-                                                                                                                                      ownCaptures_roottrntrrl :=
-                                                                                                                                      (["Offset"]).map
-                                                                                                                                        fun
-                                                                                                                                          key =>
-                                                                                                                                        (key,
-                                                                                                                                          String.ofList
-                                                                                                                                            ((remaining_roottrn).take
-                                                                                                                                              ((remaining_roottrn).length -
-                                                                                                                                                (remaining_roottrntrrl).length)))
-                                                                                                                                    (fun
-                                                                                                                                          (tailCaptures_roottrntrrl :
-                                                                                                                                            CaptureMap)
-                                                                                                                                          (suffix_roottrntrrl :
-                                                                                                                                            List
-                                                                                                                                              Char) =>
-                                                                                                                                        (fun
-                                                                                                                                              (tailCaptures_roottrn :
-                                                                                                                                                CaptureMap)
-                                                                                                                                              (suffix_roottrn :
-                                                                                                                                                List
-                                                                                                                                                  Char) =>
-                                                                                                                                            (fun
-                                                                                                                                                  (tailCaptures_root :
-                                                                                                                                                    CaptureMap)
-                                                                                                                                                  (suffix_root :
-                                                                                                                                                    List
-                                                                                                                                                      Char) =>
-                                                                                                                                                (fun
-                                                                                                                                                      (captures :
-                                                                                                                                                        CaptureMap)
-                                                                                                                                                      (remaining :
-                                                                                                                                                        List
-                                                                                                                                                          Char) =>
-                                                                                                                                                    if
-                                                                                                                                                        (remaining).isEmpty then
-                                                                                                                                                      some
-                                                                                                                                                        captures
-                                                                                                                                                    else
-                                                                                                                                                      none)
-                                                                                                                                                  (ownCaptures_root ++
-                                                                                                                                                      bodyCaptures_root ++
-                                                                                                                                                    tailCaptures_root)
-                                                                                                                                                  suffix_root)
-                                                                                                                                              (ownCaptures_roottrn ++
-                                                                                                                                                  bodyCaptures_roottrn ++
-                                                                                                                                                tailCaptures_roottrn)
-                                                                                                                                              suffix_roottrn)
-                                                                                                                                          (ownCaptures_roottrntrrl ++
-                                                                                                                                              bodyCaptures_roottrntrrl ++
-                                                                                                                                            tailCaptures_roottrntrrl)
-                                                                                                                                          suffix_roottrntrrl)
-                                                                                                                                      ([] :
-                                                                                                                                        CaptureMap)
-                                                                                                                                      remaining_roottrntrrl)
-                                                                                                                                  (ownCaptures_roottrntrrlbln ++
-                                                                                                                                      bodyCaptures_roottrntrrlbln ++
-                                                                                                                                    tailCaptures_roottrntrrlbln)
-                                                                                                                                  suffix_roottrntrrlbln)
-                                                                                                                              (ownCaptures_roottrntrrlblnt ++
-                                                                                                                                  bodyCaptures_roottrntrrlblnt ++
-                                                                                                                                tailCaptures_roottrntrrlblnt)
-                                                                                                                              suffix_roottrntrrlblnt)
-                                                                                                                          ([] :
-                                                                                                                            CaptureMap)
-                                                                                                                          remaining_roottrntrrlblnt)
-                                                                                                                      ([] :
-                                                                                                                        CaptureMap)
-                                                                                                                      ((remaining_roottrntrrlbln).drop
-                                                                                                                        width_roottrntrrlblntb)
-                                                                                                                  else
-                                                                                                                    none)
-                                                                                                              ([] :
-                                                                                                                CaptureMap)
-                                                                                                              (((remaining_roottrn).drop
-                                                                                                                    (characters_roottrntrrlbl).length).drop
-                                                                                                                width_roottrntrrlblnb)
-                                                                                                          else none
-                                                                                                      else none)
-                                                                                                      fun _ =>
-                                                                                                      let
-                                                                                                        characters_roottrntrrlbr :=
-                                                                                                        "-".toList
-                                                                                                      if
-                                                                                                          (characters_roottrntrrlbr).isPrefixOf
-                                                                                                            remaining_roottrn then
-                                                                                                        (List.range
-                                                                                                              (((remaining_roottrn).drop
-                                                                                                                    (characters_roottrntrrlbr).length).length +
-                                                                                                                1)).findSome?
-                                                                                                          fun
-                                                                                                            width_roottrntrrlbrnb =>
-                                                                                                          if
-                                                                                                              termPrefixOk
-                                                                                                                TokClass.digit
-                                                                                                                (LenSpec.exactly
-                                                                                                                  2)
-                                                                                                                ((remaining_roottrn).drop
-                                                                                                                  (characters_roottrntrrlbr).length)
-                                                                                                                width_roottrntrrlbrnb then
-                                                                                                            (fun
-                                                                                                                  (bodyCaptures_roottrntrrlbrn :
-                                                                                                                    CaptureMap)
-                                                                                                                  (remaining_roottrntrrlbrn :
-                                                                                                                    List
-                                                                                                                      Char) =>
-                                                                                                                let
-                                                                                                                  ownCaptures_roottrntrrlbrn :=
-                                                                                                                  (["hh",
-                                                                                                                        "Offset.hh"]).map
-                                                                                                                    fun
-                                                                                                                      key =>
-                                                                                                                    (key,
-                                                                                                                      String.ofList
-                                                                                                                        (((remaining_roottrn).drop
-                                                                                                                              (characters_roottrntrrlbr).length).take
-                                                                                                                          (((remaining_roottrn).drop
-                                                                                                                                (characters_roottrntrrlbr).length).length -
-                                                                                                                            (remaining_roottrntrrlbrn).length)))
-                                                                                                                (List.range
-                                                                                                                      ((remaining_roottrntrrlbrn).length +
-                                                                                                                        1)).findSome?
-                                                                                                                  fun
-                                                                                                                    width_roottrntrrlbrntb =>
-                                                                                                                  if
-                                                                                                                      termPrefixOk
-                                                                                                                        TokClass.digit
-                                                                                                                        (LenSpec.exactly
-                                                                                                                          2)
-                                                                                                                        remaining_roottrntrrlbrn
-                                                                                                                        width_roottrntrrlbrntb then
-                                                                                                                    (fun
-                                                                                                                          (bodyCaptures_roottrntrrlbrnt :
-                                                                                                                            CaptureMap)
-                                                                                                                          (remaining_roottrntrrlbrnt :
-                                                                                                                            List
-                                                                                                                              Char) =>
-                                                                                                                        let
-                                                                                                                          ownCaptures_roottrntrrlbrnt :=
-                                                                                                                          (["mm",
-                                                                                                                                "Offset.mm"]).map
-                                                                                                                            fun
-                                                                                                                              key =>
-                                                                                                                            (key,
-                                                                                                                              String.ofList
-                                                                                                                                ((remaining_roottrntrrlbrn).take
-                                                                                                                                  ((remaining_roottrntrrlbrn).length -
-                                                                                                                                    (remaining_roottrntrrlbrnt).length)))
-                                                                                                                        (fun
-                                                                                                                              (tailCaptures_roottrntrrlbrnt :
-                                                                                                                                CaptureMap)
-                                                                                                                              (suffix_roottrntrrlbrnt :
-                                                                                                                                List
-                                                                                                                                  Char) =>
-                                                                                                                            (fun
-                                                                                                                                  (tailCaptures_roottrntrrlbrn :
-                                                                                                                                    CaptureMap)
-                                                                                                                                  (suffix_roottrntrrlbrn :
-                                                                                                                                    List
-                                                                                                                                      Char) =>
-                                                                                                                                (fun
-                                                                                                                                      (bodyCaptures_roottrntrrl :
-                                                                                                                                        CaptureMap)
-                                                                                                                                      (remaining_roottrntrrl :
-                                                                                                                                        List
-                                                                                                                                          Char) =>
-                                                                                                                                    let
-                                                                                                                                      ownCaptures_roottrntrrl :=
-                                                                                                                                      (["Offset"]).map
-                                                                                                                                        fun
-                                                                                                                                          key =>
-                                                                                                                                        (key,
-                                                                                                                                          String.ofList
-                                                                                                                                            ((remaining_roottrn).take
-                                                                                                                                              ((remaining_roottrn).length -
-                                                                                                                                                (remaining_roottrntrrl).length)))
-                                                                                                                                    (fun
-                                                                                                                                          (tailCaptures_roottrntrrl :
-                                                                                                                                            CaptureMap)
-                                                                                                                                          (suffix_roottrntrrl :
-                                                                                                                                            List
-                                                                                                                                              Char) =>
-                                                                                                                                        (fun
-                                                                                                                                              (tailCaptures_roottrn :
-                                                                                                                                                CaptureMap)
-                                                                                                                                              (suffix_roottrn :
-                                                                                                                                                List
-                                                                                                                                                  Char) =>
-                                                                                                                                            (fun
-                                                                                                                                                  (tailCaptures_root :
-                                                                                                                                                    CaptureMap)
-                                                                                                                                                  (suffix_root :
-                                                                                                                                                    List
-                                                                                                                                                      Char) =>
-                                                                                                                                                (fun
-                                                                                                                                                      (captures :
-                                                                                                                                                        CaptureMap)
-                                                                                                                                                      (remaining :
-                                                                                                                                                        List
-                                                                                                                                                          Char) =>
-                                                                                                                                                    if
-                                                                                                                                                        (remaining).isEmpty then
-                                                                                                                                                      some
-                                                                                                                                                        captures
-                                                                                                                                                    else
-                                                                                                                                                      none)
-                                                                                                                                                  (ownCaptures_root ++
-                                                                                                                                                      bodyCaptures_root ++
-                                                                                                                                                    tailCaptures_root)
-                                                                                                                                                  suffix_root)
-                                                                                                                                              (ownCaptures_roottrn ++
-                                                                                                                                                  bodyCaptures_roottrn ++
-                                                                                                                                                tailCaptures_roottrn)
-                                                                                                                                              suffix_roottrn)
-                                                                                                                                          (ownCaptures_roottrntrrl ++
-                                                                                                                                              bodyCaptures_roottrntrrl ++
-                                                                                                                                            tailCaptures_roottrntrrl)
-                                                                                                                                          suffix_roottrntrrl)
-                                                                                                                                      ([] :
-                                                                                                                                        CaptureMap)
-                                                                                                                                      remaining_roottrntrrl)
-                                                                                                                                  (ownCaptures_roottrntrrlbrn ++
-                                                                                                                                      bodyCaptures_roottrntrrlbrn ++
-                                                                                                                                    tailCaptures_roottrntrrlbrn)
-                                                                                                                                  suffix_roottrntrrlbrn)
-                                                                                                                              (ownCaptures_roottrntrrlbrnt ++
-                                                                                                                                  bodyCaptures_roottrntrrlbrnt ++
-                                                                                                                                tailCaptures_roottrntrrlbrnt)
-                                                                                                                              suffix_roottrntrrlbrnt)
-                                                                                                                          ([] :
-                                                                                                                            CaptureMap)
-                                                                                                                          remaining_roottrntrrlbrnt)
-                                                                                                                      ([] :
-                                                                                                                        CaptureMap)
-                                                                                                                      ((remaining_roottrntrrlbrn).drop
-                                                                                                                        width_roottrntrrlbrntb)
-                                                                                                                  else
-                                                                                                                    none)
-                                                                                                              ([] :
-                                                                                                                CaptureMap)
-                                                                                                              (((remaining_roottrn).drop
-                                                                                                                    (characters_roottrntrrlbr).length).drop
-                                                                                                                width_roottrntrrlbrnb)
-                                                                                                          else none
-                                                                                                      else none)
-                                                                                                    fun _ =>
-                                                                                                    let
-                                                                                                      characters_roottrntrrr :=
-                                                                                                      ".".toList
-                                                                                                    if
-                                                                                                        (characters_roottrntrrr).isPrefixOf
-                                                                                                          remaining_roottrn then
-                                                                                                      (List.range
-                                                                                                            (((remaining_roottrn).drop
-                                                                                                                  (characters_roottrntrrr).length).length +
-                                                                                                              1)).findSome?
-                                                                                                        fun
-                                                                                                          width_roottrntrrrnb =>
-                                                                                                        if
-                                                                                                            termPrefixOk
-                                                                                                              TokClass.digit
-                                                                                                              (LenSpec.exactly
-                                                                                                                3)
-                                                                                                              ((remaining_roottrn).drop
-                                                                                                                (characters_roottrntrrr).length)
-                                                                                                              width_roottrntrrrnb then
-                                                                                                          (fun
-                                                                                                                (bodyCaptures_roottrntrrrn :
-                                                                                                                  CaptureMap)
-                                                                                                                (remaining_roottrntrrrn :
-                                                                                                                  List
-                                                                                                                    Char) =>
-                                                                                                              let
-                                                                                                                ownCaptures_roottrntrrrn :=
-                                                                                                                (["SSS"]).map
-                                                                                                                  fun
-                                                                                                                    key =>
-                                                                                                                  (key,
-                                                                                                                    String.ofList
-                                                                                                                      (((remaining_roottrn).drop
-                                                                                                                            (characters_roottrntrrr).length).take
-                                                                                                                        (((remaining_roottrn).drop
-                                                                                                                              (characters_roottrntrrr).length).length -
-                                                                                                                          (remaining_roottrntrrrn).length)))
-                                                                                                              scanOrElse
-                                                                                                                (let
-                                                                                                                  characters_roottrntrrrntbl :=
-                                                                                                                  "+".toList
-                                                                                                                if
-                                                                                                                    (characters_roottrntrrrntbl).isPrefixOf
-                                                                                                                      remaining_roottrntrrrn then
-                                                                                                                  (List.range
-                                                                                                                        (((remaining_roottrntrrrn).drop
-                                                                                                                              (characters_roottrntrrrntbl).length).length +
-                                                                                                                          1)).findSome?
-                                                                                                                    fun
-                                                                                                                      width_roottrntrrrntblnb =>
-                                                                                                                    if
-                                                                                                                        termPrefixOk
-                                                                                                                          TokClass.digit
-                                                                                                                          (LenSpec.exactly
-                                                                                                                            2)
-                                                                                                                          ((remaining_roottrntrrrn).drop
-                                                                                                                            (characters_roottrntrrrntbl).length)
-                                                                                                                          width_roottrntrrrntblnb then
-                                                                                                                      (fun
-                                                                                                                            (bodyCaptures_roottrntrrrntbln :
-                                                                                                                              CaptureMap)
-                                                                                                                            (remaining_roottrntrrrntbln :
-                                                                                                                              List
-                                                                                                                                Char) =>
-                                                                                                                          let
-                                                                                                                            ownCaptures_roottrntrrrntbln :=
-                                                                                                                            (["hh",
-                                                                                                                                  "Offset.hh"]).map
-                                                                                                                              fun
-                                                                                                                                key =>
-                                                                                                                              (key,
-                                                                                                                                String.ofList
-                                                                                                                                  (((remaining_roottrntrrrn).drop
-                                                                                                                                        (characters_roottrntrrrntbl).length).take
-                                                                                                                                    (((remaining_roottrntrrrn).drop
-                                                                                                                                          (characters_roottrntrrrntbl).length).length -
-                                                                                                                                      (remaining_roottrntrrrntbln).length)))
-                                                                                                                          (List.range
-                                                                                                                                ((remaining_roottrntrrrntbln).length +
-                                                                                                                                  1)).findSome?
-                                                                                                                            fun
-                                                                                                                              width_roottrntrrrntblntb =>
-                                                                                                                            if
-                                                                                                                                termPrefixOk
-                                                                                                                                  TokClass.digit
-                                                                                                                                  (LenSpec.exactly
-                                                                                                                                    2)
-                                                                                                                                  remaining_roottrntrrrntbln
-                                                                                                                                  width_roottrntrrrntblntb then
-                                                                                                                              (fun
-                                                                                                                                    (bodyCaptures_roottrntrrrntblnt :
-                                                                                                                                      CaptureMap)
-                                                                                                                                    (remaining_roottrntrrrntblnt :
-                                                                                                                                      List
-                                                                                                                                        Char) =>
-                                                                                                                                  let
-                                                                                                                                    ownCaptures_roottrntrrrntblnt :=
-                                                                                                                                    (["mm",
-                                                                                                                                          "Offset.mm"]).map
-                                                                                                                                      fun
-                                                                                                                                        key =>
-                                                                                                                                      (key,
-                                                                                                                                        String.ofList
-                                                                                                                                          ((remaining_roottrntrrrntbln).take
-                                                                                                                                            ((remaining_roottrntrrrntbln).length -
-                                                                                                                                              (remaining_roottrntrrrntblnt).length)))
-                                                                                                                                  (fun
-                                                                                                                                        (tailCaptures_roottrntrrrntblnt :
-                                                                                                                                          CaptureMap)
-                                                                                                                                        (suffix_roottrntrrrntblnt :
-                                                                                                                                          List
-                                                                                                                                            Char) =>
-                                                                                                                                      (fun
-                                                                                                                                            (tailCaptures_roottrntrrrntbln :
-                                                                                                                                              CaptureMap)
-                                                                                                                                            (suffix_roottrntrrrntbln :
-                                                                                                                                              List
-                                                                                                                                                Char) =>
-                                                                                                                                          (fun
-                                                                                                                                                (bodyCaptures_roottrntrrrnt :
-                                                                                                                                                  CaptureMap)
-                                                                                                                                                (remaining_roottrntrrrnt :
-                                                                                                                                                  List
-                                                                                                                                                    Char) =>
-                                                                                                                                              let
-                                                                                                                                                ownCaptures_roottrntrrrnt :=
-                                                                                                                                                (["Offset"]).map
-                                                                                                                                                  fun
-                                                                                                                                                    key =>
-                                                                                                                                                  (key,
-                                                                                                                                                    String.ofList
-                                                                                                                                                      ((remaining_roottrntrrrn).take
-                                                                                                                                                        ((remaining_roottrntrrrn).length -
-                                                                                                                                                          (remaining_roottrntrrrnt).length)))
-                                                                                                                                              (fun
-                                                                                                                                                    (tailCaptures_roottrntrrrnt :
-                                                                                                                                                      CaptureMap)
-                                                                                                                                                    (suffix_roottrntrrrnt :
-                                                                                                                                                      List
-                                                                                                                                                        Char) =>
-                                                                                                                                                  (fun
-                                                                                                                                                        (tailCaptures_roottrntrrrn :
-                                                                                                                                                          CaptureMap)
-                                                                                                                                                        (suffix_roottrntrrrn :
-                                                                                                                                                          List
-                                                                                                                                                            Char) =>
-                                                                                                                                                      (fun
-                                                                                                                                                            (tailCaptures_roottrn :
-                                                                                                                                                              CaptureMap)
-                                                                                                                                                            (suffix_roottrn :
-                                                                                                                                                              List
-                                                                                                                                                                Char) =>
-                                                                                                                                                          (fun
-                                                                                                                                                                (tailCaptures_root :
-                                                                                                                                                                  CaptureMap)
-                                                                                                                                                                (suffix_root :
-                                                                                                                                                                  List
-                                                                                                                                                                    Char) =>
-                                                                                                                                                              (fun
-                                                                                                                                                                    (captures :
-                                                                                                                                                                      CaptureMap)
-                                                                                                                                                                    (remaining :
-                                                                                                                                                                      List
-                                                                                                                                                                        Char) =>
-                                                                                                                                                                  if
-                                                                                                                                                                      (remaining).isEmpty then
-                                                                                                                                                                    some
-                                                                                                                                                                      captures
-                                                                                                                                                                  else
-                                                                                                                                                                    none)
-                                                                                                                                                                (ownCaptures_root ++
-                                                                                                                                                                    bodyCaptures_root ++
-                                                                                                                                                                  tailCaptures_root)
-                                                                                                                                                                suffix_root)
-                                                                                                                                                            (ownCaptures_roottrn ++
-                                                                                                                                                                bodyCaptures_roottrn ++
-                                                                                                                                                              tailCaptures_roottrn)
-                                                                                                                                                            suffix_roottrn)
-                                                                                                                                                        (ownCaptures_roottrntrrrn ++
-                                                                                                                                                            bodyCaptures_roottrntrrrn ++
-                                                                                                                                                          tailCaptures_roottrntrrrn)
-                                                                                                                                                        suffix_roottrntrrrn)
-                                                                                                                                                    (ownCaptures_roottrntrrrnt ++
-                                                                                                                                                        bodyCaptures_roottrntrrrnt ++
-                                                                                                                                                      tailCaptures_roottrntrrrnt)
-                                                                                                                                                    suffix_roottrntrrrnt)
-                                                                                                                                                ([] :
-                                                                                                                                                  CaptureMap)
-                                                                                                                                                remaining_roottrntrrrnt)
-                                                                                                                                            (ownCaptures_roottrntrrrntbln ++
-                                                                                                                                                bodyCaptures_roottrntrrrntbln ++
-                                                                                                                                              tailCaptures_roottrntrrrntbln)
-                                                                                                                                            suffix_roottrntrrrntbln)
-                                                                                                                                        (ownCaptures_roottrntrrrntblnt ++
-                                                                                                                                            bodyCaptures_roottrntrrrntblnt ++
-                                                                                                                                          tailCaptures_roottrntrrrntblnt)
-                                                                                                                                        suffix_roottrntrrrntblnt)
-                                                                                                                                    ([] :
-                                                                                                                                      CaptureMap)
-                                                                                                                                    remaining_roottrntrrrntblnt)
-                                                                                                                                ([] :
-                                                                                                                                  CaptureMap)
-                                                                                                                                ((remaining_roottrntrrrntbln).drop
-                                                                                                                                  width_roottrntrrrntblntb)
-                                                                                                                            else
-                                                                                                                              none)
-                                                                                                                        ([] :
-                                                                                                                          CaptureMap)
-                                                                                                                        (((remaining_roottrntrrrn).drop
-                                                                                                                              (characters_roottrntrrrntbl).length).drop
-                                                                                                                          width_roottrntrrrntblnb)
-                                                                                                                    else
-                                                                                                                      none
-                                                                                                                else
-                                                                                                                  none)
-                                                                                                                fun _ =>
-                                                                                                                let
-                                                                                                                  characters_roottrntrrrntbr :=
-                                                                                                                  "-".toList
-                                                                                                                if
-                                                                                                                    (characters_roottrntrrrntbr).isPrefixOf
-                                                                                                                      remaining_roottrntrrrn then
-                                                                                                                  (List.range
-                                                                                                                        (((remaining_roottrntrrrn).drop
-                                                                                                                              (characters_roottrntrrrntbr).length).length +
-                                                                                                                          1)).findSome?
-                                                                                                                    fun
-                                                                                                                      width_roottrntrrrntbrnb =>
-                                                                                                                    if
-                                                                                                                        termPrefixOk
-                                                                                                                          TokClass.digit
-                                                                                                                          (LenSpec.exactly
-                                                                                                                            2)
-                                                                                                                          ((remaining_roottrntrrrn).drop
-                                                                                                                            (characters_roottrntrrrntbr).length)
-                                                                                                                          width_roottrntrrrntbrnb then
-                                                                                                                      (fun
-                                                                                                                            (bodyCaptures_roottrntrrrntbrn :
-                                                                                                                              CaptureMap)
-                                                                                                                            (remaining_roottrntrrrntbrn :
-                                                                                                                              List
-                                                                                                                                Char) =>
-                                                                                                                          let
-                                                                                                                            ownCaptures_roottrntrrrntbrn :=
-                                                                                                                            (["hh",
-                                                                                                                                  "Offset.hh"]).map
-                                                                                                                              fun
-                                                                                                                                key =>
-                                                                                                                              (key,
-                                                                                                                                String.ofList
-                                                                                                                                  (((remaining_roottrntrrrn).drop
-                                                                                                                                        (characters_roottrntrrrntbr).length).take
-                                                                                                                                    (((remaining_roottrntrrrn).drop
-                                                                                                                                          (characters_roottrntrrrntbr).length).length -
-                                                                                                                                      (remaining_roottrntrrrntbrn).length)))
-                                                                                                                          (List.range
-                                                                                                                                ((remaining_roottrntrrrntbrn).length +
-                                                                                                                                  1)).findSome?
-                                                                                                                            fun
-                                                                                                                              width_roottrntrrrntbrntb =>
-                                                                                                                            if
-                                                                                                                                termPrefixOk
-                                                                                                                                  TokClass.digit
-                                                                                                                                  (LenSpec.exactly
-                                                                                                                                    2)
-                                                                                                                                  remaining_roottrntrrrntbrn
-                                                                                                                                  width_roottrntrrrntbrntb then
-                                                                                                                              (fun
-                                                                                                                                    (bodyCaptures_roottrntrrrntbrnt :
-                                                                                                                                      CaptureMap)
-                                                                                                                                    (remaining_roottrntrrrntbrnt :
-                                                                                                                                      List
-                                                                                                                                        Char) =>
-                                                                                                                                  let
-                                                                                                                                    ownCaptures_roottrntrrrntbrnt :=
-                                                                                                                                    (["mm",
-                                                                                                                                          "Offset.mm"]).map
-                                                                                                                                      fun
-                                                                                                                                        key =>
-                                                                                                                                      (key,
-                                                                                                                                        String.ofList
-                                                                                                                                          ((remaining_roottrntrrrntbrn).take
-                                                                                                                                            ((remaining_roottrntrrrntbrn).length -
-                                                                                                                                              (remaining_roottrntrrrntbrnt).length)))
-                                                                                                                                  (fun
-                                                                                                                                        (tailCaptures_roottrntrrrntbrnt :
-                                                                                                                                          CaptureMap)
-                                                                                                                                        (suffix_roottrntrrrntbrnt :
-                                                                                                                                          List
-                                                                                                                                            Char) =>
-                                                                                                                                      (fun
-                                                                                                                                            (tailCaptures_roottrntrrrntbrn :
-                                                                                                                                              CaptureMap)
-                                                                                                                                            (suffix_roottrntrrrntbrn :
-                                                                                                                                              List
-                                                                                                                                                Char) =>
-                                                                                                                                          (fun
-                                                                                                                                                (bodyCaptures_roottrntrrrnt :
-                                                                                                                                                  CaptureMap)
-                                                                                                                                                (remaining_roottrntrrrnt :
-                                                                                                                                                  List
-                                                                                                                                                    Char) =>
-                                                                                                                                              let
-                                                                                                                                                ownCaptures_roottrntrrrnt :=
-                                                                                                                                                (["Offset"]).map
-                                                                                                                                                  fun
-                                                                                                                                                    key =>
-                                                                                                                                                  (key,
-                                                                                                                                                    String.ofList
-                                                                                                                                                      ((remaining_roottrntrrrn).take
-                                                                                                                                                        ((remaining_roottrntrrrn).length -
-                                                                                                                                                          (remaining_roottrntrrrnt).length)))
-                                                                                                                                              (fun
-                                                                                                                                                    (tailCaptures_roottrntrrrnt :
-                                                                                                                                                      CaptureMap)
-                                                                                                                                                    (suffix_roottrntrrrnt :
-                                                                                                                                                      List
-                                                                                                                                                        Char) =>
-                                                                                                                                                  (fun
-                                                                                                                                                        (tailCaptures_roottrntrrrn :
-                                                                                                                                                          CaptureMap)
-                                                                                                                                                        (suffix_roottrntrrrn :
-                                                                                                                                                          List
-                                                                                                                                                            Char) =>
-                                                                                                                                                      (fun
-                                                                                                                                                            (tailCaptures_roottrn :
-                                                                                                                                                              CaptureMap)
-                                                                                                                                                            (suffix_roottrn :
-                                                                                                                                                              List
-                                                                                                                                                                Char) =>
-                                                                                                                                                          (fun
-                                                                                                                                                                (tailCaptures_root :
-                                                                                                                                                                  CaptureMap)
-                                                                                                                                                                (suffix_root :
-                                                                                                                                                                  List
-                                                                                                                                                                    Char) =>
-                                                                                                                                                              (fun
-                                                                                                                                                                    (captures :
-                                                                                                                                                                      CaptureMap)
-                                                                                                                                                                    (remaining :
-                                                                                                                                                                      List
-                                                                                                                                                                        Char) =>
-                                                                                                                                                                  if
-                                                                                                                                                                      (remaining).isEmpty then
-                                                                                                                                                                    some
-                                                                                                                                                                      captures
-                                                                                                                                                                  else
-                                                                                                                                                                    none)
-                                                                                                                                                                (ownCaptures_root ++
-                                                                                                                                                                    bodyCaptures_root ++
-                                                                                                                                                                  tailCaptures_root)
-                                                                                                                                                                suffix_root)
-                                                                                                                                                            (ownCaptures_roottrn ++
-                                                                                                                                                                bodyCaptures_roottrn ++
-                                                                                                                                                              tailCaptures_roottrn)
-                                                                                                                                                            suffix_roottrn)
-                                                                                                                                                        (ownCaptures_roottrntrrrn ++
-                                                                                                                                                            bodyCaptures_roottrntrrrn ++
-                                                                                                                                                          tailCaptures_roottrntrrrn)
-                                                                                                                                                        suffix_roottrntrrrn)
-                                                                                                                                                    (ownCaptures_roottrntrrrnt ++
-                                                                                                                                                        bodyCaptures_roottrntrrrnt ++
-                                                                                                                                                      tailCaptures_roottrntrrrnt)
-                                                                                                                                                    suffix_roottrntrrrnt)
-                                                                                                                                                ([] :
-                                                                                                                                                  CaptureMap)
-                                                                                                                                                remaining_roottrntrrrnt)
-                                                                                                                                            (ownCaptures_roottrntrrrntbrn ++
-                                                                                                                                                bodyCaptures_roottrntrrrntbrn ++
-                                                                                                                                              tailCaptures_roottrntrrrntbrn)
-                                                                                                                                            suffix_roottrntrrrntbrn)
-                                                                                                                                        (ownCaptures_roottrntrrrntbrnt ++
-                                                                                                                                            bodyCaptures_roottrntrrrntbrnt ++
-                                                                                                                                          tailCaptures_roottrntrrrntbrnt)
-                                                                                                                                        suffix_roottrntrrrntbrnt)
-                                                                                                                                    ([] :
-                                                                                                                                      CaptureMap)
-                                                                                                                                    remaining_roottrntrrrntbrnt)
-                                                                                                                                ([] :
-                                                                                                                                  CaptureMap)
-                                                                                                                                ((remaining_roottrntrrrntbrn).drop
-                                                                                                                                  width_roottrntrrrntbrntb)
-                                                                                                                            else
-                                                                                                                              none)
-                                                                                                                        ([] :
-                                                                                                                          CaptureMap)
-                                                                                                                        (((remaining_roottrntrrrn).drop
-                                                                                                                              (characters_roottrntrrrntbr).length).drop
-                                                                                                                          width_roottrntrrrntbrnb)
-                                                                                                                    else
-                                                                                                                      none
-                                                                                                                else
-                                                                                                                  none)
-                                                                                                            ([] :
-                                                                                                              CaptureMap)
-                                                                                                            (((remaining_roottrn).drop
-                                                                                                                  (characters_roottrntrrr).length).drop
-                                                                                                              width_roottrntrrrnb)
-                                                                                                        else none
-                                                                                                    else none)
-                                                                                            (ownCaptures_roottrnb ++
-                                                                                                bodyCaptures_roottrnb ++
-                                                                                              tailCaptures_roottrnb)
-                                                                                            suffix_roottrnb)
-                                                                                        (ownCaptures_roottrnbtn ++
-                                                                                            bodyCaptures_roottrnbtn ++
-                                                                                          tailCaptures_roottrnbtn)
-                                                                                        suffix_roottrnbtn)
-                                                                                    (ownCaptures_roottrnbtntn ++
-                                                                                        bodyCaptures_roottrnbtntn ++
-                                                                                      tailCaptures_roottrnbtntn)
-                                                                                    suffix_roottrnbtntn)
-                                                                                ([] : CaptureMap)
-                                                                                remaining_roottrnbtntn)
-                                                                            ([] : CaptureMap)
-                                                                            (((remaining_roottrnbtn).drop
-                                                                                  (characters_roottrnbtnt).length).drop
-                                                                              width_roottrnbtntnb)
-                                                                        else none
-                                                                    else none)
-                                                                  ([] : CaptureMap)
-                                                                  (((remaining_roottrnb).drop
-                                                                        (characters_roottrnbt).length).drop
-                                                                    width_roottrnbtnb)
-                                                              else none
-                                                          else none)
-                                                        ([] : CaptureMap)
-                                                        (((remaining_root).drop (characters_roottr).length).drop
-                                                          width_roottrnbb)
-                                                    else none
-                                                else none)
-                                            (ownCaptures_rootb ++ bodyCaptures_rootb ++ tailCaptures_rootb)
-                                            suffix_rootb)
-                                        (ownCaptures_rootbtn ++ bodyCaptures_rootbtn ++ tailCaptures_rootbtn)
-                                        suffix_rootbtn)
-                                    (ownCaptures_rootbtntn ++ bodyCaptures_rootbtntn ++ tailCaptures_rootbtntn)
-                                    suffix_rootbtntn)
-                                ([] : CaptureMap) remaining_rootbtntn)
-                            ([] : CaptureMap)
-                            (((remaining_rootbtn).drop (characters_rootbtnt).length).drop width_rootbtntnb)
-                        else none
-                    else none)
-                  ([] : CaptureMap) (((remaining_rootb).drop (characters_rootbt).length).drop width_rootbtnb)
-              else none
-          else none)
-        ([] : CaptureMap) ((input).drop width_rootbb)
+private def Datetime.searchCode_0 : SearchCode :=
+  SearchCode.accept
+
+@[inline]
+private def Datetime.searchNode_0 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  k [] input
+
+private theorem Datetime.searchNode_0_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_0 input k = SearchCode.runK Datetime.searchCode_0 input k :=
+  by
+  unfold Datetime.searchNode_0 Datetime.searchCode_0
+  simp only [SearchCode.runK]
+
+private def Datetime.searchCode_1 : SearchCode :=
+  SearchCode.tokenRun TokClass.digit (LenSpec.exactly 4) Datetime.searchCode_0
+
+@[inline]
+private def Datetime.searchNode_1 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  (List.range ((input).length + 1)).findSome? fun width =>
+    if termPrefixOk TokClass.digit (LenSpec.exactly 4) input width then Datetime.searchNode_0 ((input).drop width) k
     else none
+
+private theorem Datetime.searchNode_1_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_1 input k = SearchCode.runK Datetime.searchCode_1 input k :=
+  by
+  unfold Datetime.searchNode_1 Datetime.searchCode_1
+  simp only [SearchCode.runK, Datetime.searchNode_0_eq]
+
+private def Datetime.searchCode_2 : SearchCode :=
+  SearchCode.tokenRun TokClass.digit (LenSpec.exactly 2) Datetime.searchCode_0
+
+@[inline]
+private def Datetime.searchNode_2 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  (List.range ((input).length + 1)).findSome? fun width =>
+    if termPrefixOk TokClass.digit (LenSpec.exactly 2) input width then Datetime.searchNode_0 ((input).drop width) k
+    else none
+
+private theorem Datetime.searchNode_2_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_2 input k = SearchCode.runK Datetime.searchCode_2 input k :=
+  by
+  unfold Datetime.searchNode_2 Datetime.searchCode_2
+  simp only [SearchCode.runK, Datetime.searchNode_0_eq]
+
+private def Datetime.searchCode_3 : SearchCode :=
+  SearchCode.capture ["DD", "Date.DD"] Datetime.searchCode_2 Datetime.searchCode_0
+
+@[inline]
+private def Datetime.searchNode_3 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  Datetime.searchNode_2 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Datetime.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["DD", "Date.DD"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem Datetime.searchNode_3_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_3 input k = SearchCode.runK Datetime.searchCode_3 input k :=
+  by
+  unfold Datetime.searchNode_3 Datetime.searchCode_3
+  simp only [SearchCode.runK, Datetime.searchNode_2_eq, Datetime.searchNode_0_eq]
+
+private def Datetime.searchCode_4 : SearchCode :=
+  SearchCode.literal "-" Datetime.searchCode_3
+
+@[inline]
+private def Datetime.searchNode_4 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  let characters := ("-").toList
+  if characters.isPrefixOf input then Datetime.searchNode_3 ((input).drop characters.length) k else none
+
+private theorem Datetime.searchNode_4_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_4 input k = SearchCode.runK Datetime.searchCode_4 input k :=
+  by
+  unfold Datetime.searchNode_4 Datetime.searchCode_4
+  simp only [SearchCode.runK, Datetime.searchNode_3_eq]
+
+private def Datetime.searchCode_5 : SearchCode :=
+  SearchCode.capture ["MM", "Date.MM"] Datetime.searchCode_2 Datetime.searchCode_4
+
+@[inline]
+private def Datetime.searchNode_5 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  Datetime.searchNode_2 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Datetime.searchNode_4 remaining fun tailCaptures suffix =>
+      k ((["MM", "Date.MM"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem Datetime.searchNode_5_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_5 input k = SearchCode.runK Datetime.searchCode_5 input k :=
+  by
+  unfold Datetime.searchNode_5 Datetime.searchCode_5
+  simp only [SearchCode.runK, Datetime.searchNode_2_eq, Datetime.searchNode_4_eq]
+
+private def Datetime.searchCode_6 : SearchCode :=
+  SearchCode.literal "-" Datetime.searchCode_5
+
+@[inline]
+private def Datetime.searchNode_6 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  let characters := ("-").toList
+  if characters.isPrefixOf input then Datetime.searchNode_5 ((input).drop characters.length) k else none
+
+private theorem Datetime.searchNode_6_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_6 input k = SearchCode.runK Datetime.searchCode_6 input k :=
+  by
+  unfold Datetime.searchNode_6 Datetime.searchCode_6
+  simp only [SearchCode.runK, Datetime.searchNode_5_eq]
+
+private def Datetime.searchCode_7 : SearchCode :=
+  SearchCode.capture ["YYYY", "Date.YYYY"] Datetime.searchCode_1 Datetime.searchCode_6
+
+@[inline]
+private def Datetime.searchNode_7 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  Datetime.searchNode_1 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Datetime.searchNode_6 remaining fun tailCaptures suffix =>
+      k ((["YYYY", "Date.YYYY"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem Datetime.searchNode_7_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_7 input k = SearchCode.runK Datetime.searchCode_7 input k :=
+  by
+  unfold Datetime.searchNode_7 Datetime.searchCode_7
+  simp only [SearchCode.runK, Datetime.searchNode_1_eq, Datetime.searchNode_6_eq]
+
+private def Datetime.searchCode_8 : SearchCode :=
+  SearchCode.capture ["ss", "Time.ss"] Datetime.searchCode_2 Datetime.searchCode_0
+
+@[inline]
+private def Datetime.searchNode_8 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  Datetime.searchNode_2 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Datetime.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["ss", "Time.ss"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem Datetime.searchNode_8_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_8 input k = SearchCode.runK Datetime.searchCode_8 input k :=
+  by
+  unfold Datetime.searchNode_8 Datetime.searchCode_8
+  simp only [SearchCode.runK, Datetime.searchNode_2_eq, Datetime.searchNode_0_eq]
+
+private def Datetime.searchCode_9 : SearchCode :=
+  SearchCode.literal ":" Datetime.searchCode_8
+
+@[inline]
+private def Datetime.searchNode_9 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  let characters := (":").toList
+  if characters.isPrefixOf input then Datetime.searchNode_8 ((input).drop characters.length) k else none
+
+private theorem Datetime.searchNode_9_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_9 input k = SearchCode.runK Datetime.searchCode_9 input k :=
+  by
+  unfold Datetime.searchNode_9 Datetime.searchCode_9
+  simp only [SearchCode.runK, Datetime.searchNode_8_eq]
+
+private def Datetime.searchCode_10 : SearchCode :=
+  SearchCode.capture ["mm", "Time.mm"] Datetime.searchCode_2 Datetime.searchCode_9
+
+@[inline]
+private def Datetime.searchNode_10 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  Datetime.searchNode_2 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Datetime.searchNode_9 remaining fun tailCaptures suffix =>
+      k ((["mm", "Time.mm"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem Datetime.searchNode_10_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_10 input k = SearchCode.runK Datetime.searchCode_10 input k :=
+  by
+  unfold Datetime.searchNode_10 Datetime.searchCode_10
+  simp only [SearchCode.runK, Datetime.searchNode_2_eq, Datetime.searchNode_9_eq]
+
+private def Datetime.searchCode_11 : SearchCode :=
+  SearchCode.literal ":" Datetime.searchCode_10
+
+@[inline]
+private def Datetime.searchNode_11 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  let characters := (":").toList
+  if characters.isPrefixOf input then Datetime.searchNode_10 ((input).drop characters.length) k else none
+
+private theorem Datetime.searchNode_11_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_11 input k = SearchCode.runK Datetime.searchCode_11 input k :=
+  by
+  unfold Datetime.searchNode_11 Datetime.searchCode_11
+  simp only [SearchCode.runK, Datetime.searchNode_10_eq]
+
+private def Datetime.searchCode_12 : SearchCode :=
+  SearchCode.capture ["hh", "Time.hh"] Datetime.searchCode_2 Datetime.searchCode_11
+
+@[inline]
+private def Datetime.searchNode_12 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  Datetime.searchNode_2 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Datetime.searchNode_11 remaining fun tailCaptures suffix =>
+      k ((["hh", "Time.hh"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem Datetime.searchNode_12_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_12 input k = SearchCode.runK Datetime.searchCode_12 input k :=
+  by
+  unfold Datetime.searchNode_12 Datetime.searchCode_12
+  simp only [SearchCode.runK, Datetime.searchNode_2_eq, Datetime.searchNode_11_eq]
+
+private def Datetime.searchCode_13 : SearchCode :=
+  SearchCode.literal "Z" Datetime.searchCode_0
+
+@[inline]
+private def Datetime.searchNode_13 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  let characters := ("Z").toList
+  if characters.isPrefixOf input then Datetime.searchNode_0 ((input).drop characters.length) k else none
+
+private theorem Datetime.searchNode_13_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_13 input k = SearchCode.runK Datetime.searchCode_13 input k :=
+  by
+  unfold Datetime.searchNode_13 Datetime.searchCode_13
+  simp only [SearchCode.runK, Datetime.searchNode_0_eq]
+
+private def Datetime.searchCode_14 : SearchCode :=
+  SearchCode.tokenRun TokClass.digit (LenSpec.exactly 3) Datetime.searchCode_0
+
+@[inline]
+private def Datetime.searchNode_14 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  (List.range ((input).length + 1)).findSome? fun width =>
+    if termPrefixOk TokClass.digit (LenSpec.exactly 3) input width then Datetime.searchNode_0 ((input).drop width) k
+    else none
+
+private theorem Datetime.searchNode_14_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_14 input k = SearchCode.runK Datetime.searchCode_14 input k :=
+  by
+  unfold Datetime.searchNode_14 Datetime.searchCode_14
+  simp only [SearchCode.runK, Datetime.searchNode_0_eq]
+
+private def Datetime.searchCode_15 : SearchCode :=
+  SearchCode.capture ["SSS"] Datetime.searchCode_14 Datetime.searchCode_13
+
+@[inline]
+private def Datetime.searchNode_15 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  Datetime.searchNode_14 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Datetime.searchNode_13 remaining fun tailCaptures suffix =>
+      k ((["SSS"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem Datetime.searchNode_15_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_15 input k = SearchCode.runK Datetime.searchCode_15 input k :=
+  by
+  unfold Datetime.searchNode_15 Datetime.searchCode_15
+  simp only [SearchCode.runK, Datetime.searchNode_14_eq, Datetime.searchNode_13_eq]
+
+private def Datetime.searchCode_16 : SearchCode :=
+  SearchCode.literal "." Datetime.searchCode_15
+
+@[inline]
+private def Datetime.searchNode_16 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  let characters := (".").toList
+  if characters.isPrefixOf input then Datetime.searchNode_15 ((input).drop characters.length) k else none
+
+private theorem Datetime.searchNode_16_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_16 input k = SearchCode.runK Datetime.searchCode_16 input k :=
+  by
+  unfold Datetime.searchNode_16 Datetime.searchCode_16
+  simp only [SearchCode.runK, Datetime.searchNode_15_eq]
+
+private def Datetime.searchCode_17 : SearchCode :=
+  SearchCode.capture ["mm", "Offset.mm"] Datetime.searchCode_2 Datetime.searchCode_0
+
+@[inline]
+private def Datetime.searchNode_17 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  Datetime.searchNode_2 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Datetime.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["mm", "Offset.mm"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem Datetime.searchNode_17_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_17 input k = SearchCode.runK Datetime.searchCode_17 input k :=
+  by
+  unfold Datetime.searchNode_17 Datetime.searchCode_17
+  simp only [SearchCode.runK, Datetime.searchNode_2_eq, Datetime.searchNode_0_eq]
+
+private def Datetime.searchCode_18 : SearchCode :=
+  SearchCode.capture ["hh", "Offset.hh"] Datetime.searchCode_2 Datetime.searchCode_17
+
+private def Datetime.searchNode_18 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  Datetime.searchNode_2 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Datetime.searchNode_17 remaining fun tailCaptures suffix =>
+      k ((["hh", "Offset.hh"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem Datetime.searchNode_18_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_18 input k = SearchCode.runK Datetime.searchCode_18 input k :=
+  by
+  unfold Datetime.searchNode_18 Datetime.searchCode_18
+  simp only [SearchCode.runK, Datetime.searchNode_2_eq, Datetime.searchNode_17_eq]
+
+private def Datetime.searchCode_19 : SearchCode :=
+  SearchCode.literal "+" Datetime.searchCode_18
+
+@[inline]
+private def Datetime.searchNode_19 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  let characters := ("+").toList
+  if characters.isPrefixOf input then Datetime.searchNode_18 ((input).drop characters.length) k else none
+
+private theorem Datetime.searchNode_19_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_19 input k = SearchCode.runK Datetime.searchCode_19 input k :=
+  by
+  unfold Datetime.searchNode_19 Datetime.searchCode_19
+  simp only [SearchCode.runK, Datetime.searchNode_18_eq]
+
+private def Datetime.searchCode_20 : SearchCode :=
+  SearchCode.literal "-" Datetime.searchCode_18
+
+@[inline]
+private def Datetime.searchNode_20 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  let characters := ("-").toList
+  if characters.isPrefixOf input then Datetime.searchNode_18 ((input).drop characters.length) k else none
+
+private theorem Datetime.searchNode_20_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_20 input k = SearchCode.runK Datetime.searchCode_20 input k :=
+  by
+  unfold Datetime.searchNode_20 Datetime.searchCode_20
+  simp only [SearchCode.runK, Datetime.searchNode_18_eq]
+
+private def Datetime.searchCode_21 : SearchCode :=
+  SearchCode.choice Datetime.searchCode_19 Datetime.searchCode_20
+
+@[inline]
+private def Datetime.searchNode_21 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  scanOrElse (Datetime.searchNode_19 input k) fun _ => Datetime.searchNode_20 input k
+
+private theorem Datetime.searchNode_21_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_21 input k = SearchCode.runK Datetime.searchCode_21 input k :=
+  by
+  unfold Datetime.searchNode_21 Datetime.searchCode_21
+  simp only [SearchCode.runK, Datetime.searchNode_19_eq, Datetime.searchNode_20_eq]
+
+private def Datetime.searchCode_22 : SearchCode :=
+  SearchCode.capture ["Offset"] Datetime.searchCode_21 Datetime.searchCode_0
+
+private def Datetime.searchNode_22 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  Datetime.searchNode_21 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Datetime.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["Offset"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem Datetime.searchNode_22_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_22 input k = SearchCode.runK Datetime.searchCode_22 input k :=
+  by
+  unfold Datetime.searchNode_22 Datetime.searchCode_22
+  simp only [SearchCode.runK, Datetime.searchNode_21_eq, Datetime.searchNode_0_eq]
+
+private def Datetime.searchCode_23 : SearchCode :=
+  SearchCode.capture ["SSS"] Datetime.searchCode_14 Datetime.searchCode_22
+
+@[inline]
+private def Datetime.searchNode_23 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  Datetime.searchNode_14 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Datetime.searchNode_22 remaining fun tailCaptures suffix =>
+      k ((["SSS"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem Datetime.searchNode_23_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_23 input k = SearchCode.runK Datetime.searchCode_23 input k :=
+  by
+  unfold Datetime.searchNode_23 Datetime.searchCode_23
+  simp only [SearchCode.runK, Datetime.searchNode_14_eq, Datetime.searchNode_22_eq]
+
+private def Datetime.searchCode_24 : SearchCode :=
+  SearchCode.literal "." Datetime.searchCode_23
+
+@[inline]
+private def Datetime.searchNode_24 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  let characters := (".").toList
+  if characters.isPrefixOf input then Datetime.searchNode_23 ((input).drop characters.length) k else none
+
+private theorem Datetime.searchNode_24_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_24 input k = SearchCode.runK Datetime.searchCode_24 input k :=
+  by
+  unfold Datetime.searchNode_24 Datetime.searchCode_24
+  simp only [SearchCode.runK, Datetime.searchNode_23_eq]
+
+private def Datetime.searchCode_25 : SearchCode :=
+  SearchCode.choice Datetime.searchCode_22 Datetime.searchCode_24
+
+@[inline]
+private def Datetime.searchNode_25 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  scanOrElse (Datetime.searchNode_22 input k) fun _ => Datetime.searchNode_24 input k
+
+private theorem Datetime.searchNode_25_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_25 input k = SearchCode.runK Datetime.searchCode_25 input k :=
+  by
+  unfold Datetime.searchNode_25 Datetime.searchCode_25
+  simp only [SearchCode.runK, Datetime.searchNode_22_eq, Datetime.searchNode_24_eq]
+
+private def Datetime.searchCode_26 : SearchCode :=
+  SearchCode.choice Datetime.searchCode_16 Datetime.searchCode_25
+
+@[inline]
+private def Datetime.searchNode_26 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  scanOrElse (Datetime.searchNode_16 input k) fun _ => Datetime.searchNode_25 input k
+
+private theorem Datetime.searchNode_26_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_26 input k = SearchCode.runK Datetime.searchCode_26 input k :=
+  by
+  unfold Datetime.searchNode_26 Datetime.searchCode_26
+  simp only [SearchCode.runK, Datetime.searchNode_16_eq, Datetime.searchNode_25_eq]
+
+private def Datetime.searchCode_27 : SearchCode :=
+  SearchCode.choice Datetime.searchCode_13 Datetime.searchCode_26
+
+@[inline]
+private def Datetime.searchNode_27 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  scanOrElse (Datetime.searchNode_13 input k) fun _ => Datetime.searchNode_26 input k
+
+private theorem Datetime.searchNode_27_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_27 input k = SearchCode.runK Datetime.searchCode_27 input k :=
+  by
+  unfold Datetime.searchNode_27 Datetime.searchCode_27
+  simp only [SearchCode.runK, Datetime.searchNode_13_eq, Datetime.searchNode_26_eq]
+
+private def Datetime.searchCode_28 : SearchCode :=
+  SearchCode.capture ["Time"] Datetime.searchCode_12 Datetime.searchCode_27
+
+@[inline]
+private def Datetime.searchNode_28 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  Datetime.searchNode_12 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Datetime.searchNode_27 remaining fun tailCaptures suffix =>
+      k ((["Time"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem Datetime.searchNode_28_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_28 input k = SearchCode.runK Datetime.searchCode_28 input k :=
+  by
+  unfold Datetime.searchNode_28 Datetime.searchCode_28
+  simp only [SearchCode.runK, Datetime.searchNode_12_eq, Datetime.searchNode_27_eq]
+
+private def Datetime.searchCode_29 : SearchCode :=
+  SearchCode.literal "T" Datetime.searchCode_28
+
+@[inline]
+private def Datetime.searchNode_29 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  let characters := ("T").toList
+  if characters.isPrefixOf input then Datetime.searchNode_28 ((input).drop characters.length) k else none
+
+private theorem Datetime.searchNode_29_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_29 input k = SearchCode.runK Datetime.searchCode_29 input k :=
+  by
+  unfold Datetime.searchNode_29 Datetime.searchCode_29
+  simp only [SearchCode.runK, Datetime.searchNode_28_eq]
+
+private def Datetime.searchCode_30 : SearchCode :=
+  SearchCode.choice Datetime.searchCode_0 Datetime.searchCode_29
+
+@[inline]
+private def Datetime.searchNode_30 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  scanOrElse (Datetime.searchNode_0 input k) fun _ => Datetime.searchNode_29 input k
+
+private theorem Datetime.searchNode_30_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_30 input k = SearchCode.runK Datetime.searchCode_30 input k :=
+  by
+  unfold Datetime.searchNode_30 Datetime.searchCode_30
+  simp only [SearchCode.runK, Datetime.searchNode_0_eq, Datetime.searchNode_29_eq]
+
+private def Datetime.searchCode_31 : SearchCode :=
+  SearchCode.capture ["Date"] Datetime.searchCode_7 Datetime.searchCode_30
+
+@[inline]
+private def Datetime.searchNode_31 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  Datetime.searchNode_7 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Datetime.searchNode_30 remaining fun tailCaptures suffix =>
+      k ((["Date"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem Datetime.searchNode_31_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_31 input k = SearchCode.runK Datetime.searchCode_31 input k :=
+  by
+  unfold Datetime.searchNode_31 Datetime.searchCode_31
+  simp only [SearchCode.runK, Datetime.searchNode_7_eq, Datetime.searchNode_30_eq]
+
+private def Datetime.directDecode (source : String) : Option CaptureMap :=
+  Datetime.searchNode_31 source.toList fun (captures : CaptureMap) (remaining : List Char) =>
+    if (remaining).isEmpty then some captures else none
 
 private theorem Datetime.directDecode_eq_searchProgram (source : String) :
     Datetime.directDecode source = SearchProgram.decode Datetime.searchProgram source :=
   by
-  unfold Datetime.directDecode SearchProgram.decode Datetime.searchProgram
-  simp only [SearchCode.runK]
+  have hcode : Datetime.searchCode_31 = (Datetime.searchProgram).code := rfl
+  unfold Datetime.directDecode SearchProgram.decode
+  rw [Datetime.searchNode_31_eq, hcode]
 
 private def Datetime.decodeCaptures (source : String) : Option CaptureMap :=
   Datetime.directDecode source

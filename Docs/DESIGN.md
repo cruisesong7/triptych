@@ -567,7 +567,11 @@ without changing the source-ordered result. `SearchCode.nodeCount_reduce_le` pro
 cannot enlarge the staged control-flow tree. A total second lowering produces `SearchMachine`,
 where capture boundaries and repetitions are explicit first-order states.
 `SearchMachine.lowerSearchPlan_decode_eq_scan` proves exact agreement with the complete scanner
-for every certified search plan. Lean embeds the fused program directly. Verus hash-conses the
+for every certified search plan. Lean emits one function per distinct fused-program state, taking
+its continuation as an argument and calling successor states by name, so generated code and its
+one-step equation proofs are linear in the number of states; states referenced once are marked
+`@[inline]`. (Splicing continuations as syntax instead copies the remaining parse into every
+success point and grows exponentially with nesting.) Verus hash-conses the
 machine graph and emits a specification/executable function pair for each state. Finite separated
 repetitions are unrolled into direct item, separator, ordered-stop, and count-capture states.
 Generated executable states mutate one bounded search state transactionally: every failed state
