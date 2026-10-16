@@ -1080,7 +1080,7 @@ def computeValueEqProof (specName : Name) (grammarId : TSyntax `ident)
       ++ #[mkIdent `Triptych.captureMapOf]
   `(theorem $equivId (s : String) :
         $cvId s = (decode $grammarId s).map (fun _ => $valId $compArgs*) := by
-      unfold $cvId $cvEntry $[$compUnf:ident]* $valId $valDef
+      unfold $cvId $cvEntry $[$compUnf:ident]* $valDef $valId
       rw [Triptych.scan_eq_decode]
       cases h : decode $grammarId s with
       | none => simp [h]

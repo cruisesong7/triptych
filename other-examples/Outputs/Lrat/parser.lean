@@ -2011,8 +2011,8 @@ theorem Lrat.computeValue_eq (s : String) :
                               ((Triptych.CaptureMap.toEnv segment "RatPivot").getD "",
                                 Triptych.CaptureMap.toEnvList segment "RatHint"))))))))) :=
   by
-  unfold Lrat.computeValue Triptych.scannerComputeValueMap Triptych.componentWith Triptych.captureMapOf Lrat.value
-    Lrat.valueFn
+  unfold Lrat.computeValue Triptych.scannerComputeValueMap Triptych.componentWith Triptych.captureMapOf Lrat.valueFn
+    Lrat.value
   rw [Triptych.scan_eq_decode]
   cases h : decode Lrat.grammar s with
   | none => simp [h]

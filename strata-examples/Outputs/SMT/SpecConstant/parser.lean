@@ -658,7 +658,7 @@ theorem SpecConstant.computeValue_eq (s : String) :
             (Triptych.component SpecConstant.grammar s "Fraction")) :=
   by
   unfold SpecConstant.computeValue Triptych.scannerComputeValueMap Triptych.component Triptych.envOf
-    Triptych.captureMapOf SpecConstant.value SpecConstant.valueFn
+    Triptych.captureMapOf SpecConstant.valueFn SpecConstant.value
   rw [Triptych.scan_eq_decode]
   cases h : decode SpecConstant.grammar s with
   | none => simp [h]

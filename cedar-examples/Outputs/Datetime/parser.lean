@@ -1528,7 +1528,7 @@ theorem Datetime.computeValue_eq (s : String) :
             (Triptych.component Datetime.grammar s "Offset.hh") (Triptych.component Datetime.grammar s "Offset.mm")) :=
   by
   unfold Datetime.computeValue Triptych.scannerComputeValue Triptych.component Triptych.envOf Triptych.captureMapOf
-    Datetime.value Datetime.valueExpr
+    Datetime.valueExpr Datetime.value
   rw [Triptych.scan_eq_decode]
   cases h : decode Datetime.grammar s with
   | none => simp [h]

@@ -529,7 +529,7 @@ theorem BitRows.computeValue_eq (s : String) :
             (Triptych.component BitRows.grammar s "Second")) :=
   by
   unfold BitRows.computeValue Triptych.scannerComputeValueMap Triptych.component Triptych.envOf Triptych.captureMapOf
-    BitRows.value BitRows.valueFn
+    BitRows.valueFn BitRows.value
   rw [Triptych.scan_eq_decode]
   cases h : decode BitRows.grammar s with
   | none => simp [h]

@@ -1067,7 +1067,7 @@ theorem Duration.computeValue_eq (s : String) :
             (Triptych.component Duration.grammar s "DSeconds") (Triptych.component Duration.grammar s "DMillis")) :=
   by
   unfold Duration.computeValue Triptych.scannerComputeValue Triptych.component Triptych.envOf Triptych.captureMapOf
-    Duration.value Duration.valueExpr
+    Duration.valueExpr Duration.value
   rw [Triptych.scan_eq_decode]
   cases h : decode Duration.grammar s with
   | none => simp [h]

@@ -779,7 +779,7 @@ theorem IPv4.computeValue_eq (s : String) :
             (Triptych.component IPv4.grammar s "Prefix")) :=
   by
   unfold IPv4.computeValue Triptych.scannerComputeValue Triptych.component Triptych.envOf Triptych.captureMapOf
-    IPv4.value IPv4.valueExpr
+    IPv4.valueExpr IPv4.value
   rw [Triptych.scan_eq_decode]
   cases h : decode IPv4.grammar s with
   | none => simp [h]

@@ -418,7 +418,7 @@ theorem Graph.computeValue_eq (s : String) :
           Graph.value (Triptych.component Graph.grammar s "Order") (Triptych.component Graph.grammar s "Cells")) :=
   by
   unfold Graph.computeValue Triptych.scannerComputeValueMap Triptych.component Triptych.envOf Triptych.captureMapOf
-    Graph.value Graph.valueFn
+    Graph.valueFn Graph.value
   rw [Triptych.scan_eq_decode]
   cases h : decode Graph.grammar s with
   | none => simp [h]

@@ -611,4 +611,5 @@ triptych RowsBadField where
 
 end GroupedValueExample
 
+
 end Triptych.Tests

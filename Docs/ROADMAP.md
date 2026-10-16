@@ -124,8 +124,9 @@ for the user, with routine parser plumbing discharged automatically.
   general staged form;
 - extend the cost model from completed candidates to character inspections and establish a
   linear bound for deterministic exact-width dependent payloads;
-- add DIMACS CNF after the grammar can express whitespace-separated, zero-terminated clauses and
-  connect the declared clause count to the parsed collection.
+- complete: DIMACS CNF in the analyzable DSL (character sets, separator-free repetition, list
+  comprehensions, `count`/`forall` constraints), round-tripped against `Std.Sat.CNF.dimacs`;
+  comment lines after the problem line remain unsupported.
 
 ### Standalone specialized parsers and foreign consumers
 
@@ -210,7 +211,7 @@ counterexamples.
 After the higher-leverage automation, diagnostics, and execution work:
 
 1. **UUIDv4**, followed by **UUIDv7**;
-2. **DIMACS CNF**;
+2. ~~DIMACS CNF~~ (complete: `other-examples/Inputs/Dimacs.lean`);
 3. SemVer, cron expressions, DNS names, or HTTP Structured Fields based on the next concrete
    language feature that needs pressure-testing.
 

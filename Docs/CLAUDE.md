@@ -180,8 +180,10 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
 
 - Grammar: concatenation, alternation (`|`), optional `[x]`, terminals `digit`/`hexDigit`/`bit`
   with length `{n}`/`{lo,hi}`/`+`, the `sign` terminal (optional leading `-`, only as a
-  production's sole rhs — see sign captures below), and separated group repetition
-  `rep <item> sepBy "<sep>" <len>`. `Terminal{f X ...}` supports one exact-width final
+  production's sole rhs — see sign captures below), character sets `oneOf "…"`/`noneOf "…"`,
+  separated group repetition `rep <item> sepBy "<sep>" <len>`, and separator-free repetition
+  `rep <item> <len>` (item must always consume input: `Sym.consumes`, `consumes_sound`;
+  `Grammar.repOk` uses `Sym.repOkIn`, while Verus keeps the strict `Grammar.repSeparated`). `Terminal{f X ...}` supports one exact-width final
   payload after a literal delimiter; `f` reads earlier capture strings. General internal or
   delimiter-free dependent boundaries use the architecture-level `scanDependent` API. Strict
   subclass of regular at the lexical grammar tier; NO recursion (not context-free).
@@ -189,7 +191,8 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
   expressions explicitly mentioning final `value` enter `valPart`. Includes cardinality
   `card` and arbitrary-decidable capture escapes `constraints' f X Y` (so `IsWf` can be
   non-regular, e.g. "length is triangular").
-- Values: `value <arith>` (scalar Int DSL) OR `value' f X Y` escape returning ANY type
+- Values: `value <arith>` (scalar Int DSL), `value [P ↦ body]` list comprehensions (nested,
+  generated readable `List.map`s over groups), OR `value' f X Y` escape returning ANY type
   (structured output — graphs, records). Escape value type flows through `computeValueF`.
   Value readers: `nat X`/`int X`/`len X` (magnitude/length of capture `X`), and a BARE capture
   name `X` = its ±1 SIGN (there is NO `sign` keyword — it was removed). A bare name is valid ONLY
@@ -282,5 +285,6 @@ The Cedar-free package contains two related points in the design space:
 - `Graph` uses the public `bit{upperTriangleSize Order}` surface;
 - `Graph6` exercises the more general architecture-level `scanDependent` API.
 
-DIMACS clauses are the *solver input* (distinct from the graph *assignment*) and still need
-whitespace/comment tokens, zero-terminated clauses, and dependent collection counts.
+DIMACS clauses are the *solver input* (distinct from the graph *assignment*);
+`other-examples/Inputs/Dimacs.lean` specifies them without escapes, and
+`Proofs/Dimacs/Roundtrip.lean` round-trips `Std.Sat.CNF.dimacs` output.

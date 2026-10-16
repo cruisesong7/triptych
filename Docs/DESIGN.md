@@ -682,14 +682,27 @@ triptych IPv4 where
 ```
 
 - **`grammar`** defines a non-recursive DAG of productions with concatenation, finite
-  alternatives, optional symbols, token runs, and separated group repetition. It generates
-  readable predicates, the executable scanner, and typed derivation trees.
+  alternatives, optional symbols, token runs, and group repetition. It generates readable
+  predicates, the executable scanner, and typed derivation trees. Token classes are `digit`,
+  `hexDigit`, `bit`, `ascii[lo,hi]`, and the character sets `oneOf "…"` and `noneOf "…"`
+  (whitespace, rest of a line). Repetition is either separated, `rep X sepBy "s" <len>`, or
+  separator-free, `rep X <len>`; the latter requires `X` to consume input on every match
+  (`Sym.consumes`, proved sound by `consumes_sound`), which keeps the item count recoverable and
+  the scanner/denotation round trip intact.
 - **`constraints`** is the analyzable constraint AST. Capture-only entries contribute to
   `IsWf`; entries that mention `value` contribute to `SatisfiesConstraints`. Forms include
-  `noLeadingZero`, string equality, arithmetic comparisons/ranges, and cardinality.
+  `noLeadingZero`, string equality, arithmetic comparisons/ranges, cardinality, `count X`, and
+  `forall P, c`, which requires `c` inside every occurrence of the repeated production `P`
+  (captures inside `P` are read per occurrence, others from the whole input). A `forall` entry
+  elaborates to a generated readable Boolean predicate over the group `[P ⟨…⟩]`.
 - **`constraints'`** applies arbitrary Boolean Lean functions to scalar capture strings and,
   with `[X]`, ordered lists of repeated captures. Scalar and list arguments may be mixed.
-- **`value`** is the scalar `Int` expression AST described below.
+- **`value`** is the scalar `Int` expression AST described below, or a list comprehension
+  `[P ↦ body]` producing one element per occurrence of `P`, with `body` a scalar expression or
+  a nested comprehension (`[Clause ↦ [Lit ↦ Sign * nat Var]]` gives `List (List Int)`). The
+  readable value is generated from the comprehension as nested `List.map`s over the group
+  `[P ⟨…⟩]`. The DIMACS example in `other-examples` is written entirely in these analyzable
+  forms.
 - **`value'`** applies an arbitrary typed Lean function to scalar capture strings and,
   with `[X]`, ordered lists of repeated captures. A group `[P ⟨a, …⟩]` passes one tuple of the
   arguments `a, …` per occurrence of the repeated production `P`, each read inside that

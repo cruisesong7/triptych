@@ -270,15 +270,17 @@ def CaptureMap.keyProduction (key : String) : String :=
 Capture maps are preorder: an occurrence's own entries (`key` and its qualified `Parent.key`)
 precede the captures of its subtree. Because Triptych grammars are acyclic, `key` never occurs
 inside its own subtree, so each occurrence owns the maximal run of following entries accepted by
-`inside`; the generator supplies `inside` from the productions reachable below `key`. -/
+`inside`; the generator supplies `inside` from the productions reachable below `key`. Each
+segment starts with the occurrence's own `key` entry, so a group can also read its own text. -/
 def CaptureMap.groups (key : String) (inside : String → Bool) (m : CaptureMap) :
     List CaptureMap :=
   match m with
   | [] => []
-  | (k, _) :: rest =>
+  | (k, text) :: rest =>
       if k == key then
         let body := rest.dropWhile (·.1.endsWith ("." ++ key))
-        body.takeWhile (inside ·.1) :: groups key inside (body.dropWhile (inside ·.1))
+        ((k, text) :: body.takeWhile (inside ·.1)) ::
+          groups key inside (body.dropWhile (inside ·.1))
       else
         groups key inside rest
 termination_by m.length

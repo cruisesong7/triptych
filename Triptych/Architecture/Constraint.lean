@@ -212,6 +212,9 @@ syntax valExpr " == " valExpr            : constraintExpr   -- value equality (`
 -- Matches the doc's `value ∈ [Int64.MIN, Int64.MAX]`. (Sets/half-open intervals are out
 -- of scope — use the `opaque` escape for those.)
 syntax valExpr " ∈ " "[" valExpr ", " valExpr "]" : constraintExpr
+/-- `forall P, c` — `c` holds inside every occurrence of the repeated production `P`; captures
+    inside `P` are read per occurrence and the others from the whole input. -/
+syntax "forall " rawIdent ", " constraintExpr : constraintExpr
 -- NOTE: the ESCAPE HATCH for constraints outside the DSL vocabulary is NOT a `constraintExpr`
 -- form — it is the separate `constraints'` section of `triptych`
 -- (see `Triptych.Architecture.Syntax`),

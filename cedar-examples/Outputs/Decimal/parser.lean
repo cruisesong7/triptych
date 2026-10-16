@@ -506,7 +506,7 @@ theorem Decimal.computeValue_eq (s : String) :
             (Triptych.component Decimal.grammar s "Fraction")) :=
   by
   unfold Decimal.computeValue Triptych.scannerComputeValue Triptych.component Triptych.envOf Triptych.captureMapOf
-    Decimal.value Decimal.valueExpr
+    Decimal.valueExpr Decimal.value
   rw [Triptych.scan_eq_decode]
   cases h : decode Decimal.grammar s with
   | none => simp [h]

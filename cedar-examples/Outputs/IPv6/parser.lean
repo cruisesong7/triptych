@@ -908,7 +908,7 @@ theorem IPv6.computeValue_eq (s : String) :
             (Triptych.component IPv6.grammar s "Right") (Triptych.component IPv6.grammar s "Prefix")) :=
   by
   unfold IPv6.computeValue Triptych.scannerComputeValue Triptych.component Triptych.envOf Triptych.captureMapOf
-    IPv6.value IPv6.valueExpr
+    IPv6.valueExpr IPv6.value
   rw [Triptych.scan_eq_decode]
   cases h : decode IPv6.grammar s with
   | none => simp [h]

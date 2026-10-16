@@ -571,7 +571,7 @@ theorem BitVector.computeValue_eq (s : String) :
             (Triptych.component BitVector.grammar s "HexDigits")) :=
   by
   unfold BitVector.computeValue Triptych.scannerComputeValueMap Triptych.component Triptych.envOf Triptych.captureMapOf
-    BitVector.value BitVector.valueFn
+    BitVector.valueFn BitVector.value
   rw [Triptych.scan_eq_decode]
   cases h : decode BitVector.grammar s with
   | none => simp [h]

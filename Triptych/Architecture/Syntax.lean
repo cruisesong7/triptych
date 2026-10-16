@@ -158,9 +158,15 @@ syntax fmtToSpec := "toSpec" term
     derive the law, Triptych first tries to synthesize it by reduction and simplification. -/
 syntax fmtOfSpecToSpec := "ofSpec_toSpec" term
 
+/-- A value body: a scalar value expression, or the comprehension `[P ↦ body]`, which produces one
+    element per occurrence of the repeated production `P`, evaluating `body` inside it. -/
+declare_syntax_cat fmtValueBody
+syntax valExpr : fmtValueBody
+syntax "[" rawIdent "↦" fmtValueBody "]" : fmtValueBody
+
 /-- Optional value formula, followed by optional domain conversions and their inverse proof. -/
 syntax fmtValue :=
-  withPosition("value" colGt valExpr (colGt fmtOfSpec)? (colGt fmtToSpec)?
+  withPosition("value" colGt fmtValueBody (colGt fmtOfSpec)? (colGt fmtToSpec)?
     (colGt fmtOfSpecToSpec)?)
 
 /-- Escape value section for Lean computations that are not expressible in the value DSL,
@@ -247,7 +253,7 @@ private def parseValueDomainConversions
   let some valueStx := value? | return ⟨none, none, none⟩
   match valueStx with
   | `(fmtValue|
-      value $_:valExpr $[$ofClause:fmtOfSpec]? $[$toClause:fmtToSpec]?
+      value $_:fmtValueBody $[$ofClause:fmtOfSpec]? $[$toClause:fmtToSpec]?
         $[$inverseClause:fmtOfSpecToSpec]?) =>
     parseDomainConversions ofClause toClause inverseClause
   | _ => throwUnsupportedSyntax
@@ -685,6 +691,50 @@ def parseProd : TSyntax `fmtProd → CommandElabM Production
       pure { name := lhs.getId.toString, alts := ← alts.getElems.toList.mapM parseSeq }
   | s => throwErrorAt s "unrecognized production"
 
+/-- A parsed value body: a scalar `ValExpr`, or a comprehension over a repeated production. -/
+inductive ValueBody where
+  | scalar (expression : ValExpr)
+  | each (production : TSyntax `ident) (body : ValueBody)
+
+/-- Parse a value body. Scalar bodies are parsed once into their `ValExpr`. -/
+partial def parseValueBody : TSyntax `fmtValueBody → CommandElabM ValueBody
+  | `(fmtValueBody| [ $p:ident ↦ $body:fmtValueBody ]) => do
+      validateCaptureIdent p
+      pure (.each p (← parseValueBody body))
+  | `(fmtValueBody| $e:valExpr) => do
+      for i in captureIdents e.raw do
+        validateCaptureIdent i
+      pure (.scalar (← liftMacroM (parseValExpr e)))
+  | s => throwErrorAt s "unrecognized value body"
+
+/-- The group fields read by one comprehension element: the captures of a scalar body, or the
+    nested comprehension's own group. -/
+partial def ValueBody.fields : ValueBody → List (String × ArgShape)
+  | .scalar expression => expression.captures.eraseDups.map (·, ArgShape.scalar)
+  | .each production body => [(production.getId.toString, .group [] body.fields)]
+
+/-- The Lean type of a value body's result. -/
+partial def ValueBody.typeTerm : ValueBody → MacroM (TSyntax `term)
+  | .scalar _ => `(Int)
+  | .each _ body => do `(List $(← body.typeTerm))
+
+/-- The readable function from one element's group fields to its value. Scalar bodies use the
+    readable value-expression printer over their capture binders; nested comprehensions map. -/
+partial def ValueBody.elementFn : ValueBody → MacroM (TSyntax `term)
+  | .scalar expression => do
+      let readable ← quoteValReadable expression
+      let binders : List (TSyntax `term) := expression.captures.eraseDups.map fun capture =>
+        ⟨(mkIdent (Name.mkSimple (Triptych.surfaceBinder capture))).raw⟩
+      match binders with
+      | [] => `(fun _ => $readable)
+      | _ => do
+          let pattern ← ArgShape.tupleTerm binders
+          `(fun $pattern:term => $readable)
+  | .each production body => do
+      let groups := mkIdent (Name.mkSimple
+        (Triptych.surfaceBinder production.getId.toString ++ "Groups"))
+      `(fun $groups:ident => ($groups).map $(← body.elementFn))
+
 /-- Parse one escape argument into its capture ident and reading shape. Group fields are parsed
     recursively; their `inside` sets are filled from the grammar by `ArgShape.resolve`. -/
 partial def parseEscArg : TSyntax `fmtEscArg → CommandElabM (TSyntax `ident × ArgShape)
@@ -724,10 +774,72 @@ partial def validateEscArgShape (g : Grammar) (repeated : List String) (strictLi
         throwErrorAt arg m!"group argument `[{capture} ⟨…⟩]` does not name a production"
       let below := g.descendants capture
       for (field, shape) in fields do
-        unless below.contains field do
+        unless field == capture || below.contains field do
           throwErrorAt arg m!"group field `{field}` is not a production inside `{capture}`; \
             a group reads only captures recorded within each `{capture}` occurrence"
         validateEscArgShape g repeated false arg field shape
+
+/-- Elaborate `value [P ↦ body]`: a list-valued value generated entirely from the DSL. It reads
+    the group `[P ⟨fields⟩]` and maps the readable element function over its occurrences; the
+    engine `valueFn` applies the same readable function to the engine's group reader. Returns the
+    value captures and their shapes. -/
+def elabValueComprehension (name : TSyntax `ident) (gval : Grammar)
+    (repeatedCaptures : List String) (production : TSyntax `ident) (body : ValueBody)
+    (emitSpec emitEngine : TSyntax `command → CommandElabM Unit) :
+    CommandElabM (List String × List (String × ArgShape)) := do
+  let capture := production.getId.toString
+  let shape := (ArgShape.group [] body.fields).resolve gval capture
+  validateEscArgShape gval repeatedCaptures false production capture shape
+  let groupsBinder := mkIdent (Name.mkSimple (Triptych.surfaceBinder capture ++ "Groups"))
+  let groupsType ← liftMacroM shape.typeTerm
+  let resultType ← liftMacroM (ValueBody.each production body).typeTerm
+  let elementFn ← liftMacroM body.elementFn
+  let valIdent := mkIdentFrom name (name.getId ++ `value)
+  emitSpec (← `(def $valIdent ($groupsBinder : $groupsType) : $resultType :=
+    ($groupsBinder).map $elementFn))
+  let vfnIdent := mkIdentFrom name (name.getId ++ `valueFn)
+  emitEngine (← `(def $vfnIdent :=
+    $(← liftMacroM (Triptych.opaqueMapClosure valIdent #[(production, shape)]))))
+  pure ([capture], [(capture, shape)])
+
+/-- Elaborate `forall P, c` into a generated, readable Boolean predicate over the occurrences of
+    `P`: the captures of `c` inside `P` are the group's fields and the others are ordinary
+    arguments. The predicate then enters the constraint pipeline as an escape entry, so the
+    engine and the readable specification apply the same function. -/
+def elabForallConstraint (name : TSyntax `ident) (gval : Grammar) (index : Nat)
+    (production : TSyntax `ident) (body : TSyntax `constraintExpr)
+    (emitSpec : TSyntax `command → CommandElabM Unit) :
+    CommandElabM (TSyntax `ident × Array (TSyntax `ident × ArgShape)) := do
+  validateCaptureIdent production
+  for i in captureIdents body.raw do
+    if i.getId == `value then
+      throwErrorAt i "`forall` constraints are well-formedness checks and cannot read `value`"
+    validateCaptureIdent i
+  let capture := production.getId.toString
+  unless (gval.prod? capture).isSome do
+    throwErrorAt production m!"`forall {capture}` does not name a production"
+  let parsed ← liftMacroM (parseConstraintEntryWith none body)
+  let captures := parsed.constraint.captures.eraseDups
+  let below := gval.descendants capture
+  let isInner (c : String) : Bool := c == capture || below.contains c
+  let inner := captures.filter isInner
+  let outer := captures.filter (!isInner ·)
+  let shape := ArgShape.group below (inner.map (·, ArgShape.scalar))
+  let binder (capture : String) : TSyntax `ident :=
+    mkIdent (Name.mkSimple (Triptych.surfaceBinder capture))
+  let groupsBinder := mkIdent (Name.mkSimple (Triptych.surfaceBinder capture ++ "Groups"))
+  let groupsType ← liftMacroM shape.typeTerm
+  let readable ← liftMacroM (quoteConstraintReadable none parsed.constraint)
+  let element ← match inner with
+    | [] => `(fun _ => decide $readable)
+    | _ => do
+        let pattern ← liftMacroM (ArgShape.tupleTerm (inner.map fun c => ⟨(binder c).raw⟩))
+        `(fun $pattern:term => decide $readable)
+  let outerBinders := (outer.map binder).toArray
+  let fnIdent := mkIdentFrom production (name.getId ++ Name.mkSimple s!"forall{index}")
+  emitSpec (← `(def $fnIdent ($groupsBinder : $groupsType) $[($outerBinders : String)]* : Bool :=
+    ($groupsBinder).all $element))
+  pure (fnIdent, #[(production, shape)] ++ outer.toArray.map fun c => (mkIdent (Name.mkSimple c), .scalar))
 
 /-- Destructure an ESCAPE entry `f X [Y] [P ⟨…⟩] …` into its head function ident and its capture
     args, each with its reading shape. Shared by `value'` and `constraints'`. -/
@@ -788,6 +900,8 @@ private def callerModuleForOutput : CommandElabM String := do
     return fallback
   return (relativeParts.foldl Name.str .anonymous).toString
 
+-- The command elaborator is one large `do` block; compiling it exceeds the default budget.
+set_option maxHeartbeats 400000 in
 /-- Elaborate the `triptych` command: generates + elaborates the declarations, tagged
     into four sections, and — with a `to "<dir>"` clause — writes them as one module
     `<dir>/spec.lean`. `#show` additionally logs each declaration.
@@ -1080,8 +1194,17 @@ def elabTriptych : CommandElab := fun stx => do
       -- entries and no phase-specific surface predicate is emitted.
       let mut wfConstrCaps : Option (List (String × ArgShape)) := none
       let mut valueConstrCaps : Option (List (String × ArgShape)) := none
-      if let some vStx := v then
-        let ve : TSyntax `valExpr := ⟨vStx.raw[1]⟩
+      let valueBody? ← match v with
+        | some vStx => some <$> parseValueBody ⟨vStx.raw[1]⟩
+        | none => pure none
+      if let some (.each production body) := valueBody? then
+        let (caps, capArgs) ← elabValueComprehension name gval repeatedCaptures production body
+          emitSpec emitEngine
+        hasValueEsc := true
+        valueCaps := caps
+        valueCapArgs := capArgs
+      else if let some vStx := v then
+        let ve : TSyntax `valExpr := ⟨vStx.raw[1][0]⟩
         for i in captureIdents ve.raw do
           validateCaptureIdent i
         let valueAst ← liftMacroM (parseValExpr ve)
@@ -1193,11 +1316,21 @@ def elabTriptych : CommandElab := fun stx => do
       for (_, args) in escEntries do
         for (i, shape) in args do
           validateEscArgShape gval repeatedCaptures true i i.getId.toString shape
-      let hasOpaque := !escEntries.isEmpty || !sizedTerminals.isEmpty
-      -- DSL constraint exprs (may be empty even when `constraints'` is present).
-      let dslExprs : Array (TSyntax `constraintExpr) := match cs with
+      -- DSL constraint exprs (may be empty even when `constraints'` is present). `forall`
+      -- entries become generated escape entries; the rest stay in the analyzable AST.
+      let allDslExprs : Array (TSyntax `constraintExpr) := match cs with
         | some csStx => csStx.raw[1].getArgs.map (⟨·⟩)
         | none       => #[]
+      let mut dslExprs : Array (TSyntax `constraintExpr) := #[]
+      let mut forallEntries : Array (TSyntax `ident × Array (TSyntax `ident × ArgShape)) := #[]
+      for e in allDslExprs do
+        match e with
+        | `(constraintExpr| forall $p:ident, $body:constraintExpr) =>
+            forallEntries := forallEntries.push
+              (← elabForallConstraint name gval forallEntries.size p body emitSpec)
+        | _ => dslExprs := dslExprs.push e
+      let escEntries := escEntries ++ forallEntries
+      let hasOpaque := !escEntries.isEmpty || !sizedTerminals.isEmpty
       let parsedConstraints ← dslExprs.mapM fun e =>
         liftMacroM (parseConstraintEntryWith valueAst? e)
       for (e, parsed) in dslExprs.zip parsedConstraints do
@@ -1622,7 +1755,7 @@ def elabTriptych : CommandElab := fun stx => do
                   grammar"
               let some vStx := v
                 | throwErrorAt ppStx "`printer auto` requires a `value` section"
-              let valueExpr : TSyntax `valExpr := ⟨vStx.raw[1]⟩
+              let valueExpr : TSyntax `valExpr := ⟨vStx.raw[1][0]⟩
               let some (signCapture, digitsCapture) :=
                   signedIntegerValueCaptures? valueExpr
                 | throwErrorAt ppStx "`printer auto` currently supports the total signed-decimal \
