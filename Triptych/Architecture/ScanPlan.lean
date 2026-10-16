@@ -213,6 +213,8 @@ private partial def compileSequence (grammar : Grammar) (qual : String) (fuel : 
                     pure { pattern := .tokenRun token length .empty }
                   else
                     throw "scan plan: ASCII ranges must end at code point 127 or below"
+              | .oneOf _ | .noneOf _ =>
+                  throw "scan plan: character sets use the ordered-search parser"
               | _ =>
                   pure { pattern := .tokenRun token length .empty }
           | .ref name =>

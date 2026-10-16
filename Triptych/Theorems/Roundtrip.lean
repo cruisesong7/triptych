@@ -15,6 +15,7 @@
 -/
 
 import Triptych.Reference.Decoder
+import Triptych.Theorems.Consumes
 
 /-!
 # `decode` ↔ `IsWf` roundtrip
@@ -174,9 +175,9 @@ theorem present_mem (g : Grammar) (q : String) (fuel : Nat) (item : SymItem)
 -- seq given sym at same fuel. `hsym` now requires the symbol be `repOk` (needed for the `rep`
 -- case in `sym_iter`); `seq_iter` supplies that per item from the seq-level `hseqok`.
 theorem seq_iter (g : Grammar) (q : String) (fuel : Nat)
-    (hsym : ∀ sym, sym.repOk = true → ∀ cs r₂, (∃ m, (m, r₂) ∈ matchSym g q fuel sym cs)
+    (hsym : ∀ sym, sym.repOkIn g g.prods.length = true → ∀ cs r₂, (∃ m, (m, r₂) ∈ matchSym g q fuel sym cs)
       ↔ ∃ r₁, cs = r₁ ++ r₂ ∧ matchesSym g fuel sym (String.ofList r₁)) :
-    ∀ seq, seq.all (fun it => it.sym.repOk) = true → ∀ cs r₂,
+    ∀ seq, seq.all (fun it => it.sym.repOkIn g g.prods.length) = true → ∀ cs r₂,
       (∃ m, (m, r₂) ∈ matchSeq g q fuel seq cs)
       ↔ ∃ r₁, cs = r₁ ++ r₂ ∧ matchesSeq g fuel seq (String.ofList r₁) := by
   intro seq
@@ -197,8 +198,8 @@ theorem seq_iter (g : Grammar) (q : String) (fuel : Nat)
   | cons item rest ih =>
     intro hseqok cs r₂
     rw [List.all_cons, Bool.and_eq_true] at hseqok
-    have hitemok : item.sym.repOk = true := hseqok.1
-    have hrestok : rest.all (fun it => it.sym.repOk) = true := hseqok.2
+    have hitemok : item.sym.repOkIn g g.prods.length = true := hseqok.1
+    have hrestok : rest.all (fun it => it.sym.repOkIn g g.prods.length) = true := hseqok.2
     have ih := ih hrestok
     have hpresent : (∃ m, (m, r₂) ∈ (matchSym g q fuel item.sym cs).flatMap (fun x =>
           (matchSeq g q fuel rest x.2).map (fun y => (x.1 ++ y.1, y.2))))
@@ -263,8 +264,8 @@ theorem seq_iter (g : Grammar) (q : String) (fuel : Nat)
 -- prod given seq at same fuel. `hseq` now requires each alternative be `repOk`; `prod_iter`
 -- supplies that per alternative from the production-level `hpok`.
 theorem prod_iter (g : Grammar) (q : String) (fuel : Nat) (p : Production) (cs r₂ : List Char)
-    (hpok : p.alts.all (fun alt => alt.all (fun it => it.sym.repOk)) = true)
-    (hseq : ∀ seq, seq.all (fun it => it.sym.repOk) = true → ∀ cs r₂,
+    (hpok : p.alts.all (fun alt => alt.all (fun it => it.sym.repOkIn g g.prods.length)) = true)
+    (hseq : ∀ seq, seq.all (fun it => it.sym.repOkIn g g.prods.length) = true → ∀ cs r₂,
       (∃ m, (m, r₂) ∈ matchSeq g q fuel seq cs)
       ↔ ∃ r₁, cs = r₁ ++ r₂ ∧ matchesSeq g fuel seq (String.ofList r₁)) :
     (∃ m, (m, r₂) ∈ matchProd g q fuel p cs)
@@ -312,13 +313,19 @@ theorem intercalate_cons_flatMap {α : Type _} (sepL : List α) (a : List α)
     is always enough iteration fuel — the statement is quantified over all such `sf`. Proved
     by induction on `sf`. -/
 theorem matchStar_iter (matchItem : List Char → List (CaptureMap × List Char))
-    (sepL : List Char) (hsepL : sepL ≠ [])
+    (sepL : List Char)
     (Pitem : List Char → Prop)
-    (hitem : ∀ cs r₂, (∃ m, (m, r₂) ∈ matchItem cs) ↔ ∃ r₁, cs = r₁ ++ r₂ ∧ Pitem r₁) :
+    (hitem : ∀ cs r₂, (∃ m, (m, r₂) ∈ matchItem cs) ↔ ∃ r₁, cs = r₁ ++ r₂ ∧ Pitem r₁)
+    (hstep : sepL ≠ [] ∨ ∀ p, Pitem p → p ≠ []) :
     ∀ sf cs r₂ k, cs.length ≤ sf →
       ((∃ m, (m, r₂, k) ∈ matchStar matchItem sepL sf cs) ↔
         ∃ parts : List (List Char), parts.length = k ∧
           cs = parts.flatMap (fun p => sepL ++ p) ++ r₂ ∧ (∀ p ∈ parts, Pitem p)) := by
+  have hstepLen : ∀ p, Pitem p → 1 ≤ sepL.length + p.length := by
+    intro p hp
+    rcases hstep with hsep | hitems
+    · cases sepL with | nil => exact absurd rfl hsep | cons a t => simp; omega
+    · cases p with | nil => exact absurd rfl (hitems [] hp) | cons a t => simp; omega
   intro sf
   induction sf with
   | zero =>
@@ -330,7 +337,7 @@ theorem matchStar_iter (matchItem : List Char → List (CaptureMap × List Char)
     · rintro ⟨m, heq⟩
       simp only [Prod.mk.injEq] at heq
       exact ⟨[], heq.2.2.symm, by simp [heq.2.1], by simp⟩
-    · rintro ⟨parts, hlenk, hcs, _⟩
+    · rintro ⟨parts, hlenk, hcs, hPall⟩
       have hcs' := hcs.symm
       have hpe : parts = [] ∧ r₂ = [] := by
         rw [List.append_eq_nil_iff] at hcs'
@@ -342,13 +349,13 @@ theorem matchStar_iter (matchItem : List Char → List (CaptureMap × List Char)
           simp only [List.flatMap_cons] at hcs'
           have := hcs'.1
           rw [List.append_eq_nil_iff, List.append_eq_nil_iff] at this
-          exact hsepL this.1.1
+          have hpos := hstepLen p (hPall p (by simp))
+          rw [this.1.1, this.1.2] at hpos
+          simp at hpos
       obtain ⟨hp, hr⟩ := hpe; subst hp; subst hr; simp at hlenk
       exact ⟨[], by simp [← hlenk]⟩
   | succ sf' ih =>
     intro cs r₂ k hlen
-    have hseplen : 1 ≤ sepL.length := by
-      cases sepL with | nil => exact absurd rfl hsepL | cons a t => simp
     simp only [matchStar, List.mem_cons]
     constructor
     · rintro ⟨m, hmem⟩
@@ -369,8 +376,13 @@ theorem matchStar_iter (matchItem : List Char → List (CaptureMap × List Char)
             rw [← ht]; simp
           obtain ⟨rHead, hcs1eq, hPhead⟩ := (hitem (cs.drop sepL.length) r1).mp ⟨m1, hm1⟩
           have hr1len : r1.length ≤ sf' := by
-            have h1 : (cs.drop sepL.length).length ≤ sf' := by rw [List.length_drop]; omega
-            have hle : r1.length ≤ (cs.drop sepL.length).length := by rw [hcs1eq]; simp
+            have hd : (cs.drop sepL.length).length = rHead.length + r1.length := by
+              rw [hcs1eq]; simp
+            have hsl : cs.length = sepL.length + (cs.drop sepL.length).length := by
+              have := congrArg List.length hcs1
+              rw [List.length_append] at this
+              exact this
+            have hpos := hstepLen rHead hPhead
             omega
           obtain ⟨parts', hlen', hr1eq, hPall⟩ := (ih r1 r2' k' hr1len).mp ⟨m2, hk2⟩
           refine ⟨rHead :: parts', ?_, ?_, ?_⟩
@@ -403,6 +415,7 @@ theorem matchStar_iter (matchItem : List Char → List (CaptureMap × List Char)
           have hcl : cs.length =
               sepL.length + pHead.length + (parts'.flatMap (fun p => sepL ++ p) ++ r₂).length := by
             rw [hcs]; simp [List.append_assoc]; omega
+          have hpos := hstepLen pHead (hPall pHead (by simp))
           omega
         obtain ⟨m2, hm2⟩ :=
           (ih (parts'.flatMap (fun p => sepL ++ p) ++ r₂) r₂ parts'.length hr1len).mpr
@@ -419,9 +432,10 @@ theorem matchStar_iter (matchItem : List Char → List (CaptureMap × List Char)
     `hitem` application with `matchStar_iter` for the tail, using `cs.length` as the (always
     sufficient) iteration fuel. -/
 theorem matchRep_iter (matchItem : List Char → List (CaptureMap × List Char))
-    (sepL : List Char) (hsepL : sepL ≠ [])
+    (sepL : List Char)
     (Pitem : List Char → Prop)
-    (hitem : ∀ cs r₂, (∃ m, (m, r₂) ∈ matchItem cs) ↔ ∃ r₁, cs = r₁ ++ r₂ ∧ Pitem r₁) :
+    (hitem : ∀ cs r₂, (∃ m, (m, r₂) ∈ matchItem cs) ↔ ∃ r₁, cs = r₁ ++ r₂ ∧ Pitem r₁)
+    (hstep : sepL ≠ [] ∨ ∀ p, Pitem p → p ≠ []) :
     ∀ cs r₂ n, (∃ m, (m, r₂, n) ∈ matchRep matchItem sepL cs) ↔
       ∃ parts : List (List Char), parts ≠ [] ∧ parts.length = n ∧
         cs = sepL.intercalate parts ++ r₂ ∧ (∀ p ∈ parts, Pitem p) := by
@@ -437,7 +451,7 @@ theorem matchRep_iter (matchItem : List Char → List (CaptureMap × List Char))
     obtain ⟨rHead, hcs1, hPhead⟩ := (hitem cs r1).mp ⟨m1, hm1⟩
     have hr1len : r1.length ≤ cs.length := by rw [hcs1]; simp
     obtain ⟨tailParts, hlen, hr1eq, hPall⟩ :=
-      (matchStar_iter matchItem sepL hsepL Pitem hitem cs.length r1 r2' k hr1len).mp ⟨m2, hk⟩
+      (matchStar_iter matchItem sepL Pitem hitem hstep cs.length r1 r2' k hr1len).mp ⟨m2, hk⟩
     refine ⟨rHead :: tailParts, by simp, ?_, ?_, ?_⟩
     · simp [hlen, ← heq.2.2]
     · rw [intercalate_cons_flatMap, hcs1, hr1eq, ← heq.2.1, List.append_assoc]
@@ -454,7 +468,7 @@ theorem matchRep_iter (matchItem : List Char → List (CaptureMap × List Char))
       have hr1len : (tailParts.flatMap (fun p => sepL ++ p) ++ r₂).length ≤ cs.length := by
         rw [hcs]; simp [List.append_assoc]
       obtain ⟨m2, hm2⟩ :=
-        (matchStar_iter matchItem sepL hsepL Pitem hitem cs.length
+        (matchStar_iter matchItem sepL Pitem hitem hstep cs.length
           (tailParts.flatMap (fun p => sepL ++ p) ++ r₂) r₂ tailParts.length hr1len).mpr
           ⟨tailParts, rfl, rfl, fun p hp => hPall p (by simp [hp])⟩
       refine ⟨m1 ++ m2, ?_⟩
@@ -522,18 +536,26 @@ theorem toList_ne_nil_of_ne (sep : String) (h : sep ≠ "") : sep.toList ≠ [] 
     Requires `hok : (Sym.rep …).repOk = true` — the non-empty separator and `1 ≤ lo` under
     which `matchRep`/`matchStar` provably reach exactly the denotation's `parts` witnesses. -/
 theorem rep_iter (g : Grammar) (q : String) (fuel : Nat) (sep : String) (item : Sym)
-    (lo : Nat) (hi : Option Nat) (cs r₂ : List Char)
-    (hok : (Sym.rep sep item lo hi).repOk = true)
+    (lo : Nat) (hi : Option Nat) (cs r₂ : List Char) (consumeFuel : Nat)
+    (hok : (Sym.rep sep item lo hi).repOkIn g consumeFuel = true)
     (hitem : ∀ cs r₂, (∃ m, (m, r₂) ∈ matchSym g q fuel item cs)
       ↔ ∃ r₁, cs = r₁ ++ r₂ ∧ matchesSym g fuel item (String.ofList r₁)) :
     (∃ m, (m, r₂) ∈ matchSym g q fuel (Sym.rep sep item lo hi) cs)
       ↔ ∃ r₁, cs = r₁ ++ r₂ ∧ matchesSym g fuel (Sym.rep sep item lo hi) (String.ofList r₁) := by
-  -- Extract `sep ≠ ""` and `1 ≤ lo` from the three-way `&&` `repOk`.
-  rw [show (Sym.rep sep item lo hi).repOk
-      = (decide (sep ≠ "") && decide (1 ≤ lo) && item.repOk) from rfl] at hok
-  rw [Bool.and_eq_true, Bool.and_eq_true, decide_eq_true_eq, decide_eq_true_eq] at hok
-  obtain ⟨⟨hsep, hlo⟩, _⟩ := hok
-  have hsepL : sep.toList ≠ [] := toList_ne_nil_of_ne sep hsep
+  -- Extract the separator-or-consuming-item condition and `1 ≤ lo` from `repOkIn`.
+  rw [show (Sym.rep sep item lo hi).repOkIn g consumeFuel
+      = ((decide (sep ≠ "") || item.consumes g consumeFuel) && decide (1 ≤ lo) &&
+          item.repOkIn g consumeFuel) from rfl] at hok
+  rw [Bool.and_eq_true, Bool.and_eq_true, Bool.or_eq_true, decide_eq_true_eq,
+    decide_eq_true_eq] at hok
+  obtain ⟨⟨hsepOrConsumes, hlo⟩, _⟩ := hok
+  have hstep : sep.toList ≠ [] ∨
+      ∀ p, matchesSym g fuel item (String.ofList p) → p ≠ [] := by
+    rcases hsepOrConsumes with hsep | hconsumes
+    · exact Or.inl (toList_ne_nil_of_ne sep hsep)
+    · refine Or.inr fun p hp hnil => ?_
+      subst hnil
+      exact consumes_sound g consumeFuel fuel item _ hconsumes hp (by simp)
   simp only [matchSym, matchesSym]
   constructor
   · intro hmem
@@ -542,8 +564,8 @@ theorem rep_iter (g : Grammar) (q : String) (fuel : Nat) (sep : String) (item : 
         (matchRep (fun cs' => matchSym g q fuel item cs') sep.toList cs)).mp hmem
     rw [inBounds_iff] at hb
     obtain ⟨parts, hne, hlenn, hcs, hPall⟩ :=
-      (matchRep_iter (fun cs' => matchSym g q fuel item cs') sep.toList hsepL
-        (fun r₁ => matchesSym g fuel item (String.ofList r₁)) hitem cs r₂ n).mp hrep
+      (matchRep_iter (fun cs' => matchSym g q fuel item cs') sep.toList
+        (fun r₁ => matchesSym g fuel item (String.ofList r₁)) hitem hstep cs r₂ n).mp hrep
     refine ⟨sep.toList.intercalate parts, hcs, parts.map String.ofList, ?_, ?_, ?_, ?_⟩
     · rw [List.length_map, hlenn]; exact hb.1
     · intro h hh; rw [List.length_map, hlenn]; exact hb.2 h hh
@@ -558,8 +580,9 @@ theorem rep_iter (g : Grammar) (q : String) (fuel : Nat) (sep : String) (item : 
     refine (repFilter_mem (item.refName?.getD q) lo hi r₂
       (matchRep (fun cs' => matchSym g q fuel item cs') sep.toList cs)).mpr ?_
     refine ⟨sparts.length, ?_, by rw [inBounds_iff]; exact ⟨hslo, hshi⟩⟩
-    refine (matchRep_iter (fun cs' => matchSym g q fuel item cs') sep.toList hsepL
-      (fun r₁ => matchesSym g fuel item (String.ofList r₁)) hitem cs r₂ sparts.length).mpr ?_
+    refine (matchRep_iter (fun cs' => matchSym g q fuel item cs') sep.toList
+      (fun r₁ => matchesSym g fuel item (String.ofList r₁)) hitem hstep cs r₂
+        sparts.length).mpr ?_
     refine ⟨sparts.map String.toList, ?_, by rw [List.length_map], ?_, ?_⟩
     · intro hnil; apply hspne; simpa using hnil
     · have hr1 : r₁ = sep.toList.intercalate (sparts.map String.toList) := by
@@ -576,7 +599,7 @@ theorem rep_iter (g : Grammar) (q : String) (fuel : Nat) (sep : String) (item : 
 -- `rep` (whose `item` is matched at the SAME fuel). q universally quantified so the ref case
 -- can re-instantiate it; cs/r₂ left un-intro'd so `induction sym` generalizes them for `rep`.
 theorem sym_iter (g : Grammar) (hg : g.repOk = true) :
-    ∀ fuel (q : String) sym, sym.repOk = true → ∀ cs r₂,
+    ∀ fuel (q : String) sym, sym.repOkIn g g.prods.length = true → ∀ cs r₂,
     (∃ m, (m, r₂) ∈ matchSym g q fuel sym cs)
       ↔ ∃ r₁, cs = r₁ ++ r₂ ∧ matchesSym g fuel sym (String.ofList r₁) := by
   intro fuel
@@ -589,11 +612,12 @@ theorem sym_iter (g : Grammar) (hg : g.repOk = true) :
     | term tok ls => intro _ cs r₂; exact term_leaf g q 0 tok ls cs r₂
     | rep sep item lo hi ihitem =>
       intro hok cs r₂
-      have hitemok : item.repOk = true := by
-        rw [show (Sym.rep sep item lo hi).repOk
-            = (decide (sep ≠ "") && decide (1 ≤ lo) && item.repOk) from rfl] at hok
+      have hitemok : item.repOkIn g g.prods.length = true := by
+        rw [show (Sym.rep sep item lo hi).repOkIn g g.prods.length
+            = ((decide (sep ≠ "") || item.consumes g g.prods.length) && decide (1 ≤ lo) &&
+                item.repOkIn g g.prods.length) from rfl] at hok
         rw [Bool.and_eq_true, Bool.and_eq_true] at hok; exact hok.2
-      exact rep_iter g q 0 sep item lo hi cs r₂ hok (ihitem hitemok)
+      exact rep_iter g q 0 sep item lo hi cs r₂ g.prods.length hok (ihitem hitemok)
     | ref name =>
       intro _ cs r₂
       simp only [matchSym, matchesSym, List.not_mem_nil, exists_false]
@@ -606,14 +630,15 @@ theorem sym_iter (g : Grammar) (hg : g.repOk = true) :
     | term tok ls => intro _ cs r₂; exact term_leaf g q (fuel+1) tok ls cs r₂
     | rep sep item lo hi ihitem =>
       intro hok cs r₂
-      have hitemok : item.repOk = true := by
-        rw [show (Sym.rep sep item lo hi).repOk
-            = (decide (sep ≠ "") && decide (1 ≤ lo) && item.repOk) from rfl] at hok
+      have hitemok : item.repOkIn g g.prods.length = true := by
+        rw [show (Sym.rep sep item lo hi).repOkIn g g.prods.length
+            = ((decide (sep ≠ "") || item.consumes g g.prods.length) && decide (1 ≤ lo) &&
+                item.repOkIn g g.prods.length) from rfl] at hok
         rw [Bool.and_eq_true, Bool.and_eq_true] at hok; exact hok.2
-      exact rep_iter g q (fuel+1) sep item lo hi cs r₂ hok (ihitem hitemok)
+      exact rep_iter g q (fuel+1) sep item lo hi cs r₂ g.prods.length hok (ihitem hitemok)
     | ref name =>
       intro _ cs r₂
-      have hprod : ∀ (q' : String) p, p.alts.all (fun alt => alt.all (fun it => it.sym.repOk)) = true →
+      have hprod : ∀ (q' : String) p, p.alts.all (fun alt => alt.all (fun it => it.sym.repOkIn g g.prods.length)) = true →
           ∀ cs r₂, (∃ m, (m, r₂) ∈ matchProd g q' fuel p cs)
             ↔ ∃ r₁, cs = r₁ ++ r₂ ∧ matchesProd g fuel p (String.ofList r₁) := by
         intro q' p hpok cs r₂
@@ -623,7 +648,7 @@ theorem sym_iter (g : Grammar) (hg : g.repOk = true) :
       cases hp : g.prod? name with
       | none => simp
       | some p =>
-        have hpok : p.alts.all (fun alt => alt.all (fun it => it.sym.repOk)) = true := by
+        have hpok : p.alts.all (fun alt => alt.all (fun it => it.sym.repOkIn g g.prods.length)) = true := by
           unfold Grammar.repOk at hg
           rw [List.all_eq_true] at hg
           have hmem : p ∈ g.prods := by
@@ -642,14 +667,14 @@ theorem sym_iter (g : Grammar) (hg : g.repOk = true) :
 
 -- top-level bridges (all under the grammar-level `hg : g.repOk = true`)
 theorem matchSeq_iter (g : Grammar) (hg : g.repOk = true) (q : String) (fuel : Nat) :
-    ∀ seq, seq.all (fun it => it.sym.repOk) = true → ∀ cs r₂,
+    ∀ seq, seq.all (fun it => it.sym.repOkIn g g.prods.length) = true → ∀ cs r₂,
       (∃ m, (m, r₂) ∈ matchSeq g q fuel seq cs)
       ↔ ∃ r₁, cs = r₁ ++ r₂ ∧ matchesSeq g fuel seq (String.ofList r₁) :=
   seq_iter g q fuel (fun sym hsymok cs r₂ => sym_iter g hg fuel q sym hsymok cs r₂)
 
 theorem matchProd_iter (g : Grammar) (hg : g.repOk = true) (q : String) (fuel : Nat)
     (p : Production) (cs r₂ : List Char)
-    (hpok : p.alts.all (fun alt => alt.all (fun it => it.sym.repOk)) = true) :
+    (hpok : p.alts.all (fun alt => alt.all (fun it => it.sym.repOkIn g g.prods.length)) = true) :
     (∃ m, (m, r₂) ∈ matchProd g q fuel p cs)
       ↔ ∃ r₁, cs = r₁ ++ r₂ ∧ matchesProd g fuel p (String.ofList r₁) :=
   prod_iter g q fuel p cs r₂ hpok (matchSeq_iter g hg q fuel)
@@ -660,7 +685,7 @@ theorem decodeSome_iff_IsWf (g : Grammar) (hg : g.repOk = true) (s : String) :
   cases hstart : g.startProd? with
   | none => simp
   | some p =>
-    have hpok : p.alts.all (fun alt => alt.all (fun it => it.sym.repOk)) = true := by
+    have hpok : p.alts.all (fun alt => alt.all (fun it => it.sym.repOkIn g g.prods.length)) = true := by
       unfold Grammar.repOk at hg
       rw [List.all_eq_true] at hg
       have hmem : p ∈ g.prods := by

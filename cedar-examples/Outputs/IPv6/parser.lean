@@ -244,7 +244,7 @@ theorem IPv6.Derivation.Full.matches (qual : String) (fuel : Nat) (d : IPv6.Deri
             exact
               (by
                 apply Triptych.symMatch_rep (valid := fun entry => IPv6.Derivation.H16.Valid entry)
-                · decide
+                · exact Or.inl (by decide)
                 · exact hpart0
                 · intro entry hentry
                   exact
@@ -299,7 +299,7 @@ theorem IPv6.Derivation.Left.matches (qual : String) (fuel : Nat) (d : IPv6.Deri
             exact
               (by
                 apply Triptych.symMatch_rep (valid := fun entry => IPv6.Derivation.H16L.Valid entry)
-                · decide
+                · exact Or.inl (by decide)
                 · exact hpart0
                 · intro entry hentry
                   exact
@@ -354,7 +354,7 @@ theorem IPv6.Derivation.Right.matches (qual : String) (fuel : Nat) (d : IPv6.Der
             exact
               (by
                 apply Triptych.symMatch_rep (valid := fun entry => IPv6.Derivation.H16R.Valid entry)
-                · decide
+                · exact Or.inl (by decide)
                 · exact hpart0
                 · intro entry hentry
                   exact

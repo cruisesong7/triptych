@@ -52,6 +52,12 @@ def subscript (n : Nat) : String :=
   let subs := "₀₁₂₃₄₅₆₇₈₉".toList
   String.ofList ((toString n).toList.map (fun c => subs[(c.toNat - '0'.toNat)]!))
 
+/-- Quote a length specification. -/
+private def lenSpecTerm : LenSpec → CommandElabM (TSyntax `term)
+  | .exactly n => `(LenSpec.exactly $(quote n))
+  | .between lo hi => `(LenSpec.between $(quote lo) $(quote hi))
+  | .atLeastOne => `(LenSpec.atLeastOne)
+
 /-- The readable leaf predicate for a `term tok len`, matching the hand specs'
     vocabulary (`IsDigits`, `IsFixedDigits`, …). Names are emitted UNQUALIFIED (the
     generated file `open`s `Triptych`), so they read like the doc. -/
@@ -75,6 +81,10 @@ def termPred (tok : TokClass) (ls : LenSpec) (v : TSyntax `term) : CommandElabM 
   | .asciiRange lo hi, .between min max =>
       `(matchesTerm ((TokClass.asciiRange $(quote lo) $(quote hi) : TokClass))
           (LenSpec.between $(quote min) $(quote max)) $v)
+  | .oneOf chars, length => do
+      `(matchesTerm (TokClass.oneOf $(quote chars)) $(← lenSpecTerm length) $v)
+  | .noneOf chars, length => do
+      `(matchesTerm (TokClass.noneOf $(quote chars)) $(← lenSpecTerm length) $v)
 
 /-- Predicate that string `v` matches symbol `sym`. Refs resolve to the sibling
     per-production predicate `<specName>.IsWf.<Nt>`. -/
@@ -333,6 +343,8 @@ private partial def symLit : Sym → CommandElabM (TSyntax `term)
         | .bit      => `(TokClass.bit)
         | .asciiRange lo hi =>
             `((TokClass.asciiRange $(quote lo) $(quote hi) : TokClass))
+        | .oneOf chars => `(TokClass.oneOf $(quote chars))
+        | .noneOf chars => `(TokClass.noneOf $(quote chars))
       let lsT ← match ls with
         | .exactly n    => `(LenSpec.exactly $(quote n))
         | .between lo hi => `(LenSpec.between $(quote lo) $(quote hi))
@@ -375,6 +387,8 @@ private def tokSource : TokClass → String
   | .hexDigit => "TokClass.hexDigit"
   | .bit => "TokClass.bit"
   | .asciiRange lo hi => s!"(TokClass.asciiRange {lo} {hi})"
+  | .oneOf chars => s!"(TokClass.oneOf {repr chars})"
+  | .noneOf chars => s!"(TokClass.noneOf {repr chars})"
 
 private def lenSource : LenSpec → String
   | .exactly n => s!"LenSpec.exactly {n}"
@@ -602,14 +616,23 @@ private partial def derivationSymProof (specName : Name) (g : Grammar)
         s!"{sourceString name} {binder})\n" ++
         s!"      ({childType}.matches {sourceString name} {childFuel} {binder} " ++
         s!"{validProof})))"
-  | .rep _ item _ _ =>
+  | .rep sep item _ _ =>
       let itemValid := derivationSymValid specName item "entry"
       let itemProof :=
         derivationSymProof specName g parentDepth baseFuel matchFuel qual
           item "entry" "hentry"
+      -- A separator-free repetition justifies termination by its consuming item instead.
+      let stepProof :=
+        if sep.isEmpty then
+          "  · exact Or.inr fun entry hentry =>\n" ++
+            s!"      Triptych.ne_empty_of_symMatch (g := {specName.toString true}.grammar) " ++
+            s!"(item := {symSource item}) (by decide) (by decide) (by decide)\n" ++
+            s!"        ({itemProof})\n"
+        else
+          "  · exact Or.inl (by decide)\n"
       "(by\n" ++
         s!"  apply Triptych.symMatch_rep (valid := fun entry => {itemValid})\n" ++
-        "  · decide\n" ++
+        stepProof ++
         s!"  · exact {validProof}\n" ++
         "  · intro entry hentry\n" ++
         s!"    exact {itemProof})"
@@ -796,7 +819,7 @@ private def leafLemmasFor (p : Production) : List (TSyntax `term) := Id.run do
       | some .digit    => haveDigits := true
       | some .hexDigit => haveHex := true
       | some .bit      => haveBit := true
-      | some (.asciiRange _ _) => pure ()
+      | some (.asciiRange _ _) | some (.oneOf _) | some (.noneOf _) => pure ()
       | none           => pure ()
   -- Reference the leaf-collapse lemmas by (unresolved) name — they live in
   -- `Triptych.Theorems.Reconcile`, which the GENERATED file imports; resolving them here would
@@ -1598,6 +1621,8 @@ private def cursorTokenTerm : TokClass → CommandElabM (TSyntax `term)
   | .bit => `(TokClass.bit)
   | .asciiRange lower upper =>
       `(TokClass.asciiRange $(quote lower) $(quote upper))
+  | .oneOf chars => `(TokClass.oneOf $(quote chars))
+  | .noneOf chars => `(TokClass.noneOf $(quote chars))
 
 private def lengthTerm : LenSpec → CommandElabM (TSyntax `term)
   | .exactly width => `(LenSpec.exactly $(quote width))

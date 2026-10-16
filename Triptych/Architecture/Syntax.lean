@@ -95,6 +95,8 @@ syntax "digit" fmtLen     : fmtItem  -- decimal terminal
 syntax "hexDigit" fmtLen  : fmtItem  -- hex terminal
 syntax "bit" fmtLen       : fmtItem  -- binary terminal (`0`/`1`)
 syntax "ascii" "[" num "," num "]" fmtLen : fmtItem  -- inclusive ASCII range
+syntax "oneOf" str fmtLen : fmtItem   -- any of the listed characters
+syntax "noneOf" str fmtLen : fmtItem  -- any character except the listed ones
 /-- A final decimal payload whose exact width is computed from earlier captures. -/
 syntax "digit" "{" ident (ppSpace rawIdent)+ "}" : fmtItem
 /-- A final hexadecimal payload whose exact width is computed from earlier captures. -/
@@ -114,6 +116,9 @@ syntax "sign"             : fmtItem  -- optional '-' sign token (see CAPTURE RUL
 -- separated GROUP repetition: `rep H16 sepBy ":" {8}` = eight `H16`s joined by `":"`
 -- (`item (sep item)*`, item-count per the `fmtLen`: `{8}`→exactly, `{1,8}`→range, `+`→≥1).
 syntax "rep" fmtItem "sepBy" str fmtLen : fmtItem
+-- separator-free repetition: `rep Tok +` = one or more adjacent `Tok`s. Each item must consume
+-- input (checked at elaboration), so the item count stays recoverable.
+syntax "rep" fmtItem fmtLen : fmtItem
 
 /-- One production alternative: a sequence of grammar items. -/
 declare_syntax_cat fmtSeq
@@ -318,6 +323,8 @@ private def sizedTerminalProductionTerm (name : String) (token : TokClass) :
     | .bit => `(TokClass.bit)
     | .asciiRange lo hi =>
         `((TokClass.asciiRange $(quote lo) $(quote hi) : TokClass))
+    | .oneOf chars => `(TokClass.oneOf $(quote chars))
+    | .noneOf chars => `(TokClass.noneOf $(quote chars))
   `(Production.mk $(Syntax.mkStrLit name)
       [[SymItem.mk (Sym.lit "") false],
        [SymItem.mk (Sym.term $tokenTerm LenSpec.atLeastOne) false]])
@@ -524,6 +531,14 @@ partial def elabSym : TSyntax `fmtItem → CommandElabM (TSyntax `term)
           throwErrorAt hi s!"ASCII range upper bound {upper} exceeds 127"
         `(Sym.term ((TokClass.asciiRange $(quote lower) $(quote upper) : TokClass))
             $(← elabLen l))
+  | `(fmtItem| oneOf $chars:str $l:fmtLen) => do
+      let set := chars.getString.toList
+      if set.isEmpty then throwErrorAt chars "`oneOf` needs at least one character"
+      `(Sym.term (TokClass.oneOf $(quote set)) $(← elabLen l))
+  | `(fmtItem| noneOf $chars:str $l:fmtLen) => do
+      let set := chars.getString.toList
+      if set.isEmpty then throwErrorAt chars "`noneOf` needs at least one excluded character"
+      `(Sym.term (TokClass.noneOf $(quote set)) $(← elabLen l))
   | `(fmtItem| rep $inner:fmtItem sepBy $sep:str $l:fmtLen) => do
       if sep.getString.isEmpty then
         throwErrorAt sep "repetition separator must be non-empty (an empty separator makes the \
@@ -533,6 +548,11 @@ partial def elabSym : TSyntax `fmtItem → CommandElabM (TSyntax `term)
           zero-item repetition has no separated-list decoding"
       let (lo, hi) ← elabRepBounds l
       `(Sym.rep $sep $(← elabSym inner) $lo $hi)
+  | `(fmtItem| rep $inner:fmtItem $l:fmtLen) => do
+      if repLenLoZero l then
+        throwErrorAt l "repetition must require at least one item (lower bound ≥ 1)"
+      let (lo, hi) ← elabRepBounds l
+      `(Sym.rep "" $(← elabSym inner) $lo $hi)
   | item => do
       if (← parseSizedTerminal? item).isSome then
         throwErrorAt item
@@ -610,6 +630,14 @@ partial def parseSym : TSyntax `fmtItem → CommandElabM Sym
         if 127 < upper then
           throwErrorAt hi s!"ASCII range upper bound {upper} exceeds 127"
         pure (.term (.asciiRange lower upper) (← parseLen l))
+  | `(fmtItem| oneOf $chars:str $l:fmtLen) => do
+      let set := chars.getString.toList
+      if set.isEmpty then throwErrorAt chars "`oneOf` needs at least one character"
+      pure (.term (.oneOf set) (← parseLen l))
+  | `(fmtItem| noneOf $chars:str $l:fmtLen) => do
+      let set := chars.getString.toList
+      if set.isEmpty then throwErrorAt chars "`noneOf` needs at least one excluded character"
+      pure (.term (.noneOf set) (← parseLen l))
   | `(fmtItem| rep $inner:fmtItem sepBy $sep:str $l:fmtLen) => do
       if sep.getString.isEmpty then
         throwErrorAt sep "repetition separator must be non-empty (an empty separator makes the \
@@ -619,6 +647,11 @@ partial def parseSym : TSyntax `fmtItem → CommandElabM Sym
           zero-item repetition has no separated-list decoding"
       let (lo, hi) ← parseRepBounds l
       pure (.rep sep.getString (← parseSym inner) lo hi)
+  | `(fmtItem| rep $inner:fmtItem $l:fmtLen) => do
+      if repLenLoZero l then
+        throwErrorAt l "repetition must require at least one item (lower bound ≥ 1)"
+      let (lo, hi) ← parseRepBounds l
+      pure (.rep "" (← parseSym inner) lo hi)
   | item => do
       if (← parseSizedTerminal? item).isSome then
         throwErrorAt item
@@ -895,6 +928,10 @@ def elabTriptych : CommandElab := fun stx => do
         unless referenceCount = 1 do
           throwErrorAt sized.location m!"`{sized.production}` must be referenced exactly once \
             when it has a dependent width"
+      if !gval.repOk then
+        throwErrorAt name m!"a separator-free repetition `rep X …` needs an item that always \
+          consumes input: some required part of every alternative of `X` must be a non-empty \
+          literal, a token run of length at least one, or another consuming reference"
       if let some cycle := gval.cycle? then
         let cycleStart := cycle.headD startName
         let mut cycleLoc : Syntax := name

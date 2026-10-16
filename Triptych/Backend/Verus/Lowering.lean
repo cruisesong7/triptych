@@ -70,7 +70,7 @@ def tokenHelper? : TokClass → Option Helper
   | .digit => some .isDigit
   | .hexDigit => some .isHexDigit
   | .bit => some .isBit
-  | .asciiRange _ _ => none
+  | .asciiRange _ _ | .oneOf _ | .noneOf _ => none
 
 def expressionHelpers : IR.Expr → List Helper
   | .var _ | .capture _ _ | .boolLit _ | .intLit _ | .byteLit _ | .textLit _
@@ -197,6 +197,16 @@ def lowerExpr : IR.Expr → Ast.Expr
       .boolAnd
         (.intLe (.intLit (Int.ofNat lower)) byte)
         (.intLe byte (.intLit (Int.ofNat upper)))
+  | .isToken (.oneOf chars) expression =>
+      let code := Ast.Expr.byteToInt (lowerExpr expression)
+      match chars.map fun c => Ast.Expr.intEq code (.intLit (Int.ofNat c.toNat)) with
+      | [] => .boolLit false
+      | first :: rest => rest.foldl .boolOr first
+  | .isToken (.noneOf chars) expression =>
+      let code := Ast.Expr.byteToInt (lowerExpr expression)
+      match chars.map fun c => Ast.Expr.intNe code (.intLit (Int.ofNat c.toNat)) with
+      | [] => .boolLit true
+      | first :: rest => rest.foldl .boolAnd first
   | .natOf expression =>
       .call "triptych_nat_of" [lowerExpr expression]
   | .intOf expression =>

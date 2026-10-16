@@ -255,7 +255,7 @@ def validateReadableSpecInput (format : FormatInput) : Except String Unit := do
   if let some cycle := format.grammar.cycle? then
     throw s!"Verus backend: recursive grammars are unsupported: \
       {String.intercalate " -> " cycle}"
-  if !format.grammar.repOk then
+  if !format.grammar.repSeparated then
     throw "Verus backend: separated repetition requires a nonempty separator and lower bound 1"
   validateCaptureShape format.grammar
   let available := grammarCaptureKeys format.grammar
@@ -318,6 +318,18 @@ private def runtimeSemanticNaturalCacheTemplate : String :=
 private def runtimeSemanticHexSequenceCacheTemplate : String :=
   include_str "Verus/RuntimeSemanticHexSequenceCache.rs.in"
 
+/-- Whether a symbol uses a `oneOf`/`noneOf` character-set token. -/
+private def symUsesCharacterSets : Sym → Bool
+  | .term (.oneOf _) _ | .term (.noneOf _) _ => true
+  | .rep _ item _ _ => symUsesCharacterSets item
+  | _ => false
+
+/-- Whether a grammar uses a character-set token, which this backend does not render. -/
+def _root_.Triptych.Grammar.usesCharacterSets (g : Grammar) : Bool :=
+  g.prods.any fun prod => prod.alts.any fun alt => alt.any (symUsesCharacterSets ·.sym)
+
+/-- Rendered only for grammars accepted by `emitCertifiedRustWithPlan`, which rejects character
+    sets; their placeholder is not valid Rust. -/
 private def renderTokenClass : TokClass → String
   | .digit => "TokenClass::Digit"
   | .hexDigit => "TokenClass::HexDigit"
@@ -325,6 +337,7 @@ private def renderTokenClass : TokClass → String
   | .asciiRange lower upper =>
       "TokenClass::AsciiRange { lower: " ++ toString lower ++
         ", upper: " ++ toString upper ++ " }"
+  | .oneOf _ | .noneOf _ => "TokenClass::UnsupportedCharacterSet"
 
 private def renderLengthSpec : LenSpec → String
   | .exactly width => s!"LengthSpec::Exactly({width})"
@@ -4798,6 +4811,7 @@ private def renderPlanTokenClass : TokClass → String
   | .asciiRange lower upper =>
       "PlanTokenClass::AsciiRange { lower: " ++ toString lower ++
         ", upper: " ++ toString upper ++ " }"
+  | .oneOf _ | .noneOf _ => "PlanTokenClass::UnsupportedCharacterSet"
 
 private def captureField (capture : String) : String :=
   snakeCase (Triptych.surfaceBinder capture)
@@ -5651,7 +5665,7 @@ private def binderBase (item : SymItem) : Option String :=
   | .term .digit _ => some "digits"
   | .term .hexDigit _ => some "hex_digits"
   | .term .bit _ => some "bits"
-  | .term (.asciiRange _ _) _ => some "characters"
+  | .term (.asciiRange _ _) _ | .term (.oneOf _) _ | .term (.noneOf _) _ => some "characters"
   | .str => some "string_literal"
   | .rep _ _ _ _ => some "items"
 
@@ -6016,7 +6030,7 @@ private def tokenRevealLines : TokClass → List String
   | .digit => ["reveal(triptych_is_digit);"]
   | .hexDigit => ["reveal(triptych_is_hex_digit);", "reveal(triptych_is_digit);"]
   | .bit => ["reveal(triptych_is_bit);"]
-  | .asciiRange _ _ => []
+  | .asciiRange _ _ | .oneOf _ | .noneOf _ => []
 
 private def renderLengthFacts (source : String) : LenSpec → List String
   | .exactly width => [s!"assert({source}.len() == {width});"]
@@ -6706,6 +6720,9 @@ structure CertifiedRustOutput where
     generation, so callers cannot attach an unrelated optimized program. -/
 def emitCertifiedRustWithPlan (format : FormatInput) (parsePlan : ParsePlan) :
     Except String CertifiedRustOutput := do
+  if format.grammar.usesCharacterSets then
+    throw "Verus backend: character-set tokens (`oneOf`/`noneOf`) are not supported yet; \
+      the Lean backend handles them"
   let _ ← compileFlatGrammar format.grammar
   match parsePlan with
   | .cursor scanPlan =>

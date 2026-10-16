@@ -653,7 +653,7 @@ theorem Lrat.Derivation.DelIds.matches (qual : String) (fuel : Nat) (d : Lrat.De
             exact
               (by
                 apply Triptych.symMatch_rep (valid := fun entry => Lrat.Derivation.DelId.Valid entry)
-                · decide
+                · exact Or.inl (by decide)
                 · exact hpart0
                 · intro entry hentry
                   exact
@@ -820,7 +820,7 @@ theorem Lrat.Derivation.Lits.matches (qual : String) (fuel : Nat) (d : Lrat.Deri
             exact
               (by
                 apply Triptych.symMatch_rep (valid := fun entry => Lrat.Derivation.Lit.Valid entry)
-                · decide
+                · exact Or.inl (by decide)
                 · exact hpart0
                 · intro entry hentry
                   exact
@@ -889,7 +889,7 @@ theorem Lrat.Derivation.RupHints.matches (qual : String) (fuel : Nat) (d : Lrat.
             exact
               (by
                 apply Triptych.symMatch_rep (valid := fun entry => Lrat.Derivation.RupHint.Valid entry)
-                · decide
+                · exact Or.inl (by decide)
                 · exact hpart0
                 · intro entry hentry
                   exact
@@ -982,7 +982,7 @@ theorem Lrat.Derivation.RatHints.matches (qual : String) (fuel : Nat) (d : Lrat.
             exact
               (by
                 apply Triptych.symMatch_rep (valid := fun entry => Lrat.Derivation.RatHint.Valid entry)
-                · decide
+                · exact Or.inl (by decide)
                 · exact hpart0
                 · intro entry hentry
                   exact
@@ -1095,7 +1095,7 @@ theorem Lrat.Derivation.RatSteps.matches (qual : String) (fuel : Nat) (d : Lrat.
             exact
               (by
                 apply Triptych.symMatch_rep (valid := fun entry => Lrat.Derivation.RatStep.Valid entry)
-                · decide
+                · exact Or.inl (by decide)
                 · exact hpart0
                 · intro entry hentry
                   exact
@@ -1351,7 +1351,7 @@ theorem Lrat.Derivation.Proof.matches (qual : String) (fuel : Nat) (d : Lrat.Der
             exact
               (by
                 apply Triptych.symMatch_rep (valid := fun entry => Lrat.Derivation.Line.Valid entry)
-                · decide
+                · exact Or.inl (by decide)
                 · exact hpart0
                 · intro entry hentry
                   exact

@@ -146,7 +146,7 @@ def runtimeGrammarSupported (grammar : Grammar) : Bool :=
     (indexOf? grammar.start names).isSome &&
     grammar.refsResolve &&
     grammar.cycle?.isNone &&
-    grammar.repOk
+    grammar.repSeparated
 
 /-- Resolve a Triptych grammar into the flattened representation consumed by the generic runtime.
     This is fail-closed and accepts the same grammar forms as the Lean scanner. -/
@@ -162,7 +162,7 @@ def compileRuntimeGrammar (grammar : Grammar) : Except String RuntimeGrammar := 
   if let some cycle := grammar.cycle? then
     throw s!"Verus runtime: recursive grammars are unsupported: \
       {String.intercalate " -> " cycle}"
-  if !grammar.repOk then
+  if !grammar.repSeparated then
     throw "Verus runtime: separated repetition requires a nonempty separator and lower bound 1"
   let (productions, symbols) ←
     (grammar.prods.mapM (compileProduction productionNames)).run []
