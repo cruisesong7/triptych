@@ -476,12 +476,9 @@ def Lrat.SatisfiesWfConstraints (s : String) : Prop :=
     (Triptych.componentWith Lrat.grammar s
       (fun m =>
         (Triptych.CaptureMap.groups "Line"
-              (fun key =>
-                ["Id", "Body", "Cr", "Pos", "Delete", "Add", "Zeros", "NonZero", "Digits", "DelIds", "Lits", "RupHints",
-                        "RatSteps", "DelId", "Lit", "RupHint", "RatStep", "Neg", "RatPivot", "RatTail", "RatHints",
-                        "RatHint"].contains
-                    (Triptych.CaptureMap.keyProduction key) ||
-                  key == "Line#count")
+              ["Line", "Id", "Body", "Cr", "Pos", "Delete", "Add", "Zeros", "NonZero", "Digits", "DelIds", "Lits",
+                "RupHints", "RatSteps", "DelId", "Lit", "RupHint", "RatStep", "Neg", "RatPivot", "RatTail", "RatHints",
+                "RatHint", "DelId#count", "Lit#count", "RupHint#count", "RatStep#count", "RatHint#count"]
               m).map
           fun segment =>
           (Triptych.CaptureMap.toEnvList segment "Lit", Triptych.CaptureMap.toEnvList segment "RatPivot")))
@@ -499,12 +496,10 @@ def Lrat.Denotes (s : String) (a : Array Std.Tactic.BVDecide.LRAT.IntAction) : P
         (Triptych.componentWith Lrat.grammar s
           (fun m =>
             (Triptych.CaptureMap.groups "Line"
-                  (fun key =>
-                    ["Id", "Body", "Cr", "Pos", "Delete", "Add", "Zeros", "NonZero", "Digits", "DelIds", "Lits",
-                            "RupHints", "RatSteps", "DelId", "Lit", "RupHint", "RatStep", "Neg", "RatPivot", "RatTail",
-                            "RatHints", "RatHint"].contains
-                        (Triptych.CaptureMap.keyProduction key) ||
-                      key == "Line#count")
+                  ["Line", "Id", "Body", "Cr", "Pos", "Delete", "Add", "Zeros", "NonZero", "Digits", "DelIds", "Lits",
+                    "RupHints", "RatSteps", "DelId", "Lit", "RupHint", "RatStep", "Neg", "RatPivot", "RatTail",
+                    "RatHints", "RatHint", "DelId#count", "Lit#count", "RupHint#count", "RatStep#count",
+                    "RatHint#count"]
                   m).map
               fun segment =>
               ((Triptych.CaptureMap.toEnv segment "Id").getD "",
@@ -513,11 +508,8 @@ def Lrat.Denotes (s : String) (a : Array Std.Tactic.BVDecide.LRAT.IntAction) : P
                     (Triptych.CaptureMap.toEnvList segment "Lit",
                       (Triptych.CaptureMap.toEnvList segment "RupHint",
                         (Triptych.CaptureMap.groups "RatStep"
-                              (fun key =>
-                                ["RatPivot", "RatTail", "Neg", "RatHints", "Pos", "RatHint", "Zeros", "NonZero",
-                                        "Digits"].contains
-                                    (Triptych.CaptureMap.keyProduction key) ||
-                                  key == "RatStep#count")
+                              ["RatStep", "RatPivot", "RatTail", "Neg", "RatHints", "Pos", "RatHint", "Zeros",
+                                "NonZero", "Digits", "RatHint#count"]
                               segment).map
                           fun segment =>
                           ((Triptych.CaptureMap.toEnv segment "RatPivot").getD "",

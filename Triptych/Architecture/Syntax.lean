@@ -384,9 +384,9 @@ private def signedIntegerPrinterShape? (g : Grammar) (signName digitsName : Stri
 private def signedIntegerValueCaptures? (e : TSyntax `valExpr) : Option (String × String) :=
   match e with
   | `(valExpr| $signId:ident * nat $digits:ident) =>
-      some (signId.getId.toString, digits.getId.toString)
+      some ((signId.getId.toString (escape := false)), (digits.getId.toString (escape := false)))
   | `(valExpr| nat $digits:ident * $signId:ident) =>
-      some (signId.getId.toString, digits.getId.toString)
+      some ((signId.getId.toString (escape := false)), (digits.getId.toString (escape := false)))
   | _ => none
 
 /-- Emit the total signed-integer presentation certificate and its typed-view witness. -/
@@ -475,13 +475,13 @@ private def signedIntegerPrinterCommands (specName : Name)
 private def validateCaptureIdent (i : TSyntax `ident) : CommandElabM Unit := do
   let raw := match i.raw with
     | .ident _ rawVal _ _ => rawVal.toString
-    | _ => i.getId.toString
+    | _ => (i.getId.toString (escape := false))
   let tokens := Lean.Parser.getTokenTable (← getEnv)
-  for segment in i.getId.toString.splitOn "." do
+  for segment in (i.getId.toString (escape := false)).splitOn "." do
     if (tokens.find? segment).isSome && !raw.contains s!"«{segment}»" then
       let qualified :=
-        if i.getId.toString.contains "." then
-          s!" (for example, `{i.getId.toString.replace segment s!"«{segment}»"}`)"
+        if (i.getId.toString (escape := false)).contains "." then
+          s!" (for example, `{(i.getId.toString (escape := false)).replace segment s!"«{segment}»"}`)"
         else
           ""
       throwErrorAt i m!"capture name segment `{segment}` is a reserved Lean/Triptych keyword; \
@@ -569,7 +569,7 @@ partial def elabSym : TSyntax `fmtItem → CommandElabM (TSyntax `term)
             `(Sym.str)
           else
             validateCaptureIdent i
-            `(Sym.ref $(Syntax.mkStrLit i.getId.toString))
+            `(Sym.ref $(Syntax.mkStrLit (i.getId.toString (escape := false))))
       | s => throwErrorAt s "unrecognized grammar item"
 
 /-- Elaborate an item into a `SymItem` term, setting `optional` for `[…]`. The `sign` terminal
@@ -601,7 +601,7 @@ def elabProd : TSyntax `fmtProd → CommandElabM (TSyntax `term)
               return ← sizedTerminalProductionTerm lhs.getId.toString token
       let altTerms ← alts.getElems.mapM elabSeq
       let sep : Syntax.TSepArray `term "," := .ofElems altTerms
-      `(Production.mk $(Syntax.mkStrLit lhs.getId.toString) [$sep,*])
+      `(Production.mk $(Syntax.mkStrLit (lhs.getId.toString (escape := false))) [$sep,*])
   | s => throwErrorAt s "unrecognized production"
 
 /-! Parse the grammar syntax into `Grammar`/`Production`/`Sym` *values* (not terms), so
@@ -668,7 +668,7 @@ partial def parseSym : TSyntax `fmtItem → CommandElabM Sym
             pure .str
           else
             validateCaptureIdent i
-            pure (.ref i.getId.toString)
+            pure (.ref (i.getId.toString (escape := false)))
       | s => throwErrorAt s "unrecognized grammar item"
 
 def parseItem : TSyntax `fmtItem → CommandElabM SymItem
@@ -688,12 +688,12 @@ def parseProd : TSyntax `fmtProd → CommandElabM Production
           if let [onlyItem] := items.toList then
             if let some (token, _, _) ← parseSizedTerminal? onlyItem then
               return sizedTerminalProduction lhs.getId.toString token
-      pure { name := lhs.getId.toString, alts := ← alts.getElems.toList.mapM parseSeq }
+      pure { name := (lhs.getId.toString (escape := false)), alts := ← alts.getElems.toList.mapM parseSeq }
   | s => throwErrorAt s "unrecognized production"
 
 /-- A parsed value body: a scalar `ValExpr`, or a comprehension over a repeated production. -/
 inductive ValueBody where
-  | scalar (expression : ValExpr)
+  | scalar (expression : ValExpr) (source : Syntax)
   | each (production : TSyntax `ident) (body : ValueBody)
 
 /-- Parse a value body. Scalar bodies are parsed once into their `ValExpr`. -/
@@ -704,24 +704,24 @@ partial def parseValueBody : TSyntax `fmtValueBody → CommandElabM ValueBody
   | `(fmtValueBody| $e:valExpr) => do
       for i in captureIdents e.raw do
         validateCaptureIdent i
-      pure (.scalar (← liftMacroM (parseValExpr e)))
+      pure (.scalar (← liftMacroM (parseValExpr e)) e.raw)
   | s => throwErrorAt s "unrecognized value body"
 
 /-- The group fields read by one comprehension element: the captures of a scalar body, or the
     nested comprehension's own group. -/
 partial def ValueBody.fields : ValueBody → List (String × ArgShape)
-  | .scalar expression => expression.captures.eraseDups.map (·, ArgShape.scalar)
-  | .each production body => [(production.getId.toString, .group [] body.fields)]
+  | .scalar expression _ => expression.captures.eraseDups.map (·, ArgShape.scalar)
+  | .each production body => [((production.getId.toString (escape := false)), .group [] body.fields)]
 
 /-- The Lean type of a value body's result. -/
 partial def ValueBody.typeTerm : ValueBody → MacroM (TSyntax `term)
-  | .scalar _ => `(Int)
+  | .scalar _ _ => `(Int)
   | .each _ body => do `(List $(← body.typeTerm))
 
 /-- The readable function from one element's group fields to its value. Scalar bodies use the
     readable value-expression printer over their capture binders; nested comprehensions map. -/
 partial def ValueBody.elementFn : ValueBody → MacroM (TSyntax `term)
-  | .scalar expression => do
+  | .scalar expression _ => do
       let readable ← quoteValReadable expression
       let binders : List (TSyntax `term) := expression.captures.eraseDups.map fun capture =>
         ⟨(mkIdent (Name.mkSimple (Triptych.surfaceBinder capture))).raw⟩
@@ -747,13 +747,29 @@ partial def parseEscArg : TSyntax `fmtEscArg → CommandElabM (TSyntax `ident ×
   | `(fmtEscArg| [ $i:ident ⟨ $fields,* ⟩ ]) => do
       validateCaptureIdent i
       let parsed ← fields.getElems.mapM parseEscArg
-      pure (i, .group [] (parsed.toList.map fun (field, shape) => (field.getId.toString, shape)))
+      pure (i, .group [] (parsed.toList.map fun (field, shape) => ((field.getId.toString (escape := false)), shape)))
   | s => throwErrorAt s "unrecognized escape argument"
 
-/-- Fill every group's `inside` set with the productions reachable below its production. -/
+/-- Count keys (`B#count`) recorded by the repetitions in the named productions. -/
+def Grammar.repCountKeys (g : Grammar) (names : List String) : List String :=
+  let rec symKeys (owner : String) : Sym → List String
+    | .rep _ item _ _ => ((item.refName?.getD owner) ++ "#count") :: symKeys owner item
+    | _ => []
+  (names.flatMap fun name =>
+    ((g.prod? name).map fun production =>
+      production.alts.flatMap fun alt => alt.flatMap fun item => symKeys name item.sym).getD [])
+    |>.eraseDups
+
+/-- What `CaptureMap.groups` treats as recorded inside an occurrence of `capture`: the production
+    itself, the productions reachable below it, and the count keys of their repetitions. -/
+def Grammar.groupInside (g : Grammar) (capture : String) : List String :=
+  let productions := capture :: g.descendants capture
+  productions ++ g.repCountKeys productions
+
+/-- Fill every group's `inside` set from the grammar. -/
 partial def ArgShape.resolve (g : Grammar) (capture : String) : ArgShape → ArgShape
   | .group _ fields =>
-      .group (g.descendants capture) (fields.map fun (field, shape) =>
+      .group (g.groupInside capture) (fields.map fun (field, shape) =>
         (field, shape.resolve g field))
   | shape => shape
 
@@ -773,11 +789,39 @@ partial def validateEscArgShape (g : Grammar) (repeated : List String) (strictLi
       unless (g.prod? capture).isSome do
         throwErrorAt arg m!"group argument `[{capture} ⟨…⟩]` does not name a production"
       let below := g.descendants capture
+      let productions := capture :: below
+      let outsideCounts :=
+        g.repCountKeys ((g.prods.map (·.name)).filter (!productions.contains ·))
+      for key in g.repCountKeys productions do
+        if outsideCounts.contains key then
+          throwErrorAt arg m!"group `[{capture} ⟨…⟩]` cannot tell its own `{key}` capture from \
+            one recorded outside `{capture}`; give the repeated item a distinct production name"
       for (field, shape) in fields do
         unless field == capture || below.contains field do
           throwErrorAt arg m!"group field `{field}` is not a production inside `{capture}`; \
             a group reads only captures recorded within each `{capture}` occurrence"
         validateEscArgShape g repeated false arg field shape
+
+/-- Apply the scalar `value` checks to every scalar body of a comprehension: bare names must be
+    sign captures, sign captures may not be read as magnitudes, counts must name repetitions,
+    and the body's binders must be distinct. -/
+partial def ValueBody.validate (signCaptures : List String)
+    (validateCounts : Syntax → List String → CommandElabM Unit) :
+    ValueBody → CommandElabM Unit
+  | .scalar expression source => do
+      let signRefs := expression.signCaptures
+      for r in signRefs do
+        unless signCaptures.contains r do
+          throwErrorAt source m!"value references `{r}` bare, which reads its SIGN (±1) — but \
+            `{r}` is not a sign capture. Declare `{r} ::= sign`, or use `nat {r}`/`int {r}`/\
+            `len {r}` to read its magnitude/length."
+      for r in expression.captures.filter (· ∉ signRefs) do
+        if signCaptures.contains r then
+          throwErrorAt source m!"value reads the magnitude/length of `{r}`, but `{r}` is a sign \
+            capture. Reference it BARE (`{r}`) for its ±1 sign."
+      validateCounts source expression.countCaptures
+      validateSurfaceBinders source "a `value` comprehension element" expression.captures
+  | .each _ body => body.validate signCaptures validateCounts
 
 /-- Elaborate `value [P ↦ body]`: a list-valued value generated entirely from the DSL. It reads
     the group `[P ⟨fields⟩]` and maps the readable element function over its occurrences; the
@@ -787,7 +831,7 @@ def elabValueComprehension (name : TSyntax `ident) (gval : Grammar)
     (repeatedCaptures : List String) (production : TSyntax `ident) (body : ValueBody)
     (emitSpec emitEngine : TSyntax `command → CommandElabM Unit) :
     CommandElabM (List String × List (String × ArgShape)) := do
-  let capture := production.getId.toString
+  let capture := (production.getId.toString (escape := false))
   let shape := (ArgShape.group [] body.fields).resolve gval capture
   validateEscArgShape gval repeatedCaptures false production capture shape
   let groupsBinder := mkIdent (Name.mkSimple (Triptych.surfaceBinder capture ++ "Groups"))
@@ -808,23 +852,33 @@ def elabValueComprehension (name : TSyntax `ident) (gval : Grammar)
     engine and the readable specification apply the same function. -/
 def elabForallConstraint (name : TSyntax `ident) (gval : Grammar) (index : Nat)
     (production : TSyntax `ident) (body : TSyntax `constraintExpr)
-    (emitSpec : TSyntax `command → CommandElabM Unit) :
+    (sharedInner : List String) (emitSpec : TSyntax `command → CommandElabM Unit) :
     CommandElabM (TSyntax `ident × Array (TSyntax `ident × ArgShape)) := do
   validateCaptureIdent production
   for i in captureIdents body.raw do
     if i.getId == `value then
       throwErrorAt i "`forall` constraints are well-formedness checks and cannot read `value`"
     validateCaptureIdent i
-  let capture := production.getId.toString
+  let capture := (production.getId.toString (escape := false))
   unless (gval.prod? capture).isSome do
     throwErrorAt production m!"`forall {capture}` does not name a production"
   let parsed ← liftMacroM (parseConstraintEntryWith none body)
   let captures := parsed.constraint.captures.eraseDups
-  let below := gval.descendants capture
-  let isInner (c : String) : Bool := c == capture || below.contains c
-  let inner := captures.filter isInner
+  -- Classify captures exactly as `CaptureMap.groups` assigns entries: a count key by the group's
+  -- count keys, a qualified key by its parent production, and a bare key by its production.
+  let inside := gval.groupInside capture
+  let productions := capture :: gval.descendants capture
+  let isInner (c : String) : Bool :=
+    if c.endsWith "#count" then inside.contains c
+    else
+      match c.splitOn "." with
+      | [parent, _] => productions.contains parent
+      | _ => productions.contains c
+  -- Every `forall` over the same production reads one shared group, so their generated
+  -- predicates take the same group argument; `sharedInner` is the union of their inner captures.
+  let inner := sharedInner
   let outer := captures.filter (!isInner ·)
-  let shape := ArgShape.group below (inner.map (·, ArgShape.scalar))
+  let shape := ArgShape.group inside (inner.map (·, ArgShape.scalar))
   let binder (capture : String) : TSyntax `ident :=
     mkIdent (Name.mkSimple (Triptych.surfaceBinder capture))
   let groupsBinder := mkIdent (Name.mkSimple (Triptych.surfaceBinder capture ++ "Groups"))
@@ -963,7 +1017,7 @@ def elabTriptych : CommandElab := fun stx => do
       -- e.g. `triptych IPv4` whose first production is `V4Addr`); it must name a real
       -- production so `grammar.prod? grammar.start` resolves.
       let prodVals ← prods.toList.mapM parseProd
-      let startName := (prodVals.head?.map (·.name)).getD name.getId.toString
+      let startName := (prodVals.head?.map (·.name)).getD (name.getId.toString (escape := false))
       let gval : Triptych.Grammar :=
         { start := startName, prods := prodVals }
       let parsePlan := compileParsePlan gval
@@ -982,7 +1036,7 @@ def elabTriptych : CommandElab := fun stx => do
                     validateCaptureIdent argument
                   sizedTerminals := sizedTerminals.push
                     {
-                      production := lhs.getId.toString
+                      production := (lhs.getId.toString (escape := false))
                       token
                       widthFn
                       widthArgs
@@ -993,7 +1047,7 @@ def elabTriptych : CommandElab := fun stx => do
           throwErrorAt sized.location
             "a dependent width must describe a named field, not the start production"
         for argument in sized.widthArgs do
-          let capture := argument.getId.toString
+          let capture := (argument.getId.toString (escape := false))
           unless gval.prods.any (·.name = capture) do
             throwErrorAt argument
               m!"dependent-width argument `{capture}` is not a grammar production"
@@ -1029,7 +1083,7 @@ def elabTriptych : CommandElab := fun stx => do
             throwErrorAt sized.location m!"internal dependent-width field `{sized.production}` \
               requires an immediate nonempty literal delimiter after it"
         for argument in sized.widthArgs do
-          let capture := argument.getId.toString
+          let capture := (argument.getId.toString (escape := false))
           unless precedingItems.any (fun item => item = { sym := .ref capture }) do
             throwErrorAt argument m!"dependent-width argument `{capture}` must be captured \
               before `{sized.production}` in the start production"
@@ -1080,7 +1134,7 @@ def elabTriptych : CommandElab := fun stx => do
                 (`{lhs.getId} ::= sign`), so the sign owns its own capture; found it mixed with \
                 other items. Wrap the sign in its own production and reference that."
           if anySign then
-            signCaptures := signCaptures ++ [lhs.getId.toString]
+            signCaptures := signCaptures ++ [(lhs.getId.toString (escape := false))]
       let prodTerms ← prods.mapM elabProd
       let sep : Syntax.TSepArray `term "," := .ofElems prodTerms
       let grammarIdent := mkIdentFrom name (name.getId ++ `grammar)
@@ -1198,6 +1252,7 @@ def elabTriptych : CommandElab := fun stx => do
         | some vStx => some <$> parseValueBody ⟨vStx.raw[1]⟩
         | none => pure none
       if let some (.each production body) := valueBody? then
+        body.validate signCaptures validateCounts
         let (caps, capArgs) ← elabValueComprehension name gval repeatedCaptures production body
           emitSpec emitEngine
         hasValueEsc := true
@@ -1250,7 +1305,7 @@ def elabTriptych : CommandElab := fun stx => do
             value' $e:fmtEscEntry $[$_:fmtOfSpec]? $[$_:fmtToSpec]?
               $[$_:fmtOfSpecToSpec]?) =>
           let (f, rawArgs) ← parseEscEntryArgs e
-          let args := rawArgs.map fun (i, shape) => (i, shape.resolve gval i.getId.toString)
+          let args := rawArgs.map fun (i, shape) => (i, shape.resolve gval (i.getId.toString (escape := false)))
           for (i, shape) in args do
             validateEscArgShape gval repeatedCaptures false i i.getId.toString shape
           hasValueEsc := true
@@ -1265,16 +1320,16 @@ def elabTriptych : CommandElab := fun stx => do
           -- spec: a READABLE `<Name>.value` — the author's call over the surface binders (return
           -- type inferred from `f`; each binder's type inferred too — `String` for a scalar arg,
           -- `List String` for a `[X]` list arg).
-          let capArgs := args.toList.map (fun (i, shape) => (i.getId.toString, shape))
+          let capArgs := args.toList.map (fun (i, shape) => ((i.getId.toString (escape := false)), shape))
           validateSurfaceBinders veStx.raw "the `value'` function" (capArgs.map (·.1)) true
           -- Typed binders: `String` for a scalar arg, `List String` for a `[X]` list arg.
           let tBinders : Array (TSyntax ``Lean.Parser.Term.bracketedBinder) ←
             args.mapM (fun (i, shape) => do
-              let b := mkIdent (Name.mkSimple (Triptych.surfaceBinder i.getId.toString))
+              let b := mkIdent (Name.mkSimple (Triptych.surfaceBinder (i.getId.toString (escape := false))))
               let ty ← liftMacroM shape.typeTerm
               `(bracketedBinder| ($b : $ty)))
           let bArgs : Array (TSyntax `term) := args.map (fun (i, _) =>
-            ⟨(mkIdent (Name.mkSimple (Triptych.surfaceBinder i.getId.toString))).raw⟩)
+            ⟨(mkIdent (Name.mkSimple (Triptych.surfaceBinder (i.getId.toString (escape := false))))).raw⟩)
           let valIdent := mkIdentFrom name (name.getId ++ `value)
           emitSpec (← `(def $valIdent $tBinders* := $f $bArgs*))
           valueCaps := capArgs.map (·.1)
@@ -1311,7 +1366,7 @@ def elabTriptych : CommandElab := fun stx => do
           let lines : Array (TSyntax `fmtEscEntry) := cseStx.raw[1].getArgs.map (⟨·⟩)
           lines.mapM fun line => do
             let (f, args) ← parseEscEntryArgs line
-            pure (f, args.map fun (i, shape) => (i, shape.resolve gval i.getId.toString))
+            pure (f, args.map fun (i, shape) => (i, shape.resolve gval (i.getId.toString (escape := false))))
         | none => pure #[]
       for (_, args) in escEntries do
         for (i, shape) in args do
@@ -1322,13 +1377,36 @@ def elabTriptych : CommandElab := fun stx => do
         | some csStx => csStx.raw[1].getArgs.map (⟨·⟩)
         | none       => #[]
       let mut dslExprs : Array (TSyntax `constraintExpr) := #[]
-      let mut forallEntries : Array (TSyntax `ident × Array (TSyntax `ident × ArgShape)) := #[]
+      let mut foralls : Array (TSyntax `ident × TSyntax `constraintExpr) := #[]
       for e in allDslExprs do
         match e with
         | `(constraintExpr| forall $p:ident, $body:constraintExpr) =>
-            forallEntries := forallEntries.push
-              (← elabForallConstraint name gval forallEntries.size p body emitSpec)
+            let parsedBody ← liftMacroM (parseConstraintEntryWith none body)
+            validateCounts body.raw parsedBody.constraint.countCaptures
+            foralls := foralls.push (p, body)
         | _ => dslExprs := dslExprs.push e
+      -- Inner captures per production, shared by all of its `forall` entries.
+      let mut sharedInner : Std.HashMap String (List String) := {}
+      for (p, body) in foralls do
+        let capture := (p.getId.toString (escape := false))
+        let parsedBody ← liftMacroM (parseConstraintEntryWith none body)
+        let productions := capture :: gval.descendants capture
+        let inside := gval.groupInside capture
+        let isInner (c : String) : Bool :=
+          if c.endsWith "#count" then inside.contains c
+          else
+            match c.splitOn "." with
+            | [parent, _] => productions.contains parent
+            | _ => productions.contains c
+        let inner := parsedBody.constraint.captures.eraseDups.filter isInner
+        sharedInner := sharedInner.insert capture
+          ((sharedInner.getD capture []) ++ inner).eraseDups
+      let mut forallEntries : Array (TSyntax `ident × Array (TSyntax `ident × ArgShape)) := #[]
+      for (p, body) in foralls do
+        let capture := (p.getId.toString (escape := false))
+        forallEntries := forallEntries.push
+          (← elabForallConstraint name gval forallEntries.size p body
+            (sharedInner.getD capture []) emitSpec)
       let escEntries := escEntries ++ forallEntries
       let hasOpaque := !escEntries.isEmpty || !sizedTerminals.isEmpty
       let parsedConstraints ← dslExprs.mapM fun e =>
@@ -1343,7 +1421,7 @@ def elabTriptych : CommandElab := fun stx => do
           `((Triptych.CaptureMap.toEnv m $(Syntax.mkStrLit sized.production)).getD "")
         let widthArgs : Array (TSyntax `term) ← sized.widthArgs.mapM fun argument =>
           `((Triptych.CaptureMap.toEnv m
-              $(Syntax.mkStrLit argument.getId.toString)).getD "")
+              $(Syntax.mkStrLit (argument.getId.toString (escape := false)))).getD "")
         `(ConstraintEntry.opaqueMap ConstraintPhase.wellFormed
             (fun m : CaptureMap =>
               ($payloadTerm).length == $sized.widthFn $widthArgs*))
@@ -1352,12 +1430,12 @@ def elabTriptych : CommandElab := fun stx => do
           mkIdent (Name.mkSimple (Triptych.surfaceBinder sized.production))
         let widthArgs : Array (TSyntax `term) := sized.widthArgs.map fun argument =>
           ⟨(mkIdent
-            (Name.mkSimple (Triptych.surfaceBinder argument.getId.toString))).raw⟩
+            (Name.mkSimple (Triptych.surfaceBinder (argument.getId.toString (escape := false))))).raw⟩
         `(($payload).length = $sized.widthFn $widthArgs*)
       let sizedCaps : List (String × ArgShape) :=
         sizedTerminals.toList.flatMap fun sized =>
           (sized.production, .scalar) ::
-            sized.widthArgs.toList.map fun argument => (argument.getId.toString, .scalar)
+            sized.widthArgs.toList.map fun argument => ((argument.getId.toString (escape := false)), .scalar)
       -- `parseConstraintEntryWith` preserves whether the ORIGINAL expression mentioned `value`
       -- while producing its semantic `Constraint` AST. Every downstream artifact consumes this
       -- one parsed array.
@@ -1395,10 +1473,10 @@ def elabTriptych : CommandElab := fun stx => do
           liftMacroM (quoteConstraintReadable valueReadableRef constraint))
         let escRTerms ← escEntries.mapM (fun (f, is) => do
           let bArgs : Array (TSyntax `term) := is.map (fun (i, _) =>
-            ⟨(mkIdent (Name.mkSimple (Triptych.surfaceBinder i.getId.toString))).raw⟩)
+            ⟨(mkIdent (Name.mkSimple (Triptych.surfaceBinder (i.getId.toString (escape := false))))).raw⟩)
           `($f $bArgs* = true))
         let escCaps := escEntries.toList.flatMap (fun (_, is) =>
-          is.toList.map (fun (i, shape) => (i.getId.toString, shape)))
+          is.toList.map (fun (i, shape) => ((i.getId.toString (escape := false)), shape)))
         let wfCaps :=
           ((wfConstraintAsts.toList.flatMap Constraint.captures).map (·, ArgShape.scalar) ++
               escCaps ++
@@ -1994,7 +2072,7 @@ def elabTriptych : CommandElab := fun stx => do
       -- dependency chain spec ← parser ← soundness is acyclic.
       if let some toStx := to? then
         if let `(fmtTo| to $dirStx:str) := toStx then
-          let nm := name.getId.toString
+          let nm := (name.getId.toString (escape := false))
           let dir := dirStx.getString
           let specDecls ← bufS.get; let engineDecls ← bufE.get
           let proofDecls ← bufP.get; let parserDecls ← bufR.get

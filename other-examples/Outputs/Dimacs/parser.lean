@@ -229,30 +229,17 @@ def Dimacs.Derivation.File.capturesWith (qual : String) : Dimacs.Derivation.File
 def Dimacs.valueFn := fun m : Triptych.CaptureMap =>
   Dimacs.value
     ((Triptych.CaptureMap.groups "Clause"
-          (fun key =>
-            ["Lits", "Ws", "WsLit", "Lit", "Sign", "Var", "NonZero", "Digits"].contains
-                (Triptych.CaptureMap.keyProduction key) ||
-              key == "Clause#count")
-          m).map
+          ["Clause", "Lits", "Ws", "WsLit", "Lit", "Sign", "Var", "NonZero", "Digits", "WsLit#count"] m).map
       fun segment =>
-      (Triptych.CaptureMap.groups "Lit"
-            (fun key =>
-              ["Sign", "Var", "NonZero", "Digits"].contains (Triptych.CaptureMap.keyProduction key) ||
-                key == "Lit#count")
-            segment).map
-        fun segment =>
+      (Triptych.CaptureMap.groups "Lit" ["Lit", "Sign", "Var", "NonZero", "Digits"] segment).map fun segment =>
         ((Triptych.CaptureMap.toEnv segment "Sign").getD "", (Triptych.CaptureMap.toEnv segment "Var").getD ""))
 
 def Dimacs.constraints : List ConstraintEntry :=
   [ConstraintEntry.dsl ConstraintPhase.wellFormed (Constraint.eq (ValExpr.count "Clause") (ValExpr.nat "Count")),
     ConstraintEntry.opaqueMap ConstraintPhase.wellFormed fun m : Triptych.CaptureMap =>
       Dimacs.forall0
-        ((Triptych.CaptureMap.groups "Lit"
-              (fun key =>
-                ["Sign", "Var", "NonZero", "Digits"].contains (Triptych.CaptureMap.keyProduction key) ||
-                  key == "Lit#count")
-              m).map
-          fun segment => (Triptych.CaptureMap.toEnv segment "Var").getD "")
+        ((Triptych.CaptureMap.groups "Lit" ["Lit", "Sign", "Var", "NonZero", "Digits"] m).map fun segment =>
+          (Triptych.CaptureMap.toEnv segment "Var").getD "")
         ((Triptych.CaptureMap.toEnv m "Vars").getD "")]
 
 def Dimacs.computeValue (s : String) :=
@@ -261,50 +248,27 @@ def Dimacs.computeValue (s : String) :=
 def Dimacs.View.ofMap (input : String) (m : Triptych.CaptureMap) : Dimacs.View :=
   Dimacs.View.mk input
     ((Triptych.CaptureMap.groups "Clause"
-          (fun key =>
-            ["Lits", "Ws", "WsLit", "Lit", "Sign", "Var", "NonZero", "Digits"].contains
-                (Triptych.CaptureMap.keyProduction key) ||
-              key == "Clause#count")
-          m).map
+          ["Clause", "Lits", "Ws", "WsLit", "Lit", "Sign", "Var", "NonZero", "Digits", "WsLit#count"] m).map
       fun segment =>
-      (Triptych.CaptureMap.groups "Lit"
-            (fun key =>
-              ["Sign", "Var", "NonZero", "Digits"].contains (Triptych.CaptureMap.keyProduction key) ||
-                key == "Lit#count")
-            segment).map
-        fun segment =>
+      (Triptych.CaptureMap.groups "Lit" ["Lit", "Sign", "Var", "NonZero", "Digits"] segment).map fun segment =>
         ((Triptych.CaptureMap.toEnv segment "Sign").getD "", (Triptych.CaptureMap.toEnv segment "Var").getD ""))
     (Triptych.CaptureMap.toEnv m "Clause#count") ((Triptych.CaptureMap.toEnv m "Count").getD "")
-    ((Triptych.CaptureMap.groups "Lit"
-          (fun key =>
-            ["Sign", "Var", "NonZero", "Digits"].contains (Triptych.CaptureMap.keyProduction key) || key == "Lit#count")
-          m).map
-      fun segment => (Triptych.CaptureMap.toEnv segment "Var").getD "")
+    ((Triptych.CaptureMap.groups "Lit" ["Lit", "Sign", "Var", "NonZero", "Digits"] m).map fun segment =>
+      (Triptych.CaptureMap.toEnv segment "Var").getD "")
     ((Triptych.CaptureMap.toEnv m "Vars").getD "")
 
 private def Dimacs.View.ofSpans (input : String) (chars : List Char) (spans : Triptych.LeanSpanCursor.SpanMap) :
     Dimacs.View :=
   Dimacs.View.mk input
     ((Triptych.CaptureMap.groups "Clause"
-          (fun key =>
-            ["Lits", "Ws", "WsLit", "Lit", "Sign", "Var", "NonZero", "Digits"].contains
-                (Triptych.CaptureMap.keyProduction key) ||
-              key == "Clause#count")
+          ["Clause", "Lits", "Ws", "WsLit", "Lit", "Sign", "Var", "NonZero", "Digits", "WsLit#count"]
           (spans.materialize chars)).map
       fun segment =>
-      (Triptych.CaptureMap.groups "Lit"
-            (fun key =>
-              ["Sign", "Var", "NonZero", "Digits"].contains (Triptych.CaptureMap.keyProduction key) ||
-                key == "Lit#count")
-            segment).map
-        fun segment =>
+      (Triptych.CaptureMap.groups "Lit" ["Lit", "Sign", "Var", "NonZero", "Digits"] segment).map fun segment =>
         ((Triptych.CaptureMap.toEnv segment "Sign").getD "", (Triptych.CaptureMap.toEnv segment "Var").getD ""))
     (Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "Clause#count")
     ((Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "Count").getD "")
-    ((Triptych.CaptureMap.groups "Lit"
-          (fun key =>
-            ["Sign", "Var", "NonZero", "Digits"].contains (Triptych.CaptureMap.keyProduction key) || key == "Lit#count")
-          (spans.materialize chars)).map
+    ((Triptych.CaptureMap.groups "Lit" ["Lit", "Sign", "Var", "NonZero", "Digits"] (spans.materialize chars)).map
       fun segment => (Triptych.CaptureMap.toEnv segment "Var").getD "")
     ((Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "Vars").getD "")
 
@@ -1101,24 +1065,16 @@ theorem Dimacs.SatisfiesWfConstraints_of_decode {s : String} {m : Triptych.Captu
     Dimacs.SatisfiesWfConstraints s ↔
       Dimacs.WfConstraints ((Triptych.CaptureMap.toEnv m "Clause#count").getD "")
         ((Triptych.CaptureMap.toEnv m "Count").getD "")
-        ((Triptych.CaptureMap.groups "Lit"
-              (fun key =>
-                ["Sign", "Var", "NonZero", "Digits"].contains (Triptych.CaptureMap.keyProduction key) ||
-                  key == "Lit#count")
-              m).map
-          fun segment => (Triptych.CaptureMap.toEnv segment "Var").getD "")
+        ((Triptych.CaptureMap.groups "Lit" ["Lit", "Sign", "Var", "NonZero", "Digits"] m).map fun segment =>
+          (Triptych.CaptureMap.toEnv segment "Var").getD "")
         ((Triptych.CaptureMap.toEnv m "Vars").getD "") :=
   by
   unfold Dimacs.SatisfiesWfConstraints
   simp only [Triptych.component_eq_of_decode h "Clause#count", Triptych.component_eq_of_decode h "Count",
     Triptych.componentWith_eq_of_decode h
         (fun m =>
-          (Triptych.CaptureMap.groups "Lit"
-                (fun key =>
-                  ["Sign", "Var", "NonZero", "Digits"].contains (Triptych.CaptureMap.keyProduction key) ||
-                    key == "Lit#count")
-                m).map
-            fun segment => (Triptych.CaptureMap.toEnv segment "Var").getD ""),
+          (Triptych.CaptureMap.groups "Lit" ["Lit", "Sign", "Var", "NonZero", "Digits"] m).map fun segment =>
+            (Triptych.CaptureMap.toEnv segment "Var").getD ""),
     Triptych.component_eq_of_decode h "Vars"]
 
 theorem Dimacs.Internal.matchesRef.Text (fuel : Nat) (s : String) :
@@ -1574,17 +1530,9 @@ theorem Dimacs.computeValue_eq (s : String) :
             (Triptych.componentWith Dimacs.grammar s
               (fun m =>
                 (Triptych.CaptureMap.groups "Clause"
-                      (fun key =>
-                        ["Lits", "Ws", "WsLit", "Lit", "Sign", "Var", "NonZero", "Digits"].contains
-                            (Triptych.CaptureMap.keyProduction key) ||
-                          key == "Clause#count")
-                      m).map
+                      ["Clause", "Lits", "Ws", "WsLit", "Lit", "Sign", "Var", "NonZero", "Digits", "WsLit#count"] m).map
                   fun segment =>
-                  (Triptych.CaptureMap.groups "Lit"
-                        (fun key =>
-                          ["Sign", "Var", "NonZero", "Digits"].contains (Triptych.CaptureMap.keyProduction key) ||
-                            key == "Lit#count")
-                        segment).map
+                  (Triptych.CaptureMap.groups "Lit" ["Lit", "Sign", "Var", "NonZero", "Digits"] segment).map
                     fun segment =>
                     ((Triptych.CaptureMap.toEnv segment "Sign").getD "",
                       (Triptych.CaptureMap.toEnv segment "Var").getD "")))) :=
@@ -1604,18 +1552,9 @@ theorem Dimacs.computeValue_of_decode {s : String} {m : Triptych.CaptureMap} (h 
       some
         (Dimacs.value
           ((Triptych.CaptureMap.groups "Clause"
-                (fun key =>
-                  ["Lits", "Ws", "WsLit", "Lit", "Sign", "Var", "NonZero", "Digits"].contains
-                      (Triptych.CaptureMap.keyProduction key) ||
-                    key == "Clause#count")
-                m).map
+                ["Clause", "Lits", "Ws", "WsLit", "Lit", "Sign", "Var", "NonZero", "Digits", "WsLit#count"] m).map
             fun segment =>
-            (Triptych.CaptureMap.groups "Lit"
-                  (fun key =>
-                    ["Sign", "Var", "NonZero", "Digits"].contains (Triptych.CaptureMap.keyProduction key) ||
-                      key == "Lit#count")
-                  segment).map
-              fun segment =>
+            (Triptych.CaptureMap.groups "Lit" ["Lit", "Sign", "Var", "NonZero", "Digits"] segment).map fun segment =>
               ((Triptych.CaptureMap.toEnv segment "Sign").getD "",
                 (Triptych.CaptureMap.toEnv segment "Var").getD ""))) :=
   by
@@ -1624,18 +1563,9 @@ theorem Dimacs.computeValue_of_decode {s : String} {m : Triptych.CaptureMap} (h 
     Triptych.componentWith_eq_of_decode h
         (fun m =>
           (Triptych.CaptureMap.groups "Clause"
-                (fun key =>
-                  ["Lits", "Ws", "WsLit", "Lit", "Sign", "Var", "NonZero", "Digits"].contains
-                      (Triptych.CaptureMap.keyProduction key) ||
-                    key == "Clause#count")
-                m).map
+                ["Clause", "Lits", "Ws", "WsLit", "Lit", "Sign", "Var", "NonZero", "Digits", "WsLit#count"] m).map
             fun segment =>
-            (Triptych.CaptureMap.groups "Lit"
-                  (fun key =>
-                    ["Sign", "Var", "NonZero", "Digits"].contains (Triptych.CaptureMap.keyProduction key) ||
-                      key == "Lit#count")
-                  segment).map
-              fun segment =>
+            (Triptych.CaptureMap.groups "Lit" ["Lit", "Sign", "Var", "NonZero", "Digits"] segment).map fun segment =>
               ((Triptych.CaptureMap.toEnv segment "Sign").getD "", (Triptych.CaptureMap.toEnv segment "Var").getD ""))]
 
 theorem Dimacs.computeValue_view (s : String) :

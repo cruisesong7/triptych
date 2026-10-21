@@ -368,12 +368,8 @@ def Dimacs.SatisfiesWfConstraints (s : String) : Prop :=
     (Triptych.component Dimacs.grammar s "Count")
     (Triptych.componentWith Dimacs.grammar s
       (fun m =>
-        (Triptych.CaptureMap.groups "Lit"
-              (fun key =>
-                ["Sign", "Var", "NonZero", "Digits"].contains (Triptych.CaptureMap.keyProduction key) ||
-                  key == "Lit#count")
-              m).map
-          fun segment => (Triptych.CaptureMap.toEnv segment "Var").getD ""))
+        (Triptych.CaptureMap.groups "Lit" ["Lit", "Sign", "Var", "NonZero", "Digits"] m).map fun segment =>
+          (Triptych.CaptureMap.toEnv segment "Var").getD ""))
     (Triptych.component Dimacs.grammar s "Vars")
 
 abbrev Dimacs.IsWf (s : String) : Prop :=
@@ -389,18 +385,9 @@ def Dimacs.Denotes (s : String) (l : List (List Int)) : Prop :=
         (Triptych.componentWith Dimacs.grammar s
           (fun m =>
             (Triptych.CaptureMap.groups "Clause"
-                  (fun key =>
-                    ["Lits", "Ws", "WsLit", "Lit", "Sign", "Var", "NonZero", "Digits"].contains
-                        (Triptych.CaptureMap.keyProduction key) ||
-                      key == "Clause#count")
-                  m).map
+                  ["Clause", "Lits", "Ws", "WsLit", "Lit", "Sign", "Var", "NonZero", "Digits", "WsLit#count"] m).map
               fun segment =>
-              (Triptych.CaptureMap.groups "Lit"
-                    (fun key =>
-                      ["Sign", "Var", "NonZero", "Digits"].contains (Triptych.CaptureMap.keyProduction key) ||
-                        key == "Lit#count")
-                    segment).map
-                fun segment =>
+              (Triptych.CaptureMap.groups "Lit" ["Lit", "Sign", "Var", "NonZero", "Digits"] segment).map fun segment =>
                 ((Triptych.CaptureMap.toEnv segment "Sign").getD "",
                   (Triptych.CaptureMap.toEnv segment "Var").getD "")))
 

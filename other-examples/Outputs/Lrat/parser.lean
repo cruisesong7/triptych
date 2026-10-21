@@ -309,12 +309,9 @@ def Lrat.Derivation.Proof.capturesWith (qual : String) : Lrat.Derivation.Proof â
 def Lrat.valueFn := fun m : Triptych.CaptureMap =>
   toActions
     ((Triptych.CaptureMap.groups "Line"
-          (fun key =>
-            ["Id", "Body", "Cr", "Pos", "Delete", "Add", "Zeros", "NonZero", "Digits", "DelIds", "Lits", "RupHints",
-                    "RatSteps", "DelId", "Lit", "RupHint", "RatStep", "Neg", "RatPivot", "RatTail", "RatHints",
-                    "RatHint"].contains
-                (Triptych.CaptureMap.keyProduction key) ||
-              key == "Line#count")
+          ["Line", "Id", "Body", "Cr", "Pos", "Delete", "Add", "Zeros", "NonZero", "Digits", "DelIds", "Lits",
+            "RupHints", "RatSteps", "DelId", "Lit", "RupHint", "RatStep", "Neg", "RatPivot", "RatTail", "RatHints",
+            "RatHint", "DelId#count", "Lit#count", "RupHint#count", "RatStep#count", "RatHint#count"]
           m).map
       fun segment =>
       ((Triptych.CaptureMap.toEnv segment "Id").getD "",
@@ -323,11 +320,8 @@ def Lrat.valueFn := fun m : Triptych.CaptureMap =>
             (Triptych.CaptureMap.toEnvList segment "Lit",
               (Triptych.CaptureMap.toEnvList segment "RupHint",
                 (Triptych.CaptureMap.groups "RatStep"
-                      (fun key =>
-                        ["RatPivot", "RatTail", "Neg", "RatHints", "Pos", "RatHint", "Zeros", "NonZero",
-                                "Digits"].contains
-                            (Triptych.CaptureMap.keyProduction key) ||
-                          key == "RatStep#count")
+                      ["RatStep", "RatPivot", "RatTail", "Neg", "RatHints", "Pos", "RatHint", "Zeros", "NonZero",
+                        "Digits", "RatHint#count"]
                       segment).map
                   fun segment =>
                   ((Triptych.CaptureMap.toEnv segment "RatPivot").getD "",
@@ -337,12 +331,9 @@ def Lrat.constraints : List ConstraintEntry :=
   [ConstraintEntry.opaqueMap ConstraintPhase.wellFormed fun m : Triptych.CaptureMap =>
       ratNeedsClause
         ((Triptych.CaptureMap.groups "Line"
-              (fun key =>
-                ["Id", "Body", "Cr", "Pos", "Delete", "Add", "Zeros", "NonZero", "Digits", "DelIds", "Lits", "RupHints",
-                        "RatSteps", "DelId", "Lit", "RupHint", "RatStep", "Neg", "RatPivot", "RatTail", "RatHints",
-                        "RatHint"].contains
-                    (Triptych.CaptureMap.keyProduction key) ||
-                  key == "Line#count")
+              ["Line", "Id", "Body", "Cr", "Pos", "Delete", "Add", "Zeros", "NonZero", "Digits", "DelIds", "Lits",
+                "RupHints", "RatSteps", "DelId", "Lit", "RupHint", "RatStep", "Neg", "RatPivot", "RatTail", "RatHints",
+                "RatHint", "DelId#count", "Lit#count", "RupHint#count", "RatStep#count", "RatHint#count"]
               m).map
           fun segment =>
           (Triptych.CaptureMap.toEnvList segment "Lit", Triptych.CaptureMap.toEnvList segment "RatPivot"))]
@@ -353,12 +344,9 @@ def Lrat.computeValue (s : String) :=
 def Lrat.View.ofMap (input : String) (m : Triptych.CaptureMap) : Lrat.View :=
   Lrat.View.mk input
     ((Triptych.CaptureMap.groups "Line"
-          (fun key =>
-            ["Id", "Body", "Cr", "Pos", "Delete", "Add", "Zeros", "NonZero", "Digits", "DelIds", "Lits", "RupHints",
-                    "RatSteps", "DelId", "Lit", "RupHint", "RatStep", "Neg", "RatPivot", "RatTail", "RatHints",
-                    "RatHint"].contains
-                (Triptych.CaptureMap.keyProduction key) ||
-              key == "Line#count")
+          ["Line", "Id", "Body", "Cr", "Pos", "Delete", "Add", "Zeros", "NonZero", "Digits", "DelIds", "Lits",
+            "RupHints", "RatSteps", "DelId", "Lit", "RupHint", "RatStep", "Neg", "RatPivot", "RatTail", "RatHints",
+            "RatHint", "DelId#count", "Lit#count", "RupHint#count", "RatStep#count", "RatHint#count"]
           m).map
       fun segment =>
       ((Triptych.CaptureMap.toEnv segment "Id").getD "",
@@ -367,22 +355,16 @@ def Lrat.View.ofMap (input : String) (m : Triptych.CaptureMap) : Lrat.View :=
             (Triptych.CaptureMap.toEnvList segment "Lit",
               (Triptych.CaptureMap.toEnvList segment "RupHint",
                 (Triptych.CaptureMap.groups "RatStep"
-                      (fun key =>
-                        ["RatPivot", "RatTail", "Neg", "RatHints", "Pos", "RatHint", "Zeros", "NonZero",
-                                "Digits"].contains
-                            (Triptych.CaptureMap.keyProduction key) ||
-                          key == "RatStep#count")
+                      ["RatStep", "RatPivot", "RatTail", "Neg", "RatHints", "Pos", "RatHint", "Zeros", "NonZero",
+                        "Digits", "RatHint#count"]
                       segment).map
                   fun segment =>
                   ((Triptych.CaptureMap.toEnv segment "RatPivot").getD "",
                     Triptych.CaptureMap.toEnvList segment "RatHint")))))))
     ((Triptych.CaptureMap.groups "Line"
-          (fun key =>
-            ["Id", "Body", "Cr", "Pos", "Delete", "Add", "Zeros", "NonZero", "Digits", "DelIds", "Lits", "RupHints",
-                    "RatSteps", "DelId", "Lit", "RupHint", "RatStep", "Neg", "RatPivot", "RatTail", "RatHints",
-                    "RatHint"].contains
-                (Triptych.CaptureMap.keyProduction key) ||
-              key == "Line#count")
+          ["Line", "Id", "Body", "Cr", "Pos", "Delete", "Add", "Zeros", "NonZero", "Digits", "DelIds", "Lits",
+            "RupHints", "RatSteps", "DelId", "Lit", "RupHint", "RatStep", "Neg", "RatPivot", "RatTail", "RatHints",
+            "RatHint", "DelId#count", "Lit#count", "RupHint#count", "RatStep#count", "RatHint#count"]
           m).map
       fun segment => (Triptych.CaptureMap.toEnvList segment "Lit", Triptych.CaptureMap.toEnvList segment "RatPivot"))
 
@@ -390,12 +372,9 @@ private def Lrat.View.ofSpans (input : String) (chars : List Char) (spans : Trip
     Lrat.View :=
   Lrat.View.mk input
     ((Triptych.CaptureMap.groups "Line"
-          (fun key =>
-            ["Id", "Body", "Cr", "Pos", "Delete", "Add", "Zeros", "NonZero", "Digits", "DelIds", "Lits", "RupHints",
-                    "RatSteps", "DelId", "Lit", "RupHint", "RatStep", "Neg", "RatPivot", "RatTail", "RatHints",
-                    "RatHint"].contains
-                (Triptych.CaptureMap.keyProduction key) ||
-              key == "Line#count")
+          ["Line", "Id", "Body", "Cr", "Pos", "Delete", "Add", "Zeros", "NonZero", "Digits", "DelIds", "Lits",
+            "RupHints", "RatSteps", "DelId", "Lit", "RupHint", "RatStep", "Neg", "RatPivot", "RatTail", "RatHints",
+            "RatHint", "DelId#count", "Lit#count", "RupHint#count", "RatStep#count", "RatHint#count"]
           (spans.materialize chars)).map
       fun segment =>
       ((Triptych.CaptureMap.toEnv segment "Id").getD "",
@@ -404,22 +383,16 @@ private def Lrat.View.ofSpans (input : String) (chars : List Char) (spans : Trip
             (Triptych.CaptureMap.toEnvList segment "Lit",
               (Triptych.CaptureMap.toEnvList segment "RupHint",
                 (Triptych.CaptureMap.groups "RatStep"
-                      (fun key =>
-                        ["RatPivot", "RatTail", "Neg", "RatHints", "Pos", "RatHint", "Zeros", "NonZero",
-                                "Digits"].contains
-                            (Triptych.CaptureMap.keyProduction key) ||
-                          key == "RatStep#count")
+                      ["RatStep", "RatPivot", "RatTail", "Neg", "RatHints", "Pos", "RatHint", "Zeros", "NonZero",
+                        "Digits", "RatHint#count"]
                       segment).map
                   fun segment =>
                   ((Triptych.CaptureMap.toEnv segment "RatPivot").getD "",
                     Triptych.CaptureMap.toEnvList segment "RatHint")))))))
     ((Triptych.CaptureMap.groups "Line"
-          (fun key =>
-            ["Id", "Body", "Cr", "Pos", "Delete", "Add", "Zeros", "NonZero", "Digits", "DelIds", "Lits", "RupHints",
-                    "RatSteps", "DelId", "Lit", "RupHint", "RatStep", "Neg", "RatPivot", "RatTail", "RatHints",
-                    "RatHint"].contains
-                (Triptych.CaptureMap.keyProduction key) ||
-              key == "Line#count")
+          ["Line", "Id", "Body", "Cr", "Pos", "Delete", "Add", "Zeros", "NonZero", "Digits", "DelIds", "Lits",
+            "RupHints", "RatSteps", "DelId", "Lit", "RupHint", "RatStep", "Neg", "RatPivot", "RatTail", "RatHints",
+            "RatHint", "DelId#count", "Lit#count", "RupHint#count", "RatStep#count", "RatHint#count"]
           (spans.materialize chars)).map
       fun segment => (Triptych.CaptureMap.toEnvList segment "Lit", Triptych.CaptureMap.toEnvList segment "RatPivot"))
 
@@ -1409,12 +1382,9 @@ theorem Lrat.SatisfiesWfConstraints_of_decode {s : String} {m : Triptych.Capture
     Lrat.SatisfiesWfConstraints s â†”
       Lrat.WfConstraints
         ((Triptych.CaptureMap.groups "Line"
-              (fun key =>
-                ["Id", "Body", "Cr", "Pos", "Delete", "Add", "Zeros", "NonZero", "Digits", "DelIds", "Lits", "RupHints",
-                        "RatSteps", "DelId", "Lit", "RupHint", "RatStep", "Neg", "RatPivot", "RatTail", "RatHints",
-                        "RatHint"].contains
-                    (Triptych.CaptureMap.keyProduction key) ||
-                  key == "Line#count")
+              ["Line", "Id", "Body", "Cr", "Pos", "Delete", "Add", "Zeros", "NonZero", "Digits", "DelIds", "Lits",
+                "RupHints", "RatSteps", "DelId", "Lit", "RupHint", "RatStep", "Neg", "RatPivot", "RatTail", "RatHints",
+                "RatHint", "DelId#count", "Lit#count", "RupHint#count", "RatStep#count", "RatHint#count"]
               m).map
           fun segment =>
           (Triptych.CaptureMap.toEnvList segment "Lit", Triptych.CaptureMap.toEnvList segment "RatPivot")) :=
@@ -1423,12 +1393,9 @@ theorem Lrat.SatisfiesWfConstraints_of_decode {s : String} {m : Triptych.Capture
   simp only [Triptych.componentWith_eq_of_decode h
         (fun m =>
           (Triptych.CaptureMap.groups "Line"
-                (fun key =>
-                  ["Id", "Body", "Cr", "Pos", "Delete", "Add", "Zeros", "NonZero", "Digits", "DelIds", "Lits",
-                          "RupHints", "RatSteps", "DelId", "Lit", "RupHint", "RatStep", "Neg", "RatPivot", "RatTail",
-                          "RatHints", "RatHint"].contains
-                      (Triptych.CaptureMap.keyProduction key) ||
-                    key == "Line#count")
+                ["Line", "Id", "Body", "Cr", "Pos", "Delete", "Add", "Zeros", "NonZero", "Digits", "DelIds", "Lits",
+                  "RupHints", "RatSteps", "DelId", "Lit", "RupHint", "RatStep", "Neg", "RatPivot", "RatTail",
+                  "RatHints", "RatHint", "DelId#count", "Lit#count", "RupHint#count", "RatStep#count", "RatHint#count"]
                 m).map
             fun segment =>
             (Triptych.CaptureMap.toEnvList segment "Lit", Triptych.CaptureMap.toEnvList segment "RatPivot"))]
@@ -1987,12 +1954,10 @@ theorem Lrat.computeValue_eq (s : String) :
             (Triptych.componentWith Lrat.grammar s
               (fun m =>
                 (Triptych.CaptureMap.groups "Line"
-                      (fun key =>
-                        ["Id", "Body", "Cr", "Pos", "Delete", "Add", "Zeros", "NonZero", "Digits", "DelIds", "Lits",
-                                "RupHints", "RatSteps", "DelId", "Lit", "RupHint", "RatStep", "Neg", "RatPivot",
-                                "RatTail", "RatHints", "RatHint"].contains
-                            (Triptych.CaptureMap.keyProduction key) ||
-                          key == "Line#count")
+                      ["Line", "Id", "Body", "Cr", "Pos", "Delete", "Add", "Zeros", "NonZero", "Digits", "DelIds",
+                        "Lits", "RupHints", "RatSteps", "DelId", "Lit", "RupHint", "RatStep", "Neg", "RatPivot",
+                        "RatTail", "RatHints", "RatHint", "DelId#count", "Lit#count", "RupHint#count", "RatStep#count",
+                        "RatHint#count"]
                       m).map
                   fun segment =>
                   ((Triptych.CaptureMap.toEnv segment "Id").getD "",
@@ -2001,11 +1966,8 @@ theorem Lrat.computeValue_eq (s : String) :
                         (Triptych.CaptureMap.toEnvList segment "Lit",
                           (Triptych.CaptureMap.toEnvList segment "RupHint",
                             (Triptych.CaptureMap.groups "RatStep"
-                                  (fun key =>
-                                    ["RatPivot", "RatTail", "Neg", "RatHints", "Pos", "RatHint", "Zeros", "NonZero",
-                                            "Digits"].contains
-                                        (Triptych.CaptureMap.keyProduction key) ||
-                                      key == "RatStep#count")
+                                  ["RatStep", "RatPivot", "RatTail", "Neg", "RatHints", "Pos", "RatHint", "Zeros",
+                                    "NonZero", "Digits", "RatHint#count"]
                                   segment).map
                               fun segment =>
                               ((Triptych.CaptureMap.toEnv segment "RatPivot").getD "",
@@ -2026,12 +1988,9 @@ theorem Lrat.computeValue_of_decode {s : String} {m : Triptych.CaptureMap} (h : 
       some
         (Lrat.value
           ((Triptych.CaptureMap.groups "Line"
-                (fun key =>
-                  ["Id", "Body", "Cr", "Pos", "Delete", "Add", "Zeros", "NonZero", "Digits", "DelIds", "Lits",
-                          "RupHints", "RatSteps", "DelId", "Lit", "RupHint", "RatStep", "Neg", "RatPivot", "RatTail",
-                          "RatHints", "RatHint"].contains
-                      (Triptych.CaptureMap.keyProduction key) ||
-                    key == "Line#count")
+                ["Line", "Id", "Body", "Cr", "Pos", "Delete", "Add", "Zeros", "NonZero", "Digits", "DelIds", "Lits",
+                  "RupHints", "RatSteps", "DelId", "Lit", "RupHint", "RatStep", "Neg", "RatPivot", "RatTail",
+                  "RatHints", "RatHint", "DelId#count", "Lit#count", "RupHint#count", "RatStep#count", "RatHint#count"]
                 m).map
             fun segment =>
             ((Triptych.CaptureMap.toEnv segment "Id").getD "",
@@ -2040,11 +1999,8 @@ theorem Lrat.computeValue_of_decode {s : String} {m : Triptych.CaptureMap} (h : 
                   (Triptych.CaptureMap.toEnvList segment "Lit",
                     (Triptych.CaptureMap.toEnvList segment "RupHint",
                       (Triptych.CaptureMap.groups "RatStep"
-                            (fun key =>
-                              ["RatPivot", "RatTail", "Neg", "RatHints", "Pos", "RatHint", "Zeros", "NonZero",
-                                      "Digits"].contains
-                                  (Triptych.CaptureMap.keyProduction key) ||
-                                key == "RatStep#count")
+                            ["RatStep", "RatPivot", "RatTail", "Neg", "RatHints", "Pos", "RatHint", "Zeros", "NonZero",
+                              "Digits", "RatHint#count"]
                             segment).map
                         fun segment =>
                         ((Triptych.CaptureMap.toEnv segment "RatPivot").getD "",
@@ -2055,12 +2011,9 @@ theorem Lrat.computeValue_of_decode {s : String} {m : Triptych.CaptureMap} (h : 
     Triptych.componentWith_eq_of_decode h
         (fun m =>
           (Triptych.CaptureMap.groups "Line"
-                (fun key =>
-                  ["Id", "Body", "Cr", "Pos", "Delete", "Add", "Zeros", "NonZero", "Digits", "DelIds", "Lits",
-                          "RupHints", "RatSteps", "DelId", "Lit", "RupHint", "RatStep", "Neg", "RatPivot", "RatTail",
-                          "RatHints", "RatHint"].contains
-                      (Triptych.CaptureMap.keyProduction key) ||
-                    key == "Line#count")
+                ["Line", "Id", "Body", "Cr", "Pos", "Delete", "Add", "Zeros", "NonZero", "Digits", "DelIds", "Lits",
+                  "RupHints", "RatSteps", "DelId", "Lit", "RupHint", "RatStep", "Neg", "RatPivot", "RatTail",
+                  "RatHints", "RatHint", "DelId#count", "Lit#count", "RupHint#count", "RatStep#count", "RatHint#count"]
                 m).map
             fun segment =>
             ((Triptych.CaptureMap.toEnv segment "Id").getD "",
@@ -2069,11 +2022,8 @@ theorem Lrat.computeValue_of_decode {s : String} {m : Triptych.CaptureMap} (h : 
                   (Triptych.CaptureMap.toEnvList segment "Lit",
                     (Triptych.CaptureMap.toEnvList segment "RupHint",
                       (Triptych.CaptureMap.groups "RatStep"
-                            (fun key =>
-                              ["RatPivot", "RatTail", "Neg", "RatHints", "Pos", "RatHint", "Zeros", "NonZero",
-                                      "Digits"].contains
-                                  (Triptych.CaptureMap.keyProduction key) ||
-                                key == "RatStep#count")
+                            ["RatStep", "RatPivot", "RatTail", "Neg", "RatHints", "Pos", "RatHint", "Zeros", "NonZero",
+                              "Digits", "RatHint#count"]
                             segment).map
                         fun segment =>
                         ((Triptych.CaptureMap.toEnv segment "RatPivot").getD "",

@@ -265,22 +265,68 @@ def CaptureMap.keyProduction (key : String) : String :=
   let unqualified := (key.splitOn ".").getLast?.getD key
   (unqualified.dropSuffix? "#count").map (·.toString) |>.getD unqualified
 
+/-- Whether the capture entry at the head of `m` was recorded inside an occurrence. Below the
+    start production every reference is recorded twice, as `X` followed by its qualified twin
+    `Parent.X`, so the twin names the parent production: a qualified entry is inside when its
+    parent is, and a bare entry when its twin is. A bare entry without a twin was recorded by the
+    start production and is outside. A `B#count` entry carries no parent and is judged by
+    `insideCount`. -/
+def CaptureMap.entryInside (insideParent insideCount : String → Bool) : CaptureMap → Bool
+  | [] => false
+  | (k, _) :: rest =>
+      if k.endsWith "#count" then insideCount k
+      else
+        match k.splitOn "." with
+        | [parent, _] => insideParent parent
+        | [_] =>
+            match rest with
+            | (twin, _) :: _ =>
+                match twin.splitOn "." with
+                | [parent, child] => child == k && insideParent parent
+                | _ => false
+            | [] => false
+        | _ => false
+
+/-- Split off the leading entries recorded inside an occurrence. -/
+def CaptureMap.takeInside (insideParent insideCount : String → Bool) :
+    CaptureMap → CaptureMap × CaptureMap
+  | [] => ([], [])
+  | entry :: rest =>
+      if CaptureMap.entryInside insideParent insideCount (entry :: rest) then
+        let (taken, after) := CaptureMap.takeInside insideParent insideCount rest
+        (entry :: taken, after)
+      else
+        ([], entry :: rest)
+
+theorem CaptureMap.takeInside_length_le (insideParent insideCount : String → Bool) :
+    ∀ m : CaptureMap, (CaptureMap.takeInside insideParent insideCount m).2.length ≤ m.length
+  | [] => by simp [CaptureMap.takeInside]
+  | entry :: rest => by
+      unfold CaptureMap.takeInside
+      split
+      · have := CaptureMap.takeInside_length_le insideParent insideCount rest
+        simp only [List.length_cons]
+        omega
+      · simp
+
 /-- Split a capture map into the captures recorded inside each occurrence of `key`.
 
 Capture maps are preorder: an occurrence's own entries (`key` and its qualified `Parent.key`)
-precede the captures of its subtree. Because Triptych grammars are acyclic, `key` never occurs
-inside its own subtree, so each occurrence owns the maximal run of following entries accepted by
-`inside`; the generator supplies `inside` from the productions reachable below `key`. Each
-segment starts with the occurrence's own `key` entry, so a group can also read its own text. -/
-def CaptureMap.groups (key : String) (inside : String → Bool) (m : CaptureMap) :
+precede the captures of its subtree. Each occurrence owns the following run of entries recorded
+inside it (`entryInside`). `inside` lists `key`, the productions reachable below it, and the
+count keys of repetitions within it; the generator supplies it from the grammar. Because
+Triptych grammars are acyclic, a later sibling's first entry has a parent outside `inside`, so
+the run stops exactly at the occurrence's end. Each segment starts with the occurrence's own
+`key` entry, so a group can also read its own text. -/
+def CaptureMap.groups (key : String) (inside : List String) (m : CaptureMap) :
     List CaptureMap :=
   match m with
   | [] => []
   | (k, text) :: rest =>
       if k == key then
         let body := rest.dropWhile (·.1.endsWith ("." ++ key))
-        ((k, text) :: body.takeWhile (inside ·.1)) ::
-          groups key inside (body.dropWhile (inside ·.1))
+        let split := CaptureMap.takeInside inside.contains inside.contains body
+        ((k, text) :: split.1) :: groups key inside split.2
       else
         groups key inside rest
 termination_by m.length
@@ -289,7 +335,7 @@ decreasing_by
   all_goals first
     | omega
     | exact Nat.lt_succ_of_le
-        (Nat.le_trans (List.dropWhile_suffix _).length_le (List.dropWhile_suffix _).length_le)
+        (Nat.le_trans (CaptureMap.takeInside_length_le _ _ _) (List.dropWhile_suffix _).length_le)
 
 /-! ## Readable field readers
 

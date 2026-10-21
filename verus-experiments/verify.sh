@@ -4,7 +4,7 @@
 # Usage: verify.sh [--without-dev-deps]
 #
 # `--without-dev-deps` verifies a temporary copy of the crates whose manifests omit
-# `[dev-dependencies]` and `[[bench]]` targets. Those sections only serve the Cedar conformance
+# `[dev-dependencies]` and `[[bench]]` targets, resolving against the committed lockfiles. Those sections only serve the Cedar conformance
 # tests and benchmarks, which need a sibling Cedar Rust checkout; verification does not use them.
 set -euo pipefail
 
@@ -36,7 +36,7 @@ if [[ "${1:-}" == "--without-dev-deps" ]]; then
   # Copy the whole tree: crates include sibling generated sources by relative path.
   (cd "${EXPERIMENTS}" && tar --exclude=target -cf - .) | (cd "${WORK}" && tar -xf -)
   for crate in "${CRATES[@]}"; do
-    rm -rf "${WORK}/${crate}/benches" "${WORK}/${crate}/tests" "${WORK}/${crate}/Cargo.lock"
+    rm -rf "${WORK}/${crate}/benches" "${WORK}/${crate}/tests"
     # Drop whole `[dev-dependencies]` and `[[bench]]` tables, keeping every other table.
     awk '
       /^\[/ { skip = ($0 == "[dev-dependencies]" || $0 == "[[bench]]") }
@@ -44,6 +44,8 @@ if [[ "${1:-}" == "--without-dev-deps" ]]; then
     ' "${EXPERIMENTS}/${crate}/Cargo.toml" > "${WORK}/${crate}/Cargo.toml"
   done
   EXPERIMENTS="${WORK}"
+  # The committed lockfiles stay in place: without `--locked`, Cargo only prunes the removed
+  # dev-dependencies and keeps every other resolved version pinned.
   CARGO_FLAGS=()
 fi
 

@@ -233,18 +233,18 @@ private def phaseFor (usesValue : Bool) : ConstraintPhase :=
 def parseConstraintEntryWith (valueSub : Option ValExpr) :
     TSyntax `constraintExpr → MacroM ParsedConstraint
   | `(constraintExpr| noLeadingZero $i:ident) =>
-      pure ⟨.wellFormed, .noLeadingZero i.getId.toString⟩
+      pure ⟨.wellFormed, .noLeadingZero (i.getId.toString (escape := false))⟩
   | `(constraintExpr| nonempty $i:ident) =>
-      pure ⟨.wellFormed, .card .atLeast 1 [i.getId.toString]⟩
+      pure ⟨.wellFormed, .card .atLeast 1 [(i.getId.toString (escape := false))]⟩
   | `(constraintExpr| atLeast $k:num { $is,* }) =>
       pure ⟨.wellFormed,
-        .card .atLeast k.getNat (is.getElems.map (·.getId.toString)).toList⟩
+        .card .atLeast k.getNat (is.getElems.map (·.getId.toString (escape := false))).toList⟩
   | `(constraintExpr| atMost $k:num { $is,* }) =>
       pure ⟨.wellFormed,
-        .card .atMost k.getNat (is.getElems.map (·.getId.toString)).toList⟩
+        .card .atMost k.getNat (is.getElems.map (·.getId.toString (escape := false))).toList⟩
   | `(constraintExpr| exactly $k:num { $is,* }) =>
       pure ⟨.wellFormed,
-        .card .exactlyK k.getNat (is.getElems.map (·.getId.toString)).toList⟩
+        .card .exactlyK k.getNat (is.getElems.map (·.getId.toString (escape := false))).toList⟩
   | `(constraintExpr| $i:ident = $l:str) =>
       pure ⟨.wellFormed, .strEq i.getId.toString l.getString⟩
   | `(constraintExpr| $a:valExpr ≤ $b:valExpr) => do
@@ -341,7 +341,7 @@ def elabConstraint (c : TSyntax `constraintExpr) : MacroM (TSyntax `term) :=
 def opaqueEnvClosure (f : TSyntax `ident) (is : Array (TSyntax `ident)) :
     MacroM (TSyntax `term) := do
   let args : Array (TSyntax `term) ← is.mapM (fun i =>
-    `(((env : Env) $(Syntax.mkStrLit i.getId.toString)).getD ""))
+    `(((env : Env) $(Syntax.mkStrLit (i.getId.toString (escape := false)))).getD ""))
   `(fun env : Env => $f $args*)
 
 /-- How an escape argument reads captures. `X` reads its first span, `[X]` every span, and the
@@ -378,13 +378,8 @@ partial def mapRead (m : TSyntax `term) (capture : String) : ArgShape → MacroM
       let tuple ← tupleTerm parts
       let insideTerms : Array (TSyntax `term) :=
         inside.toArray.map fun name => ⟨(Syntax.mkStrLit name).raw⟩
-      let countKey := Syntax.mkStrLit (capture ++ "#count")
-      let key := mkIdent `key
       `(($(mkIdent `Triptych.CaptureMap.groups) $(Syntax.mkStrLit capture)
-          (fun $key =>
-            [$insideTerms,*].contains ($(mkIdent `Triptych.CaptureMap.keyProduction) $key) ||
-              $key == $countKey)
-          $m).map fun $segment => $tuple)
+          [$insideTerms,*] $m).map fun $segment => $tuple)
 
 /-- Lean type of an argument, as syntax. -/
 partial def typeTerm : ArgShape → MacroM (TSyntax `term)
@@ -449,7 +444,7 @@ def opaqueMapClosure (f : TSyntax `ident) (is : Array (TSyntax `ident × ArgShap
   let capMapId    := mkIdent `Triptych.CaptureMap
   let m := mkIdent `m
   let args : Array (TSyntax `term) ← is.mapM (fun (i, shape) =>
-    shape.mapRead m i.getId.toString)
+    shape.mapRead m (i.getId.toString (escape := false)))
   `(fun $m : $capMapId => $f $args*)
 
 /-- Parse a constraint once and reify its AST and source-determined phase. -/

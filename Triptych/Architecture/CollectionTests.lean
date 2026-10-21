@@ -61,4 +61,53 @@ triptych NullableItems where
 
 end AnalyzableCollectionsExample
 
+
+namespace GroupBoundaryExample
+
+/-! Review regressions: a group ends at its occurrence even when a later sibling records the
+    same production; `forall` reads count and qualified keys; comprehension bodies are
+    validated like scalar values. -/
+
+private def lens (groups : List (List String)) : List Nat := groups.map List.length
+
+triptych Trailing where
+  grammar
+    S     ::= rep Item sepBy "," + ";" Digit
+    Item  ::= Digit
+    Digit ::= digit{1}
+  value'
+    lens [Item ⟨[Digit]⟩]
+
+#guard Trailing.parse "1,2;3" = some [1, 1]
+
+triptych Bounded where
+  grammar
+    Doc  ::= Max ":" rep Row sepBy ";" +
+    Max  ::= digit+
+    Row  ::= Head "=" rep Cell sepBy "," +
+    Head ::= digit+
+    Cell ::= digit+
+  value'
+    List.length [Row]
+  constraints
+    forall Row, count Cell ≤ nat Max
+    forall Row, nat Row.Head ≤ count Row
+
+#guard Bounded.parse "3:1=4,5;2=6" = some 2
+#guard Bounded.parse "1:1=4,5;2=6" = none
+#guard Bounded.parse "3:9=4;2=6" = none
+
+/--
+error: value references `Cell` bare, which reads its SIGN (±1) — but `Cell` is not a sign capture. Declare `Cell ::= sign`, or use `nat Cell`/`int Cell`/`len Cell` to read its magnitude/length.
+-/
+#guard_msgs in
+triptych BareCell where
+  grammar
+    Doc  ::= rep Cell sepBy "," +
+    Cell ::= digit+
+  value
+    [Cell ↦ Cell]
+
+end GroupBoundaryExample
+
 end Triptych.Tests
