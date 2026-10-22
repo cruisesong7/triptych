@@ -284,24 +284,4 @@ theorem ipv4Only_eq_some_iff {s : String} {cidr : CIDR V4_WIDTH} :
     exact ⟨o₁, o₂, o₃, o₄, pre, hs, h₁, h₂, h₃, h₄, hp,
       by simpa [netValue] using congrArg IPNet.V4 hcidr⟩
 
-theorem cidrValue_eq_toIPv4Net {o₁ o₂ o₃ o₄ : String} {pre : Option String}
-    (hp : OptionalPrefixValid pre) :
-    cidrValue o₁ o₂ o₃ o₄ pre =
-      CedarExamples.IPv4.toIPv4Net o₁ o₂ o₃ o₄ (pre.getD "") := by
-  cases pre with
-  | none => rfl
-  | some pre =>
-      unfold OptionalPrefixValid PrefixValid at hp
-      have hbound : readNat pre < 33 := by
-        omega
-      have hne : pre ≠ "" := by
-        intro heq
-        subst pre
-        have hlen := hp.1.2.1
-        simp at hlen
-      unfold cidrValue CedarExamples.IPv4.toIPv4Net addrValue
-      simp [hne, Fin.val_ofNat]
-      change ((readNat pre % 33 : Nat) : IPv4Prefix) = (readNat pre : IPv4Prefix)
-      rw [Nat.mod_eq_of_lt hbound]
-
 end IPv4.RuleRegistryProof

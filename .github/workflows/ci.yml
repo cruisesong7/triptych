@@ -40,21 +40,13 @@ jobs:
     name: Cedar integration and conformance
     runs-on: ubuntu-latest
     steps:
-      - name: Check out Triptych
-        uses: actions/checkout@v4
-        with:
-          path: triptych
-      - name: Check out pinned Cedar parser API
-        uses: actions/checkout@v4
-        with:
-          repository: cruisesong7/cedar-spec
-          ref: 4ad1a5c532b6ca05656dec8638227d9411bd6acc
-          path: cedar-spec
+      - uses: actions/checkout@v4
+      # Lake fetches Cedar at the revision pinned in cedar-examples/lake-manifest.json.
       - name: Prepare Lean and SubVerso
         uses: leanprover/lean-action@v1
         with:
-          lake-package-directory: triptych/cedar-examples
+          lake-package-directory: cedar-examples
           build-args: "@subverso"
       - name: Build Cedar integration, conformance, and docs
-        working-directory: triptych/cedar-examples
+        working-directory: cedar-examples
         run: lake build CedarExamples ConformanceTests docs

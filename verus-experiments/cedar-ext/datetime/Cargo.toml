@@ -1,0 +1,27 @@
+[package]
+name = "datetime"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+vstd = "=0.0.0-2026-08-30-0159"
+
+[dev-dependencies]
+cedar-policy-core = { path = "../../../../cedar/cedar-policy-core", default-features = false, features = [
+  "benchmark-internals",
+  "decimal",
+  "datetime",
+  "ipaddr",
+] }
+
+[[bench]]
+name = "runtime"
+harness = false
+
+[package.metadata.verus]
+verify = true
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [
+  'cfg(verus_only)',
+] }

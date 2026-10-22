@@ -61,6 +61,30 @@ private def hexDigitNat (c : Char) : Nat :=
   else if 'A' ≤ c && c ≤ 'F' then c.toNat - 'A'.toNat + 10
   else 0
 
+/-- The local digit reader is Triptych's `hexDigitValue` on every character. -/
+private theorem hexDigitNat_eq_hexDigitValue (c : Char) :
+    hexDigitNat c = Triptych.hexDigitValue c := by
+  have hdigit : c.isDigit = true ↔ 48 ≤ c.toNat ∧ c.toNat ≤ 57 :=
+    Char.isDigit_iff_toNat
+  have hlower : ('a' ≤ c && c ≤ 'f') = true ↔ 97 ≤ c.toNat ∧ c.toNat ≤ 102 := by
+    simp only [Bool.and_eq_true, decide_eq_true_eq, Char.le_def, UInt32.le_iff_toNat_le]
+    rfl
+  have hupper : ('A' ≤ c && c ≤ 'F') = true ↔ 65 ≤ c.toNat ∧ c.toNat ≤ 70 := by
+    simp only [Bool.and_eq_true, decide_eq_true_eq, Char.le_def, UInt32.le_iff_toNat_le]
+    rfl
+  have h0 : '0'.toNat = 48 := rfl
+  have ha : 'a'.toNat = 97 := rfl
+  have hA : 'A'.toNat = 65 := rfl
+  unfold hexDigitNat Triptych.hexDigitValue
+  simp only [hdigit, hlower, hupper, h0, ha, hA, Bool.and_eq_true, decide_eq_true_eq]
+
+/-- Triptych's hexadecimal reader as the fold the IPv6 proofs reason about. -/
+private theorem readHex_eq_fold (s : String) :
+    Triptych.readHex s = s.foldl (fun n c => n * 16 + hexDigitNat c) 0 := by
+  unfold Triptych.readHex Triptych.readHexChars
+  rw [String.foldl_eq_foldl_toList]
+  simp only [hexDigitNat_eq_hexDigitValue]
+
 private theorem toHexNat_eq_hexDigitNat {c : Char}
     (h : TokClass.hexDigit.mem c) :
     toHexNat c = hexDigitNat c := by
@@ -146,15 +170,13 @@ private theorem foldHex_lt (l : List Char) (acc : Nat)
 
 private theorem parserFold_eq_readHex {s : String} (h : HexValid s) :
     s.foldl (fun n c => n * 16 + toHexNat c) 0 =
-      CedarExamples.IPv6.readHex s := by
-  unfold CedarExamples.IPv6.readHex
-  rw [String.foldl_eq_foldl_toList, String.foldl_eq_foldl_toList]
+      Triptych.readHex s := by
+  rw [readHex_eq_fold, String.foldl_eq_foldl_toList, String.foldl_eq_foldl_toList]
   exact foldHex_eq s.toList h.1 0
 
-private theorem readHex_le {s : String} (h : HexValid s) :
-    CedarExamples.IPv6.readHex s ≤ 0xffff := by
-  unfold CedarExamples.IPv6.readHex
-  rw [String.foldl_eq_foldl_toList]
+theorem readHex_le {s : String} (h : HexValid s) :
+    Triptych.readHex s ≤ 0xffff := by
+  rw [readHex_eq_fold, String.foldl_eq_foldl_toList]
   change s.toList.foldl (fun n c => n * 16 + hexDigitNat c) 0 ≤ 0xffff
   have hlt := foldHex_lt s.toList 0 h.1
   simp only [Nat.zero_add, Nat.one_mul, String.length_toList] at hlt
@@ -166,7 +188,7 @@ private theorem readHex_le {s : String} (h : HexValid s) :
 @[triptych_parser, triptych_parser_search =]
 theorem parseNumV6_eq_some_iff {s : String} {a : BitVec 16} :
     parseNumV6 s = some a ↔
-      HexValid s ∧ a = BitVec.ofNat 16 (CedarExamples.IPv6.readHex s) := by
+      HexValid s ∧ a = BitVec.ofNat 16 (Triptych.readHex s) := by
   constructor
   · intro h
     triptych_sound [parseNumV6] at h
@@ -197,7 +219,7 @@ def renderGroups (parts : List String) : String :=
 
 /-- Pointwise numeric denotation of IPv6 hextets. -/
 def groupValues (parts : List String) : List (BitVec 16) :=
-  parts.map (fun part => BitVec.ofNat 16 (CedarExamples.IPv6.readHex part))
+  parts.map (fun part => BitVec.ofNat 16 (Triptych.readHex part))
 
 private theorem renderGroups_cons_toList (part : String) (parts : List String) :
     (renderGroups (part :: parts)).toList =

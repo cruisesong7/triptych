@@ -579,7 +579,8 @@ theorem SpecConstant.IsWf_equiv (s : String) :
   simp only [Triptych.component, Triptych.componentList, Triptych.envOf, Triptych.captureMapOf, Triptych.scan_eq_decode,
     List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const, ConstraintEntry.wfPart,
     Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD,
-    Env.countVal, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
+    hexOf_getD, hexSeqOf_getD, segmentsOf_getD, Env.countVal, and_true, true_and, false_implies, implies_true,
+    Bool.false_eq_true]
   try grind
 
 theorem SpecConstant.IsValid_equiv (s : String) :
@@ -643,7 +644,10 @@ theorem SpecConstant.computeValue_eq (s : String) :
   rw [Triptych.scan_eq_decode]
   cases h : decode SpecConstant.grammar s with
   | none => simp [h]
-  | some m => simp [h, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, Env.countVal, ValExpr.eval]
+  | some m =>
+    simp [h, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, hexOf_getD, hexSeqOf_getD, segmentsOf_getD,
+        Env.countVal, ValExpr.eval] <;>
+      ac_rfl
 
 theorem SpecConstant.computeValue_of_decode {s : String} {m : Triptych.CaptureMap}
     (h : decode SpecConstant.grammar s = some m) :
@@ -738,13 +742,13 @@ theorem SpecConstant.parse_candidateChecks_eq_zero_of_fastScan (s : String)
   Triptych.scannerParseMap_candidateChecks_eq_zero_of_fastScan SpecConstant.grammar SpecConstant.constraints
     SpecConstant.valueFn id s hunique hscan
 
-theorem SpecConstant.parse_sound (s : String) (v : Value) :
+theorem SpecConstant.parse_sound (s : String) (v : StrataExamples.SMT.SpecConstant.Value) :
     SpecConstant.parse s = some v → SpecConstant.IsValid s ∧ SpecConstant.computeValue s = some v :=
   by
   rw [SpecConstant.parse_eq_gated]
   exact Triptych.gatedParse_sound _ _ s v
 
-theorem SpecConstant.parse_complete (s : String) (v : Value) :
+theorem SpecConstant.parse_complete (s : String) (v : StrataExamples.SMT.SpecConstant.Value) :
     SpecConstant.IsValid s → SpecConstant.computeValue s = some v → SpecConstant.parse s = some v :=
   by
   rw [SpecConstant.parse_eq_gated]
@@ -763,7 +767,7 @@ theorem SpecConstant.parse_view (s : String) :
   unfold Triptych.gatedParse
   rw [SpecConstant.computeValue_view]
 
-theorem SpecConstant.parse_eq_some_iff_view (s : String) (v : Value) :
+theorem SpecConstant.parse_eq_some_iff_view (s : String) (v : StrataExamples.SMT.SpecConstant.Value) :
     SpecConstant.parse s = some v ↔
       ∃ decodedView : SpecConstant.View,
         SpecConstant.decodeView s = some decodedView ∧

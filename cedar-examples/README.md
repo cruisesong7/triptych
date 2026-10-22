@@ -14,14 +14,10 @@ Proofs/<Format>/*.lean              format-specific proof automation and views
 CedarSupport/*.lean                 shared Cedar backend rules and internals
 ```
 
-The checkout layout is expected to be:
-
-```text
-Documents/
-  triptych/
-  cedar-spec/
-    cedar-lean/
-```
+Cedar comes from the `cruise-docs` branch of the `cruisesong7/cedar-spec` fork (the `cedar-lean`
+subdirectory), pinned in `lakefile.lean` to a Lean v4.34.0 revision that has the extension-parser
+proofs; Lake fetches it. To move Cedar forward, change that
+revision, keep `lean-toolchain` in step with Cedar's, and run `lake update Cedar`.
 
 From this directory:
 

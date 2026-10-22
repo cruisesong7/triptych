@@ -94,7 +94,7 @@ abbrev Graph.IsWf (s : String) : Prop :=
 abbrev Graph.IsValid (s : String) : Prop :=
   Graph.IsWf s
 
-def Graph.Denotes (s : String) (g : Graph) : Prop :=
+def Graph.Denotes (s : String) (g : GraphExample.Graph) : Prop :=
   Graph.IsValid s ∧
     g = Graph.value (Triptych.component Graph.grammar s "Order") (Triptych.component Graph.grammar s "Cells")
 

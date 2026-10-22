@@ -12,7 +12,10 @@ vstd = "=0.0.0-2026-08-30-0159"
 cedar-policy = { path = "../../../../cedar/cedar-policy", default-features = false, features = [
   "decimal",
 ] }
-regex = "=1.13.1"
+cedar-policy-core = { path = "../../../../cedar/cedar-policy-core", default-features = false, features = [
+  "benchmark-internals",
+  "decimal",
+] }
 
 [[bench]]
 name = "runtime"

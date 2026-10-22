@@ -498,7 +498,8 @@ private def fixedPointCompletenessTemplate : String :=
   include_str "Verus/FixedPointPlanCompleteness.rs.in"
 
 /-- Verified semantic proof core for the first supported fixed-point `Int64` value shape.
-    Keep the arithmetic bridge in this template so regeneration preserves the Verus proof. -/
+    Keep explicit arithmetic normalization facts in this template so regeneration preserves
+    a stable Verus proof across surrounding solver-context changes. -/
 private def fixedPointDecimalParserTemplate : String :=
   include_str "Verus/FixedPointDecimalParser.rs.in"
 
@@ -1177,7 +1178,8 @@ private def constraintDeclarations (format : FormatInput) (fields : List FieldSp
             (.boolAnd
               (.call (formatPrefix ++ "_matches_view") [.var "input", .var "view"])
               (.call viewFunction [.var "view"])))
-          (some s!"Lean counterpart: `{format.name}.Satisfies{leanName}`.") ]
+          (some s!"Lean counterpart under `{format.name}.IsWf.{format.grammar.start}`: \
+            `{format.name}.Satisfies{leanName}`.") ]
   makePhase format.wfConstraints "wf_constraints" "view_wf_constraints"
       "satisfies_wf_constraints" "WfConstraints" ++
     makePhase format.valueConstraints "constraints" "view_constraints"
@@ -1210,6 +1212,14 @@ private def formatDeclarations (format : FormatInput) (repetitions : List Sym)
     else
       .boolLit true
   let viewValid : IR.Expr := .boolAnd wfConstraintCall valueConstraintCall
+  let matchesResult : IR.Expr :=
+    .existsE [{ name := "view", ty := .named viewType }]
+      (.andAll
+        [ .call matchesView [.var "input", .var "view"],
+          .call (formatPrefix ++ "_view_valid") [.var "view"],
+          .intEq
+            (.call (formatPrefix ++ "_view_denotation") [.var "view"])
+            (.var "value") ])
   let isWfBody : IR.Expr :=
     if hasWfConstraints then
       .boolAnd
@@ -1243,6 +1253,9 @@ private def formatDeclarations (format : FormatInput) (repetitions : List Sym)
         [{ name := "view", ty := .named viewType }]
         (.call valueFunction (viewArgs fields valueCaptures))
         (some s!"Lean counterpart: `{format.name}.View.denotation`."),
+      boolFunction (formatPrefix ++ "_matches_result")
+        [{ name := "input", ty := .text }, { name := "value", ty := .int }]
+        matchesResult,
       boolFunction (formatPrefix ++ "_is_valid") [{ name := "input", ty := .text }]
         isValidBody (some s!"Lean counterpart: `{format.name}.IsValid`.") ]
   pure declarations
@@ -1293,24 +1306,16 @@ private def boolNot (expression : Ast.Expr) : Ast.Expr :=
 
 private def soundnessDeclarations (format : FormatInput) : List Ast.Decl :=
   let formatPrefix := snakeCase format.name
-  let viewType := typeName format.name ++ "View"
   let contractTrait := typeName format.name ++ "ExternalParserContract"
   let resultPredicate := formatPrefix ++ "_matches_result"
   let hasResultPredicate := formatPrefix ++ "_has_result"
   let input : Ast.Expr := .var "input"
   let result : Ast.Expr := .var "value"
-  let view : Ast.Expr := .var "view"
   let parseResult := Ast.Expr.call "Self::parse_to_spec" [input]
   let parsesValue := optionEqualsSome parseResult result
   let rejects := optionIsNone parseResult
   let isValid := Ast.Expr.call (formatPrefix ++ "_is_valid") [input]
   let matchesResult := Ast.Expr.call resultPredicate [input, result]
-  let resultBody :=
-    Ast.Expr.existsE [{ name := "view", ty := .named viewType }]
-      (.andAll
-        [ .call (formatPrefix ++ "_matches_view") [input, view],
-          .call (formatPrefix ++ "_view_valid") [view],
-          .intEq (.call (formatPrefix ++ "_view_denotation") [view]) result ])
   let hasResultBody :=
     Ast.Expr.existsE [{ name := "input", ty := .text }]
       (.call resultPredicate [.var "input", result])
@@ -1369,7 +1374,7 @@ private def soundnessDeclarations (format : FormatInput) : List Ast.Decl :=
               [optionEqualsSome
                 (parserResult (serializer (.var "value")))
                 (.var "value")]
-            doc := some "Parsing the external serializer returns the original representable value." },
+            doc := some "External serialization parses back to the representable value." },
         .proofMethod
           { name := "extparse_to_string_injective"
             params := [{ name := "left", ty := .int }, { name := "right", ty := .int }]
@@ -1386,16 +1391,9 @@ private def soundnessDeclarations (format : FormatInput) : List Ast.Decl :=
               [ .boolImplies normalizedEqual parseEqual,
                 .boolImplies parseEqual normalizedEqual ]
             doc := some
-              "Canonicalized external parses are equal exactly when their parse results are equal." } ]
+              "Canonical external parses agree exactly when their results agree." } ]
     else
       []
-  let resultDecl : Ast.Decl :=
-    .function
-      { name := resultPredicate
-        params := [{ name := "input", ty := .text }, { name := "value", ty := .int }]
-        returnType := .bool
-        body := resultBody
-        doc := some "The input has a valid typed view whose denotation is this result." }
   let hasResultDecl : Ast.Decl :=
     .function
       { name := hasResultPredicate
@@ -1411,9 +1409,9 @@ private def soundnessDeclarations (format : FormatInput) : List Ast.Decl :=
           specification integer."
         items := baseItems ++ printerItems }
   if format.hasPrinter then
-    [resultDecl, hasResultDecl, traitDecl]
+    [hasResultDecl, traitDecl]
   else
-    [resultDecl, traitDecl]
+    [traitDecl]
 
 /-- Build the Verus AST for the external-parser proof obligations. -/
 def buildSoundnessAst (format : FormatInput) : Except String Ast.Module := do
@@ -1423,7 +1421,8 @@ def buildSoundnessAst (format : FormatInput) : Except String Ast.Module := do
         [s!"Generated by Triptych from `triptych {format.name}`.",
          "External-parser proof obligations; no parser implementation or proof is assumed.",
          "Implement the generated trait for the optimized production parser."]
-      imports := ["super::spec::*", "vstd::prelude::*"]
+      imports := ["vstd::prelude::*"]
+      publicImports := ["super::spec::*"]
       declarations := soundnessDeclarations format }
 
 /-- Generate the Verus external-parser soundness-contract scaffold. -/

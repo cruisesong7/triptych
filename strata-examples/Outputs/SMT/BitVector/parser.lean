@@ -496,7 +496,8 @@ theorem BitVector.IsWf_equiv (s : String) :
   simp only [Triptych.component, Triptych.componentList, Triptych.envOf, Triptych.captureMapOf, Triptych.scan_eq_decode,
     List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const, ConstraintEntry.wfPart,
     Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD,
-    Env.countVal, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
+    hexOf_getD, hexSeqOf_getD, segmentsOf_getD, Env.countVal, and_true, true_and, false_implies, implies_true,
+    Bool.false_eq_true]
   try grind
 
 theorem BitVector.IsValid_equiv (s : String) :
@@ -558,7 +559,10 @@ theorem BitVector.computeValue_eq (s : String) :
   rw [Triptych.scan_eq_decode]
   cases h : decode BitVector.grammar s with
   | none => simp [h]
-  | some m => simp [h, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, Env.countVal, ValExpr.eval]
+  | some m =>
+    simp [h, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, hexOf_getD, hexSeqOf_getD, segmentsOf_getD,
+        Env.countVal, ValExpr.eval] <;>
+      ac_rfl
 
 theorem BitVector.computeValue_of_decode {s : String} {m : Triptych.CaptureMap}
     (h : decode BitVector.grammar s = some m) :
@@ -647,13 +651,13 @@ theorem BitVector.parse_candidateChecks_eq_zero_of_fastScan (s : String)
   Triptych.scannerParseMap_candidateChecks_eq_zero_of_fastScan BitVector.grammar BitVector.constraints BitVector.valueFn
     id s hunique hscan
 
-theorem BitVector.parse_sound (s : String) (v : Value) :
+theorem BitVector.parse_sound (s : String) (v : StrataExamples.SMT.BitVector.Value) :
     BitVector.parse s = some v → BitVector.IsValid s ∧ BitVector.computeValue s = some v :=
   by
   rw [BitVector.parse_eq_gated]
   exact Triptych.gatedParse_sound _ _ s v
 
-theorem BitVector.parse_complete (s : String) (v : Value) :
+theorem BitVector.parse_complete (s : String) (v : StrataExamples.SMT.BitVector.Value) :
     BitVector.IsValid s → BitVector.computeValue s = some v → BitVector.parse s = some v :=
   by
   rw [BitVector.parse_eq_gated]
@@ -672,7 +676,7 @@ theorem BitVector.parse_view (s : String) :
   unfold Triptych.gatedParse
   rw [BitVector.computeValue_view]
 
-theorem BitVector.parse_eq_some_iff_view (s : String) (v : Value) :
+theorem BitVector.parse_eq_some_iff_view (s : String) (v : StrataExamples.SMT.BitVector.Value) :
     BitVector.parse s = some v ↔
       ∃ decodedView : BitVector.View,
         BitVector.decodeView s = some decodedView ∧

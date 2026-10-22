@@ -158,7 +158,7 @@ abbrev SpecConstant.IsWf (s : String) : Prop :=
 abbrev SpecConstant.IsValid (s : String) : Prop :=
   SpecConstant.IsWf s
 
-def SpecConstant.Denotes (s : String) (v : Value) : Prop :=
+def SpecConstant.Denotes (s : String) (v : StrataExamples.SMT.SpecConstant.Value) : Prop :=
   SpecConstant.IsValid s ∧
     v =
       SpecConstant.value (Triptych.component SpecConstant.grammar s "StringLiteral")

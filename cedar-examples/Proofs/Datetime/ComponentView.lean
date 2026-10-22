@@ -176,8 +176,8 @@ private theorem offset_asString_length
     o.asString.length = 5 := by
   rcases o with ⟨negative, hours, minutes⟩
   rcases ho with ⟨hh, hm⟩
-  have hplus : "+".length = 1 := by native_decide
-  have hminus : "-".length = 1 := by native_decide
+  have hplus : "+".length = 1 := by decide
+  have hminus : "-".length = 1 := by decide
   cases negative <;>
     simp [Cedar.Thm.Datetime.OffsetComponents.asString, hh.2, hm.2, hplus, hminus]
 
@@ -219,8 +219,8 @@ private theorem timeTail_length
     (hmillis : Cedar.Thm.Datetime.IsWfOptionalMillis millis)
     (hzone : zone.syntaxWf) :
     (timeTailString millis zone).length = millisWidth millis + zoneWidth zone := by
-  have hdot : ".".length = 1 := by native_decide
-  have hZ : "Z".length = 1 := by native_decide
+  have hdot : ".".length = 1 := by decide
+  have hZ : "Z".length = 1 := by decide
   cases millis with
   | none =>
       cases zone with
@@ -365,7 +365,7 @@ private theorem time_asString_length
     time.asString.length = 8 := by
   rcases time with ⟨hours, minutes, seconds⟩
   rcases htime with ⟨hh, hm, hs⟩
-  have hcolon : ":".length = 1 := by native_decide
+  have hcolon : ":".length = 1 := by decide
   simp [Cedar.Thm.Datetime.TimeComponents.asString, hh.2, hm.2, hs.2, hcolon]
 
 private theorem date_asString_length
@@ -373,7 +373,7 @@ private theorem date_asString_length
     date.asString.length = 10 := by
   rcases date with ⟨year, month, day⟩
   rcases hdate with ⟨hy, hm, hd⟩
-  have hdash : "-".length = 1 := by native_decide
+  have hdash : "-".length = 1 := by decide
   simp [Cedar.Thm.Datetime.DateComponents.asString, hy.2, hm.2, hd.2, hdash]
 
 private theorem timePart_asString_ne_empty (tp : Cedar.Thm.Datetime.TimePart) :

@@ -27,3 +27,6 @@ lean_lib Triptych where
     .one `Triptych.Theorems.Value
   ]
   defaultFacets := #[LeanLib.staticFacet]
+
+lean_exe triptych where
+  root := `TriptychCli

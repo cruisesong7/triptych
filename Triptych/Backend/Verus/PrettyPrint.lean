@@ -217,13 +217,19 @@ private def prettyPrintDecl : Ast.Decl → String
 
 def prettyPrintModule (astModule : Ast.Module) : String :=
   let header := String.intercalate "\n" (astModule.header.map ("// " ++ ·))
-  let imports := String.intercalate "\n" (astModule.imports.map fun path =>
+  let importLines := astModule.imports.map fun path =>
     if path == "vstd::std_specs::char::is_white_space" ||
         path == "vstd::arithmetic::div_mod::rust_div" ||
         path == "super::spec::*" then
       "#[cfg(verus_only)]\nuse " ++ path ++ ";"
     else
-      "use " ++ path ++ ";")
+      "use " ++ path ++ ";"
+  let publicImportLines := astModule.publicImports.map fun path =>
+    if path == "super::spec::*" then
+      "#[cfg(verus_only)]\npub use " ++ path ++ ";"
+    else
+      "pub use " ++ path ++ ";"
+  let imports := String.intercalate "\n" (importLines ++ publicImportLines)
   let declarations := String.intercalate "\n\n" (astModule.declarations.map prettyPrintDecl)
   header ++ "\n\n" ++ imports ++ "\n\nverus! " ++ leftBrace ++ "\n\n" ++ declarations ++
     "\n\n" ++ rightBrace ++ " // verus!\n"

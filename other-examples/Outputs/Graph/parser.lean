@@ -338,7 +338,8 @@ theorem Graph.IsWf_equiv (s : String) : Graph.IsWf s ↔ Triptych.isWf Graph.gra
   simp only [Triptych.component, Triptych.componentList, Triptych.envOf, Triptych.captureMapOf, Triptych.scan_eq_decode,
     List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const, ConstraintEntry.wfPart,
     Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD,
-    Env.countVal, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
+    hexOf_getD, hexSeqOf_getD, segmentsOf_getD, Env.countVal, and_true, true_and, false_implies, implies_true,
+    Bool.false_eq_true]
   try grind
 
 theorem Graph.IsValid_equiv (s : String) :
@@ -405,7 +406,10 @@ theorem Graph.computeValue_eq (s : String) :
   rw [Triptych.scan_eq_decode]
   cases h : decode Graph.grammar s with
   | none => simp [h]
-  | some m => simp [h, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, Env.countVal, ValExpr.eval]
+  | some m =>
+    simp [h, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, hexOf_getD, hexSeqOf_getD, segmentsOf_getD,
+        Env.countVal, ValExpr.eval] <;>
+      ac_rfl
 
 theorem Graph.computeValue_of_decode {s : String} {m : Triptych.CaptureMap} (h : decode Graph.grammar s = some m) :
     Graph.computeValue s =
@@ -485,13 +489,13 @@ theorem Graph.parse_candidateChecks_eq_zero_of_fastScan (s : String) (hunique : 
   Triptych.scannerParseMap_candidateChecks_eq_zero_of_fastScan Graph.grammar Graph.constraints Graph.valueFn id s
     hunique hscan
 
-theorem Graph.parse_sound (s : String) (g : Graph) :
+theorem Graph.parse_sound (s : String) (g : GraphExample.Graph) :
     Graph.parse s = some g → Graph.IsValid s ∧ Graph.computeValue s = some g :=
   by
   rw [Graph.parse_eq_gated]
   exact Triptych.gatedParse_sound _ _ s g
 
-theorem Graph.parse_complete (s : String) (g : Graph) :
+theorem Graph.parse_complete (s : String) (g : GraphExample.Graph) :
     Graph.IsValid s → Graph.computeValue s = some g → Graph.parse s = some g :=
   by
   rw [Graph.parse_eq_gated]
@@ -509,7 +513,7 @@ theorem Graph.parse_view (s : String) :
   unfold Triptych.gatedParse
   rw [Graph.computeValue_view]
 
-theorem Graph.parse_eq_some_iff_view (s : String) (g : Graph) :
+theorem Graph.parse_eq_some_iff_view (s : String) (g : GraphExample.Graph) :
     Graph.parse s = some g ↔
       ∃ decodedView : Graph.View,
         Graph.decodeView s = some decodedView ∧ Graph.View.Valid decodedView ∧ Graph.View.denotation decodedView = g :=

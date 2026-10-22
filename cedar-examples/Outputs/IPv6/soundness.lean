@@ -12,99 +12,145 @@ set_option linter.unusedSimpArgs false
 set_option linter.unusedVariables false
 
 /- soundness · generated parser
-The one serializer obligation gives the exact valid typed view produced by `ipNetToStr`.
-Acceptance, value agreement, generated-parser roundtrip, injectivity, and normalization are
-derived from that witness. -/
+The serializer obligation gives the exact valid typed view produced by `ipNetToStr`, and the
+`toSpec_ofSpec` obligation shows the integer code of every accepted value is in the range where
+`ipv6CodeToNet` and `ipv6NetToCode` are inverse. Acceptance, value agreement, generated-parser
+roundtrip, injectivity, and normalization are derived from those witnesses. -/
 
-theorem IPv6.encode_view (i : IPv6Net) :
+theorem IPv6.toSpec_ofSpec (s : String) (i : Int) :
+    IPv6.IsValid s → IPv6.computeValue s = some i → ipv6NetToCode (ipv6CodeToNet i) = i := by
+  intro hvalid hvalue
+  cases hparse : ipv6Only s with
+  | none =>
+      exact ((IPv6.RuleRegistrySoundness.parser_rejects_iff s).mp hparse hvalid).elim
+  | some cidr =>
+      obtain ⟨_, hcode⟩ := (IPv6.RuleRegistrySoundness.parser_agrees s cidr).mp hparse
+      rw [hvalue] at hcode
+      rw [Option.some.inj hcode, IPv6.RuleRegistrySoundness.ipv6CodeToNet_ipv6NetToCode]
+
+theorem IPv6.parse_sound_toSpec (s : String) (c : Cedar.Spec.Ext.IPAddr.CIDR Cedar.Spec.Ext.IPAddr.V6_WIDTH) :
+    IPv6.parse s = some c → IPv6.IsValid s ∧ IPv6.computeValue s = some (ipv6NetToCode c) :=
+  by
+  intro hparse
+  rw [IPv6.parse_eq_gated] at hparse
+  exact
+    Triptych.gatedParseOfSpec_sound_toSpec IPv6.IsValid IPv6.computeValue ipv6CodeToNet ipv6NetToCode IPv6.toSpec_ofSpec
+      s c hparse
+
+theorem IPv6.encode_view (c : Cedar.Spec.Ext.IPAddr.CIDR Cedar.Spec.Ext.IPAddr.V6_WIDTH) :
     ∃ v : IPv6.View,
-      IPv6.decodeView (ipNetToStr i) = some v ∧
-      IPv6.View.Valid v ∧
-      IPv6.View.denotation v = i := by
-  triptych_encode [IPv6.RuleRegistrySoundness.parser_ipNetToStr,
-    IPv6.RuleRegistrySoundness.parser_agrees, IPv6.IsValid_view,
-    IPv6.computeValue_view]
+      IPv6.decodeView (ipNetToStr c) = some v ∧ IPv6.View.Valid v ∧ ipv6CodeToNet (IPv6.View.denotation v) = c :=
+  by
+  obtain ⟨hvalid, hvalue⟩ :=
+    (IPv6.RuleRegistrySoundness.parser_agrees (ipNetToStr c) c).mp
+      (IPv6.RuleRegistrySoundness.parser_ipNetToStr c)
+  obtain ⟨v, hview, hvalidView⟩ := (IPv6.IsValid_view (ipNetToStr c)).mp hvalid
+  refine ⟨v, hview, hvalidView, ?_⟩
+  rw [IPv6.computeValue_view, hview] at hvalue
+  have hdenote : IPv6.View.denotation v = ipv6NetToCode c := Option.some.inj hvalue
+  rw [hdenote, IPv6.RuleRegistrySoundness.ipv6CodeToNet_ipv6NetToCode]
 
-theorem IPv6.encode_accepted (i : IPv6Net) : IPv6.IsValid (ipNetToStr i) := by
-  obtain ⟨v, hview, hvalidView, _⟩ := IPv6.encode_view i
-  exact (IPv6.IsValid_view (ipNetToStr i)).mpr ⟨v, hview, hvalidView⟩
+theorem IPv6.encode_accepted (c : Cedar.Spec.Ext.IPAddr.CIDR Cedar.Spec.Ext.IPAddr.V6_WIDTH) :
+    IPv6.IsValid (ipNetToStr c) :=
+  by
+  obtain ⟨v, hview, hvalidView, _⟩ := IPv6.encode_view c
+  exact (IPv6.IsValid_view (ipNetToStr c)).mpr ⟨v, hview, hvalidView⟩
 
-theorem IPv6.encode_value (i : IPv6Net) :
-    IPv6.computeValue (ipNetToStr i) = some i := by
-  obtain ⟨v, hview, _, hresult⟩ := IPv6.encode_view i
-  rw [IPv6.computeValue_view, hview]
-  exact congrArg some hresult
+theorem IPv6.encode_value (c : Cedar.Spec.Ext.IPAddr.CIDR Cedar.Spec.Ext.IPAddr.V6_WIDTH) :
+    IPv6.computeValue (ipNetToStr c) = some (ipv6NetToCode c) :=
+  by
+  obtain ⟨v, hview, _, hresult⟩ := IPv6.encode_view c
+  have hvalue : IPv6.computeValue (ipNetToStr c) = some (IPv6.View.denotation v) :=
+    by
+    rw [IPv6.computeValue_view, hview]
+    rfl
+  have hinverse := IPv6.toSpec_ofSpec (ipNetToStr c) (IPv6.View.denotation v) (IPv6.encode_accepted c) hvalue
+  rw [hresult] at hinverse
+  rw [hvalue]
+  exact congrArg some hinverse.symm
 
-theorem IPv6.parse_toString_roundtrip (i : IPv6Net) :
-    IPv6.parse (ipNetToStr i) = some i :=
-  Triptych.parse_toString_roundtrip_of_encodeView
-    IPv6.parse_eq_some_iff_view IPv6.encode_view i
+theorem IPv6.ofSpec_toSpec (c : Cedar.Spec.Ext.IPAddr.CIDR Cedar.Spec.Ext.IPAddr.V6_WIDTH) :
+    ipv6CodeToNet (ipv6NetToCode c) = c :=
+  by
+  obtain ⟨v, hview, _, hresult⟩ := IPv6.encode_view c
+  have hvalue : IPv6.computeValue (ipNetToStr c) = some (IPv6.View.denotation v) :=
+    by
+    rw [IPv6.computeValue_view, hview]
+    rfl
+  have hinverse := IPv6.toSpec_ofSpec (ipNetToStr c) (IPv6.View.denotation v) (IPv6.encode_accepted c) hvalue
+  rw [hresult] at hinverse
+  rw [hinverse, hresult]
 
-theorem IPv6.toString_injective (i i' : IPv6Net)
-    (h : ipNetToStr i = ipNetToStr i') : i = i' :=
-  Triptych.toString_injective IPv6.parse_toString_roundtrip i i' h
+theorem IPv6.parse_toString_roundtrip (c : Cedar.Spec.Ext.IPAddr.CIDR Cedar.Spec.Ext.IPAddr.V6_WIDTH) :
+    IPv6.parse (ipNetToStr c) = some c :=
+  Triptych.parse_toString_roundtrip_of_encodeView IPv6.parse_eq_some_iff_view IPv6.encode_view c
+
+theorem IPv6.toString_injective (c c' : Cedar.Spec.Ext.IPAddr.CIDR Cedar.Spec.Ext.IPAddr.V6_WIDTH)
+    (h : ipNetToStr c = ipNetToStr c') : c = c' :=
+  Triptych.toString_injective IPv6.parse_toString_roundtrip c c' h
 
 theorem IPv6.normalize_eq_iff_parse_eq (s s' : String) :
-    (IPv6.parse s).map ipNetToStr = (IPv6.parse s').map ipNetToStr ↔
-      IPv6.parse s = IPv6.parse s' :=
+    (IPv6.parse s).map ipNetToStr = (IPv6.parse s').map ipNetToStr ↔ IPv6.parse s = IPv6.parse s' :=
   Triptych.normalize_eq_iff_parse_eq IPv6.parse_toString_roundtrip s s'
 
 /- soundness · external parser
-Obligations for validating YOUR OWN external parser against this specification:
-`extparse_sound`, `extparse_complete`, and `extparse_reject`, stated over the readable
-surface `IsValid`/`computeValue`. Format-specific agreement and rejection theorems are proved
-separately using reusable parser rules and grammar-view proofs, then applied directly below.
-The generated `checkedExtParse` is already sound without these proofs when the spec value has
-decidable equality. The external printer theorems (`extparse_toString_*`) are also DISCHARGED,
-reusing the generated section's derived encode projections. -/
+`extparse_sound`, `extparse_complete`, and `extparse_reject` are stated over the readable surface
+`IsValid`/`computeValue`. They are proved in `Proofs.IPv6.RuleRegistrySoundness` from registered
+parser-rule summaries of Cedar's `ipv6Only`, then applied directly below. Given them, the
+external printer theorems (`extparse_toString_*`) are DISCHARGED, reusing the generated
+section's derived encode projections. -/
 
-theorem IPv6.extparse_reject (s : String) : ipv6Only s = none ↔ ¬IPv6.IsValid s := by
-  simpa only using IPv6.RuleRegistrySoundness.parser_rejects_iff s
+theorem IPv6.extparse_reject (s : String) : ipv6Only s = none ↔ ¬IPv6.IsValid s := 
+  IPv6.RuleRegistrySoundness.parser_rejects_iff s
 
 theorem IPv6.extparse_eq_none_iff_view (s : String) :
-    ipv6Only s = none ↔
-      ¬∃ v : IPv6.View, IPv6.decodeView s = some v ∧ IPv6.View.Valid v := by
-  simp only [IPv6.extparse_reject, IPv6.IsValid_view]
+    ipv6Only s = none ↔ ¬∃ v : IPv6.View, IPv6.decodeView s = some v ∧ IPv6.View.Valid v :=
+  by
+  rw [IPv6.extparse_reject]
+  constructor
+  · intro hinvalid ⟨v, hview, hvalidView⟩
+    exact hinvalid ((IPv6.IsValid_view s).mpr ⟨v, hview, hvalidView⟩)
+  · intro hnoview hvalid
+    exact hnoview ((IPv6.IsValid_view s).mp hvalid)
 
-theorem IPv6.extparse_sound (s : String) (i : IPv6Net) :
-    ipv6Only s = some i → IPv6.IsValid s ∧ IPv6.computeValue s = some (id i) := by
-  simpa only [id] using (IPv6.RuleRegistrySoundness.parser_agrees s i).mp
+theorem IPv6.extparse_sound (s : String) (i : CedarExamples.IPv6.IPv6Net) :
+    ipv6Only s = some i → IPv6.IsValid s ∧ IPv6.computeValue s = some (ipv6NetToCode i) := 
+  (IPv6.RuleRegistrySoundness.parser_agrees s i).mp
 
 theorem IPv6.checkedExtParse_eq_extparse : IPv6.checkedExtParse = ipv6Only :=
-  Triptych.checkedExternalParse_eq_of_sound
-    IPv6.IsValid IPv6.computeValue ipv6Only id IPv6.extparse_sound
+  Triptych.checkedExternalParse_eq_of_sound IPv6.IsValid IPv6.computeValue ipv6Only ipv6NetToCode IPv6.extparse_sound
 
-theorem IPv6.extparse_complete (s : String) (i : IPv6Net) :
-    IPv6.IsValid s → IPv6.computeValue s = some (id i) → ipv6Only s = some i := by
-  intro hvalid hvalue
-  exact (IPv6.RuleRegistrySoundness.parser_agrees s i).mpr ⟨hvalid, hvalue⟩
+theorem IPv6.extparse_complete (s : String) (i : CedarExamples.IPv6.IPv6Net) :
+    IPv6.IsValid s → IPv6.computeValue s = some (ipv6NetToCode i) → ipv6Only s = some i := 
+  fun hvalid hvalue => (IPv6.RuleRegistrySoundness.parser_agrees s i).mpr ⟨hvalid, hvalue⟩
 
-theorem IPv6.parse_eq_extparse (s : String) :
-    IPv6.parse s = ipv6Only s :=
-  by
-  rw [IPv6.parse_eq_gated]
-  exact Triptych.gatedParse_eq_external
-    IPv6.IsValid IPv6.computeValue ipv6Only IPv6.extparse_sound IPv6.extparse_reject s
-
-theorem IPv6.extparse_eq_some_iff_view (s : String) (i : IPv6Net) :
+theorem IPv6.extparse_eq_some_iff_view (s : String) (i : CedarExamples.IPv6.IPv6Net) :
     ipv6Only s = some i ↔
-      ∃ v : IPv6.View,
-        IPv6.decodeView s = some v ∧
-        IPv6.View.Valid v ∧
-        IPv6.View.denotation v = id i := by
-  simp only [IPv6.RuleRegistrySoundness.parser_agrees, IPv6.IsValid_view,
-    IPv6.computeValue_view, Triptych.Automation.exists_valid_and_map_eq_some_iff, id]
+      ∃ decodedView : IPv6.View,
+        IPv6.decodeView s = some decodedView ∧
+          IPv6.View.Valid decodedView ∧ IPv6.View.denotation decodedView = ipv6NetToCode i :=
+  by
+  constructor
+  · intro hparse
+    obtain ⟨hvalid, hvalue⟩ := IPv6.extparse_sound s i hparse
+    obtain ⟨decodedView, hview, hvalidView⟩ := (IPv6.IsValid_view s).mp hvalid
+    refine ⟨decodedView, hview, hvalidView, ?_⟩
+    rw [IPv6.computeValue_view, hview] at hvalue
+    exact Option.some.inj hvalue
+  · rintro ⟨decodedView, hview, hvalidView, hvalue⟩
+    apply IPv6.extparse_complete s i
+    · exact (IPv6.IsValid_view s).mpr ⟨decodedView, hview, hvalidView⟩
+    · rw [IPv6.computeValue_view, hview]
+      exact congrArg some hvalue
 
-theorem IPv6.extparse_toString_roundtrip (i : IPv6Net) :
-    ipv6Only (ipNetToStr i) = some i :=
-  Triptych.parse_toString_roundtrip IPv6.extparse_complete IPv6.encode_accepted
-    IPv6.encode_value i
+theorem IPv6.extparse_toString_roundtrip (c : Cedar.Spec.Ext.IPAddr.CIDR Cedar.Spec.Ext.IPAddr.V6_WIDTH) :
+    ipv6Only (ipNetToStr c) = some c :=
+  Triptych.parse_toString_roundtrip IPv6.extparse_complete IPv6.encode_accepted IPv6.encode_value c
 
-theorem IPv6.extparse_toString_injective (i i' : IPv6Net)
-    (h : ipNetToStr i = ipNetToStr i') : i = i' :=
-  Triptych.toString_injective IPv6.extparse_toString_roundtrip i i' h
+theorem IPv6.extparse_toString_injective (c c' : Cedar.Spec.Ext.IPAddr.CIDR Cedar.Spec.Ext.IPAddr.V6_WIDTH)
+    (h : ipNetToStr c = ipNetToStr c') : c = c' :=
+  Triptych.toString_injective IPv6.extparse_toString_roundtrip c c' h
 
 theorem IPv6.extparse_normalize_eq_iff_parse_eq (s s' : String) :
-    (ipv6Only s).map ipNetToStr = (ipv6Only s').map ipNetToStr ↔
-      ipv6Only s = ipv6Only s' :=
+    (ipv6Only s).map ipNetToStr = (ipv6Only s').map ipNetToStr ↔ ipv6Only s = ipv6Only s' :=
   Triptych.normalize_eq_iff_parse_eq IPv6.extparse_toString_roundtrip s s'

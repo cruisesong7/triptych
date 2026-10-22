@@ -95,8 +95,8 @@ def Valid (v : View) : Prop :=
   OctetWf v.oct1 ∧ OctetWf v.oct2 ∧ OctetWf v.oct3 ∧ OctetWf v.oct4 ∧
     OptionalPrefixWf v.«prefix»
 
-def denotation (v : View) : CedarExamples.IPv4.IPv4Net :=
-  CedarExamples.IPv4.toIPv4Net v.oct1 v.oct2 v.oct3 v.oct4 (v.«prefix».getD "")
+def denotation (v : View) : Int :=
+  IPv4.value v.oct1 v.oct2 v.oct3 v.oct4 (v.«prefix».getD "")
 
 end View
 
@@ -404,10 +404,21 @@ theorem wf_constraints_of_decode (s o₁ o₂ o₃ o₄ : String) (pre : Option 
 theorem format_compute_of_decode (s o₁ o₂ o₃ o₄ : String) (pre : Option String)
     (h : decode IPv4.grammar s = some (v4NetCaptures o₁ o₂ o₃ o₄ pre)) :
     IPv4.computeValue s =
-      some (CedarExamples.IPv4.toIPv4Net o₁ o₂ o₃ o₄ (pre.getD "")) := by
+      some (IPv4.value o₁ o₂ o₃ o₄ (pre.getD "")) := by
   rw [IPv4.computeValue_of_decode h]
   cases pre <;>
     simp [IPv4.value, v4NetCaptures, v4AddrCaptures, CaptureMap.toEnv]
+
+private theorem valueConstraints_of_wfConstraints
+    {o₁ o₂ o₃ o₄ pre : String}
+    (h : IPv4.WfConstraints o₁ o₂ o₃ o₄ pre) :
+    IPv4.Constraints o₁ o₂ o₃ o₄ pre := by
+  unfold IPv4.WfConstraints at h
+  unfold IPv4.Constraints IPv4.value
+  have hbound :
+      (2 : Int) ^ (32 : Int).toNat * 33 - 1 = 141733920767 := by decide
+  rw [hbound]
+  omega
 
 private theorem noDotOfDigitsBetween {lo hi : Nat} {s : String}
     (h : IsDigitsBetween lo hi s) :
@@ -607,7 +618,7 @@ theorem isValid_iff_parts (s : String) :
         OctetWf o₁ ∧ OctetWf o₂ ∧ OctetWf o₃ ∧ OctetWf o₄ ∧
         OptionalPrefixWf pre := by
   constructor
-  · rintro ⟨hgrammar, hconstraints⟩
+  · rintro ⟨⟨hgrammar, hconstraints⟩, _⟩
     obtain ⟨o₁, o₂, o₃, o₄, pre, hdecode, hs, h₁, h₂, h₃, h₄, hp⟩ :=
       decode_parts_of_surface_wf hgrammar
     obtain ⟨hc₁, hc₂, hc₃, hc₄, hcpre⟩ :=
@@ -623,7 +634,10 @@ theorem isValid_iff_parts (s : String) :
       (wf_constraints_of_decode s o₁ o₂ o₃ o₄ pre hdecode).mpr
         ⟨h₁.2, h₂.2, h₃.2, h₄.2, hconstraintsPre⟩
     exact
-      ⟨surface_wf_of_parts hs h₁.1 h₂.1 h₃.1 h₄.1 hsyntaxPre, hconstraints⟩
+      ⟨⟨surface_wf_of_parts hs h₁.1 h₂.1 h₃.1 h₄.1 hsyntaxPre, hconstraints⟩,
+        (IPv4.SatisfiesConstraints_of_decode hdecode).mpr
+          (valueConstraints_of_wfConstraints
+            ((IPv4.SatisfiesWfConstraints_of_decode hdecode).mp hconstraints))⟩
 
 /-- Accepted strings in the proof-facing component normal form. -/
 theorem isValid_iff_view (s : String) :
@@ -640,7 +654,7 @@ theorem computeValue_eq_of_parts {s o₁ o₂ o₃ o₄ : String} {pre : Option 
     (h₁ : OctetWf o₁) (h₂ : OctetWf o₂) (h₃ : OctetWf o₃) (h₄ : OctetWf o₄)
     (hp : OptionalPrefixWf pre) :
     IPv4.computeValue s =
-      some (CedarExamples.IPv4.toIPv4Net o₁ o₂ o₃ o₄ (pre.getD "")) := by
+      some (IPv4.value o₁ o₂ o₃ o₄ (pre.getD "")) := by
   obtain ⟨hsyntaxPre, _⟩ := (optionalPrefixWf_iff pre).mp hp
   exact format_compute_of_decode s o₁ o₂ o₃ o₄ pre
     (decode_eq_of_parts hs h₁.1 h₂.1 h₃.1 h₄.1 hsyntaxPre)

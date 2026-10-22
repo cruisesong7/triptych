@@ -143,6 +143,7 @@ inductive Decl where
 structure Module where
   header : List String := []
   imports : List String := []
+  publicImports : List String := []
   declarations : List Decl := []
 
 end Triptych.Backend.Verus.Ast

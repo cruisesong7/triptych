@@ -389,6 +389,7 @@ pub(crate) fn __SEMANTIC_PARSE__(input: &str) -> (result: Option<i64>)
         assert(triptych_nat_of(view.__FRACTION__) == fraction as int);
         assert(1 <= fraction_length && fraction_length <= 4);
         reveal_with_fuel(triptych_int_pow, 5);
+        assert(triptych_int_pow(10, 4) == 10_000);
         if fraction_length == 1 {
             assert(
                 triptych_int_pow(10, 4 - view.__FRACTION__.len() as int)

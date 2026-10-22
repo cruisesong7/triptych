@@ -1,69 +1,65 @@
-use decimal::parser::decimal_parse_candidate;
-use regex::Regex;
+use cedar_policy_core::extensions::decimal::benchmark_parse_decimal;
+use decimal::optimized::DecimalParser;
 use std::hint::black_box;
-use std::str::FromStr;
-use std::sync::LazyLock;
 use std::time::Instant;
 
-const SCALE_DIGITS: u32 = 4;
-
-static DECIMAL_REGEX: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^(-?\d+)\.(\d+)$").expect("constant regex"));
-
-fn cedar_regex_recognize(input: &str) -> Option<usize> {
-    let captures = DECIMAL_REGEX.captures(input)?;
-    let fraction = captures.get(2)?.as_str();
-    (fraction.len() <= SCALE_DIGITS as usize).then_some(input.len())
-}
-
-fn checked_mul_pow(value: i64, exponent: u32) -> Option<i64> {
-    value.checked_mul(10_i64.checked_pow(exponent)?)
-}
-
-// Mirrors Cedar's private Decimal parsing algorithm for a direct algorithm-level comparison.
-fn cedar_style_regex_parse(input: &str) -> Option<i64> {
-    let captures = DECIMAL_REGEX.captures(input)?;
-    let natural_text = captures.get(1)?.as_str();
-    let fraction_text = captures.get(2)?.as_str();
-    let natural = checked_mul_pow(i64::from_str(natural_text).ok()?, SCALE_DIGITS)?;
-    let fraction_length = u32::try_from(fraction_text.len()).ok()?;
-    if SCALE_DIGITS < fraction_length {
-        return None;
-    }
-    let fraction = checked_mul_pow(
-        i64::from_str(fraction_text).ok()?,
-        SCALE_DIGITS - fraction_length,
-    )?;
-    if natural_text.starts_with('-') {
-        natural.checked_sub(fraction)
-    } else {
-        natural.checked_add(fraction)
-    }
-}
-
-fn measure(label: &str, iterations: usize, mut parse: impl FnMut() -> Option<usize>) -> f64 {
+fn sample(
+    input: &str,
+    iterations: usize,
+    mut parse: impl FnMut(&str) -> Option<i64>,
+) -> (f64, u64) {
     let start = Instant::now();
-    let mut checksum = 0usize;
+    let mut checksum = 0u64;
     for _ in 0..iterations {
-        checksum ^= black_box(parse().expect("benchmark input should parse"));
+        let value = black_box(parse(black_box(input)).expect("benchmark input should parse"));
+        checksum = checksum.wrapping_add(value as u64);
     }
     let nanoseconds = start.elapsed().as_nanos() as f64 / iterations as f64;
-    println!("{label:24} {nanoseconds:8.2} ns/parse ({checksum})");
-    nanoseconds
+    (nanoseconds, checksum)
+}
+
+fn report(label: &str, samples: &mut [f64], checksum: u64) -> f64 {
+    let rounds = samples
+        .iter()
+        .map(|sample| format!("{sample:.2}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    println!("{label:24} rounds [{rounds}]");
+    samples.sort_by(f64::total_cmp);
+    let median = samples[samples.len() / 2];
+    println!(
+        "{label:24} {median:8.2} ns/parse ({:.2}–{:.2}, {checksum})",
+        samples[0],
+        samples[samples.len() - 1],
+    );
+    median
 }
 
 fn main() {
     let input = black_box("-1234567890.1234");
     let iterations = 5_000_000;
-    let generated = measure("Triptych ScanPlan", iterations, || {
-        decimal_parse_candidate(input).map(|candidate| candidate.end)
-    });
-    let recognition = measure("Cedar regex recognition", iterations, || {
-        cedar_regex_recognize(input)
-    });
-    let full = measure("Cedar-style full parse", iterations, || {
-        cedar_style_regex_parse(input).map(|_| input.len())
-    });
-    println!("vs regex recognition      {:8.2}x", recognition / generated);
-    println!("vs Cedar-style full parse {:8.2}x", full / generated);
+    let rounds = 7;
+    assert_eq!(DecimalParser::parse(input), benchmark_parse_decimal(input));
+    let mut external_samples = Vec::with_capacity(rounds);
+    let mut cedar_samples = Vec::with_capacity(rounds);
+    let mut checksum = 0u64;
+    for round in 0..rounds {
+        let (verified, cedar) = if round % 2 == 0 {
+            (
+                sample(input, iterations, DecimalParser::parse),
+                sample(input, iterations, benchmark_parse_decimal),
+            )
+        } else {
+            let cedar = sample(input, iterations, benchmark_parse_decimal);
+            let verified = sample(input, iterations, DecimalParser::parse);
+            (verified, cedar)
+        };
+        assert_eq!(verified.1, cedar.1);
+        external_samples.push(verified.0);
+        cedar_samples.push(cedar.0);
+        checksum = verified.1;
+    }
+    let external = report("Verified external", &mut external_samples, checksum);
+    let cedar = report("Cedar production", &mut cedar_samples, checksum);
+    println!("Cedar / verified          {:8.2}x", cedar / external);
 }

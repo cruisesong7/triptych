@@ -136,10 +136,95 @@ private theorem mask255_le (n : Nat) : n &&& 0xff ≤ 255 := by
   have h := Nat.and_lt_two_pow n (n := 8) (y := 0xff) (by decide)
   omega
 
+private theorem prefix_toNat_le (pre : IPv4Prefix) : pre.toNat ≤ 32 := by
+  cases pre with
+  | none => exact Nat.le_refl 32
+  | some pre =>
+      have := BitVec.isLt pre
+      change pre.toNat < 2 ^ 5 at this
+      change pre.toNat ≤ 32
+      omega
+
+private theorem toNat_ofNat_prefix {n : Nat} (h : n ≤ 32) :
+    (n : IPv4Prefix).toNat = n := by
+  change (if n < 32 then some (BitVec.ofNat 5 n) else none : IPv4Prefix).toNat = n
+  by_cases hlt : n < 32
+  · rw [if_pos hlt]
+    change (BitVec.ofNat 5 n).toNat = n
+    simp only [BitVec.toNat_ofNat]
+    omega
+  · rw [if_neg hlt]
+    change 32 = n
+    omega
+
+/-- The DSL value of a valid IPv4 string is the integer code of the CIDR Cedar's parser
+    returns. -/
+theorem code_cidrValue {o₁ o₂ o₃ o₄ : String} {pre : Option String}
+    (h₁ : OctetValid o₁) (h₂ : OctetValid o₂) (h₃ : OctetValid o₃) (h₄ : OctetValid o₄)
+    (hp : OptionalPrefixValid pre) :
+    CedarExamples.IPv4.ipv4NetToCode (cidrValue o₁ o₂ o₃ o₄ pre) =
+      IPv4.value o₁ o₂ o₃ o₄ (pre.getD "") := by
+  have b₁ := h₁.2.2
+  have b₂ := h₂.2.2
+  have b₃ := h₃.2.2
+  have b₄ := h₄.2.2
+  have haddr :
+      (addrValue o₁ o₂ o₃ o₄).toNat =
+        ((readNat o₁ * 256 + readNat o₂) * 256 + readNat o₃) * 256 + readNat o₄ := by
+    unfold addrValue
+    rw [toNat_mk]
+    simp only [BitVec.toNat_ofNat]
+    rw [Nat.mod_eq_of_lt (by omega : readNat o₁ < 2 ^ 8),
+      Nat.mod_eq_of_lt (by omega : readNat o₂ < 2 ^ 8),
+      Nat.mod_eq_of_lt (by omega : readNat o₃ < 2 ^ 8),
+      Nat.mod_eq_of_lt (by omega : readNat o₄ < 2 ^ 8)]
+  unfold CedarExamples.IPv4.ipv4NetToCode IPv4.value
+  simp only [cidrValue]
+  rw [haddr]
+  cases pre with
+  | none =>
+      simp only [Option.getD_none]
+      change _ + ((32 : IPv4Prefix).toNat : Int) = _
+      simp [natOf]
+      rfl
+  | some p =>
+      unfold OptionalPrefixValid PrefixValid at hp
+      have hbound : readNat p ≤ 32 := hp.2.2
+      have hne : p ≠ "" := by
+        intro heq
+        subst p
+        have hlen := hp.1.2.1
+        simp at hlen
+      simp only [Option.getD_some, if_neg hne]
+      change _ + (((readNat p % 33 : Nat) : IPv4Prefix).toNat : Int) = _
+      rw [Nat.mod_eq_of_lt (by omega), toNat_ofNat_prefix hbound]
+      simp [natOf]
+
+/-- Decoding the integer code of a CIDR recovers it. -/
+theorem ipv4CodeToNet_ipv4NetToCode (c : CIDR V4_WIDTH) :
+    CedarExamples.IPv4.ipv4CodeToNet (CedarExamples.IPv4.ipv4NetToCode c) = c := by
+  rcases c with ⟨addr, pre⟩
+  have hpre := prefix_toNat_le pre
+  unfold CedarExamples.IPv4.ipv4CodeToNet CedarExamples.IPv4.ipv4NetToCode
+  have hcode :
+      ((addr.toNat : Int) * 33 + (pre.toNat : Int)).toNat = addr.toNat * 33 + pre.toNat := by
+    omega
+  simp only [hcode]
+  rw [CIDR.mk.injEq]
+  constructor
+  · apply BitVec.eq_of_toNat_eq
+    simp only [BitVec.toNat_ofNat]
+    have hlt := BitVec.isLt addr
+    rw [show (addr.toNat * 33 + pre.toNat) / 33 = addr.toNat by omega]
+    exact Nat.mod_eq_of_lt hlt
+  · rw [show (addr.toNat * 33 + pre.toNat) % 33 = pre.toNat by omega]
+    exact prefix_of_toNat pre
+
 /-- The external parser returns exactly the values accepted and denoted by the Triptych spec. -/
 theorem parser_agrees (s : String) (cidr : CIDR V4_WIDTH) :
     CedarExamples.IPv4.ipv4Only s = some cidr ↔
-      IPv4.IsValid s ∧ IPv4.computeValue s = some cidr := by
+      IPv4.IsValid s ∧
+        IPv4.computeValue s = some (CedarExamples.IPv4.ipv4NetToCode cidr) := by
   rw [ipv4Only_eq_some_iff]
   constructor
   · rintro ⟨o₁, o₂, o₃, o₄, pre, hs, h₁, h₂, h₃, h₄, hp, hcidr⟩
@@ -155,13 +240,8 @@ theorem parser_agrees (s : String) (cidr : CIDR V4_WIDTH) :
         ⟨o₁, o₂, o₃, o₄, pre, hs', hb₁, hb₂, hb₃, hb₄, hbp⟩
     have hvalue :=
       IPv4.GrammarView.computeValue_eq_of_parts hs' hb₁ hb₂ hb₃ hb₄ hbp
-    have hdenote := cidrValue_eq_toIPv4Net (o₁ := o₁) (o₂ := o₂) (o₃ := o₃)
-      (o₄ := o₄) hp
     refine ⟨hvalid, ?_⟩
-    calc
-      IPv4.computeValue s =
-          some (CedarExamples.IPv4.toIPv4Net o₁ o₂ o₃ o₄ (pre.getD "")) := hvalue
-      _ = some cidr := congrArg some (hdenote.symm.trans hcidr.symm)
+    rw [hvalue, hcidr, code_cidrValue h₁ h₂ h₃ h₄ hp]
   · rintro ⟨hvalid, hvalue⟩
     obtain ⟨o₁, o₂, o₃, o₄, pre, hs, hb₁, hb₂, hb₃, hb₄, hbp⟩ :=
       (IPv4.GrammarView.isValid_iff_parts s).mp hvalid
@@ -173,13 +253,15 @@ theorem parser_agrees (s : String) (cidr : CIDR V4_WIDTH) :
     have hformat :=
       IPv4.GrammarView.computeValue_eq_of_parts hs hb₁ hb₂ hb₃ hb₄ hbp
     rw [hvalue] at hformat
-    have hcidr :
-        cidr = CedarExamples.IPv4.toIPv4Net o₁ o₂ o₃ o₄ (pre.getD "") :=
-      Option.some.inj hformat
-    have hdenote := cidrValue_eq_toIPv4Net (o₁ := o₁) (o₂ := o₂) (o₃ := o₃)
-      (o₄ := o₄) hp
+    have hcode :
+        CedarExamples.IPv4.ipv4NetToCode cidr =
+          CedarExamples.IPv4.ipv4NetToCode (cidrValue o₁ o₂ o₃ o₄ pre) :=
+      (Option.some.inj hformat).trans (code_cidrValue h₁ h₂ h₃ h₄ hp).symm
+    have hcidr : cidr = cidrValue o₁ o₂ o₃ o₄ pre := by
+      simpa only [ipv4CodeToNet_ipv4NetToCode] using
+        congrArg CedarExamples.IPv4.ipv4CodeToNet hcode
     exact ⟨o₁, o₂, o₃, o₄, pre, by simpa only [renderNet_eq_renderV4] using hs,
-      h₁, h₂, h₃, h₄, hp, hcidr.trans hdenote.symm⟩
+      h₁, h₂, h₃, h₄, hp, hcidr⟩
 
 /-- Cedar's canonical IPv4 serializer is accepted and reconstructs the original CIDR. -/
 theorem parser_ipNetToStr (i : CIDR V4_WIDTH) :
@@ -231,6 +313,9 @@ theorem parser_rejects_iff (s : String) :
       (IPv4.GrammarView.isValid_iff_parts s).mp hvalid
     have hvalue :=
       IPv4.GrammarView.computeValue_eq_of_parts hs h₁ h₂ h₃ h₄ hp
+    rw [← code_cidrValue (octetValid_iff.mpr h₁) (octetValid_iff.mpr h₂)
+      (octetValid_iff.mpr h₃) (octetValid_iff.mpr h₄)
+      ((optionalPrefixValid_iff pre).mpr hp)] at hvalue
     have hsome := (parser_agrees s _).mpr ⟨hvalid, hvalue⟩
     rw [hnone] at hsome
     simp at hsome

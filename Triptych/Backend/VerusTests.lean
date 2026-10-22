@@ -128,6 +128,7 @@ example (sourceEnv : Env) (fieldName : Backend.Verus.FieldName)
         "decimal_satisfies_constraints",
         "decimal_view_valid",
         "decimal_view_denotation",
+        "decimal_matches_result",
         "decimal_is_valid" ].all (contains source) &&
       !contains source "proof fn" &&
       !contains source "parser_contract" &&
@@ -144,7 +145,7 @@ example (sourceEnv : Env) (fieldName : Backend.Verus.FieldName)
       `Int64.ofInt `Int64.toInt true with
   | .error _ => false
   | .ok source =>
-      [ "use super::spec::*;",
+      [ "pub use super::spec::*;",
         "decimal_matches_result",
         "pub trait DecimalExternalParserContract",
         "spec fn parse_to_spec",
@@ -158,6 +159,7 @@ example (sourceEnv : Env) (fieldName : Backend.Verus.FieldName)
         "proof fn extparse_normalize_eq_iff_parse_eq",
         "requires",
         "ensures" ].all (contains source) &&
+      !contains source "pub open spec fn decimal_matches_result" &&
       !contains source "external_body" &&
       !contains source "assume("
 

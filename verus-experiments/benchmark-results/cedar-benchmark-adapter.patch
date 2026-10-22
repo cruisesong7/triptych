@@ -1,0 +1,83 @@
+diff --git a/cedar-policy-core/Cargo.toml b/cedar-policy-core/Cargo.toml
+index 547c4088..5e182d34 100644
+--- a/cedar-policy-core/Cargo.toml
++++ b/cedar-policy-core/Cargo.toml
+@@ -51,6 +51,7 @@ datetime = ["dep:chrono"]
+ 
+ # Enables `Arbitrary` implementations for several types in this crate
+ arbitrary = ["dep:arbitrary"]
++benchmark-internals = []
+ 
+ # Expose test utilities
+ test-util = []
+diff --git a/cedar-policy-core/src/extensions/datetime.rs b/cedar-policy-core/src/extensions/datetime.rs
+index 879f21f6..9ad8f529 100644
+--- a/cedar-policy-core/src/extensions/datetime.rs
++++ b/cedar-policy-core/src/extensions/datetime.rs
+@@ -683,6 +683,22 @@ fn parse_datetime(s: &str) -> Result<NaiveDateTime, DateTimeParseError> {
+     Ok(NaiveDateTime::new(date, time) + offset?)
+ }
+ 
++/// Benchmark-only access to Cedar's production Duration parser.
++#[cfg(feature = "benchmark-internals")]
++#[doc(hidden)]
++pub fn benchmark_parse_duration(input: &str) -> Option<i64> {
++    parse_duration(input).ok().map(|duration| duration.ms)
++}
++
++/// Benchmark-only access to Cedar's production Datetime parser.
++#[cfg(feature = "benchmark-internals")]
++#[doc(hidden)]
++pub fn benchmark_parse_datetime(input: &str) -> Option<i64> {
++    parse_datetime(input)
++        .ok()
++        .map(|datetime| DateTime::from(datetime).epoch)
++}
++
+ /// Construct the extension
+ pub fn extension() -> Extension {
+     let datetime_type = SchemaType::Extension {
+diff --git a/cedar-policy-core/src/extensions/decimal.rs b/cedar-policy-core/src/extensions/decimal.rs
+index b8b0da6c..25a8f3c4 100644
+--- a/cedar-policy-core/src/extensions/decimal.rs
++++ b/cedar-policy-core/src/extensions/decimal.rs
+@@ -161,6 +161,13 @@ impl Decimal {
+     }
+ }
+ 
++/// Benchmark-only access to Cedar's production Decimal parser.
++#[cfg(feature = "benchmark-internals")]
++#[doc(hidden)]
++pub fn benchmark_parse_decimal(input: &str) -> Option<i64> {
++    Decimal::from_str(input).ok().map(|decimal| decimal.value)
++}
++
+ impl std::fmt::Display for Decimal {
+     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+         let abs = i128::from(self.value).abs();
+diff --git a/cedar-policy-core/src/extensions/ipaddr.rs b/cedar-policy-core/src/extensions/ipaddr.rs
+index 61953012..2f12330d 100644
+--- a/cedar-policy-core/src/extensions/ipaddr.rs
++++ b/cedar-policy-core/src/extensions/ipaddr.rs
+@@ -233,6 +233,21 @@ impl std::str::FromStr for IPAddr {
+     }
+ }
+ 
++/// Benchmark-only access to Cedar's production IP address parser.
++///
++/// The tuple is `(family, address bits, prefix length)`, where family is 4 or 6.
++#[cfg(feature = "benchmark-internals")]
++#[doc(hidden)]
++pub fn benchmark_parse_ipaddr(input: &str) -> Option<(u8, u128, u8)> {
++    let parsed = IPAddr::from_str(input).ok()?;
++    match parsed.addr {
++        std::net::IpAddr::V4(address) => {
++            Some((4, u128::from(u32::from(address)), parsed.prefix))
++        }
++        std::net::IpAddr::V6(address) => Some((6, u128::from(address), parsed.prefix)),
++    }
++}
++
+ impl std::fmt::Display for IPAddr {
+     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+         write!(f, "{}/{}", self.addr, self.prefix)

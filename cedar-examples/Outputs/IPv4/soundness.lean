@@ -3,6 +3,7 @@
 import Outputs.IPv4.parser
 import Inputs.IPv4
 import Proofs.IPv4.RuleRegistrySoundness
+import Triptych.Automation.ExternalParser
 
 open Triptych
 open CedarExamples.IPv4
@@ -11,90 +12,144 @@ set_option linter.unusedSimpArgs false
 set_option linter.unusedVariables false
 
 /- soundness · generated parser
-The one serializer obligation gives the exact valid typed view produced by `ipNetToStr`.
-Acceptance, value agreement, generated-parser roundtrip, injectivity, and normalization are
-derived from that witness. -/
+The serializer obligation gives the exact valid typed view produced by `ipNetToStr`, and the
+`toSpec_ofSpec` obligation shows the integer code of every accepted value is in the range where
+`ipv4CodeToNet` and `ipv4NetToCode` are inverse. Acceptance, value agreement, generated-parser
+roundtrip, injectivity, and normalization are derived from those witnesses. -/
 
-theorem IPv4.encode_view (i : IPv4Net) :
+theorem IPv4.toSpec_ofSpec (s : String) (i : Int) :
+    IPv4.IsValid s → IPv4.computeValue s = some i → ipv4NetToCode (ipv4CodeToNet i) = i := by
+  intro hvalid hvalue
+  cases hparse : ipv4Only s with
+  | none =>
+      exact ((IPv4.RuleRegistrySoundness.parser_rejects_iff s).mp hparse hvalid).elim
+  | some cidr =>
+      obtain ⟨_, hcode⟩ := (IPv4.RuleRegistrySoundness.parser_agrees s cidr).mp hparse
+      rw [hvalue] at hcode
+      rw [Option.some.inj hcode, IPv4.RuleRegistrySoundness.ipv4CodeToNet_ipv4NetToCode]
+
+theorem IPv4.parse_sound_toSpec (s : String) (c : Cedar.Spec.Ext.IPAddr.CIDR Cedar.Spec.Ext.IPAddr.V4_WIDTH) :
+    IPv4.parse s = some c → IPv4.IsValid s ∧ IPv4.computeValue s = some (ipv4NetToCode c) :=
+  by
+  intro hparse
+  rw [IPv4.parse_eq_gated] at hparse
+  exact
+    Triptych.gatedParseOfSpec_sound_toSpec IPv4.IsValid IPv4.computeValue ipv4CodeToNet ipv4NetToCode IPv4.toSpec_ofSpec
+      s c hparse
+
+theorem IPv4.encode_view (c : Cedar.Spec.Ext.IPAddr.CIDR Cedar.Spec.Ext.IPAddr.V4_WIDTH) :
     ∃ v : IPv4.View,
-      IPv4.decodeView (ipNetToStr i) = some v ∧
-      IPv4.View.Valid v ∧
-      IPv4.View.denotation v = i := by
-  triptych_encode [IPv4.RuleRegistrySoundness.parser_ipNetToStr,
-    IPv4.RuleRegistrySoundness.parser_agrees, IPv4.IsValid_view,
-    IPv4.computeValue_view]
+      IPv4.decodeView (ipNetToStr c) = some v ∧ IPv4.View.Valid v ∧ ipv4CodeToNet (IPv4.View.denotation v) = c :=
+  by
+  obtain ⟨hvalid, hvalue⟩ :=
+    (IPv4.RuleRegistrySoundness.parser_agrees (ipNetToStr c) c).mp
+      (IPv4.RuleRegistrySoundness.parser_ipNetToStr c)
+  obtain ⟨v, hview, hvalidView⟩ := (IPv4.IsValid_view (ipNetToStr c)).mp hvalid
+  refine ⟨v, hview, hvalidView, ?_⟩
+  rw [IPv4.computeValue_view, hview] at hvalue
+  have hdenote : IPv4.View.denotation v = ipv4NetToCode c := Option.some.inj hvalue
+  rw [hdenote, IPv4.RuleRegistrySoundness.ipv4CodeToNet_ipv4NetToCode]
 
-theorem IPv4.encode_accepted (i : IPv4Net) : IPv4.IsValid (ipNetToStr i) := by
-  obtain ⟨v, hview, hvalidView, _⟩ := IPv4.encode_view i
-  exact (IPv4.IsValid_view (ipNetToStr i)).mpr ⟨v, hview, hvalidView⟩
+theorem IPv4.encode_accepted (c : Cedar.Spec.Ext.IPAddr.CIDR Cedar.Spec.Ext.IPAddr.V4_WIDTH) :
+    IPv4.IsValid (ipNetToStr c) :=
+  by
+  obtain ⟨v, hview, hvalidView, _⟩ := IPv4.encode_view c
+  exact (IPv4.IsValid_view (ipNetToStr c)).mpr ⟨v, hview, hvalidView⟩
 
-theorem IPv4.encode_value (i : IPv4Net) :
-    IPv4.computeValue (ipNetToStr i) = some i := by
-  obtain ⟨v, hview, _, hresult⟩ := IPv4.encode_view i
-  rw [IPv4.computeValue_view, hview]
-  exact congrArg some hresult
+theorem IPv4.encode_value (c : Cedar.Spec.Ext.IPAddr.CIDR Cedar.Spec.Ext.IPAddr.V4_WIDTH) :
+    IPv4.computeValue (ipNetToStr c) = some (ipv4NetToCode c) :=
+  by
+  obtain ⟨v, hview, _, hresult⟩ := IPv4.encode_view c
+  have hvalue : IPv4.computeValue (ipNetToStr c) = some (IPv4.View.denotation v) :=
+    by
+    rw [IPv4.computeValue_view, hview]
+    rfl
+  have hinverse := IPv4.toSpec_ofSpec (ipNetToStr c) (IPv4.View.denotation v) (IPv4.encode_accepted c) hvalue
+  rw [hresult] at hinverse
+  rw [hvalue]
+  exact congrArg some hinverse.symm
 
-theorem IPv4.parse_toString_roundtrip (i : IPv4Net) : IPv4.parse (ipNetToStr i) = some i :=
-  Triptych.parse_toString_roundtrip_of_encodeView
-    IPv4.parse_eq_some_iff_view IPv4.encode_view i
+theorem IPv4.ofSpec_toSpec (c : Cedar.Spec.Ext.IPAddr.CIDR Cedar.Spec.Ext.IPAddr.V4_WIDTH) :
+    ipv4CodeToNet (ipv4NetToCode c) = c :=
+  by
+  obtain ⟨v, hview, _, hresult⟩ := IPv4.encode_view c
+  have hvalue : IPv4.computeValue (ipNetToStr c) = some (IPv4.View.denotation v) :=
+    by
+    rw [IPv4.computeValue_view, hview]
+    rfl
+  have hinverse := IPv4.toSpec_ofSpec (ipNetToStr c) (IPv4.View.denotation v) (IPv4.encode_accepted c) hvalue
+  rw [hresult] at hinverse
+  rw [hinverse, hresult]
 
-theorem IPv4.toString_injective (i i' : IPv4Net)
-    (h : ipNetToStr i = ipNetToStr i') : i = i' :=
-  Triptych.toString_injective IPv4.parse_toString_roundtrip i i' h
+theorem IPv4.parse_toString_roundtrip (c : Cedar.Spec.Ext.IPAddr.CIDR Cedar.Spec.Ext.IPAddr.V4_WIDTH) :
+    IPv4.parse (ipNetToStr c) = some c :=
+  Triptych.parse_toString_roundtrip_of_encodeView IPv4.parse_eq_some_iff_view IPv4.encode_view c
+
+theorem IPv4.toString_injective (c c' : Cedar.Spec.Ext.IPAddr.CIDR Cedar.Spec.Ext.IPAddr.V4_WIDTH)
+    (h : ipNetToStr c = ipNetToStr c') : c = c' :=
+  Triptych.toString_injective IPv4.parse_toString_roundtrip c c' h
 
 theorem IPv4.normalize_eq_iff_parse_eq (s s' : String) :
-    (IPv4.parse s).map ipNetToStr = (IPv4.parse s').map ipNetToStr ↔
-      IPv4.parse s = IPv4.parse s' :=
+    (IPv4.parse s).map ipNetToStr = (IPv4.parse s').map ipNetToStr ↔ IPv4.parse s = IPv4.parse s' :=
   Triptych.normalize_eq_iff_parse_eq IPv4.parse_toString_roundtrip s s'
 
 /- soundness · external parser
-Obligations for validating YOUR OWN external parser against this specification:
-`extparse_sound`, `extparse_complete`, and `extparse_reject`, stated over the readable
-surface `IsValid`/`computeValue`. Format-specific agreement and rejection theorems are proved
-separately using reusable parser rules, then applied directly below. Given them, the external
-printer theorems (`extparse_toString_*`) are DISCHARGED, reusing the generated section's derived
-encode projections. -/
+`extparse_sound`, `extparse_complete`, and `extparse_reject` are stated over the readable surface
+`IsValid`/`computeValue`. They are proved in `Proofs.IPv4.RuleRegistrySoundness` from registered
+parser-rule summaries of Cedar's `ipv4Only`, then applied directly below. Given them, the
+external printer theorems (`extparse_toString_*`) are DISCHARGED, reusing the generated
+section's derived encode projections. -/
 
-theorem IPv4.extparse_reject (s : String) : ipv4Only s = none ↔ ¬IPv4.IsValid s := by
-  simpa only using IPv4.RuleRegistrySoundness.parser_rejects_iff s
+theorem IPv4.extparse_reject (s : String) : ipv4Only s = none ↔ ¬IPv4.IsValid s := 
+  IPv4.RuleRegistrySoundness.parser_rejects_iff s
 
 theorem IPv4.extparse_eq_none_iff_view (s : String) :
-    ipv4Only s = none ↔
-      ¬∃ v : IPv4.View, IPv4.decodeView s = some v ∧ IPv4.View.Valid v := by
-  simp only [IPv4.extparse_reject, IPv4.IsValid_view]
-
-theorem IPv4.extparse_sound (s : String) (i : IPv4Net) :
-    ipv4Only s = some i → IPv4.IsValid s ∧ IPv4.computeValue s = some (id i) := by
-  simpa only [id] using (IPv4.RuleRegistrySoundness.parser_agrees s i).mp
-
-theorem IPv4.extparse_complete (s : String) (i : IPv4Net) :
-    IPv4.IsValid s → IPv4.computeValue s = some (id i) → ipv4Only s = some i := by
-  intro hvalid hvalue
-  exact (IPv4.RuleRegistrySoundness.parser_agrees s i).mpr ⟨hvalid, hvalue⟩
-
-theorem IPv4.parse_eq_extparse (s : String) :
-    IPv4.parse s = ipv4Only s :=
+    ipv4Only s = none ↔ ¬∃ v : IPv4.View, IPv4.decodeView s = some v ∧ IPv4.View.Valid v :=
   by
-  rw [IPv4.parse_eq_gated]
-  exact Triptych.gatedParse_eq_external
-    IPv4.IsValid IPv4.computeValue ipv4Only IPv4.extparse_sound IPv4.extparse_reject s
+  rw [IPv4.extparse_reject]
+  constructor
+  · intro hinvalid ⟨v, hview, hvalidView⟩
+    exact hinvalid ((IPv4.IsValid_view s).mpr ⟨v, hview, hvalidView⟩)
+  · intro hnoview hvalid
+    exact hnoview ((IPv4.IsValid_view s).mp hvalid)
 
-theorem IPv4.extparse_eq_some_iff_view (s : String) (i : IPv4Net) :
+theorem IPv4.extparse_sound (s : String) (i : CedarExamples.IPv4.IPv4Net) :
+    ipv4Only s = some i → IPv4.IsValid s ∧ IPv4.computeValue s = some (ipv4NetToCode i) := 
+  (IPv4.RuleRegistrySoundness.parser_agrees s i).mp
+
+theorem IPv4.checkedExtParse_eq_extparse : IPv4.checkedExtParse = ipv4Only :=
+  Triptych.checkedExternalParse_eq_of_sound IPv4.IsValid IPv4.computeValue ipv4Only ipv4NetToCode IPv4.extparse_sound
+
+theorem IPv4.extparse_complete (s : String) (i : CedarExamples.IPv4.IPv4Net) :
+    IPv4.IsValid s → IPv4.computeValue s = some (ipv4NetToCode i) → ipv4Only s = some i := 
+  fun hvalid hvalue => (IPv4.RuleRegistrySoundness.parser_agrees s i).mpr ⟨hvalid, hvalue⟩
+
+theorem IPv4.extparse_eq_some_iff_view (s : String) (i : CedarExamples.IPv4.IPv4Net) :
     ipv4Only s = some i ↔
-      ∃ v : IPv4.View,
-        IPv4.decodeView s = some v ∧
-        IPv4.View.Valid v ∧
-        IPv4.View.denotation v = id i := by
-  simp only [IPv4.RuleRegistrySoundness.parser_agrees, IPv4.IsValid_view,
-    IPv4.computeValue_view, Triptych.Automation.exists_valid_and_map_eq_some_iff, id]
+      ∃ decodedView : IPv4.View,
+        IPv4.decodeView s = some decodedView ∧
+          IPv4.View.Valid decodedView ∧ IPv4.View.denotation decodedView = ipv4NetToCode i :=
+  by
+  constructor
+  · intro hparse
+    obtain ⟨hvalid, hvalue⟩ := IPv4.extparse_sound s i hparse
+    obtain ⟨decodedView, hview, hvalidView⟩ := (IPv4.IsValid_view s).mp hvalid
+    refine ⟨decodedView, hview, hvalidView, ?_⟩
+    rw [IPv4.computeValue_view, hview] at hvalue
+    exact Option.some.inj hvalue
+  · rintro ⟨decodedView, hview, hvalidView, hvalue⟩
+    apply IPv4.extparse_complete s i
+    · exact (IPv4.IsValid_view s).mpr ⟨decodedView, hview, hvalidView⟩
+    · rw [IPv4.computeValue_view, hview]
+      exact congrArg some hvalue
 
-theorem IPv4.extparse_toString_roundtrip (i : IPv4Net) : ipv4Only (ipNetToStr i) = some i :=
-  Triptych.parse_toString_roundtrip IPv4.extparse_complete IPv4.encode_accepted
-    IPv4.encode_value i
+theorem IPv4.extparse_toString_roundtrip (c : Cedar.Spec.Ext.IPAddr.CIDR Cedar.Spec.Ext.IPAddr.V4_WIDTH) :
+    ipv4Only (ipNetToStr c) = some c :=
+  Triptych.parse_toString_roundtrip IPv4.extparse_complete IPv4.encode_accepted IPv4.encode_value c
 
-theorem IPv4.extparse_toString_injective (i i' : IPv4Net)
-    (h : ipNetToStr i = ipNetToStr i') : i = i' :=
-  Triptych.toString_injective IPv4.extparse_toString_roundtrip i i' h
+theorem IPv4.extparse_toString_injective (c c' : Cedar.Spec.Ext.IPAddr.CIDR Cedar.Spec.Ext.IPAddr.V4_WIDTH)
+    (h : ipNetToStr c = ipNetToStr c') : c = c' :=
+  Triptych.toString_injective IPv4.extparse_toString_roundtrip c c' h
 
 theorem IPv4.extparse_normalize_eq_iff_parse_eq (s s' : String) :
     (ipv4Only s).map ipNetToStr = (ipv4Only s').map ipNetToStr ↔ ipv4Only s = ipv4Only s' :=

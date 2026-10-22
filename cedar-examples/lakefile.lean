@@ -2,7 +2,11 @@ import Lake
 open Lake DSL
 
 require triptych from ".."
-require Cedar from "../../cedar-spec/cedar-lean"
+-- Cedar on Lean v4.34.0 with the extension-parser proofs (`Cedar.Thm.Ext`): the `cruise-docs`
+-- branch of our cedar-spec fork. Upstream only gained those proofs after moving to v4.34.1, and
+-- its `main` is on v4.35; Triptych stays on v4.34.0 until Vermilion's lean-smt dependency moves.
+require Cedar from git "https://github.com/cruisesong7/cedar-spec.git" @
+  "4f1f43b48496378beeb58ac17131372b02593c4a" / "cedar-lean"
 require verso from git "https://github.com/leanprover/verso.git" @ "v4.34.0"
 
 package cedarExamples

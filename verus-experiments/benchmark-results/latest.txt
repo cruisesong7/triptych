@@ -1,0 +1,76 @@
+Cedar extension parser benchmark
+timestamp_utc: 2026-09-24T00:17:22Z
+triptych_commit: 3ad9646b2a679500823656b02ad8bca7b838e06e
+triptych_worktree_changes: 26
+cedar_commit: 92b97a45c091bb285b997664bf14bfffd8c402cc
+cedar_worktree_changes: 4
+rustc: rustc 1.95.0 (59807616e 2026-04-14) (Homebrew)
+cargo: cargo 1.95.0 (f2d3ce0bd 2026-03-21) (Homebrew)
+host: arm64 Darwin 25.6.0
+
+Benchmark harnesses:
+  decimal: verus-experiments/cedar-ext/decimal/benches/runtime.rs
+  duration: verus-experiments/cedar-ext/duration/benches/runtime.rs
+  datetime: verus-experiments/cedar-ext/datetime/benches/runtime.rs
+  ipaddr: verus-experiments/cedar-ext/ipaddr/benches/runtime.rs
+
+Cedar production parser sources:
+  decimal: cedar-policy-core/src/extensions/decimal.rs
+  duration/datetime: cedar-policy-core/src/extensions/datetime.rs
+  ipaddr: cedar-policy-core/src/extensions/ipaddr.rs
+
+Timed representative inputs:
+  decimal: -1234567890.1234 (5,000,000 iterations/round)
+  duration: -12d23h59m59s999ms (2,000,000 iterations/round)
+  datetime: 2024-01-15T10:30:45.123-0800 (2,000,000 iterations/round)
+  ipaddr: 2001:db8:85a3::8a2e:370:7334/64 (2,000,000 iterations/round)
+  rounds: 7, alternating verified/Cedar execution order
+  timing: std::time::Instant, optimized Cargo bench profile
+  barriers: input and complete output pass through std::hint::black_box
+
+Differential regression sources:
+  decimal: verus-experiments/cedar-ext/decimal/tests/
+  duration: verus-experiments/cedar-ext/duration/tests/regression.rs
+  datetime: verus-experiments/cedar-ext/datetime/tests/regression.rs
+  ipaddr: verus-experiments/cedar-ext/ipaddr/tests/regression.rs
+
+== decimal ==
+   Compiling decimal v0.1.0 (/Users/crusong/Documents/triptych-cedar-rust/verus-experiments/cedar-ext/decimal)
+    Finished `bench` profile [optimized] target(s) in 0.63s
+     Running benches/runtime.rs (verus-experiments/cedar-ext/decimal/target/release/deps/runtime-78528fedeb9c2701)
+Verified external        rounds [24.10, 20.28, 20.27, 20.21, 20.23, 20.61, 20.23]
+Verified external           20.27 ns/parse (20.21–24.10, 12058581788668206464)
+Cedar production         rounds [93.29, 89.57, 90.15, 89.67, 90.96, 94.39, 90.91]
+Cedar production            90.91 ns/parse (89.57–94.39, 12058581788668206464)
+Cedar / verified              4.49x
+
+== duration ==
+   Compiling duration v0.1.0 (/Users/crusong/Documents/triptych-cedar-rust/verus-experiments/cedar-ext/duration)
+    Finished `bench` profile [optimized] target(s) in 0.53s
+     Running benches/runtime.rs (verus-experiments/cedar-ext/duration/target/release/deps/runtime-27765eba1dbbf1d0)
+Verified external        rounds [29.72, 17.66, 17.66, 17.70, 17.80, 17.65, 18.07]
+Verified external           17.70 ns/parse (17.65–29.72, 18444497673711551616)
+Cedar production         rounds [263.78, 259.03, 265.76, 263.06, 258.55, 256.17, 260.77]
+Cedar production           260.77 ns/parse (256.17–265.76, 18444497673711551616)
+Cedar / verified             14.73x
+
+== datetime ==
+   Compiling datetime v0.1.0 (/Users/crusong/Documents/triptych-cedar-rust/verus-experiments/cedar-ext/datetime)
+    Finished `bench` profile [optimized] target(s) in 0.58s
+     Running benches/runtime.rs (verus-experiments/cedar-ext/datetime/target/release/deps/runtime-61748bf34065bdf3)
+Verified external        rounds [28.80, 16.93, 16.64, 16.68, 16.63, 16.76, 16.65]
+Verified external           16.68 ns/parse (16.63–28.80, 3410686890246000000)
+Cedar production         rounds [298.01, 287.34, 288.35, 288.57, 289.38, 319.30, 314.93]
+Cedar production           289.38 ns/parse (287.34–319.30, 3410686890246000000)
+Cedar / verified             17.35x
+
+== ipaddr ==
+   Compiling ipaddr v0.1.0 (/Users/crusong/Documents/triptych-cedar-rust/verus-experiments/cedar-ext/ipaddr)
+    Finished `bench` profile [optimized] target(s) in 0.54s
+     Running benches/runtime.rs (verus-experiments/cedar-ext/ipaddr/target/release/deps/runtime-8034a1e71edf283a)
+Verified external        rounds [81.95, 72.54, 72.67, 73.72, 70.96, 71.60, 71.09]
+Verified external           72.54 ns/parse (70.96–81.95, 52139306222246805951310135417825233408)
+Cedar production         rounds [94.84, 93.91, 97.16, 94.12, 99.52, 94.50, 98.59]
+Cedar production            94.84 ns/parse (93.91–99.52, 52139306222246805951310135417825233408)
+Cedar / verified              1.31x
+

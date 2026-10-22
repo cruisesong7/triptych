@@ -124,10 +124,13 @@ def Valid (addr : Addr) : Prop :=
   addr.SyntaxValid ∧ addr.Constraints
 
 def denotation : Addr → CedarExamples.IPv6.IPv6Addr
-  | .full parts => CedarExamples.IPv6.toV6Addr parts
+  | .full parts =>
+      BitVec.ofNat 128 (hexSeqOf (renderGroups parts)).toNat
   | .compressed left right =>
-      CedarExamples.IPv6.toV6Addr
-        (left ++ List.replicate (8 - (left.length + right.length)) "" ++ right)
+      BitVec.ofNat 128
+        (hexSeqOf (renderGroups left) *
+            (65536 : Int) ^ (8 - segmentsOf (renderGroups left)).toNat +
+          hexSeqOf (renderGroups right)).toNat
 
 end Addr
 
@@ -556,17 +559,30 @@ def SyntaxValid (v : View) : Prop :=
   v.addr.SyntaxValid ∧ OptionalPrefixSyntax v.«prefix»
 
 def Constraints (v : View) : Prop :=
-  v.addr.Constraints ∧ OptionalPrefixConstraints v.«prefix»
+  match v.addr with
+  | .full _ => IPv6.WfConstraints "" "" (v.«prefix».getD "")
+  | .compressed left right =>
+      IPv6.WfConstraints (renderGroups left) (renderGroups right)
+        (v.«prefix».getD "")
 
-def Valid (v : View) : Prop :=
-  v.SyntaxValid ∧ v.Constraints
-
-def denotation (v : View) : CedarExamples.IPv6.IPv6Net :=
+def ValueConstraints (v : View) : Prop :=
   match v.addr with
   | .full parts =>
-      CedarExamples.IPv6.toIPv6Net parts [] [] (v.«prefix».getD "")
+      IPv6.Constraints (renderGroups parts) "" "" (v.«prefix».getD "")
   | .compressed left right =>
-      CedarExamples.IPv6.toIPv6Net [] left right (v.«prefix».getD "")
+      IPv6.Constraints "" (renderGroups left) (renderGroups right)
+        (v.«prefix».getD "")
+
+def Valid (v : View) : Prop :=
+  v.SyntaxValid ∧ v.Constraints ∧ v.ValueConstraints
+
+def denotation (v : View) : Int :=
+  match v.addr with
+  | .full parts =>
+      IPv6.value (renderGroups parts) "" "" (v.«prefix».getD "")
+  | .compressed left right =>
+      IPv6.value "" (renderGroups left) (renderGroups right)
+        (v.«prefix».getD "")
 
 end View
 
@@ -1247,6 +1263,60 @@ private theorem optionMap_or {α β : Type} (f : α → β)
               optionalSideCaptures, sideCaptures, repeatedCaptures, prefixCaptures,
               hextetCaptures]
 
+@[simp] theorem captures_full_component (v : View) :
+    (v.captures.toEnv "Full").getD "" =
+      match v.addr with
+      | .full parts => renderGroups parts
+      | .compressed _ _ => "" := by
+  cases v with
+  | mk addr pre =>
+      cases addr with
+      | full parts =>
+          cases pre <;>
+            simp [View.captures, netCaptures, addrCaptures, fullCaptures,
+              repeatedCaptures, prefixCaptures, hextetCaptures]
+      | compressed left right =>
+          cases left <;> cases right <;> cases pre <;>
+            simp [View.captures, netCaptures, addrCaptures, compressedCaptures,
+              optionalSideCaptures, sideCaptures, repeatedCaptures, prefixCaptures,
+              hextetCaptures]
+
+@[simp] theorem captures_left_component (v : View) :
+    (v.captures.toEnv "Left").getD "" =
+      match v.addr with
+      | .full _ => ""
+      | .compressed left _ => renderGroups left := by
+  cases v with
+  | mk addr pre =>
+      cases addr with
+      | full parts =>
+          cases pre <;>
+            simp [View.captures, netCaptures, addrCaptures, fullCaptures,
+              repeatedCaptures, prefixCaptures, hextetCaptures]
+      | compressed left right =>
+          cases left <;> cases right <;> cases pre <;>
+            simp [View.captures, netCaptures, addrCaptures, compressedCaptures,
+              optionalSideCaptures, sideCaptures, repeatedCaptures, prefixCaptures,
+              hextetCaptures, renderGroups]
+
+@[simp] theorem captures_right_component (v : View) :
+    (v.captures.toEnv "Right").getD "" =
+      match v.addr with
+      | .full _ => ""
+      | .compressed _ right => renderGroups right := by
+  cases v with
+  | mk addr pre =>
+      cases addr with
+      | full parts =>
+          cases pre <;>
+            simp [View.captures, netCaptures, addrCaptures, fullCaptures,
+              repeatedCaptures, prefixCaptures, hextetCaptures]
+      | compressed left right =>
+          cases left <;> cases right <;> cases pre <;>
+            simp [View.captures, netCaptures, addrCaptures, compressedCaptures,
+              optionalSideCaptures, sideCaptures, repeatedCaptures, prefixCaptures,
+              hextetCaptures, renderGroups]
+
 @[simp] theorem captures_h16 (v : View) :
     v.captures.toEnvList "H16" =
       match v.addr with
@@ -1305,19 +1375,24 @@ theorem constraints_of_decode (v : View)
     (h : decode IPv6.grammar v.render = some v.captures) :
     IPv6.SatisfiesWfConstraints v.render ↔ v.Constraints := by
   rw [IPv6.SatisfiesWfConstraints_of_decode h]
+  rw [captures_left_component, captures_right_component, captures_prefix]
   cases v with
-  | mk addr pre =>
-      cases addr <;> cases pre <;>
-        simp [IPv6.WfConstraints, View.Constraints, Addr.Constraints,
-          OptionalPrefixConstraints, PrefixConstraints, natOf, Triptych.readNat,
-          and_assoc] <;>
-        omega
+  | mk addr pre => cases addr <;> rfl
+
+theorem valueConstraints_of_decode (v : View)
+    (h : decode IPv6.grammar v.render = some v.captures) :
+    IPv6.SatisfiesConstraints v.render ↔ v.ValueConstraints := by
+  rw [IPv6.SatisfiesConstraints_of_decode h]
+  rw [captures_full_component, captures_left_component, captures_right_component,
+    captures_prefix]
+  cases v with
+  | mk addr pre => cases addr <;> rfl
 
 /-- Accepted strings in the proof-facing IPv6 component normal form. -/
 theorem isValid_iff_view (s : String) :
     IPv6.IsValid s ↔ ∃ v : View, v.render = s ∧ v.Valid := by
   constructor
-  · rintro ⟨hgrammar, hconstraints⟩
+  · rintro ⟨⟨hgrammar, hconstraints⟩, hvalueConstraints⟩
     have hengine : Triptych.IsWf IPv6.grammar s :=
       (IPv6.IsWfGrammar_equiv s).mpr hgrammar
     have hsome : (decode IPv6.grammar s).isSome = true :=
@@ -1329,20 +1404,27 @@ theorem isValid_iff_view (s : String) :
       exact hm
     have hviewConstraints : v.Constraints :=
       (constraints_of_decode v hdecode).mp (by simpa [hrenders] using hconstraints)
-    exact ⟨v, hrenders.symm, hsyntax, hviewConstraints⟩
-  · rintro ⟨v, hrender, hsyntax, hconstraints⟩
+    have hviewValueConstraints : v.ValueConstraints :=
+      (valueConstraints_of_decode v hdecode).mp
+        (by simpa [hrenders] using hvalueConstraints)
+    exact ⟨v, hrenders.symm, hsyntax, hviewConstraints, hviewValueConstraints⟩
+  · rintro ⟨v, hrender, hsyntax, hconstraints, hvalueConstraints⟩
     have hdecode := decode_eq_of_view v hsyntax
-    refine ⟨?_, ?_⟩
+    refine ⟨⟨?_, ?_⟩, ?_⟩
     · simpa [hrender] using surface_wf_of_view v hsyntax
     · have hsurface := (constraints_of_decode v hdecode).mpr hconstraints
+      simpa [hrender] using hsurface
+    · have hsurface :=
+        (valueConstraints_of_decode v hdecode).mpr hvalueConstraints
       simpa [hrender] using hsurface
 
 /-- The generated value is the denotation of every syntax-valid IPv6 view. -/
 theorem computeValue_eq_of_view (v : View) (h : v.SyntaxValid) :
     IPv6.computeValue v.render = some v.denotation := by
   rw [IPv6.computeValue_of_decode (decode_eq_of_view v h)]
+  rw [captures_full_component, captures_left_component, captures_right_component,
+    captures_prefix]
   cases v with
-  | mk addr pre =>
-      cases addr <;> simp [IPv6.value, View.denotation]
+  | mk addr pre => cases addr <;> rfl
 
 end IPv6.GrammarView

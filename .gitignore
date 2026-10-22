@@ -7,3 +7,6 @@
 /.worktrees
 /.tools
 /verus-experiments/**/target
+/verus-experiments/vermilion-roundtrip/.lake
+/verus-experiments/vermilion-roundtrip/generated-src
+/.vermilion

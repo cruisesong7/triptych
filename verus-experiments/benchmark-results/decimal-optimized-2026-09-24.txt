@@ -1,0 +1,55 @@
+Handwritten verified Decimal parser benchmark
+recorded_utc: 2026-09-24T22:40:52Z
+triptych_commit: 9fa5409c13d424b60da214950ae94e57945bd347
+triptych_worktree_changes: 27
+cedar_commit: 92b97a45c091bb285b997664bf14bfffd8c402cc
+cedar_worktree_changes: 4
+rustc: rustc 1.95.0 (59807616e 2026-04-14) (Homebrew)
+cargo: cargo 1.95.0 (f2d3ce0bd 2026-03-21) (Homebrew)
+host: arm64 Darwin 25.6.0
+
+Implementation under test:
+  verus-experiments/cedar-ext/decimal/src/optimized.rs
+
+Generated specification and contract:
+  source DSL: cedar-examples/Inputs/Decimal.lean
+  spec: verus-experiments/cedar-ext/decimal/src/spec.rs
+  grammar/semantic proof support: verus-experiments/cedar-ext/decimal/src/parser.rs
+  external-parser obligations: verus-experiments/cedar-ext/decimal/src/contract.rs
+  contract implementation: verus-experiments/cedar-ext/decimal/src/soundness.rs
+
+Cedar production comparison:
+  source: ../cedar/cedar-policy-core/src/extensions/decimal.rs
+  adapter: benchmark_parse_decimal
+  stored adapter patch: verus-experiments/benchmark-results/cedar-benchmark-adapter.patch
+
+Benchmark harness:
+  source: verus-experiments/cedar-ext/decimal/benches/runtime.rs
+  command: cargo bench --bench runtime --offline --locked
+  input: -1234567890.1234
+  iterations: 5,000,000 per implementation per round
+  rounds: 7, alternating execution order
+  timing: optimized Cargo bench profile with std::time::Instant
+  barriers: input and complete output pass through std::hint::black_box
+  correctness guard: parser results and per-round checksums must be equal
+
+Regression sources:
+  verus-experiments/cedar-ext/decimal/tests/cedar_runtime.rs
+    Cedar decimal_creation-derived valid and invalid policy-level cases
+  verus-experiments/cedar-ext/decimal/tests/generated_parser.rs
+    boundary cases, long leading-zero cases, 80,016 structured comparisons,
+    and 50,000 deterministic fuzz comparisons against Cedar production
+
+Formal verification:
+  command: cargo verus verify --offline --locked --fwd-verus-args-to roots -- --no-cheating --multiple-errors 20
+  result: 56 verified, 0 errors
+  generated snapshot check:
+    lake exe triptych -- check-verus --exact cedar-examples/Inputs/Decimal.lean
+  result: spec.rs, parser.rs, and contract.rs all match exactly
+
+Raw benchmark output:
+  Verified external rounds [22.35, 20.78, 21.29, 20.78, 20.72, 20.74, 20.70]
+  Verified external 20.78 ns/parse (20.70-22.35, checksum 12058581788668206464)
+  Cedar production rounds [89.38, 97.28, 99.22, 96.35, 94.75, 93.29, 91.89]
+  Cedar production 94.75 ns/parse (89.38-99.22, checksum 12058581788668206464)
+  Cedar / verified 4.56x
