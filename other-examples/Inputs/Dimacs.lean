@@ -33,7 +33,8 @@ The value is the list of clauses, each a list of signed variable indices, comput
 comprehension over the grammar. `Proofs/Dimacs/Roundtrip.lean` checks it against
 `Std.Sat.CNF.dimacs`, the DIMACS printer used by `bv_decide`.
 
-Not covered: comment lines after the problem line, and the SATLIB `%` trailer.
+Comment lines precede the problem line, as the DIMACS specification requires; files that place
+comments between clauses, and the SATLIB `%` trailer, are rejected.
 -/
 
 namespace DimacsExample

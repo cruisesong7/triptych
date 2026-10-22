@@ -33,7 +33,7 @@ accepts them.
 The `value'` section reads one tuple per `Line` with a nested group per RAT step, so the value
 function sees the proof's structure rather than flat lists of spans.
 
-Not covered: comment lines (`c …`), which need a negated character class, and the binary
+Comment lines (`c …`) may appear between actions, as `Std` accepts them. Not covered: the binary
 format.
 -/
 
@@ -78,7 +78,10 @@ def ratNeedsClause (lines : List (List String × List String)) : Bool :=
 -- ANCHOR: lratTriptychSource
 triptych Lrat where
   grammar
-    Proof    ::= rep Line sepBy "\n" + "\n"
+    Proof    ::= rep Entry sepBy "\n" + "\n"
+    Entry    ::= Comment | Line
+    Comment  ::= "c" [Remark] Cr
+    Remark   ::= noneOf "\r\n"+
     Line     ::= Id " " Body Cr
     Cr       ::= ["\r"]
     Body     ::= Delete | Add

@@ -29,8 +29,14 @@ This file is proof-free — it is what you cite. -/
 def Lrat.grammar : Grammar :=
   Grammar.mk "Proof"
     [Production.mk "Proof"
-        [[SymItem.mk (Sym.rep "\n" (Sym.ref "Line") (1 : Nat) (none : Option Nat)) false,
+        [[SymItem.mk (Sym.rep "\n" (Sym.ref "Entry") (1 : Nat) (none : Option Nat)) false,
             SymItem.mk (Sym.lit "\n") false]],
+      Production.mk "Entry" [[SymItem.mk (Sym.ref "Comment") false], [SymItem.mk (Sym.ref "Line") false]],
+      Production.mk "Comment"
+        [[SymItem.mk (Sym.lit "c") false, SymItem.mk (Sym.ref "Remark") true, SymItem.mk (Sym.ref "Cr") false]],
+      Production.mk "Remark"
+        [[SymItem.mk (Sym.term (TokClass.noneOf (List.cons '\x0d' (List.cons '\n' List.nil))) LenSpec.atLeastOne)
+              false]],
       Production.mk "Line"
         [[SymItem.mk (Sym.ref "Id") false, SymItem.mk (Sym.lit " ") false, SymItem.mk (Sym.ref "Body") false,
             SymItem.mk (Sym.ref "Cr") false]],
@@ -69,6 +75,40 @@ def Lrat.grammar : Grammar :=
       Production.mk "NonZero"
         [[SymItem.mk (Sym.term ((TokClass.asciiRange 49 57 : TokClass)) (LenSpec.exactly 1)) false]],
       Production.mk "Digits" [[SymItem.mk (Sym.term TokClass.digit LenSpec.atLeastOne) false]]]
+
+inductive Lrat.Derivation.Remark where
+  | alt0 (part0 : String)
+  deriving Repr, DecidableEq
+
+def Lrat.Derivation.Remark.render : Lrat.Derivation.Remark → String
+  | .alt0 part0 => (part0 ++ "")
+
+def Lrat.Derivation.Remark.Valid : Lrat.Derivation.Remark → Prop
+  | .alt0 part0 => matchesTerm (TokClass.noneOf ['\x0d', '\n']) (LenSpec.atLeastOne) part0
+
+inductive Lrat.Derivation.Cr where
+  | alt0 (part0 : Option (Unit))
+  deriving Repr, DecidableEq
+
+def Lrat.Derivation.Cr.render : Lrat.Derivation.Cr → String
+  | .alt0 part0 => (Triptych.renderOptional (fun entry => "\x0d") part0 ++ "")
+
+def Lrat.Derivation.Cr.Valid : Lrat.Derivation.Cr → Prop
+  | .alt0 part0 => Triptych.OptionalValid (fun entry => True) part0
+
+inductive Lrat.Derivation.Comment where
+  | alt0 (part1 : Option (Lrat.Derivation.Remark)) (part2 : Lrat.Derivation.Cr)
+  deriving Repr, DecidableEq
+
+def Lrat.Derivation.Comment.render : Lrat.Derivation.Comment → String
+  | .alt0 part1 part2 =>
+    ("c" ++
+      (Triptych.renderOptional (fun entry => Lrat.Derivation.Remark.render entry) part1 ++
+        (Lrat.Derivation.Cr.render part2 ++ "")))
+
+def Lrat.Derivation.Comment.Valid : Lrat.Derivation.Comment → Prop
+  | .alt0 part1 part2 =>
+    (Triptych.OptionalValid (fun entry => Lrat.Derivation.Remark.Valid entry) part1 ∧ Lrat.Derivation.Cr.Valid part2)
 
 inductive Lrat.Derivation.Zeros where
   | alt0 (part0 : String)
@@ -314,16 +354,6 @@ def Lrat.Derivation.Body.Valid : Lrat.Derivation.Body → Prop
   | .alt0 part0 => Lrat.Derivation.Delete.Valid part0
   | .alt1 part0 => Lrat.Derivation.Add.Valid part0
 
-inductive Lrat.Derivation.Cr where
-  | alt0 (part0 : Option (Unit))
-  deriving Repr, DecidableEq
-
-def Lrat.Derivation.Cr.render : Lrat.Derivation.Cr → String
-  | .alt0 part0 => (Triptych.renderOptional (fun entry => "\x0d") part0 ++ "")
-
-def Lrat.Derivation.Cr.Valid : Lrat.Derivation.Cr → Prop
-  | .alt0 part0 => Triptych.OptionalValid (fun entry => True) part0
-
 inductive Lrat.Derivation.Line where
   | alt0 (part0 : Lrat.Derivation.Id) (part2 : Lrat.Derivation.Body) (part3 : Lrat.Derivation.Cr)
   deriving Repr, DecidableEq
@@ -337,17 +367,41 @@ def Lrat.Derivation.Line.Valid : Lrat.Derivation.Line → Prop
   | .alt0 part0 part2 part3 =>
     (Lrat.Derivation.Id.Valid part0 ∧ (Lrat.Derivation.Body.Valid part2 ∧ Lrat.Derivation.Cr.Valid part3))
 
+inductive Lrat.Derivation.Entry where
+  | alt0 (part0 : Lrat.Derivation.Comment)
+  | alt1 (part0 : Lrat.Derivation.Line)
+  deriving Repr, DecidableEq
+
+def Lrat.Derivation.Entry.render : Lrat.Derivation.Entry → String
+  | .alt0 part0 => (Lrat.Derivation.Comment.render part0 ++ "")
+  | .alt1 part0 => (Lrat.Derivation.Line.render part0 ++ "")
+
+def Lrat.Derivation.Entry.Valid : Lrat.Derivation.Entry → Prop
+  | .alt0 part0 => Lrat.Derivation.Comment.Valid part0
+  | .alt1 part0 => Lrat.Derivation.Line.Valid part0
+
 inductive Lrat.Derivation.Proof where
-  | alt0 (part0 : List (Lrat.Derivation.Line))
+  | alt0 (part0 : List (Lrat.Derivation.Entry))
   deriving Repr, DecidableEq
 
 def Lrat.Derivation.Proof.render : Lrat.Derivation.Proof → String
   | .alt0 part0 =>
-    (Triptych.renderSeparated "\n" (fun entry => Lrat.Derivation.Line.render entry) part0 ++ ("\n" ++ ""))
+    (Triptych.renderSeparated "\n" (fun entry => Lrat.Derivation.Entry.render entry) part0 ++ ("\n" ++ ""))
 
 def Lrat.Derivation.Proof.Valid : Lrat.Derivation.Proof → Prop
   | .alt0 part0 =>
-    Triptych.RepetitionValid 1 ((none : Option Nat)) (fun entry => Lrat.Derivation.Line.Valid entry) part0
+    Triptych.RepetitionValid 1 ((none : Option Nat)) (fun entry => Lrat.Derivation.Entry.Valid entry) part0
+
+def Lrat.IsWf.Remark (s : String) : Prop :=
+  matchesTerm (TokClass.noneOf (List.cons '\x0d' (List.cons '\n' List.nil))) LenSpec.atLeastOne s
+
+def Lrat.IsWf.Cr (s : String) : Prop :=
+  s = "\x0d" ∨ s = ""
+
+def Lrat.IsWf.Comment (s : String) : Prop :=
+  ∃ rest,
+    s = "c" ++ rest ∧
+      ((∃ remark rest₁, rest = remark ++ rest₁ ∧ Lrat.IsWf.Remark remark ∧ Lrat.IsWf.Cr rest₁) ∨ Lrat.IsWf.Cr rest)
 
 def Lrat.IsWf.Zeros (s : String) : Prop :=
   matchesTerm ((TokClass.asciiRange 48 48 : TokClass)) LenSpec.atLeastOne s
@@ -449,17 +503,17 @@ def Lrat.IsWf.Add (s : String) : Prop :=
 def Lrat.IsWf.Body (s : String) : Prop :=
   Lrat.IsWf.Delete s ∨ Lrat.IsWf.Add s
 
-def Lrat.IsWf.Cr (s : String) : Prop :=
-  s = "\x0d" ∨ s = ""
-
 def Lrat.IsWf.Line (s : String) : Prop :=
   ∃ id body cr, ((s = id ++ " " ++ body ++ cr ∧ Lrat.IsWf.Id id) ∧ Lrat.IsWf.Body body) ∧ Lrat.IsWf.Cr cr
 
+def Lrat.IsWf.Entry (s : String) : Prop :=
+  Lrat.IsWf.Comment s ∨ Lrat.IsWf.Line s
+
 def Lrat.Production (s : String) : Prop :=
-  ∃ lines,
-    s = lines ++ "\n" ∧
+  ∃ entrys,
+    s = entrys ++ "\n" ∧
       ∃ parts : List String,
-        1 ≤ parts.length ∧ True ∧ (∀ p ∈ parts, Lrat.IsWf.Line p) ∧ lines = String.intercalate "\n" parts
+        1 ≤ parts.length ∧ True ∧ (∀ p ∈ parts, Lrat.IsWf.Entry p) ∧ entrys = String.intercalate "\n" parts
 
 abbrev Lrat.IsWf.Proof (s : String) : Prop :=
   Lrat.Production s

@@ -126,7 +126,7 @@ for the user, with routine parser plumbing discharged automatically.
   linear bound for deterministic exact-width dependent payloads;
 - complete: DIMACS CNF in the analyzable DSL (character sets, separator-free repetition, list
   comprehensions, `count`/`forall` constraints), round-tripped against `Std.Sat.CNF.dimacs`;
-  comment lines after the problem line remain unsupported.
+  comment lines precede the problem line, as the DIMACS specification requires.
 
 ### Standalone specialized parsers and foreign consumers
 
@@ -187,7 +187,7 @@ analyzable value and constraint tiers with operations such as:
   generated views);
 - nested collection values: grouped `[P ⟨…⟩]` arguments for `value'` and `constraints'`
   (complete; exercised by the LRAT text-proof example against `Std`'s parser);
-- LRAT comment lines, which need a negated character class, and a binary-format mode.
+- complete: LRAT comment lines; remaining: a binary-format mode for binary LRAT.
 
 ## 6. Broader capture-functionality certificates
 

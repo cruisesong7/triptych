@@ -36,6 +36,33 @@ The public format API stays capitalized: use `#eval decide (IsValid s)` and
 `#eval computeValue s`. The equivalence section below proves that these readable
 predicates execute through the generic Triptych interpreter. -/
 
+instance Lrat.Derivation.Remark.instDecidableValid : DecidablePred Lrat.Derivation.Remark.Valid := fun d => by
+  cases d <;> simp only [Lrat.Derivation.Remark.Valid] <;> infer_instance
+
+def Lrat.Derivation.Remark.capturesWith (qual : String) : Lrat.Derivation.Remark → Triptych.CaptureMap
+  | .alt0 part0 => ([] ++ [])
+
+instance Lrat.Derivation.Cr.instDecidableValid : DecidablePred Lrat.Derivation.Cr.Valid := fun d => by
+  cases d <;> simp only [Lrat.Derivation.Cr.Valid] <;> infer_instance
+
+def Lrat.Derivation.Cr.capturesWith (qual : String) : Lrat.Derivation.Cr → Triptych.CaptureMap
+  | .alt0 part0 => (Triptych.capturesOptional (fun entry => []) part0 ++ [])
+
+instance Lrat.Derivation.Comment.instDecidableValid : DecidablePred Lrat.Derivation.Comment.Valid := fun d => by
+  cases d <;> simp only [Lrat.Derivation.Comment.Valid] <;> infer_instance
+
+def Lrat.Derivation.Comment.capturesWith (qual : String) : Lrat.Derivation.Comment → Triptych.CaptureMap
+  | .alt0 part1 part2 =>
+    ([] ++
+      (Triptych.capturesOptional
+          (fun entry =>
+            Triptych.referenceCaptures qual "Remark" (Lrat.Derivation.Remark.render entry) ++
+              Lrat.Derivation.Remark.capturesWith "Remark" entry)
+          part1 ++
+        (Triptych.referenceCaptures qual "Cr" (Lrat.Derivation.Cr.render part2) ++
+            Lrat.Derivation.Cr.capturesWith "Cr" part2 ++
+          [])))
+
 instance Lrat.Derivation.Zeros.instDecidableValid : DecidablePred Lrat.Derivation.Zeros.Valid := fun d => by
   cases d <;> simp only [Lrat.Derivation.Zeros.Valid] <;> infer_instance
 
@@ -274,12 +301,6 @@ def Lrat.Derivation.Body.capturesWith (qual : String) : Lrat.Derivation.Body →
         Lrat.Derivation.Add.capturesWith "Add" part0 ++
       [])
 
-instance Lrat.Derivation.Cr.instDecidableValid : DecidablePred Lrat.Derivation.Cr.Valid := fun d => by
-  cases d <;> simp only [Lrat.Derivation.Cr.Valid] <;> infer_instance
-
-def Lrat.Derivation.Cr.capturesWith (qual : String) : Lrat.Derivation.Cr → Triptych.CaptureMap
-  | .alt0 part0 => (Triptych.capturesOptional (fun entry => []) part0 ++ [])
-
 instance Lrat.Derivation.Line.instDecidableValid : DecidablePred Lrat.Derivation.Line.Valid := fun d => by
   cases d <;> simp only [Lrat.Derivation.Line.Valid] <;> infer_instance
 
@@ -294,15 +315,28 @@ def Lrat.Derivation.Line.capturesWith (qual : String) : Lrat.Derivation.Line →
               Lrat.Derivation.Cr.capturesWith "Cr" part3 ++
             []))))
 
+instance Lrat.Derivation.Entry.instDecidableValid : DecidablePred Lrat.Derivation.Entry.Valid := fun d => by
+  cases d <;> simp only [Lrat.Derivation.Entry.Valid] <;> infer_instance
+
+def Lrat.Derivation.Entry.capturesWith (qual : String) : Lrat.Derivation.Entry → Triptych.CaptureMap
+  | .alt0 part0 =>
+    (Triptych.referenceCaptures qual "Comment" (Lrat.Derivation.Comment.render part0) ++
+        Lrat.Derivation.Comment.capturesWith "Comment" part0 ++
+      [])
+  | .alt1 part0 =>
+    (Triptych.referenceCaptures qual "Line" (Lrat.Derivation.Line.render part0) ++
+        Lrat.Derivation.Line.capturesWith "Line" part0 ++
+      [])
+
 instance Lrat.Derivation.Proof.instDecidableValid : DecidablePred Lrat.Derivation.Proof.Valid := fun d => by
   cases d <;> simp only [Lrat.Derivation.Proof.Valid] <;> infer_instance
 
 def Lrat.Derivation.Proof.capturesWith (qual : String) : Lrat.Derivation.Proof → Triptych.CaptureMap
   | .alt0 part0 =>
-    (Triptych.capturesSeparated "Line"
+    (Triptych.capturesSeparated "Entry"
         (fun entry =>
-          Triptych.referenceCaptures qual "Line" (Lrat.Derivation.Line.render entry) ++
-            Lrat.Derivation.Line.capturesWith "Line" entry)
+          Triptych.referenceCaptures qual "Entry" (Lrat.Derivation.Entry.render entry) ++
+            Lrat.Derivation.Entry.capturesWith "Entry" entry)
         part0 ++
       ([] ++ []))
 
@@ -416,6 +450,102 @@ proves full well-formedness agreement. `computeValue_eq` proves the values agree
 while `decodeView_input`, `IsValid_view`, and `computeValue_view` expose the typed
 parse view. Derived `DecidablePred` instances make the surface predicates executable
 via the engine. No `sorry`. -/
+
+theorem Lrat.Derivation.Remark.matches (qual : String) (fuel : Nat) (d : Lrat.Derivation.Remark)
+    (hvalid : Lrat.Derivation.Remark.Valid d) :
+    Triptych.ProdMatch Lrat.grammar qual (fuel + 1)
+      (Production.mk "Remark" [[SymItem.mk (Sym.term (TokClass.noneOf ['\x0d', '\n']) (LenSpec.atLeastOne)) false]])
+      (Lrat.Derivation.Remark.render d) (Lrat.Derivation.Remark.capturesWith qual d) :=
+  by
+  cases d with
+  | alt0 part0 =>
+    simp only [Lrat.Derivation.Remark.Valid] at hvalid
+    have hpart0 := hvalid
+    simp only [Lrat.Derivation.Remark.render, Lrat.Derivation.Remark.capturesWith]
+    apply
+      Triptych.prodMatch_of_alt (alt :=
+        [SymItem.mk (Sym.term (TokClass.noneOf ['\x0d', '\n']) (LenSpec.atLeastOne)) false])
+    · simp
+    ·
+      exact
+        (by
+          apply Triptych.seqMatch_required
+          ·
+            exact
+              Triptych.symMatch_term Lrat.grammar qual (fuel + 1) (TokClass.noneOf ['\x0d', '\n']) (LenSpec.atLeastOne)
+                part0 hpart0
+          · exact Triptych.seqMatch_nil Lrat.grammar qual (fuel + 1))
+
+theorem Lrat.Derivation.Cr.matches (qual : String) (fuel : Nat) (d : Lrat.Derivation.Cr)
+    (hvalid : Lrat.Derivation.Cr.Valid d) :
+    Triptych.ProdMatch Lrat.grammar qual (fuel + 1) (Production.mk "Cr" [[SymItem.mk (Sym.lit "\x0d") true]])
+      (Lrat.Derivation.Cr.render d) (Lrat.Derivation.Cr.capturesWith qual d) :=
+  by
+  cases d with
+  | alt0 part0 =>
+    simp only [Lrat.Derivation.Cr.Valid] at hvalid
+    have hpart0 := hvalid
+    simp only [Lrat.Derivation.Cr.render, Lrat.Derivation.Cr.capturesWith]
+    apply Triptych.prodMatch_of_alt (alt := [SymItem.mk (Sym.lit "\x0d") true])
+    · simp
+    ·
+      exact
+        (by
+          apply Triptych.seqMatch_optional (valid := fun entry => True)
+          · exact hpart0
+          · intro entry hentry
+            exact Triptych.symMatch_lit Lrat.grammar qual (fuel + 1) "\x0d"
+          · exact Triptych.seqMatch_nil Lrat.grammar qual (fuel + 1))
+
+theorem Lrat.Derivation.Comment.matches (qual : String) (fuel : Nat) (d : Lrat.Derivation.Comment)
+    (hvalid : Lrat.Derivation.Comment.Valid d) :
+    Triptych.ProdMatch Lrat.grammar qual (fuel + 2)
+      (Production.mk "Comment"
+        [[SymItem.mk (Sym.lit "c") false, SymItem.mk (Sym.ref "Remark") true, SymItem.mk (Sym.ref "Cr") false]])
+      (Lrat.Derivation.Comment.render d) (Lrat.Derivation.Comment.capturesWith qual d) :=
+  by
+  cases d with
+  | alt0 part1 part2 =>
+    simp only [Lrat.Derivation.Comment.Valid] at hvalid
+    rcases hvalid with ⟨hpart1, hpart2⟩
+    simp only [Lrat.Derivation.Comment.render, Lrat.Derivation.Comment.capturesWith]
+    apply
+      Triptych.prodMatch_of_alt (alt :=
+        [SymItem.mk (Sym.lit "c") false, SymItem.mk (Sym.ref "Remark") true, SymItem.mk (Sym.ref "Cr") false])
+    · simp
+    ·
+      exact
+        (by
+          apply Triptych.seqMatch_required
+          · exact Triptych.symMatch_lit Lrat.grammar qual (fuel + 2) "c"
+          ·
+            exact
+              (by
+                apply Triptych.seqMatch_optional (valid := fun entry => Lrat.Derivation.Remark.Valid entry)
+                · exact hpart1
+                · intro entry hentry
+                  exact
+                    (by
+                      simpa only [Nat.add_assoc, Nat.add_comm, Nat.add_left_comm] using
+                        (Triptych.symMatch_ref Lrat.grammar qual (((fuel + 0)) + 1) "Remark"
+                          (Production.mk "Remark"
+                            [[SymItem.mk (Sym.term (TokClass.noneOf ['\x0d', '\n']) (LenSpec.atLeastOne)) false]])
+                          (by rfl) (Lrat.Derivation.Remark.render entry)
+                          (Lrat.Derivation.Remark.capturesWith "Remark" entry)
+                          (Lrat.Derivation.Remark.matches "Remark" (fuel + 0) entry hentry)))
+                ·
+                  exact
+                    (by
+                      apply Triptych.seqMatch_required
+                      ·
+                        exact
+                          (by
+                            simpa only [Nat.add_assoc, Nat.add_comm, Nat.add_left_comm] using
+                              (Triptych.symMatch_ref Lrat.grammar qual (((fuel + 0)) + 1) "Cr"
+                                (Production.mk "Cr" [[SymItem.mk (Sym.lit "\x0d") true]]) (by rfl)
+                                (Lrat.Derivation.Cr.render part2) (Lrat.Derivation.Cr.capturesWith "Cr" part2)
+                                (Lrat.Derivation.Cr.matches "Cr" (fuel + 0) part2 hpart2)))
+                      · exact Triptych.seqMatch_nil Lrat.grammar qual (fuel + 2))))
 
 theorem Lrat.Derivation.Zeros.matches (qual : String) (fuel : Nat) (d : Lrat.Derivation.Zeros)
     (hvalid : Lrat.Derivation.Zeros.Valid d) :
@@ -1216,27 +1346,6 @@ theorem Lrat.Derivation.Body.matches (qual : String) (fuel : Nat) (d : Lrat.Deri
                     (Lrat.Derivation.Add.matches "Add" (fuel + 0) part0 hpart0)))
           · exact Triptych.seqMatch_nil Lrat.grammar qual (fuel + 9))
 
-theorem Lrat.Derivation.Cr.matches (qual : String) (fuel : Nat) (d : Lrat.Derivation.Cr)
-    (hvalid : Lrat.Derivation.Cr.Valid d) :
-    Triptych.ProdMatch Lrat.grammar qual (fuel + 1) (Production.mk "Cr" [[SymItem.mk (Sym.lit "\x0d") true]])
-      (Lrat.Derivation.Cr.render d) (Lrat.Derivation.Cr.capturesWith qual d) :=
-  by
-  cases d with
-  | alt0 part0 =>
-    simp only [Lrat.Derivation.Cr.Valid] at hvalid
-    have hpart0 := hvalid
-    simp only [Lrat.Derivation.Cr.render, Lrat.Derivation.Cr.capturesWith]
-    apply Triptych.prodMatch_of_alt (alt := [SymItem.mk (Sym.lit "\x0d") true])
-    · simp
-    ·
-      exact
-        (by
-          apply Triptych.seqMatch_optional (valid := fun entry => True)
-          · exact hpart0
-          · intro entry hentry
-            exact Triptych.symMatch_lit Lrat.grammar qual (fuel + 1) "\x0d"
-          · exact Triptych.seqMatch_nil Lrat.grammar qual (fuel + 1))
-
 theorem Lrat.Derivation.Line.matches (qual : String) (fuel : Nat) (d : Lrat.Derivation.Line)
     (hvalid : Lrat.Derivation.Line.Valid d) :
     Triptych.ProdMatch Lrat.grammar qual (fuel + 10)
@@ -1300,11 +1409,62 @@ theorem Lrat.Derivation.Line.matches (qual : String) (fuel : Nat) (d : Lrat.Deri
                                       (Lrat.Derivation.Cr.matches "Cr" (fuel + 8) part3 hpart3)))
                             · exact Triptych.seqMatch_nil Lrat.grammar qual (fuel + 10)))))
 
+theorem Lrat.Derivation.Entry.matches (qual : String) (fuel : Nat) (d : Lrat.Derivation.Entry)
+    (hvalid : Lrat.Derivation.Entry.Valid d) :
+    Triptych.ProdMatch Lrat.grammar qual (fuel + 11)
+      (Production.mk "Entry" [[SymItem.mk (Sym.ref "Comment") false], [SymItem.mk (Sym.ref "Line") false]])
+      (Lrat.Derivation.Entry.render d) (Lrat.Derivation.Entry.capturesWith qual d) :=
+  by
+  cases d with
+  | alt0 part0 =>
+    simp only [Lrat.Derivation.Entry.Valid] at hvalid
+    have hpart0 := hvalid
+    simp only [Lrat.Derivation.Entry.render, Lrat.Derivation.Entry.capturesWith]
+    apply Triptych.prodMatch_of_alt (alt := [SymItem.mk (Sym.ref "Comment") false])
+    · simp
+    ·
+      exact
+        (by
+          apply Triptych.seqMatch_required
+          ·
+            exact
+              (by
+                simpa only [Nat.add_assoc, Nat.add_comm, Nat.add_left_comm] using
+                  (Triptych.symMatch_ref Lrat.grammar qual (((fuel + 8)) + 2) "Comment"
+                    (Production.mk "Comment"
+                      [[SymItem.mk (Sym.lit "c") false, SymItem.mk (Sym.ref "Remark") true,
+                          SymItem.mk (Sym.ref "Cr") false]])
+                    (by rfl) (Lrat.Derivation.Comment.render part0)
+                    (Lrat.Derivation.Comment.capturesWith "Comment" part0)
+                    (Lrat.Derivation.Comment.matches "Comment" (fuel + 8) part0 hpart0)))
+          · exact Triptych.seqMatch_nil Lrat.grammar qual (fuel + 11))
+  | alt1 part0 =>
+    simp only [Lrat.Derivation.Entry.Valid] at hvalid
+    have hpart0 := hvalid
+    simp only [Lrat.Derivation.Entry.render, Lrat.Derivation.Entry.capturesWith]
+    apply Triptych.prodMatch_of_alt (alt := [SymItem.mk (Sym.ref "Line") false])
+    · simp
+    ·
+      exact
+        (by
+          apply Triptych.seqMatch_required
+          ·
+            exact
+              (by
+                simpa only [Nat.add_assoc, Nat.add_comm, Nat.add_left_comm] using
+                  (Triptych.symMatch_ref Lrat.grammar qual (((fuel + 0)) + 10) "Line"
+                    (Production.mk "Line"
+                      [[SymItem.mk (Sym.ref "Id") false, SymItem.mk (Sym.lit " ") false,
+                          SymItem.mk (Sym.ref "Body") false, SymItem.mk (Sym.ref "Cr") false]])
+                    (by rfl) (Lrat.Derivation.Line.render part0) (Lrat.Derivation.Line.capturesWith "Line" part0)
+                    (Lrat.Derivation.Line.matches "Line" (fuel + 0) part0 hpart0)))
+          · exact Triptych.seqMatch_nil Lrat.grammar qual (fuel + 11))
+
 theorem Lrat.Derivation.Proof.matches (qual : String) (fuel : Nat) (d : Lrat.Derivation.Proof)
     (hvalid : Lrat.Derivation.Proof.Valid d) :
-    Triptych.ProdMatch Lrat.grammar qual (fuel + 11)
+    Triptych.ProdMatch Lrat.grammar qual (fuel + 12)
       (Production.mk "Proof"
-        [[SymItem.mk (Sym.rep "\n" (Sym.ref "Line") 1 ((none : Option Nat))) false, SymItem.mk (Sym.lit "\n") false]])
+        [[SymItem.mk (Sym.rep "\n" (Sym.ref "Entry") 1 ((none : Option Nat))) false, SymItem.mk (Sym.lit "\n") false]])
       (Lrat.Derivation.Proof.render d) (Lrat.Derivation.Proof.capturesWith qual d) :=
   by
   cases d with
@@ -1314,7 +1474,7 @@ theorem Lrat.Derivation.Proof.matches (qual : String) (fuel : Nat) (d : Lrat.Der
     simp only [Lrat.Derivation.Proof.render, Lrat.Derivation.Proof.capturesWith]
     apply
       Triptych.prodMatch_of_alt (alt :=
-        [SymItem.mk (Sym.rep "\n" (Sym.ref "Line") 1 ((none : Option Nat))) false, SymItem.mk (Sym.lit "\n") false])
+        [SymItem.mk (Sym.rep "\n" (Sym.ref "Entry") 1 ((none : Option Nat))) false, SymItem.mk (Sym.lit "\n") false])
     · simp
     ·
       exact
@@ -1323,25 +1483,25 @@ theorem Lrat.Derivation.Proof.matches (qual : String) (fuel : Nat) (d : Lrat.Der
           ·
             exact
               (by
-                apply Triptych.symMatch_rep (valid := fun entry => Lrat.Derivation.Line.Valid entry)
+                apply Triptych.symMatch_rep (valid := fun entry => Lrat.Derivation.Entry.Valid entry)
                 · exact Or.inl (by decide)
                 · exact hpart0
                 · intro entry hentry
                   exact
                     (by
                       simpa only [Nat.add_assoc, Nat.add_comm, Nat.add_left_comm] using
-                        (Triptych.symMatch_ref Lrat.grammar qual (((fuel + 0)) + 10) "Line"
-                          (Production.mk "Line"
-                            [[SymItem.mk (Sym.ref "Id") false, SymItem.mk (Sym.lit " ") false,
-                                SymItem.mk (Sym.ref "Body") false, SymItem.mk (Sym.ref "Cr") false]])
-                          (by rfl) (Lrat.Derivation.Line.render entry) (Lrat.Derivation.Line.capturesWith "Line" entry)
-                          (Lrat.Derivation.Line.matches "Line" (fuel + 0) entry hentry))))
+                        (Triptych.symMatch_ref Lrat.grammar qual (((fuel + 0)) + 11) "Entry"
+                          (Production.mk "Entry"
+                            [[SymItem.mk (Sym.ref "Comment") false], [SymItem.mk (Sym.ref "Line") false]])
+                          (by rfl) (Lrat.Derivation.Entry.render entry)
+                          (Lrat.Derivation.Entry.capturesWith "Entry" entry)
+                          (Lrat.Derivation.Entry.matches "Entry" (fuel + 0) entry hentry))))
           ·
             exact
               (by
                 apply Triptych.seqMatch_required
-                · exact Triptych.symMatch_lit Lrat.grammar qual (fuel + 11) "\n"
-                · exact Triptych.seqMatch_nil Lrat.grammar qual (fuel + 11)))
+                · exact Triptych.symMatch_lit Lrat.grammar qual (fuel + 12) "\n"
+                · exact Triptych.seqMatch_nil Lrat.grammar qual (fuel + 12)))
 
 theorem Lrat.Derivation.Proof.mem_fullParses (d : Lrat.Derivation.Proof) (hvalid : Lrat.Derivation.Proof.Valid d) :
     Lrat.Derivation.Proof.capturesWith "" d ∈ Triptych.fullParses Lrat.grammar (Lrat.Derivation.Proof.render d) :=
@@ -1349,9 +1509,9 @@ theorem Lrat.Derivation.Proof.mem_fullParses (d : Lrat.Derivation.Proof) (hvalid
   apply
     Triptych.prodMatch_mem_fullParses Lrat.grammar
       (Production.mk "Proof"
-        [[SymItem.mk (Sym.rep "\n" (Sym.ref "Line") 1 ((none : Option Nat))) false, SymItem.mk (Sym.lit "\n") false]])
+        [[SymItem.mk (Sym.rep "\n" (Sym.ref "Entry") 1 ((none : Option Nat))) false, SymItem.mk (Sym.lit "\n") false]])
       (by rfl)
-  simpa [Lrat.grammar] using (Lrat.Derivation.Proof.matches "" 13 d hvalid)
+  simpa [Lrat.grammar] using (Lrat.Derivation.Proof.matches "" 15 d hvalid)
 
 theorem Lrat.Derivation.Proof.decode_render_of_captureFunctional
     (hfunctional : Triptych.GrammarCaptureFunctional Lrat.grammar) (d : Lrat.Derivation.Proof)
@@ -1399,6 +1559,60 @@ theorem Lrat.SatisfiesWfConstraints_of_decode {s : String} {m : Triptych.Capture
                 m).map
             fun segment =>
             (Triptych.CaptureMap.toEnvList segment "Lit", Triptych.CaptureMap.toEnvList segment "RatPivot"))]
+
+theorem Lrat.Internal.matchesRef.Remark (fuel : Nat) (s : String) :
+    matchesSym Lrat.grammar (fuel + 1) (Sym.ref "Remark") s ↔ Lrat.IsWf.Remark s :=
+  by
+  rw [matchesSym,
+    show
+      (Lrat.grammar).prod? "Remark" =
+        some
+          (Production.mk "Remark"
+            [[SymItem.mk (Sym.term (TokClass.noneOf (List.cons '\x0d' (List.cons '\n' List.nil))) LenSpec.atLeastOne)
+                  false]])
+      from rfl]
+  dsimp only
+  rw [matchesProd_single]
+  unfold Lrat.IsWf.Remark
+  simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym]
+  simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
+  try grind [String.append_assoc, String.append_empty]
+
+theorem Lrat.Internal.matchesRef.Cr (fuel : Nat) (s : String) :
+    matchesSym Lrat.grammar (fuel + 1) (Sym.ref "Cr") s ↔ Lrat.IsWf.Cr s :=
+  by
+  rw [matchesSym,
+    show (Lrat.grammar).prod? "Cr" = some (Production.mk "Cr" [[SymItem.mk (Sym.lit "\x0d") true]]) from rfl]
+  dsimp only
+  rw [matchesProd_single]
+  unfold Lrat.IsWf.Cr
+  simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym]
+  simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
+  try grind [String.append_assoc, String.append_empty]
+
+theorem Lrat.Internal.matchesRef.Comment (fuel : Nat) (s : String) :
+    matchesSym Lrat.grammar (fuel + 2) (Sym.ref "Comment") s ↔ Lrat.IsWf.Comment s :=
+  by
+  rw [matchesSym,
+    show
+      (Lrat.grammar).prod? "Comment" =
+        some
+          (Production.mk "Comment"
+            [[SymItem.mk (Sym.lit "c") false, SymItem.mk (Sym.ref "Remark") true, SymItem.mk (Sym.ref "Cr") false]])
+      from rfl]
+  dsimp only
+  rw [matchesProd_single]
+  unfold Lrat.IsWf.Comment
+  simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    Lrat.Internal.matchesRef.Remark, Lrat.Internal.matchesRef.Cr]
+  simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
+  try grind [String.append_assoc, String.append_empty]
 
 theorem Lrat.Internal.matchesRef.Zeros (fuel : Nat) (s : String) :
     matchesSym Lrat.grammar (fuel + 1) (Sym.ref "Zeros") s ↔ Lrat.IsWf.Zeros s :=
@@ -1792,20 +2006,6 @@ theorem Lrat.Internal.matchesRef.Body (fuel : Nat) (s : String) :
           Option.some.injEq, forall_eq']
         try grind [String.append_assoc, String.append_empty])
 
-theorem Lrat.Internal.matchesRef.Cr (fuel : Nat) (s : String) :
-    matchesSym Lrat.grammar (fuel + 1) (Sym.ref "Cr") s ↔ Lrat.IsWf.Cr s :=
-  by
-  rw [matchesSym,
-    show (Lrat.grammar).prod? "Cr" = some (Production.mk "Cr" [[SymItem.mk (Sym.lit "\x0d") true]]) from rfl]
-  dsimp only
-  rw [matchesProd_single]
-  unfold Lrat.IsWf.Cr
-  simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym]
-  simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
-  try grind [String.append_assoc, String.append_empty]
-
 theorem Lrat.Internal.matchesRef.Line (fuel : Nat) (s : String) :
     matchesSym Lrat.grammar (fuel + 10) (Sym.ref "Line") s ↔ Lrat.IsWf.Line s :=
   by
@@ -1827,22 +2027,45 @@ theorem Lrat.Internal.matchesRef.Line (fuel : Nat) (s : String) :
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
+theorem Lrat.Internal.matchesRef.Entry (fuel : Nat) (s : String) :
+    matchesSym Lrat.grammar (fuel + 11) (Sym.ref "Entry") s ↔ Lrat.IsWf.Entry s :=
+  by
+  rw [matchesSym,
+    show
+      (Lrat.grammar).prod? "Entry" =
+        some (Production.mk "Entry" [[SymItem.mk (Sym.ref "Comment") false], [SymItem.mk (Sym.ref "Line") false]])
+      from rfl]
+  dsimp only
+  unfold matchesProd Lrat.IsWf.Entry
+  simp (config := { maxSteps := 1000000 }) only [List.mem_cons, List.mem_singleton, List.not_mem_nil,
+    Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_or_imp, exists_eq_left, exists_eq_left, ite_true,
+    ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, Lrat.Internal.matchesRef.Comment,
+    Lrat.Internal.matchesRef.Line]
+  repeat'
+    first
+    | apply or_congr
+    | ( simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left,
+          ← and_assoc, exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left,
+          Option.some.injEq, forall_eq']
+        try grind [String.append_assoc, String.append_empty])
+
 theorem Lrat.Internal.matchesRef.Proof (fuel : Nat) (s : String) :
-    matchesSym Lrat.grammar (fuel + 11) (Sym.ref "Proof") s ↔ Lrat.Production s :=
+    matchesSym Lrat.grammar (fuel + 12) (Sym.ref "Proof") s ↔ Lrat.Production s :=
   by
   rw [matchesSym,
     show
       (Lrat.grammar).prod? "Proof" =
         some
           (Production.mk "Proof"
-            [[SymItem.mk (Sym.rep "\n" (Sym.ref "Line") 1 (none : Option Nat)) false, SymItem.mk (Sym.lit "\n") false]])
+            [[SymItem.mk (Sym.rep "\n" (Sym.ref "Entry") 1 (none : Option Nat)) false,
+                SymItem.mk (Sym.lit "\n") false]])
       from rfl]
   dsimp only
   rw [matchesProd_single]
   unfold Lrat.Production
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
     ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
-    Lrat.Internal.matchesRef.Line]
+    Lrat.Internal.matchesRef.Entry]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
     exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
@@ -1854,13 +2077,15 @@ theorem Lrat.IsWfGrammar_equiv (s : String) : Triptych.IsWf Lrat.grammar s ↔ L
       (Lrat.grammar).prod? (Lrat.grammar).start =
         some
           (Production.mk "Proof"
-            [[SymItem.mk (Sym.rep "\n" (Sym.ref "Line") 1 (none : Option Nat)) false, SymItem.mk (Sym.lit "\n") false]])
+            [[SymItem.mk (Sym.rep "\n" (Sym.ref "Entry") 1 (none : Option Nat)) false,
+                SymItem.mk (Sym.lit "\n") false]])
       from rfl]
   have hstart :
     ∀ n,
       matchesProd Lrat.grammar n
           (Production.mk "Proof"
-            [[SymItem.mk (Sym.rep "\n" (Sym.ref "Line") 1 (none : Option Nat)) false, SymItem.mk (Sym.lit "\n") false]])
+            [[SymItem.mk (Sym.rep "\n" (Sym.ref "Entry") 1 (none : Option Nat)) false,
+                SymItem.mk (Sym.lit "\n") false]])
           s =
         matchesSym Lrat.grammar (n + 1) (Sym.ref "Proof") s :=
     by
@@ -1870,13 +2095,13 @@ theorem Lrat.IsWfGrammar_equiv (s : String) : Triptych.IsWf Lrat.grammar s ↔ L
         (Lrat.grammar).prod? "Proof" =
           some
             (Production.mk "Proof"
-              [[SymItem.mk (Sym.rep "\n" (Sym.ref "Line") 1 (none : Option Nat)) false,
+              [[SymItem.mk (Sym.rep "\n" (Sym.ref "Entry") 1 (none : Option Nat)) false,
                   SymItem.mk (Sym.lit "\n") false]])
         from rfl]
   show
     matchesProd Lrat.grammar (Lrat.grammar).prods.length
         (Production.mk "Proof"
-          [[SymItem.mk (Sym.rep "\n" (Sym.ref "Line") 1 (none : Option Nat)) false, SymItem.mk (Sym.lit "\n") false]])
+          [[SymItem.mk (Sym.rep "\n" (Sym.ref "Entry") 1 (none : Option Nat)) false, SymItem.mk (Sym.lit "\n") false]])
         s ↔
       _
   rw [hstart]
@@ -2065,48 +2290,35 @@ private abbrev Lrat.searchPlan : SearchPlan :=
   ({ start := "Proof",
       alternatives :=
         [[SearchPattern.repetition "\n"
-              (SearchPattern.capture "Line" ["Line"]
-                [[SearchPattern.capture "Id" ["Id", "Line.Id"]
-                      [[SearchPattern.capture "Pos" ["Pos", "Id.Pos"]
-                            [[SearchPattern.optional
-                                  (SearchPattern.capture "Zeros" ["Zeros", "Pos.Zeros"]
-                                    [[SearchPattern.tokenRun (TokClass.asciiRange 48 48) LenSpec.atLeastOne]]),
-                                SearchPattern.capture "NonZero" ["NonZero", "Pos.NonZero"]
-                                  [[SearchPattern.tokenRun (TokClass.asciiRange 49 57) (LenSpec.exactly 1)]],
-                                SearchPattern.optional
-                                  (SearchPattern.capture "Digits" ["Digits", "Pos.Digits"]
-                                    [[SearchPattern.tokenRun TokClass.digit LenSpec.atLeastOne]])]]]],
-                    SearchPattern.literal " ",
-                    SearchPattern.capture "Body" ["Body", "Line.Body"]
-                      [[SearchPattern.capture "Delete" ["Delete", "Body.Delete"]
-                            [[SearchPattern.literal "d ",
-                                SearchPattern.optional
-                                  (SearchPattern.capture "DelIds" ["DelIds", "Delete.DelIds"]
-                                    [[SearchPattern.repetition " "
-                                          (SearchPattern.capture "DelId" ["DelId", "DelIds.DelId"]
-                                            [[SearchPattern.capture "Pos" ["Pos", "DelId.Pos"]
-                                                  [[SearchPattern.optional
-                                                        (SearchPattern.capture "Zeros" ["Zeros", "Pos.Zeros"]
-                                                          [[SearchPattern.tokenRun (TokClass.asciiRange 48 48)
-                                                                LenSpec.atLeastOne]]),
-                                                      SearchPattern.capture "NonZero" ["NonZero", "Pos.NonZero"]
-                                                        [[SearchPattern.tokenRun (TokClass.asciiRange 49 57)
-                                                              (LenSpec.exactly 1)]],
-                                                      SearchPattern.optional
-                                                        (SearchPattern.capture "Digits" ["Digits", "Pos.Digits"]
-                                                          [[SearchPattern.tokenRun TokClass.digit
-                                                                LenSpec.atLeastOne]])]]]])
-                                          1 none "DelId",
-                                        SearchPattern.literal " "]]),
-                                SearchPattern.literal "0"]]],
-                        [SearchPattern.capture "Add" ["Add", "Body.Add"]
-                            [[SearchPattern.optional
-                                  (SearchPattern.capture "Lits" ["Lits", "Add.Lits"]
-                                    [[SearchPattern.repetition " "
-                                          (SearchPattern.capture "Lit" ["Lit", "Lits.Lit"]
-                                            [[SearchPattern.capture "Neg" ["Neg", "Lit.Neg"]
-                                                  [[SearchPattern.literal "-",
-                                                      SearchPattern.capture "Pos" ["Pos", "Neg.Pos"]
+              (SearchPattern.capture "Entry" ["Entry"]
+                [[SearchPattern.capture "Comment" ["Comment", "Entry.Comment"]
+                      [[SearchPattern.literal "c",
+                          SearchPattern.optional
+                            (SearchPattern.capture "Remark" ["Remark", "Comment.Remark"]
+                              [[SearchPattern.tokenRun (TokClass.noneOf (List.cons '\x0d' (List.cons '\n' List.nil)))
+                                    LenSpec.atLeastOne]]),
+                          SearchPattern.capture "Cr" ["Cr", "Comment.Cr"]
+                            [[SearchPattern.optional (SearchPattern.literal "\x0d")]]]]],
+                  [SearchPattern.capture "Line" ["Line", "Entry.Line"]
+                      [[SearchPattern.capture "Id" ["Id", "Line.Id"]
+                            [[SearchPattern.capture "Pos" ["Pos", "Id.Pos"]
+                                  [[SearchPattern.optional
+                                        (SearchPattern.capture "Zeros" ["Zeros", "Pos.Zeros"]
+                                          [[SearchPattern.tokenRun (TokClass.asciiRange 48 48) LenSpec.atLeastOne]]),
+                                      SearchPattern.capture "NonZero" ["NonZero", "Pos.NonZero"]
+                                        [[SearchPattern.tokenRun (TokClass.asciiRange 49 57) (LenSpec.exactly 1)]],
+                                      SearchPattern.optional
+                                        (SearchPattern.capture "Digits" ["Digits", "Pos.Digits"]
+                                          [[SearchPattern.tokenRun TokClass.digit LenSpec.atLeastOne]])]]]],
+                          SearchPattern.literal " ",
+                          SearchPattern.capture "Body" ["Body", "Line.Body"]
+                            [[SearchPattern.capture "Delete" ["Delete", "Body.Delete"]
+                                  [[SearchPattern.literal "d ",
+                                      SearchPattern.optional
+                                        (SearchPattern.capture "DelIds" ["DelIds", "Delete.DelIds"]
+                                          [[SearchPattern.repetition " "
+                                                (SearchPattern.capture "DelId" ["DelId", "DelIds.DelId"]
+                                                  [[SearchPattern.capture "Pos" ["Pos", "DelId.Pos"]
                                                         [[SearchPattern.optional
                                                               (SearchPattern.capture "Zeros" ["Zeros", "Pos.Zeros"]
                                                                 [[SearchPattern.tokenRun (TokClass.asciiRange 48 48)
@@ -2117,46 +2329,16 @@ private abbrev Lrat.searchPlan : SearchPlan :=
                                                             SearchPattern.optional
                                                               (SearchPattern.capture "Digits" ["Digits", "Pos.Digits"]
                                                                 [[SearchPattern.tokenRun TokClass.digit
-                                                                      LenSpec.atLeastOne]])]]]]],
-                                              [SearchPattern.capture "Pos" ["Pos", "Lit.Pos"]
-                                                  [[SearchPattern.optional
-                                                        (SearchPattern.capture "Zeros" ["Zeros", "Pos.Zeros"]
-                                                          [[SearchPattern.tokenRun (TokClass.asciiRange 48 48)
-                                                                LenSpec.atLeastOne]]),
-                                                      SearchPattern.capture "NonZero" ["NonZero", "Pos.NonZero"]
-                                                        [[SearchPattern.tokenRun (TokClass.asciiRange 49 57)
-                                                              (LenSpec.exactly 1)]],
-                                                      SearchPattern.optional
-                                                        (SearchPattern.capture "Digits" ["Digits", "Pos.Digits"]
-                                                          [[SearchPattern.tokenRun TokClass.digit
-                                                                LenSpec.atLeastOne]])]]]])
-                                          1 none "Lit",
-                                        SearchPattern.literal " "]]),
-                                SearchPattern.literal "0 ",
-                                SearchPattern.optional
-                                  (SearchPattern.capture "RupHints" ["RupHints", "Add.RupHints"]
-                                    [[SearchPattern.repetition " "
-                                          (SearchPattern.capture "RupHint" ["RupHint", "RupHints.RupHint"]
-                                            [[SearchPattern.capture "Pos" ["Pos", "RupHint.Pos"]
-                                                  [[SearchPattern.optional
-                                                        (SearchPattern.capture "Zeros" ["Zeros", "Pos.Zeros"]
-                                                          [[SearchPattern.tokenRun (TokClass.asciiRange 48 48)
-                                                                LenSpec.atLeastOne]]),
-                                                      SearchPattern.capture "NonZero" ["NonZero", "Pos.NonZero"]
-                                                        [[SearchPattern.tokenRun (TokClass.asciiRange 49 57)
-                                                              (LenSpec.exactly 1)]],
-                                                      SearchPattern.optional
-                                                        (SearchPattern.capture "Digits" ["Digits", "Pos.Digits"]
-                                                          [[SearchPattern.tokenRun TokClass.digit
-                                                                LenSpec.atLeastOne]])]]]])
-                                          1 none "RupHint",
-                                        SearchPattern.literal " "]]),
-                                SearchPattern.optional
-                                  (SearchPattern.capture "RatSteps" ["RatSteps", "Add.RatSteps"]
-                                    [[SearchPattern.repetition " "
-                                          (SearchPattern.capture "RatStep" ["RatStep", "RatSteps.RatStep"]
-                                            [[SearchPattern.capture "RatPivot" ["RatPivot", "RatStep.RatPivot"]
-                                                  [[SearchPattern.capture "Neg" ["Neg", "RatPivot.Neg"]
+                                                                      LenSpec.atLeastOne]])]]]])
+                                                1 none "DelId",
+                                              SearchPattern.literal " "]]),
+                                      SearchPattern.literal "0"]]],
+                              [SearchPattern.capture "Add" ["Add", "Body.Add"]
+                                  [[SearchPattern.optional
+                                        (SearchPattern.capture "Lits" ["Lits", "Add.Lits"]
+                                          [[SearchPattern.repetition " "
+                                                (SearchPattern.capture "Lit" ["Lit", "Lits.Lit"]
+                                                  [[SearchPattern.capture "Neg" ["Neg", "Lit.Neg"]
                                                         [[SearchPattern.literal "-",
                                                             SearchPattern.capture "Pos" ["Pos", "Neg.Pos"]
                                                               [[SearchPattern.optional
@@ -2173,39 +2355,98 @@ private abbrev Lrat.searchPlan : SearchPlan :=
                                                                     (SearchPattern.capture "Digits"
                                                                       ["Digits", "Pos.Digits"]
                                                                       [[SearchPattern.tokenRun TokClass.digit
-                                                                            LenSpec.atLeastOne]])]]]]]],
-                                                SearchPattern.optional
-                                                  (SearchPattern.capture "RatTail" ["RatTail", "RatStep.RatTail"]
-                                                    [[SearchPattern.literal " ",
-                                                        SearchPattern.capture "RatHints"
-                                                          ["RatHints", "RatTail.RatHints"]
-                                                          [[SearchPattern.repetition " "
-                                                                (SearchPattern.capture "RatHint"
-                                                                  ["RatHint", "RatHints.RatHint"]
-                                                                  [[SearchPattern.capture "Pos" ["Pos", "RatHint.Pos"]
-                                                                        [[SearchPattern.optional
-                                                                              (SearchPattern.capture "Zeros"
-                                                                                ["Zeros", "Pos.Zeros"]
-                                                                                [[SearchPattern.tokenRun
-                                                                                      (TokClass.asciiRange 48 48)
-                                                                                      LenSpec.atLeastOne]]),
-                                                                            SearchPattern.capture "NonZero"
-                                                                              ["NonZero", "Pos.NonZero"]
-                                                                              [[SearchPattern.tokenRun
-                                                                                    (TokClass.asciiRange 49 57)
-                                                                                    (LenSpec.exactly 1)]],
-                                                                            SearchPattern.optional
-                                                                              (SearchPattern.capture "Digits"
-                                                                                ["Digits", "Pos.Digits"]
-                                                                                [[SearchPattern.tokenRun TokClass.digit
-                                                                                      LenSpec.atLeastOne]])]]]])
-                                                                1 none "RatHint"]]]])]])
-                                          1 none "RatStep",
-                                        SearchPattern.literal " "]]),
-                                SearchPattern.literal "0"]]]],
-                    SearchPattern.capture "Cr" ["Cr", "Line.Cr"]
-                      [[SearchPattern.optional (SearchPattern.literal "\x0d")]]]])
-              1 none "Line",
+                                                                            LenSpec.atLeastOne]])]]]]],
+                                                    [SearchPattern.capture "Pos" ["Pos", "Lit.Pos"]
+                                                        [[SearchPattern.optional
+                                                              (SearchPattern.capture "Zeros" ["Zeros", "Pos.Zeros"]
+                                                                [[SearchPattern.tokenRun (TokClass.asciiRange 48 48)
+                                                                      LenSpec.atLeastOne]]),
+                                                            SearchPattern.capture "NonZero" ["NonZero", "Pos.NonZero"]
+                                                              [[SearchPattern.tokenRun (TokClass.asciiRange 49 57)
+                                                                    (LenSpec.exactly 1)]],
+                                                            SearchPattern.optional
+                                                              (SearchPattern.capture "Digits" ["Digits", "Pos.Digits"]
+                                                                [[SearchPattern.tokenRun TokClass.digit
+                                                                      LenSpec.atLeastOne]])]]]])
+                                                1 none "Lit",
+                                              SearchPattern.literal " "]]),
+                                      SearchPattern.literal "0 ",
+                                      SearchPattern.optional
+                                        (SearchPattern.capture "RupHints" ["RupHints", "Add.RupHints"]
+                                          [[SearchPattern.repetition " "
+                                                (SearchPattern.capture "RupHint" ["RupHint", "RupHints.RupHint"]
+                                                  [[SearchPattern.capture "Pos" ["Pos", "RupHint.Pos"]
+                                                        [[SearchPattern.optional
+                                                              (SearchPattern.capture "Zeros" ["Zeros", "Pos.Zeros"]
+                                                                [[SearchPattern.tokenRun (TokClass.asciiRange 48 48)
+                                                                      LenSpec.atLeastOne]]),
+                                                            SearchPattern.capture "NonZero" ["NonZero", "Pos.NonZero"]
+                                                              [[SearchPattern.tokenRun (TokClass.asciiRange 49 57)
+                                                                    (LenSpec.exactly 1)]],
+                                                            SearchPattern.optional
+                                                              (SearchPattern.capture "Digits" ["Digits", "Pos.Digits"]
+                                                                [[SearchPattern.tokenRun TokClass.digit
+                                                                      LenSpec.atLeastOne]])]]]])
+                                                1 none "RupHint",
+                                              SearchPattern.literal " "]]),
+                                      SearchPattern.optional
+                                        (SearchPattern.capture "RatSteps" ["RatSteps", "Add.RatSteps"]
+                                          [[SearchPattern.repetition " "
+                                                (SearchPattern.capture "RatStep" ["RatStep", "RatSteps.RatStep"]
+                                                  [[SearchPattern.capture "RatPivot" ["RatPivot", "RatStep.RatPivot"]
+                                                        [[SearchPattern.capture "Neg" ["Neg", "RatPivot.Neg"]
+                                                              [[SearchPattern.literal "-",
+                                                                  SearchPattern.capture "Pos" ["Pos", "Neg.Pos"]
+                                                                    [[SearchPattern.optional
+                                                                          (SearchPattern.capture "Zeros"
+                                                                            ["Zeros", "Pos.Zeros"]
+                                                                            [[SearchPattern.tokenRun
+                                                                                  (TokClass.asciiRange 48 48)
+                                                                                  LenSpec.atLeastOne]]),
+                                                                        SearchPattern.capture "NonZero"
+                                                                          ["NonZero", "Pos.NonZero"]
+                                                                          [[SearchPattern.tokenRun
+                                                                                (TokClass.asciiRange 49 57)
+                                                                                (LenSpec.exactly 1)]],
+                                                                        SearchPattern.optional
+                                                                          (SearchPattern.capture "Digits"
+                                                                            ["Digits", "Pos.Digits"]
+                                                                            [[SearchPattern.tokenRun TokClass.digit
+                                                                                  LenSpec.atLeastOne]])]]]]]],
+                                                      SearchPattern.optional
+                                                        (SearchPattern.capture "RatTail" ["RatTail", "RatStep.RatTail"]
+                                                          [[SearchPattern.literal " ",
+                                                              SearchPattern.capture "RatHints"
+                                                                ["RatHints", "RatTail.RatHints"]
+                                                                [[SearchPattern.repetition " "
+                                                                      (SearchPattern.capture "RatHint"
+                                                                        ["RatHint", "RatHints.RatHint"]
+                                                                        [[SearchPattern.capture "Pos"
+                                                                              ["Pos", "RatHint.Pos"]
+                                                                              [[SearchPattern.optional
+                                                                                    (SearchPattern.capture "Zeros"
+                                                                                      ["Zeros", "Pos.Zeros"]
+                                                                                      [[SearchPattern.tokenRun
+                                                                                            (TokClass.asciiRange 48 48)
+                                                                                            LenSpec.atLeastOne]]),
+                                                                                  SearchPattern.capture "NonZero"
+                                                                                    ["NonZero", "Pos.NonZero"]
+                                                                                    [[SearchPattern.tokenRun
+                                                                                          (TokClass.asciiRange 49 57)
+                                                                                          (LenSpec.exactly 1)]],
+                                                                                  SearchPattern.optional
+                                                                                    (SearchPattern.capture "Digits"
+                                                                                      ["Digits", "Pos.Digits"]
+                                                                                      [[SearchPattern.tokenRun
+                                                                                            TokClass.digit
+                                                                                            LenSpec.atLeastOne]])]]]])
+                                                                      1 none "RatHint"]]]])]])
+                                                1 none "RatStep",
+                                              SearchPattern.literal " "]]),
+                                      SearchPattern.literal "0"]]]],
+                          SearchPattern.capture "Cr" ["Cr", "Line.Cr"]
+                            [[SearchPattern.optional (SearchPattern.literal "\x0d")]]]]]])
+              1 none "Entry",
             SearchPattern.literal "\n"]] } :
     SearchPlan)
 
@@ -2215,189 +2456,137 @@ private abbrev Lrat.parsePlan : ParsePlan :=
 private theorem Lrat.searchPlan_mirrorsGrammar : SearchPlan.MirrorsGrammar Lrat.searchPlan Lrat.grammar :=
   SearchPlan.MirrorsGrammar.intro (by rfl)
     (Production.mk "Proof"
-      [[SymItem.mk (Sym.rep "\n" (Sym.ref "Line") 1 (none : Option Nat)) false, SymItem.mk (Sym.lit "\n") false]])
+      [[SymItem.mk (Sym.rep "\n" (Sym.ref "Entry") 1 (none : Option Nat)) false, SymItem.mk (Sym.lit "\n") false]])
     (by rfl)
     (SearchPattern.MirrorsAlternatives.cons
       (SearchPattern.MirrorsSequence.required
         (SearchPattern.MirrorsSymbol.repetition (by rfl)
-          (SearchPattern.MirrorsSymbol.capture («grammar» := Lrat.grammar) (fuel := 23) (production :=
-            Production.mk "Line"
-              [[SymItem.mk (Sym.ref "Id") false, SymItem.mk (Sym.lit " ") false, SymItem.mk (Sym.ref "Body") false,
-                  SymItem.mk (Sym.ref "Cr") false]])
+          (SearchPattern.MirrorsSymbol.capture («grammar» := Lrat.grammar) (fuel := 26) (production :=
+            Production.mk "Entry" [[SymItem.mk (Sym.ref "Comment") false], [SymItem.mk (Sym.ref "Line") false]])
             (by rfl) (by rfl)
             (SearchPattern.MirrorsAlternatives.cons
               (SearchPattern.MirrorsSequence.required
-                (SearchPattern.MirrorsSymbol.capture («grammar» := Lrat.grammar) (fuel := 22) (production :=
-                  Production.mk "Id" [[SymItem.mk (Sym.ref "Pos") false]]) (by rfl) (by rfl)
+                (SearchPattern.MirrorsSymbol.capture («grammar» := Lrat.grammar) (fuel := 25) (production :=
+                  Production.mk "Comment"
+                    [[SymItem.mk (Sym.lit "c") false, SymItem.mk (Sym.ref "Remark") true,
+                        SymItem.mk (Sym.ref "Cr") false]])
+                  (by rfl) (by rfl)
                   (SearchPattern.MirrorsAlternatives.cons
-                    (SearchPattern.MirrorsSequence.required
-                      (SearchPattern.MirrorsSymbol.capture («grammar» := Lrat.grammar) (fuel := 21) (production :=
-                        Production.mk "Pos"
-                          [[SymItem.mk (Sym.ref "Zeros") true, SymItem.mk (Sym.ref "NonZero") false,
-                              SymItem.mk (Sym.ref "Digits") true]])
-                        (by rfl) (by rfl)
-                        (SearchPattern.MirrorsAlternatives.cons
-                          (SearchPattern.MirrorsSequence.optional
-                            (SearchPattern.MirrorsSymbol.capture («grammar» := Lrat.grammar) (fuel := 20) (production :=
-                              Production.mk "Zeros"
-                                [[SymItem.mk (Sym.term (TokClass.asciiRange 48 48 : TokClass) LenSpec.atLeastOne)
-                                      false]])
-                              (by rfl) (by rfl)
-                              (SearchPattern.MirrorsAlternatives.cons
-                                (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
-                                  SearchPattern.MirrorsSequence.empty)
-                                SearchPattern.MirrorsAlternatives.empty))
+                    (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                      (SearchPattern.MirrorsSequence.optional
+                        (SearchPattern.MirrorsSymbol.capture («grammar» := Lrat.grammar) (fuel := 24) (production :=
+                          Production.mk "Remark"
+                            [[SymItem.mk
+                                  (Sym.term (TokClass.noneOf (List.cons '\x0d' (List.cons '\n' List.nil)))
+                                    LenSpec.atLeastOne)
+                                  false]])
+                          (by rfl) (by rfl)
+                          (SearchPattern.MirrorsAlternatives.cons
+                            (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                              SearchPattern.MirrorsSequence.empty)
+                            SearchPattern.MirrorsAlternatives.empty))
+                        (SearchPattern.MirrorsSequence.required
+                          (SearchPattern.MirrorsSymbol.capture («grammar» := Lrat.grammar) (fuel := 24) (production :=
+                            Production.mk "Cr" [[SymItem.mk (Sym.lit "\x0d") true]]) (by rfl) (by rfl)
+                            (SearchPattern.MirrorsAlternatives.cons
+                              (SearchPattern.MirrorsSequence.optional SearchPattern.MirrorsSymbol.literal
+                                SearchPattern.MirrorsSequence.empty)
+                              SearchPattern.MirrorsAlternatives.empty))
+                          SearchPattern.MirrorsSequence.empty)))
+                    SearchPattern.MirrorsAlternatives.empty))
+                SearchPattern.MirrorsSequence.empty)
+              (SearchPattern.MirrorsAlternatives.cons
+                (SearchPattern.MirrorsSequence.required
+                  (SearchPattern.MirrorsSymbol.capture («grammar» := Lrat.grammar) (fuel := 25) (production :=
+                    Production.mk "Line"
+                      [[SymItem.mk (Sym.ref "Id") false, SymItem.mk (Sym.lit " ") false,
+                          SymItem.mk (Sym.ref "Body") false, SymItem.mk (Sym.ref "Cr") false]])
+                    (by rfl) (by rfl)
+                    (SearchPattern.MirrorsAlternatives.cons
+                      (SearchPattern.MirrorsSequence.required
+                        (SearchPattern.MirrorsSymbol.capture («grammar» := Lrat.grammar) (fuel := 24) (production :=
+                          Production.mk "Id" [[SymItem.mk (Sym.ref "Pos") false]]) (by rfl) (by rfl)
+                          (SearchPattern.MirrorsAlternatives.cons
                             (SearchPattern.MirrorsSequence.required
-                              (SearchPattern.MirrorsSymbol.capture («grammar» := Lrat.grammar) (fuel := 20)
+                              (SearchPattern.MirrorsSymbol.capture («grammar» := Lrat.grammar) (fuel := 23)
                                 (production :=
-                                Production.mk "NonZero"
-                                  [[SymItem.mk (Sym.term (TokClass.asciiRange 49 57 : TokClass) (LenSpec.exactly 1))
-                                        false]])
+                                Production.mk "Pos"
+                                  [[SymItem.mk (Sym.ref "Zeros") true, SymItem.mk (Sym.ref "NonZero") false,
+                                      SymItem.mk (Sym.ref "Digits") true]])
                                 (by rfl) (by rfl)
                                 (SearchPattern.MirrorsAlternatives.cons
-                                  (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
-                                    SearchPattern.MirrorsSequence.empty)
+                                  (SearchPattern.MirrorsSequence.optional
+                                    (SearchPattern.MirrorsSymbol.capture («grammar» := Lrat.grammar) (fuel := 22)
+                                      (production :=
+                                      Production.mk "Zeros"
+                                        [[SymItem.mk
+                                              (Sym.term (TokClass.asciiRange 48 48 : TokClass) LenSpec.atLeastOne)
+                                              false]])
+                                      (by rfl) (by rfl)
+                                      (SearchPattern.MirrorsAlternatives.cons
+                                        (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                          SearchPattern.MirrorsSequence.empty)
+                                        SearchPattern.MirrorsAlternatives.empty))
+                                    (SearchPattern.MirrorsSequence.required
+                                      (SearchPattern.MirrorsSymbol.capture («grammar» := Lrat.grammar) (fuel := 22)
+                                        (production :=
+                                        Production.mk "NonZero"
+                                          [[SymItem.mk
+                                                (Sym.term (TokClass.asciiRange 49 57 : TokClass) (LenSpec.exactly 1))
+                                                false]])
+                                        (by rfl) (by rfl)
+                                        (SearchPattern.MirrorsAlternatives.cons
+                                          (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                            SearchPattern.MirrorsSequence.empty)
+                                          SearchPattern.MirrorsAlternatives.empty))
+                                      (SearchPattern.MirrorsSequence.optional
+                                        (SearchPattern.MirrorsSymbol.capture («grammar» := Lrat.grammar) (fuel := 22)
+                                          (production :=
+                                          Production.mk "Digits"
+                                            [[SymItem.mk (Sym.term TokClass.digit LenSpec.atLeastOne) false]])
+                                          (by rfl) (by rfl)
+                                          (SearchPattern.MirrorsAlternatives.cons
+                                            (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                              SearchPattern.MirrorsSequence.empty)
+                                            SearchPattern.MirrorsAlternatives.empty))
+                                        SearchPattern.MirrorsSequence.empty)))
                                   SearchPattern.MirrorsAlternatives.empty))
-                              (SearchPattern.MirrorsSequence.optional
-                                (SearchPattern.MirrorsSymbol.capture («grammar» := Lrat.grammar) (fuel := 20)
-                                  (production :=
-                                  Production.mk "Digits"
-                                    [[SymItem.mk (Sym.term TokClass.digit LenSpec.atLeastOne) false]])
-                                  (by rfl) (by rfl)
-                                  (SearchPattern.MirrorsAlternatives.cons
-                                    (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
-                                      SearchPattern.MirrorsSequence.empty)
-                                    SearchPattern.MirrorsAlternatives.empty))
-                                SearchPattern.MirrorsSequence.empty)))
-                          SearchPattern.MirrorsAlternatives.empty))
-                      SearchPattern.MirrorsSequence.empty)
-                    SearchPattern.MirrorsAlternatives.empty))
-                (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
-                  (SearchPattern.MirrorsSequence.required
-                    (SearchPattern.MirrorsSymbol.capture («grammar» := Lrat.grammar) (fuel := 22) (production :=
-                      Production.mk "Body" [[SymItem.mk (Sym.ref "Delete") false], [SymItem.mk (Sym.ref "Add") false]])
-                      (by rfl) (by rfl)
-                      (SearchPattern.MirrorsAlternatives.cons
-                        (SearchPattern.MirrorsSequence.required
-                          (SearchPattern.MirrorsSymbol.capture («grammar» := Lrat.grammar) (fuel := 21) (production :=
-                            Production.mk "Delete"
-                              [[SymItem.mk (Sym.lit "d ") false, SymItem.mk (Sym.ref "DelIds") true,
-                                  SymItem.mk (Sym.lit "0") false]])
-                            (by rfl) (by rfl)
-                            (SearchPattern.MirrorsAlternatives.cons
-                              (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
-                                (SearchPattern.MirrorsSequence.optional
-                                  (SearchPattern.MirrorsSymbol.capture («grammar» := Lrat.grammar) (fuel := 20)
-                                    (production :=
-                                    Production.mk "DelIds"
-                                      [[SymItem.mk (Sym.rep " " (Sym.ref "DelId") 1 (none : Option Nat)) false,
-                                          SymItem.mk (Sym.lit " ") false]])
-                                    (by rfl) (by rfl)
-                                    (SearchPattern.MirrorsAlternatives.cons
-                                      (SearchPattern.MirrorsSequence.required
-                                        (SearchPattern.MirrorsSymbol.repetition (by rfl)
-                                          (SearchPattern.MirrorsSymbol.capture («grammar» := Lrat.grammar) (fuel := 19)
-                                            (production := Production.mk "DelId" [[SymItem.mk (Sym.ref "Pos") false]])
-                                            (by rfl) (by rfl)
-                                            (SearchPattern.MirrorsAlternatives.cons
-                                              (SearchPattern.MirrorsSequence.required
-                                                (SearchPattern.MirrorsSymbol.capture («grammar» := Lrat.grammar)
-                                                  (fuel := 18) (production :=
-                                                  Production.mk "Pos"
-                                                    [[SymItem.mk (Sym.ref "Zeros") true,
-                                                        SymItem.mk (Sym.ref "NonZero") false,
-                                                        SymItem.mk (Sym.ref "Digits") true]])
-                                                  (by rfl) (by rfl)
-                                                  (SearchPattern.MirrorsAlternatives.cons
-                                                    (SearchPattern.MirrorsSequence.optional
-                                                      (SearchPattern.MirrorsSymbol.capture («grammar» := Lrat.grammar)
-                                                        (fuel := 17) (production :=
-                                                        Production.mk "Zeros"
-                                                          [[SymItem.mk
-                                                                (Sym.term (TokClass.asciiRange 48 48 : TokClass)
-                                                                  LenSpec.atLeastOne)
-                                                                false]])
-                                                        (by rfl) (by rfl)
-                                                        (SearchPattern.MirrorsAlternatives.cons
-                                                          (SearchPattern.MirrorsSequence.required
-                                                            SearchPattern.MirrorsSymbol.tokenRun
-                                                            SearchPattern.MirrorsSequence.empty)
-                                                          SearchPattern.MirrorsAlternatives.empty))
-                                                      (SearchPattern.MirrorsSequence.required
-                                                        (SearchPattern.MirrorsSymbol.capture («grammar» := Lrat.grammar)
-                                                          (fuel := 17) (production :=
-                                                          Production.mk "NonZero"
-                                                            [[SymItem.mk
-                                                                  (Sym.term (TokClass.asciiRange 49 57 : TokClass)
-                                                                    (LenSpec.exactly 1))
-                                                                  false]])
-                                                          (by rfl) (by rfl)
-                                                          (SearchPattern.MirrorsAlternatives.cons
-                                                            (SearchPattern.MirrorsSequence.required
-                                                              SearchPattern.MirrorsSymbol.tokenRun
-                                                              SearchPattern.MirrorsSequence.empty)
-                                                            SearchPattern.MirrorsAlternatives.empty))
-                                                        (SearchPattern.MirrorsSequence.optional
-                                                          (SearchPattern.MirrorsSymbol.capture («grammar» :=
-                                                            Lrat.grammar) (fuel := 17) (production :=
-                                                            Production.mk "Digits"
-                                                              [[SymItem.mk (Sym.term TokClass.digit LenSpec.atLeastOne)
-                                                                    false]])
-                                                            (by rfl) (by rfl)
-                                                            (SearchPattern.MirrorsAlternatives.cons
-                                                              (SearchPattern.MirrorsSequence.required
-                                                                SearchPattern.MirrorsSymbol.tokenRun
-                                                                SearchPattern.MirrorsSequence.empty)
-                                                              SearchPattern.MirrorsAlternatives.empty))
-                                                          SearchPattern.MirrorsSequence.empty)))
-                                                    SearchPattern.MirrorsAlternatives.empty))
-                                                SearchPattern.MirrorsSequence.empty)
-                                              SearchPattern.MirrorsAlternatives.empty)))
-                                        (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
-                                          SearchPattern.MirrorsSequence.empty))
-                                      SearchPattern.MirrorsAlternatives.empty))
-                                  (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
-                                    SearchPattern.MirrorsSequence.empty)))
-                              SearchPattern.MirrorsAlternatives.empty))
-                          SearchPattern.MirrorsSequence.empty)
-                        (SearchPattern.MirrorsAlternatives.cons
+                              SearchPattern.MirrorsSequence.empty)
+                            SearchPattern.MirrorsAlternatives.empty))
+                        (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
                           (SearchPattern.MirrorsSequence.required
-                            (SearchPattern.MirrorsSymbol.capture («grammar» := Lrat.grammar) (fuel := 21) (production :=
-                              Production.mk "Add"
-                                [[SymItem.mk (Sym.ref "Lits") true, SymItem.mk (Sym.lit "0 ") false,
-                                    SymItem.mk (Sym.ref "RupHints") true, SymItem.mk (Sym.ref "RatSteps") true,
-                                    SymItem.mk (Sym.lit "0") false]])
+                            (SearchPattern.MirrorsSymbol.capture («grammar» := Lrat.grammar) (fuel := 24) (production :=
+                              Production.mk "Body"
+                                [[SymItem.mk (Sym.ref "Delete") false], [SymItem.mk (Sym.ref "Add") false]])
                               (by rfl) (by rfl)
                               (SearchPattern.MirrorsAlternatives.cons
-                                (SearchPattern.MirrorsSequence.optional
-                                  (SearchPattern.MirrorsSymbol.capture («grammar» := Lrat.grammar) (fuel := 20)
+                                (SearchPattern.MirrorsSequence.required
+                                  (SearchPattern.MirrorsSymbol.capture («grammar» := Lrat.grammar) (fuel := 23)
                                     (production :=
-                                    Production.mk "Lits"
-                                      [[SymItem.mk (Sym.rep " " (Sym.ref "Lit") 1 (none : Option Nat)) false,
-                                          SymItem.mk (Sym.lit " ") false]])
+                                    Production.mk "Delete"
+                                      [[SymItem.mk (Sym.lit "d ") false, SymItem.mk (Sym.ref "DelIds") true,
+                                          SymItem.mk (Sym.lit "0") false]])
                                     (by rfl) (by rfl)
                                     (SearchPattern.MirrorsAlternatives.cons
-                                      (SearchPattern.MirrorsSequence.required
-                                        (SearchPattern.MirrorsSymbol.repetition (by rfl)
-                                          (SearchPattern.MirrorsSymbol.capture («grammar» := Lrat.grammar) (fuel := 19)
+                                      (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                                        (SearchPattern.MirrorsSequence.optional
+                                          (SearchPattern.MirrorsSymbol.capture («grammar» := Lrat.grammar) (fuel := 22)
                                             (production :=
-                                            Production.mk "Lit"
-                                              [[SymItem.mk (Sym.ref "Neg") false], [SymItem.mk (Sym.ref "Pos") false]])
+                                            Production.mk "DelIds"
+                                              [[SymItem.mk (Sym.rep " " (Sym.ref "DelId") 1 (none : Option Nat)) false,
+                                                  SymItem.mk (Sym.lit " ") false]])
                                             (by rfl) (by rfl)
                                             (SearchPattern.MirrorsAlternatives.cons
                                               (SearchPattern.MirrorsSequence.required
-                                                (SearchPattern.MirrorsSymbol.capture («grammar» := Lrat.grammar)
-                                                  (fuel := 18) (production :=
-                                                  Production.mk "Neg"
-                                                    [[SymItem.mk (Sym.lit "-") false,
-                                                        SymItem.mk (Sym.ref "Pos") false]])
-                                                  (by rfl) (by rfl)
-                                                  (SearchPattern.MirrorsAlternatives.cons
-                                                    (SearchPattern.MirrorsSequence.required
-                                                      SearchPattern.MirrorsSymbol.literal
+                                                (SearchPattern.MirrorsSymbol.repetition (by rfl)
+                                                  (SearchPattern.MirrorsSymbol.capture («grammar» := Lrat.grammar)
+                                                    (fuel := 21) (production :=
+                                                    Production.mk "DelId" [[SymItem.mk (Sym.ref "Pos") false]]) (by rfl)
+                                                    (by rfl)
+                                                    (SearchPattern.MirrorsAlternatives.cons
                                                       (SearchPattern.MirrorsSequence.required
                                                         (SearchPattern.MirrorsSymbol.capture («grammar» := Lrat.grammar)
-                                                          (fuel := 17) (production :=
+                                                          (fuel := 20) (production :=
                                                           Production.mk "Pos"
                                                             [[SymItem.mk (Sym.ref "Zeros") true,
                                                                 SymItem.mk (Sym.ref "NonZero") false,
@@ -2406,7 +2595,7 @@ private theorem Lrat.searchPlan_mirrorsGrammar : SearchPlan.MirrorsGrammar Lrat.
                                                           (SearchPattern.MirrorsAlternatives.cons
                                                             (SearchPattern.MirrorsSequence.optional
                                                               (SearchPattern.MirrorsSymbol.capture («grammar» :=
-                                                                Lrat.grammar) (fuel := 16) (production :=
+                                                                Lrat.grammar) (fuel := 19) (production :=
                                                                 Production.mk "Zeros"
                                                                   [[SymItem.mk
                                                                         (Sym.term (TokClass.asciiRange 48 48 : TokClass)
@@ -2420,7 +2609,7 @@ private theorem Lrat.searchPlan_mirrorsGrammar : SearchPlan.MirrorsGrammar Lrat.
                                                                   SearchPattern.MirrorsAlternatives.empty))
                                                               (SearchPattern.MirrorsSequence.required
                                                                 (SearchPattern.MirrorsSymbol.capture («grammar» :=
-                                                                  Lrat.grammar) (fuel := 16) (production :=
+                                                                  Lrat.grammar) (fuel := 19) (production :=
                                                                   Production.mk "NonZero"
                                                                     [[SymItem.mk
                                                                           (Sym.term
@@ -2435,7 +2624,7 @@ private theorem Lrat.searchPlan_mirrorsGrammar : SearchPlan.MirrorsGrammar Lrat.
                                                                     SearchPattern.MirrorsAlternatives.empty))
                                                                 (SearchPattern.MirrorsSequence.optional
                                                                   (SearchPattern.MirrorsSymbol.capture («grammar» :=
-                                                                    Lrat.grammar) (fuel := 16) (production :=
+                                                                    Lrat.grammar) (fuel := 19) (production :=
                                                                     Production.mk "Digits"
                                                                       [[SymItem.mk
                                                                             (Sym.term TokClass.digit LenSpec.atLeastOne)
@@ -2448,191 +2637,101 @@ private theorem Lrat.searchPlan_mirrorsGrammar : SearchPlan.MirrorsGrammar Lrat.
                                                                       SearchPattern.MirrorsAlternatives.empty))
                                                                   SearchPattern.MirrorsSequence.empty)))
                                                             SearchPattern.MirrorsAlternatives.empty))
-                                                        SearchPattern.MirrorsSequence.empty))
-                                                    SearchPattern.MirrorsAlternatives.empty))
-                                                SearchPattern.MirrorsSequence.empty)
-                                              (SearchPattern.MirrorsAlternatives.cons
+                                                        SearchPattern.MirrorsSequence.empty)
+                                                      SearchPattern.MirrorsAlternatives.empty)))
                                                 (SearchPattern.MirrorsSequence.required
+                                                  SearchPattern.MirrorsSymbol.literal
+                                                  SearchPattern.MirrorsSequence.empty))
+                                              SearchPattern.MirrorsAlternatives.empty))
+                                          (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                                            SearchPattern.MirrorsSequence.empty)))
+                                      SearchPattern.MirrorsAlternatives.empty))
+                                  SearchPattern.MirrorsSequence.empty)
+                                (SearchPattern.MirrorsAlternatives.cons
+                                  (SearchPattern.MirrorsSequence.required
+                                    (SearchPattern.MirrorsSymbol.capture («grammar» := Lrat.grammar) (fuel := 23)
+                                      (production :=
+                                      Production.mk "Add"
+                                        [[SymItem.mk (Sym.ref "Lits") true, SymItem.mk (Sym.lit "0 ") false,
+                                            SymItem.mk (Sym.ref "RupHints") true, SymItem.mk (Sym.ref "RatSteps") true,
+                                            SymItem.mk (Sym.lit "0") false]])
+                                      (by rfl) (by rfl)
+                                      (SearchPattern.MirrorsAlternatives.cons
+                                        (SearchPattern.MirrorsSequence.optional
+                                          (SearchPattern.MirrorsSymbol.capture («grammar» := Lrat.grammar) (fuel := 22)
+                                            (production :=
+                                            Production.mk "Lits"
+                                              [[SymItem.mk (Sym.rep " " (Sym.ref "Lit") 1 (none : Option Nat)) false,
+                                                  SymItem.mk (Sym.lit " ") false]])
+                                            (by rfl) (by rfl)
+                                            (SearchPattern.MirrorsAlternatives.cons
+                                              (SearchPattern.MirrorsSequence.required
+                                                (SearchPattern.MirrorsSymbol.repetition (by rfl)
                                                   (SearchPattern.MirrorsSymbol.capture («grammar» := Lrat.grammar)
-                                                    (fuel := 18) (production :=
-                                                    Production.mk "Pos"
-                                                      [[SymItem.mk (Sym.ref "Zeros") true,
-                                                          SymItem.mk (Sym.ref "NonZero") false,
-                                                          SymItem.mk (Sym.ref "Digits") true]])
+                                                    (fuel := 21) (production :=
+                                                    Production.mk "Lit"
+                                                      [[SymItem.mk (Sym.ref "Neg") false],
+                                                        [SymItem.mk (Sym.ref "Pos") false]])
                                                     (by rfl) (by rfl)
                                                     (SearchPattern.MirrorsAlternatives.cons
-                                                      (SearchPattern.MirrorsSequence.optional
+                                                      (SearchPattern.MirrorsSequence.required
                                                         (SearchPattern.MirrorsSymbol.capture («grammar» := Lrat.grammar)
-                                                          (fuel := 17) (production :=
-                                                          Production.mk "Zeros"
-                                                            [[SymItem.mk
-                                                                  (Sym.term (TokClass.asciiRange 48 48 : TokClass)
-                                                                    LenSpec.atLeastOne)
-                                                                  false]])
+                                                          (fuel := 20) (production :=
+                                                          Production.mk "Neg"
+                                                            [[SymItem.mk (Sym.lit "-") false,
+                                                                SymItem.mk (Sym.ref "Pos") false]])
                                                           (by rfl) (by rfl)
                                                           (SearchPattern.MirrorsAlternatives.cons
                                                             (SearchPattern.MirrorsSequence.required
-                                                              SearchPattern.MirrorsSymbol.tokenRun
-                                                              SearchPattern.MirrorsSequence.empty)
-                                                            SearchPattern.MirrorsAlternatives.empty))
-                                                        (SearchPattern.MirrorsSequence.required
-                                                          (SearchPattern.MirrorsSymbol.capture («grammar» :=
-                                                            Lrat.grammar) (fuel := 17) (production :=
-                                                            Production.mk "NonZero"
-                                                              [[SymItem.mk
-                                                                    (Sym.term (TokClass.asciiRange 49 57 : TokClass)
-                                                                      (LenSpec.exactly 1))
-                                                                    false]])
-                                                            (by rfl) (by rfl)
-                                                            (SearchPattern.MirrorsAlternatives.cons
+                                                              SearchPattern.MirrorsSymbol.literal
                                                               (SearchPattern.MirrorsSequence.required
-                                                                SearchPattern.MirrorsSymbol.tokenRun
-                                                                SearchPattern.MirrorsSequence.empty)
-                                                              SearchPattern.MirrorsAlternatives.empty))
-                                                          (SearchPattern.MirrorsSequence.optional
-                                                            (SearchPattern.MirrorsSymbol.capture («grammar» :=
-                                                              Lrat.grammar) (fuel := 17) (production :=
-                                                              Production.mk "Digits"
-                                                                [[SymItem.mk
-                                                                      (Sym.term TokClass.digit LenSpec.atLeastOne)
-                                                                      false]])
-                                                              (by rfl) (by rfl)
-                                                              (SearchPattern.MirrorsAlternatives.cons
-                                                                (SearchPattern.MirrorsSequence.required
-                                                                  SearchPattern.MirrorsSymbol.tokenRun
-                                                                  SearchPattern.MirrorsSequence.empty)
-                                                                SearchPattern.MirrorsAlternatives.empty))
-                                                            SearchPattern.MirrorsSequence.empty)))
-                                                      SearchPattern.MirrorsAlternatives.empty))
-                                                  SearchPattern.MirrorsSequence.empty)
-                                                SearchPattern.MirrorsAlternatives.empty))))
-                                        (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
-                                          SearchPattern.MirrorsSequence.empty))
-                                      SearchPattern.MirrorsAlternatives.empty))
-                                  (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
-                                    (SearchPattern.MirrorsSequence.optional
-                                      (SearchPattern.MirrorsSymbol.capture («grammar» := Lrat.grammar) (fuel := 20)
-                                        (production :=
-                                        Production.mk "RupHints"
-                                          [[SymItem.mk (Sym.rep " " (Sym.ref "RupHint") 1 (none : Option Nat)) false,
-                                              SymItem.mk (Sym.lit " ") false]])
-                                        (by rfl) (by rfl)
-                                        (SearchPattern.MirrorsAlternatives.cons
-                                          (SearchPattern.MirrorsSequence.required
-                                            (SearchPattern.MirrorsSymbol.repetition (by rfl)
-                                              (SearchPattern.MirrorsSymbol.capture («grammar» := Lrat.grammar) (fuel :=
-                                                19) (production :=
-                                                Production.mk "RupHint" [[SymItem.mk (Sym.ref "Pos") false]]) (by rfl)
-                                                (by rfl)
-                                                (SearchPattern.MirrorsAlternatives.cons
-                                                  (SearchPattern.MirrorsSequence.required
-                                                    (SearchPattern.MirrorsSymbol.capture («grammar» := Lrat.grammar)
-                                                      (fuel := 18) (production :=
-                                                      Production.mk "Pos"
-                                                        [[SymItem.mk (Sym.ref "Zeros") true,
-                                                            SymItem.mk (Sym.ref "NonZero") false,
-                                                            SymItem.mk (Sym.ref "Digits") true]])
-                                                      (by rfl) (by rfl)
-                                                      (SearchPattern.MirrorsAlternatives.cons
-                                                        (SearchPattern.MirrorsSequence.optional
-                                                          (SearchPattern.MirrorsSymbol.capture («grammar» :=
-                                                            Lrat.grammar) (fuel := 17) (production :=
-                                                            Production.mk "Zeros"
-                                                              [[SymItem.mk
-                                                                    (Sym.term (TokClass.asciiRange 48 48 : TokClass)
-                                                                      LenSpec.atLeastOne)
-                                                                    false]])
-                                                            (by rfl) (by rfl)
-                                                            (SearchPattern.MirrorsAlternatives.cons
-                                                              (SearchPattern.MirrorsSequence.required
-                                                                SearchPattern.MirrorsSymbol.tokenRun
-                                                                SearchPattern.MirrorsSequence.empty)
-                                                              SearchPattern.MirrorsAlternatives.empty))
-                                                          (SearchPattern.MirrorsSequence.required
-                                                            (SearchPattern.MirrorsSymbol.capture («grammar» :=
-                                                              Lrat.grammar) (fuel := 17) (production :=
-                                                              Production.mk "NonZero"
-                                                                [[SymItem.mk
-                                                                      (Sym.term (TokClass.asciiRange 49 57 : TokClass)
-                                                                        (LenSpec.exactly 1))
-                                                                      false]])
-                                                              (by rfl) (by rfl)
-                                                              (SearchPattern.MirrorsAlternatives.cons
-                                                                (SearchPattern.MirrorsSequence.required
-                                                                  SearchPattern.MirrorsSymbol.tokenRun
-                                                                  SearchPattern.MirrorsSequence.empty)
-                                                                SearchPattern.MirrorsAlternatives.empty))
-                                                            (SearchPattern.MirrorsSequence.optional
-                                                              (SearchPattern.MirrorsSymbol.capture («grammar» :=
-                                                                Lrat.grammar) (fuel := 17) (production :=
-                                                                Production.mk "Digits"
-                                                                  [[SymItem.mk
-                                                                        (Sym.term TokClass.digit LenSpec.atLeastOne)
-                                                                        false]])
-                                                                (by rfl) (by rfl)
-                                                                (SearchPattern.MirrorsAlternatives.cons
-                                                                  (SearchPattern.MirrorsSequence.required
-                                                                    SearchPattern.MirrorsSymbol.tokenRun
-                                                                    SearchPattern.MirrorsSequence.empty)
-                                                                  SearchPattern.MirrorsAlternatives.empty))
-                                                              SearchPattern.MirrorsSequence.empty)))
-                                                        SearchPattern.MirrorsAlternatives.empty))
-                                                    SearchPattern.MirrorsSequence.empty)
-                                                  SearchPattern.MirrorsAlternatives.empty)))
-                                            (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
-                                              SearchPattern.MirrorsSequence.empty))
-                                          SearchPattern.MirrorsAlternatives.empty))
-                                      (SearchPattern.MirrorsSequence.optional
-                                        (SearchPattern.MirrorsSymbol.capture («grammar» := Lrat.grammar) (fuel := 20)
-                                          (production :=
-                                          Production.mk "RatSteps"
-                                            [[SymItem.mk (Sym.rep " " (Sym.ref "RatStep") 1 (none : Option Nat)) false,
-                                                SymItem.mk (Sym.lit " ") false]])
-                                          (by rfl) (by rfl)
-                                          (SearchPattern.MirrorsAlternatives.cons
-                                            (SearchPattern.MirrorsSequence.required
-                                              (SearchPattern.MirrorsSymbol.repetition (by rfl)
-                                                (SearchPattern.MirrorsSymbol.capture («grammar» := Lrat.grammar)
-                                                  (fuel := 19) (production :=
-                                                  Production.mk "RatStep"
-                                                    [[SymItem.mk (Sym.ref "RatPivot") false,
-                                                        SymItem.mk (Sym.ref "RatTail") true]])
-                                                  (by rfl) (by rfl)
-                                                  (SearchPattern.MirrorsAlternatives.cons
-                                                    (SearchPattern.MirrorsSequence.required
-                                                      (SearchPattern.MirrorsSymbol.capture («grammar» := Lrat.grammar)
-                                                        (fuel := 18) (production :=
-                                                        Production.mk "RatPivot" [[SymItem.mk (Sym.ref "Neg") false]])
-                                                        (by rfl) (by rfl)
-                                                        (SearchPattern.MirrorsAlternatives.cons
-                                                          (SearchPattern.MirrorsSequence.required
-                                                            (SearchPattern.MirrorsSymbol.capture («grammar» :=
-                                                              Lrat.grammar) (fuel := 17) (production :=
-                                                              Production.mk "Neg"
-                                                                [[SymItem.mk (Sym.lit "-") false,
-                                                                    SymItem.mk (Sym.ref "Pos") false]])
-                                                              (by rfl) (by rfl)
-                                                              (SearchPattern.MirrorsAlternatives.cons
-                                                                (SearchPattern.MirrorsSequence.required
-                                                                  SearchPattern.MirrorsSymbol.literal
-                                                                  (SearchPattern.MirrorsSequence.required
-                                                                    (SearchPattern.MirrorsSymbol.capture («grammar» :=
-                                                                      Lrat.grammar) (fuel := 16) (production :=
-                                                                      Production.mk "Pos"
-                                                                        [[SymItem.mk (Sym.ref "Zeros") true,
-                                                                            SymItem.mk (Sym.ref "NonZero") false,
-                                                                            SymItem.mk (Sym.ref "Digits") true]])
-                                                                      (by rfl) (by rfl)
-                                                                      (SearchPattern.MirrorsAlternatives.cons
+                                                                (SearchPattern.MirrorsSymbol.capture («grammar» :=
+                                                                  Lrat.grammar) (fuel := 19) (production :=
+                                                                  Production.mk "Pos"
+                                                                    [[SymItem.mk (Sym.ref "Zeros") true,
+                                                                        SymItem.mk (Sym.ref "NonZero") false,
+                                                                        SymItem.mk (Sym.ref "Digits") true]])
+                                                                  (by rfl) (by rfl)
+                                                                  (SearchPattern.MirrorsAlternatives.cons
+                                                                    (SearchPattern.MirrorsSequence.optional
+                                                                      (SearchPattern.MirrorsSymbol.capture («grammar» :=
+                                                                        Lrat.grammar) (fuel := 18) (production :=
+                                                                        Production.mk "Zeros"
+                                                                          [[SymItem.mk
+                                                                                (Sym.term
+                                                                                  (TokClass.asciiRange 48 48 : TokClass)
+                                                                                  LenSpec.atLeastOne)
+                                                                                false]])
+                                                                        (by rfl) (by rfl)
+                                                                        (SearchPattern.MirrorsAlternatives.cons
+                                                                          (SearchPattern.MirrorsSequence.required
+                                                                            SearchPattern.MirrorsSymbol.tokenRun
+                                                                            SearchPattern.MirrorsSequence.empty)
+                                                                          SearchPattern.MirrorsAlternatives.empty))
+                                                                      (SearchPattern.MirrorsSequence.required
+                                                                        (SearchPattern.MirrorsSymbol.capture
+                                                                          («grammar» := Lrat.grammar) (fuel := 18)
+                                                                          (production :=
+                                                                          Production.mk "NonZero"
+                                                                            [[SymItem.mk
+                                                                                  (Sym.term
+                                                                                    (TokClass.asciiRange 49 57 :
+                                                                                      TokClass)
+                                                                                    (LenSpec.exactly 1))
+                                                                                  false]])
+                                                                          (by rfl) (by rfl)
+                                                                          (SearchPattern.MirrorsAlternatives.cons
+                                                                            (SearchPattern.MirrorsSequence.required
+                                                                              SearchPattern.MirrorsSymbol.tokenRun
+                                                                              SearchPattern.MirrorsSequence.empty)
+                                                                            SearchPattern.MirrorsAlternatives.empty))
                                                                         (SearchPattern.MirrorsSequence.optional
                                                                           (SearchPattern.MirrorsSymbol.capture
-                                                                            («grammar» := Lrat.grammar) (fuel := 15)
+                                                                            («grammar» := Lrat.grammar) (fuel := 18)
                                                                             (production :=
-                                                                            Production.mk "Zeros"
+                                                                            Production.mk "Digits"
                                                                               [[SymItem.mk
-                                                                                    (Sym.term
-                                                                                      (TokClass.asciiRange 48 48 :
-                                                                                        TokClass)
+                                                                                    (Sym.term TokClass.digit
                                                                                       LenSpec.atLeastOne)
                                                                                     false]])
                                                                             (by rfl) (by rfl)
@@ -2641,96 +2740,227 @@ private theorem Lrat.searchPlan_mirrorsGrammar : SearchPlan.MirrorsGrammar Lrat.
                                                                                 SearchPattern.MirrorsSymbol.tokenRun
                                                                                 SearchPattern.MirrorsSequence.empty)
                                                                               SearchPattern.MirrorsAlternatives.empty))
-                                                                          (SearchPattern.MirrorsSequence.required
-                                                                            (SearchPattern.MirrorsSymbol.capture
-                                                                              («grammar» := Lrat.grammar) (fuel := 15)
-                                                                              (production :=
-                                                                              Production.mk "NonZero"
-                                                                                [[SymItem.mk
-                                                                                      (Sym.term
-                                                                                        (TokClass.asciiRange 49 57 :
-                                                                                          TokClass)
-                                                                                        (LenSpec.exactly 1))
-                                                                                      false]])
-                                                                              (by rfl) (by rfl)
-                                                                              (SearchPattern.MirrorsAlternatives.cons
-                                                                                (SearchPattern.MirrorsSequence.required
-                                                                                  SearchPattern.MirrorsSymbol.tokenRun
-                                                                                  SearchPattern.MirrorsSequence.empty)
-                                                                                SearchPattern.MirrorsAlternatives.empty))
-                                                                            (SearchPattern.MirrorsSequence.optional
-                                                                              (SearchPattern.MirrorsSymbol.capture
-                                                                                («grammar» := Lrat.grammar) (fuel := 15)
-                                                                                (production :=
-                                                                                Production.mk "Digits"
-                                                                                  [[SymItem.mk
-                                                                                        (Sym.term TokClass.digit
-                                                                                          LenSpec.atLeastOne)
-                                                                                        false]])
-                                                                                (by rfl) (by rfl)
-                                                                                (SearchPattern.MirrorsAlternatives.cons
-                                                                                  (SearchPattern.MirrorsSequence.required
-                                                                                    SearchPattern.MirrorsSymbol.tokenRun
-                                                                                    SearchPattern.MirrorsSequence.empty)
-                                                                                  SearchPattern.MirrorsAlternatives.empty))
-                                                                              SearchPattern.MirrorsSequence.empty)))
-                                                                        SearchPattern.MirrorsAlternatives.empty))
-                                                                    SearchPattern.MirrorsSequence.empty))
-                                                                SearchPattern.MirrorsAlternatives.empty))
-                                                            SearchPattern.MirrorsSequence.empty)
-                                                          SearchPattern.MirrorsAlternatives.empty))
-                                                      (SearchPattern.MirrorsSequence.optional
-                                                        (SearchPattern.MirrorsSymbol.capture («grammar» := Lrat.grammar)
-                                                          (fuel := 18) (production :=
-                                                          Production.mk "RatTail"
-                                                            [[SymItem.mk (Sym.lit " ") false,
-                                                                SymItem.mk (Sym.ref "RatHints") false]])
-                                                          (by rfl) (by rfl)
-                                                          (SearchPattern.MirrorsAlternatives.cons
-                                                            (SearchPattern.MirrorsSequence.required
-                                                              SearchPattern.MirrorsSymbol.literal
-                                                              (SearchPattern.MirrorsSequence.required
+                                                                          SearchPattern.MirrorsSequence.empty)))
+                                                                    SearchPattern.MirrorsAlternatives.empty))
+                                                                SearchPattern.MirrorsSequence.empty))
+                                                            SearchPattern.MirrorsAlternatives.empty))
+                                                        SearchPattern.MirrorsSequence.empty)
+                                                      (SearchPattern.MirrorsAlternatives.cons
+                                                        (SearchPattern.MirrorsSequence.required
+                                                          (SearchPattern.MirrorsSymbol.capture («grammar» :=
+                                                            Lrat.grammar) (fuel := 20) (production :=
+                                                            Production.mk "Pos"
+                                                              [[SymItem.mk (Sym.ref "Zeros") true,
+                                                                  SymItem.mk (Sym.ref "NonZero") false,
+                                                                  SymItem.mk (Sym.ref "Digits") true]])
+                                                            (by rfl) (by rfl)
+                                                            (SearchPattern.MirrorsAlternatives.cons
+                                                              (SearchPattern.MirrorsSequence.optional
                                                                 (SearchPattern.MirrorsSymbol.capture («grammar» :=
-                                                                  Lrat.grammar) (fuel := 17) (production :=
-                                                                  Production.mk "RatHints"
+                                                                  Lrat.grammar) (fuel := 19) (production :=
+                                                                  Production.mk "Zeros"
                                                                     [[SymItem.mk
-                                                                          (Sym.rep " " (Sym.ref "RatHint") 1
-                                                                            (none : Option Nat))
+                                                                          (Sym.term
+                                                                            (TokClass.asciiRange 48 48 : TokClass)
+                                                                            LenSpec.atLeastOne)
                                                                           false]])
                                                                   (by rfl) (by rfl)
                                                                   (SearchPattern.MirrorsAlternatives.cons
                                                                     (SearchPattern.MirrorsSequence.required
-                                                                      (SearchPattern.MirrorsSymbol.repetition (by rfl)
-                                                                        (SearchPattern.MirrorsSymbol.capture
-                                                                          («grammar» := Lrat.grammar) (fuel := 16)
-                                                                          (production :=
-                                                                          Production.mk "RatHint"
-                                                                            [[SymItem.mk (Sym.ref "Pos") false]])
-                                                                          (by rfl) (by rfl)
-                                                                          (SearchPattern.MirrorsAlternatives.cons
-                                                                            (SearchPattern.MirrorsSequence.required
-                                                                              (SearchPattern.MirrorsSymbol.capture
-                                                                                («grammar» := Lrat.grammar) (fuel := 15)
-                                                                                (production :=
-                                                                                Production.mk "Pos"
-                                                                                  [[SymItem.mk (Sym.ref "Zeros") true,
-                                                                                      SymItem.mk (Sym.ref "NonZero")
-                                                                                        false,
-                                                                                      SymItem.mk (Sym.ref "Digits")
-                                                                                        true]])
-                                                                                (by rfl) (by rfl)
-                                                                                (SearchPattern.MirrorsAlternatives.cons
-                                                                                  (SearchPattern.MirrorsSequence.optional
+                                                                      SearchPattern.MirrorsSymbol.tokenRun
+                                                                      SearchPattern.MirrorsSequence.empty)
+                                                                    SearchPattern.MirrorsAlternatives.empty))
+                                                                (SearchPattern.MirrorsSequence.required
+                                                                  (SearchPattern.MirrorsSymbol.capture («grammar» :=
+                                                                    Lrat.grammar) (fuel := 19) (production :=
+                                                                    Production.mk "NonZero"
+                                                                      [[SymItem.mk
+                                                                            (Sym.term
+                                                                              (TokClass.asciiRange 49 57 : TokClass)
+                                                                              (LenSpec.exactly 1))
+                                                                            false]])
+                                                                    (by rfl) (by rfl)
+                                                                    (SearchPattern.MirrorsAlternatives.cons
+                                                                      (SearchPattern.MirrorsSequence.required
+                                                                        SearchPattern.MirrorsSymbol.tokenRun
+                                                                        SearchPattern.MirrorsSequence.empty)
+                                                                      SearchPattern.MirrorsAlternatives.empty))
+                                                                  (SearchPattern.MirrorsSequence.optional
+                                                                    (SearchPattern.MirrorsSymbol.capture («grammar» :=
+                                                                      Lrat.grammar) (fuel := 19) (production :=
+                                                                      Production.mk "Digits"
+                                                                        [[SymItem.mk
+                                                                              (Sym.term TokClass.digit
+                                                                                LenSpec.atLeastOne)
+                                                                              false]])
+                                                                      (by rfl) (by rfl)
+                                                                      (SearchPattern.MirrorsAlternatives.cons
+                                                                        (SearchPattern.MirrorsSequence.required
+                                                                          SearchPattern.MirrorsSymbol.tokenRun
+                                                                          SearchPattern.MirrorsSequence.empty)
+                                                                        SearchPattern.MirrorsAlternatives.empty))
+                                                                    SearchPattern.MirrorsSequence.empty)))
+                                                              SearchPattern.MirrorsAlternatives.empty))
+                                                          SearchPattern.MirrorsSequence.empty)
+                                                        SearchPattern.MirrorsAlternatives.empty))))
+                                                (SearchPattern.MirrorsSequence.required
+                                                  SearchPattern.MirrorsSymbol.literal
+                                                  SearchPattern.MirrorsSequence.empty))
+                                              SearchPattern.MirrorsAlternatives.empty))
+                                          (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                                            (SearchPattern.MirrorsSequence.optional
+                                              (SearchPattern.MirrorsSymbol.capture («grammar» := Lrat.grammar) (fuel :=
+                                                22) (production :=
+                                                Production.mk "RupHints"
+                                                  [[SymItem.mk (Sym.rep " " (Sym.ref "RupHint") 1 (none : Option Nat))
+                                                        false,
+                                                      SymItem.mk (Sym.lit " ") false]])
+                                                (by rfl) (by rfl)
+                                                (SearchPattern.MirrorsAlternatives.cons
+                                                  (SearchPattern.MirrorsSequence.required
+                                                    (SearchPattern.MirrorsSymbol.repetition (by rfl)
+                                                      (SearchPattern.MirrorsSymbol.capture («grammar» := Lrat.grammar)
+                                                        (fuel := 21) (production :=
+                                                        Production.mk "RupHint" [[SymItem.mk (Sym.ref "Pos") false]])
+                                                        (by rfl) (by rfl)
+                                                        (SearchPattern.MirrorsAlternatives.cons
+                                                          (SearchPattern.MirrorsSequence.required
+                                                            (SearchPattern.MirrorsSymbol.capture («grammar» :=
+                                                              Lrat.grammar) (fuel := 20) (production :=
+                                                              Production.mk "Pos"
+                                                                [[SymItem.mk (Sym.ref "Zeros") true,
+                                                                    SymItem.mk (Sym.ref "NonZero") false,
+                                                                    SymItem.mk (Sym.ref "Digits") true]])
+                                                              (by rfl) (by rfl)
+                                                              (SearchPattern.MirrorsAlternatives.cons
+                                                                (SearchPattern.MirrorsSequence.optional
+                                                                  (SearchPattern.MirrorsSymbol.capture («grammar» :=
+                                                                    Lrat.grammar) (fuel := 19) (production :=
+                                                                    Production.mk "Zeros"
+                                                                      [[SymItem.mk
+                                                                            (Sym.term
+                                                                              (TokClass.asciiRange 48 48 : TokClass)
+                                                                              LenSpec.atLeastOne)
+                                                                            false]])
+                                                                    (by rfl) (by rfl)
+                                                                    (SearchPattern.MirrorsAlternatives.cons
+                                                                      (SearchPattern.MirrorsSequence.required
+                                                                        SearchPattern.MirrorsSymbol.tokenRun
+                                                                        SearchPattern.MirrorsSequence.empty)
+                                                                      SearchPattern.MirrorsAlternatives.empty))
+                                                                  (SearchPattern.MirrorsSequence.required
+                                                                    (SearchPattern.MirrorsSymbol.capture («grammar» :=
+                                                                      Lrat.grammar) (fuel := 19) (production :=
+                                                                      Production.mk "NonZero"
+                                                                        [[SymItem.mk
+                                                                              (Sym.term
+                                                                                (TokClass.asciiRange 49 57 : TokClass)
+                                                                                (LenSpec.exactly 1))
+                                                                              false]])
+                                                                      (by rfl) (by rfl)
+                                                                      (SearchPattern.MirrorsAlternatives.cons
+                                                                        (SearchPattern.MirrorsSequence.required
+                                                                          SearchPattern.MirrorsSymbol.tokenRun
+                                                                          SearchPattern.MirrorsSequence.empty)
+                                                                        SearchPattern.MirrorsAlternatives.empty))
+                                                                    (SearchPattern.MirrorsSequence.optional
+                                                                      (SearchPattern.MirrorsSymbol.capture («grammar» :=
+                                                                        Lrat.grammar) (fuel := 19) (production :=
+                                                                        Production.mk "Digits"
+                                                                          [[SymItem.mk
+                                                                                (Sym.term TokClass.digit
+                                                                                  LenSpec.atLeastOne)
+                                                                                false]])
+                                                                        (by rfl) (by rfl)
+                                                                        (SearchPattern.MirrorsAlternatives.cons
+                                                                          (SearchPattern.MirrorsSequence.required
+                                                                            SearchPattern.MirrorsSymbol.tokenRun
+                                                                            SearchPattern.MirrorsSequence.empty)
+                                                                          SearchPattern.MirrorsAlternatives.empty))
+                                                                      SearchPattern.MirrorsSequence.empty)))
+                                                                SearchPattern.MirrorsAlternatives.empty))
+                                                            SearchPattern.MirrorsSequence.empty)
+                                                          SearchPattern.MirrorsAlternatives.empty)))
+                                                    (SearchPattern.MirrorsSequence.required
+                                                      SearchPattern.MirrorsSymbol.literal
+                                                      SearchPattern.MirrorsSequence.empty))
+                                                  SearchPattern.MirrorsAlternatives.empty))
+                                              (SearchPattern.MirrorsSequence.optional
+                                                (SearchPattern.MirrorsSymbol.capture («grammar» := Lrat.grammar)
+                                                  (fuel := 22) (production :=
+                                                  Production.mk "RatSteps"
+                                                    [[SymItem.mk (Sym.rep " " (Sym.ref "RatStep") 1 (none : Option Nat))
+                                                          false,
+                                                        SymItem.mk (Sym.lit " ") false]])
+                                                  (by rfl) (by rfl)
+                                                  (SearchPattern.MirrorsAlternatives.cons
+                                                    (SearchPattern.MirrorsSequence.required
+                                                      (SearchPattern.MirrorsSymbol.repetition (by rfl)
+                                                        (SearchPattern.MirrorsSymbol.capture («grammar» := Lrat.grammar)
+                                                          (fuel := 21) (production :=
+                                                          Production.mk "RatStep"
+                                                            [[SymItem.mk (Sym.ref "RatPivot") false,
+                                                                SymItem.mk (Sym.ref "RatTail") true]])
+                                                          (by rfl) (by rfl)
+                                                          (SearchPattern.MirrorsAlternatives.cons
+                                                            (SearchPattern.MirrorsSequence.required
+                                                              (SearchPattern.MirrorsSymbol.capture («grammar» :=
+                                                                Lrat.grammar) (fuel := 20) (production :=
+                                                                Production.mk "RatPivot"
+                                                                  [[SymItem.mk (Sym.ref "Neg") false]])
+                                                                (by rfl) (by rfl)
+                                                                (SearchPattern.MirrorsAlternatives.cons
+                                                                  (SearchPattern.MirrorsSequence.required
+                                                                    (SearchPattern.MirrorsSymbol.capture («grammar» :=
+                                                                      Lrat.grammar) (fuel := 19) (production :=
+                                                                      Production.mk "Neg"
+                                                                        [[SymItem.mk (Sym.lit "-") false,
+                                                                            SymItem.mk (Sym.ref "Pos") false]])
+                                                                      (by rfl) (by rfl)
+                                                                      (SearchPattern.MirrorsAlternatives.cons
+                                                                        (SearchPattern.MirrorsSequence.required
+                                                                          SearchPattern.MirrorsSymbol.literal
+                                                                          (SearchPattern.MirrorsSequence.required
+                                                                            (SearchPattern.MirrorsSymbol.capture
+                                                                              («grammar» := Lrat.grammar) (fuel := 18)
+                                                                              (production :=
+                                                                              Production.mk "Pos"
+                                                                                [[SymItem.mk (Sym.ref "Zeros") true,
+                                                                                    SymItem.mk (Sym.ref "NonZero")
+                                                                                      false,
+                                                                                    SymItem.mk (Sym.ref "Digits")
+                                                                                      true]])
+                                                                              (by rfl) (by rfl)
+                                                                              (SearchPattern.MirrorsAlternatives.cons
+                                                                                (SearchPattern.MirrorsSequence.optional
+                                                                                  (SearchPattern.MirrorsSymbol.capture
+                                                                                    («grammar» := Lrat.grammar) (fuel :=
+                                                                                    17) (production :=
+                                                                                    Production.mk "Zeros"
+                                                                                      [[SymItem.mk
+                                                                                            (Sym.term
+                                                                                              (TokClass.asciiRange 48
+                                                                                                  48 :
+                                                                                                TokClass)
+                                                                                              LenSpec.atLeastOne)
+                                                                                            false]])
+                                                                                    (by rfl) (by rfl)
+                                                                                    (SearchPattern.MirrorsAlternatives.cons
+                                                                                      (SearchPattern.MirrorsSequence.required
+                                                                                        SearchPattern.MirrorsSymbol.tokenRun
+                                                                                        SearchPattern.MirrorsSequence.empty)
+                                                                                      SearchPattern.MirrorsAlternatives.empty))
+                                                                                  (SearchPattern.MirrorsSequence.required
                                                                                     (SearchPattern.MirrorsSymbol.capture
                                                                                       («grammar» := Lrat.grammar)
-                                                                                      (fuel := 14) (production :=
-                                                                                      Production.mk "Zeros"
+                                                                                      (fuel := 17) (production :=
+                                                                                      Production.mk "NonZero"
                                                                                         [[SymItem.mk
                                                                                               (Sym.term
-                                                                                                (TokClass.asciiRange 48
-                                                                                                    48 :
+                                                                                                (TokClass.asciiRange 49
+                                                                                                    57 :
                                                                                                   TokClass)
-                                                                                                LenSpec.atLeastOne)
+                                                                                                (LenSpec.exactly 1))
                                                                                               false]])
                                                                                       (by rfl) (by rfl)
                                                                                       (SearchPattern.MirrorsAlternatives.cons
@@ -2738,17 +2968,14 @@ private theorem Lrat.searchPlan_mirrorsGrammar : SearchPlan.MirrorsGrammar Lrat.
                                                                                           SearchPattern.MirrorsSymbol.tokenRun
                                                                                           SearchPattern.MirrorsSequence.empty)
                                                                                         SearchPattern.MirrorsAlternatives.empty))
-                                                                                    (SearchPattern.MirrorsSequence.required
+                                                                                    (SearchPattern.MirrorsSequence.optional
                                                                                       (SearchPattern.MirrorsSymbol.capture
                                                                                         («grammar» := Lrat.grammar)
-                                                                                        (fuel := 14) (production :=
-                                                                                        Production.mk "NonZero"
+                                                                                        (fuel := 17) (production :=
+                                                                                        Production.mk "Digits"
                                                                                           [[SymItem.mk
-                                                                                                (Sym.term
-                                                                                                  (TokClass.asciiRange
-                                                                                                      49 57 :
-                                                                                                    TokClass)
-                                                                                                  (LenSpec.exactly 1))
+                                                                                                (Sym.term TokClass.digit
+                                                                                                  LenSpec.atLeastOne)
                                                                                                 false]])
                                                                                         (by rfl) (by rfl)
                                                                                         (SearchPattern.MirrorsAlternatives.cons
@@ -2756,50 +2983,147 @@ private theorem Lrat.searchPlan_mirrorsGrammar : SearchPlan.MirrorsGrammar Lrat.
                                                                                             SearchPattern.MirrorsSymbol.tokenRun
                                                                                             SearchPattern.MirrorsSequence.empty)
                                                                                           SearchPattern.MirrorsAlternatives.empty))
-                                                                                      (SearchPattern.MirrorsSequence.optional
-                                                                                        (SearchPattern.MirrorsSymbol.capture
-                                                                                          («grammar» := Lrat.grammar)
-                                                                                          (fuel := 14) (production :=
-                                                                                          Production.mk "Digits"
-                                                                                            [[SymItem.mk
-                                                                                                  (Sym.term
-                                                                                                    TokClass.digit
-                                                                                                    LenSpec.atLeastOne)
-                                                                                                  false]])
-                                                                                          (by rfl) (by rfl)
-                                                                                          (SearchPattern.MirrorsAlternatives.cons
+                                                                                      SearchPattern.MirrorsSequence.empty)))
+                                                                                SearchPattern.MirrorsAlternatives.empty))
+                                                                            SearchPattern.MirrorsSequence.empty))
+                                                                        SearchPattern.MirrorsAlternatives.empty))
+                                                                    SearchPattern.MirrorsSequence.empty)
+                                                                  SearchPattern.MirrorsAlternatives.empty))
+                                                              (SearchPattern.MirrorsSequence.optional
+                                                                (SearchPattern.MirrorsSymbol.capture («grammar» :=
+                                                                  Lrat.grammar) (fuel := 20) (production :=
+                                                                  Production.mk "RatTail"
+                                                                    [[SymItem.mk (Sym.lit " ") false,
+                                                                        SymItem.mk (Sym.ref "RatHints") false]])
+                                                                  (by rfl) (by rfl)
+                                                                  (SearchPattern.MirrorsAlternatives.cons
+                                                                    (SearchPattern.MirrorsSequence.required
+                                                                      SearchPattern.MirrorsSymbol.literal
+                                                                      (SearchPattern.MirrorsSequence.required
+                                                                        (SearchPattern.MirrorsSymbol.capture
+                                                                          («grammar» := Lrat.grammar) (fuel := 19)
+                                                                          (production :=
+                                                                          Production.mk "RatHints"
+                                                                            [[SymItem.mk
+                                                                                  (Sym.rep " " (Sym.ref "RatHint") 1
+                                                                                    (none : Option Nat))
+                                                                                  false]])
+                                                                          (by rfl) (by rfl)
+                                                                          (SearchPattern.MirrorsAlternatives.cons
+                                                                            (SearchPattern.MirrorsSequence.required
+                                                                              (SearchPattern.MirrorsSymbol.repetition
+                                                                                (by rfl)
+                                                                                (SearchPattern.MirrorsSymbol.capture
+                                                                                  («grammar» := Lrat.grammar) (fuel :=
+                                                                                  18) (production :=
+                                                                                  Production.mk "RatHint"
+                                                                                    [[SymItem.mk (Sym.ref "Pos")
+                                                                                          false]])
+                                                                                  (by rfl) (by rfl)
+                                                                                  (SearchPattern.MirrorsAlternatives.cons
+                                                                                    (SearchPattern.MirrorsSequence.required
+                                                                                      (SearchPattern.MirrorsSymbol.capture
+                                                                                        («grammar» := Lrat.grammar)
+                                                                                        (fuel := 17) (production :=
+                                                                                        Production.mk "Pos"
+                                                                                          [[SymItem.mk (Sym.ref "Zeros")
+                                                                                                true,
+                                                                                              SymItem.mk
+                                                                                                (Sym.ref "NonZero")
+                                                                                                false,
+                                                                                              SymItem.mk
+                                                                                                (Sym.ref "Digits")
+                                                                                                true]])
+                                                                                        (by rfl) (by rfl)
+                                                                                        (SearchPattern.MirrorsAlternatives.cons
+                                                                                          (SearchPattern.MirrorsSequence.optional
+                                                                                            (SearchPattern.MirrorsSymbol.capture
+                                                                                              («grammar» :=
+                                                                                              Lrat.grammar) (fuel := 16)
+                                                                                              (production :=
+                                                                                              Production.mk "Zeros"
+                                                                                                [[SymItem.mk
+                                                                                                      (Sym.term
+                                                                                                        (TokClass.asciiRange
+                                                                                                            48 48 :
+                                                                                                          TokClass)
+                                                                                                        LenSpec.atLeastOne)
+                                                                                                      false]])
+                                                                                              (by rfl) (by rfl)
+                                                                                              (SearchPattern.MirrorsAlternatives.cons
+                                                                                                (SearchPattern.MirrorsSequence.required
+                                                                                                  SearchPattern.MirrorsSymbol.tokenRun
+                                                                                                  SearchPattern.MirrorsSequence.empty)
+                                                                                                SearchPattern.MirrorsAlternatives.empty))
                                                                                             (SearchPattern.MirrorsSequence.required
-                                                                                              SearchPattern.MirrorsSymbol.tokenRun
-                                                                                              SearchPattern.MirrorsSequence.empty)
-                                                                                            SearchPattern.MirrorsAlternatives.empty))
-                                                                                        SearchPattern.MirrorsSequence.empty)))
-                                                                                  SearchPattern.MirrorsAlternatives.empty))
+                                                                                              (SearchPattern.MirrorsSymbol.capture
+                                                                                                («grammar» :=
+                                                                                                Lrat.grammar) (fuel :=
+                                                                                                16) (production :=
+                                                                                                Production.mk "NonZero"
+                                                                                                  [[SymItem.mk
+                                                                                                        (Sym.term
+                                                                                                          (TokClass.asciiRange
+                                                                                                              49 57 :
+                                                                                                            TokClass)
+                                                                                                          (LenSpec.exactly
+                                                                                                            1))
+                                                                                                        false]])
+                                                                                                (by rfl) (by rfl)
+                                                                                                (SearchPattern.MirrorsAlternatives.cons
+                                                                                                  (SearchPattern.MirrorsSequence.required
+                                                                                                    SearchPattern.MirrorsSymbol.tokenRun
+                                                                                                    SearchPattern.MirrorsSequence.empty)
+                                                                                                  SearchPattern.MirrorsAlternatives.empty))
+                                                                                              (SearchPattern.MirrorsSequence.optional
+                                                                                                (SearchPattern.MirrorsSymbol.capture
+                                                                                                  («grammar» :=
+                                                                                                  Lrat.grammar) (fuel :=
+                                                                                                  16) (production :=
+                                                                                                  Production.mk "Digits"
+                                                                                                    [[SymItem.mk
+                                                                                                          (Sym.term
+                                                                                                            TokClass.digit
+                                                                                                            LenSpec.atLeastOne)
+                                                                                                          false]])
+                                                                                                  (by rfl) (by rfl)
+                                                                                                  (SearchPattern.MirrorsAlternatives.cons
+                                                                                                    (SearchPattern.MirrorsSequence.required
+                                                                                                      SearchPattern.MirrorsSymbol.tokenRun
+                                                                                                      SearchPattern.MirrorsSequence.empty)
+                                                                                                    SearchPattern.MirrorsAlternatives.empty))
+                                                                                                SearchPattern.MirrorsSequence.empty)))
+                                                                                          SearchPattern.MirrorsAlternatives.empty))
+                                                                                      SearchPattern.MirrorsSequence.empty)
+                                                                                    SearchPattern.MirrorsAlternatives.empty)))
                                                                               SearchPattern.MirrorsSequence.empty)
-                                                                            SearchPattern.MirrorsAlternatives.empty)))
-                                                                      SearchPattern.MirrorsSequence.empty)
+                                                                            SearchPattern.MirrorsAlternatives.empty))
+                                                                        SearchPattern.MirrorsSequence.empty))
                                                                     SearchPattern.MirrorsAlternatives.empty))
                                                                 SearchPattern.MirrorsSequence.empty))
-                                                            SearchPattern.MirrorsAlternatives.empty))
+                                                            SearchPattern.MirrorsAlternatives.empty)))
+                                                      (SearchPattern.MirrorsSequence.required
+                                                        SearchPattern.MirrorsSymbol.literal
                                                         SearchPattern.MirrorsSequence.empty))
-                                                    SearchPattern.MirrorsAlternatives.empty)))
-                                              (SearchPattern.MirrorsSequence.required
-                                                SearchPattern.MirrorsSymbol.literal
-                                                SearchPattern.MirrorsSequence.empty))
-                                            SearchPattern.MirrorsAlternatives.empty))
-                                        (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
-                                          SearchPattern.MirrorsSequence.empty)))))
-                                SearchPattern.MirrorsAlternatives.empty))
-                            SearchPattern.MirrorsSequence.empty)
-                          SearchPattern.MirrorsAlternatives.empty)))
-                    (SearchPattern.MirrorsSequence.required
-                      (SearchPattern.MirrorsSymbol.capture («grammar» := Lrat.grammar) (fuel := 22) (production :=
-                        Production.mk "Cr" [[SymItem.mk (Sym.lit "\x0d") true]]) (by rfl) (by rfl)
-                        (SearchPattern.MirrorsAlternatives.cons
-                          (SearchPattern.MirrorsSequence.optional SearchPattern.MirrorsSymbol.literal
-                            SearchPattern.MirrorsSequence.empty)
-                          SearchPattern.MirrorsAlternatives.empty))
-                      SearchPattern.MirrorsSequence.empty))))
-              SearchPattern.MirrorsAlternatives.empty)))
+                                                    SearchPattern.MirrorsAlternatives.empty))
+                                                (SearchPattern.MirrorsSequence.required
+                                                  SearchPattern.MirrorsSymbol.literal
+                                                  SearchPattern.MirrorsSequence.empty)))))
+                                        SearchPattern.MirrorsAlternatives.empty))
+                                    SearchPattern.MirrorsSequence.empty)
+                                  SearchPattern.MirrorsAlternatives.empty)))
+                            (SearchPattern.MirrorsSequence.required
+                              (SearchPattern.MirrorsSymbol.capture («grammar» := Lrat.grammar) (fuel := 24)
+                                (production := Production.mk "Cr" [[SymItem.mk (Sym.lit "\x0d") true]]) (by rfl)
+                                (by rfl)
+                                (SearchPattern.MirrorsAlternatives.cons
+                                  (SearchPattern.MirrorsSequence.optional SearchPattern.MirrorsSymbol.literal
+                                    SearchPattern.MirrorsSequence.empty)
+                                  SearchPattern.MirrorsAlternatives.empty))
+                              SearchPattern.MirrorsSequence.empty))))
+                      SearchPattern.MirrorsAlternatives.empty))
+                  SearchPattern.MirrorsSequence.empty)
+                SearchPattern.MirrorsAlternatives.empty))))
         (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
           SearchPattern.MirrorsSequence.empty))
       SearchPattern.MirrorsAlternatives.empty)
@@ -2808,123 +3132,51 @@ private abbrev Lrat.searchProgram : SearchProgram :=
   ({ start := "Proof",
       code :=
         SearchCode.repetition "\n"
-          (SearchCode.capture ["Line"]
-            (SearchCode.capture ["Id", "Line.Id"]
-              (SearchCode.capture ["Pos", "Id.Pos"]
-                (SearchCode.choice
-                  (SearchCode.capture ["Zeros", "Pos.Zeros"]
-                    (SearchCode.tokenRun (TokClass.asciiRange 48 48) LenSpec.atLeastOne SearchCode.accept)
-                    (SearchCode.capture ["NonZero", "Pos.NonZero"]
-                      (SearchCode.tokenRun (TokClass.asciiRange 49 57) (LenSpec.exactly 1) SearchCode.accept)
-                      (SearchCode.choice
-                        (SearchCode.capture ["Digits", "Pos.Digits"]
-                          (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept) SearchCode.accept)
-                        SearchCode.accept)))
-                  (SearchCode.capture ["NonZero", "Pos.NonZero"]
-                    (SearchCode.tokenRun (TokClass.asciiRange 49 57) (LenSpec.exactly 1) SearchCode.accept)
-                    (SearchCode.choice
-                      (SearchCode.capture ["Digits", "Pos.Digits"]
-                        (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept) SearchCode.accept)
+          (SearchCode.capture ["Entry"]
+            (SearchCode.choice
+              (SearchCode.capture ["Comment", "Entry.Comment"]
+                (SearchCode.literal "c"
+                  (SearchCode.choice
+                    (SearchCode.capture ["Remark", "Comment.Remark"]
+                      (SearchCode.tokenRun (TokClass.noneOf (List.cons '\x0d' (List.cons '\n' List.nil)))
+                        LenSpec.atLeastOne SearchCode.accept)
+                      (SearchCode.capture ["Cr", "Comment.Cr"]
+                        (SearchCode.choice (SearchCode.literal "\x0d" SearchCode.accept) SearchCode.accept)
+                        SearchCode.accept))
+                    (SearchCode.capture ["Cr", "Comment.Cr"]
+                      (SearchCode.choice (SearchCode.literal "\x0d" SearchCode.accept) SearchCode.accept)
                       SearchCode.accept)))
                 SearchCode.accept)
-              (SearchCode.literal " "
-                (SearchCode.capture ["Body", "Line.Body"]
-                  (SearchCode.choice
-                    (SearchCode.capture ["Delete", "Body.Delete"]
-                      (SearchCode.literal "d "
-                        (SearchCode.choice
-                          (SearchCode.capture ["DelIds", "Delete.DelIds"]
-                            (SearchCode.repetition " "
-                              (SearchCode.capture ["DelId", "DelIds.DelId"]
-                                (SearchCode.capture ["Pos", "DelId.Pos"]
-                                  (SearchCode.choice
-                                    (SearchCode.capture ["Zeros", "Pos.Zeros"]
-                                      (SearchCode.tokenRun (TokClass.asciiRange 48 48) LenSpec.atLeastOne
-                                        SearchCode.accept)
-                                      (SearchCode.capture ["NonZero", "Pos.NonZero"]
-                                        (SearchCode.tokenRun (TokClass.asciiRange 49 57) (LenSpec.exactly 1)
-                                          SearchCode.accept)
-                                        (SearchCode.choice
-                                          (SearchCode.capture ["Digits", "Pos.Digits"]
-                                            (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
-                                            SearchCode.accept)
-                                          SearchCode.accept)))
-                                    (SearchCode.capture ["NonZero", "Pos.NonZero"]
-                                      (SearchCode.tokenRun (TokClass.asciiRange 49 57) (LenSpec.exactly 1)
-                                        SearchCode.accept)
-                                      (SearchCode.choice
-                                        (SearchCode.capture ["Digits", "Pos.Digits"]
-                                          (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
-                                          SearchCode.accept)
-                                        SearchCode.accept)))
-                                  SearchCode.accept)
-                                SearchCode.accept)
-                              1 none "DelId" (SearchCode.literal " " SearchCode.accept))
-                            (SearchCode.literal "0" SearchCode.accept))
-                          (SearchCode.literal "0" SearchCode.accept)))
-                      SearchCode.accept)
-                    (SearchCode.capture ["Add", "Body.Add"]
-                      (SearchCode.choice
-                        (SearchCode.capture ["Lits", "Add.Lits"]
-                          (SearchCode.repetition " "
-                            (SearchCode.capture ["Lit", "Lits.Lit"]
-                              (SearchCode.choice
-                                (SearchCode.capture ["Neg", "Lit.Neg"]
-                                  (SearchCode.literal "-"
-                                    (SearchCode.capture ["Pos", "Neg.Pos"]
-                                      (SearchCode.choice
-                                        (SearchCode.capture ["Zeros", "Pos.Zeros"]
-                                          (SearchCode.tokenRun (TokClass.asciiRange 48 48) LenSpec.atLeastOne
-                                            SearchCode.accept)
-                                          (SearchCode.capture ["NonZero", "Pos.NonZero"]
-                                            (SearchCode.tokenRun (TokClass.asciiRange 49 57) (LenSpec.exactly 1)
-                                              SearchCode.accept)
-                                            (SearchCode.choice
-                                              (SearchCode.capture ["Digits", "Pos.Digits"]
-                                                (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne
-                                                  SearchCode.accept)
-                                                SearchCode.accept)
-                                              SearchCode.accept)))
-                                        (SearchCode.capture ["NonZero", "Pos.NonZero"]
-                                          (SearchCode.tokenRun (TokClass.asciiRange 49 57) (LenSpec.exactly 1)
-                                            SearchCode.accept)
-                                          (SearchCode.choice
-                                            (SearchCode.capture ["Digits", "Pos.Digits"]
-                                              (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
-                                              SearchCode.accept)
-                                            SearchCode.accept)))
-                                      SearchCode.accept))
-                                  SearchCode.accept)
-                                (SearchCode.capture ["Pos", "Lit.Pos"]
-                                  (SearchCode.choice
-                                    (SearchCode.capture ["Zeros", "Pos.Zeros"]
-                                      (SearchCode.tokenRun (TokClass.asciiRange 48 48) LenSpec.atLeastOne
-                                        SearchCode.accept)
-                                      (SearchCode.capture ["NonZero", "Pos.NonZero"]
-                                        (SearchCode.tokenRun (TokClass.asciiRange 49 57) (LenSpec.exactly 1)
-                                          SearchCode.accept)
-                                        (SearchCode.choice
-                                          (SearchCode.capture ["Digits", "Pos.Digits"]
-                                            (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
-                                            SearchCode.accept)
-                                          SearchCode.accept)))
-                                    (SearchCode.capture ["NonZero", "Pos.NonZero"]
-                                      (SearchCode.tokenRun (TokClass.asciiRange 49 57) (LenSpec.exactly 1)
-                                        SearchCode.accept)
-                                      (SearchCode.choice
-                                        (SearchCode.capture ["Digits", "Pos.Digits"]
-                                          (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
-                                          SearchCode.accept)
-                                        SearchCode.accept)))
-                                  SearchCode.accept))
+              (SearchCode.capture ["Line", "Entry.Line"]
+                (SearchCode.capture ["Id", "Line.Id"]
+                  (SearchCode.capture ["Pos", "Id.Pos"]
+                    (SearchCode.choice
+                      (SearchCode.capture ["Zeros", "Pos.Zeros"]
+                        (SearchCode.tokenRun (TokClass.asciiRange 48 48) LenSpec.atLeastOne SearchCode.accept)
+                        (SearchCode.capture ["NonZero", "Pos.NonZero"]
+                          (SearchCode.tokenRun (TokClass.asciiRange 49 57) (LenSpec.exactly 1) SearchCode.accept)
+                          (SearchCode.choice
+                            (SearchCode.capture ["Digits", "Pos.Digits"]
+                              (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
                               SearchCode.accept)
-                            1 none "Lit" (SearchCode.literal " " SearchCode.accept))
-                          (SearchCode.literal "0 "
+                            SearchCode.accept)))
+                      (SearchCode.capture ["NonZero", "Pos.NonZero"]
+                        (SearchCode.tokenRun (TokClass.asciiRange 49 57) (LenSpec.exactly 1) SearchCode.accept)
+                        (SearchCode.choice
+                          (SearchCode.capture ["Digits", "Pos.Digits"]
+                            (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept) SearchCode.accept)
+                          SearchCode.accept)))
+                    SearchCode.accept)
+                  (SearchCode.literal " "
+                    (SearchCode.capture ["Body", "Line.Body"]
+                      (SearchCode.choice
+                        (SearchCode.capture ["Delete", "Body.Delete"]
+                          (SearchCode.literal "d "
                             (SearchCode.choice
-                              (SearchCode.capture ["RupHints", "Add.RupHints"]
+                              (SearchCode.capture ["DelIds", "Delete.DelIds"]
                                 (SearchCode.repetition " "
-                                  (SearchCode.capture ["RupHint", "RupHints.RupHint"]
-                                    (SearchCode.capture ["Pos", "RupHint.Pos"]
+                                  (SearchCode.capture ["DelId", "DelIds.DelId"]
+                                    (SearchCode.capture ["Pos", "DelId.Pos"]
                                       (SearchCode.choice
                                         (SearchCode.capture ["Zeros", "Pos.Zeros"]
                                           (SearchCode.tokenRun (TokClass.asciiRange 48 48) LenSpec.atLeastOne
@@ -2948,7 +3200,343 @@ private abbrev Lrat.searchProgram : SearchProgram :=
                                             SearchCode.accept)))
                                       SearchCode.accept)
                                     SearchCode.accept)
-                                  1 none "RupHint" (SearchCode.literal " " SearchCode.accept))
+                                  1 none "DelId" (SearchCode.literal " " SearchCode.accept))
+                                (SearchCode.literal "0" SearchCode.accept))
+                              (SearchCode.literal "0" SearchCode.accept)))
+                          SearchCode.accept)
+                        (SearchCode.capture ["Add", "Body.Add"]
+                          (SearchCode.choice
+                            (SearchCode.capture ["Lits", "Add.Lits"]
+                              (SearchCode.repetition " "
+                                (SearchCode.capture ["Lit", "Lits.Lit"]
+                                  (SearchCode.choice
+                                    (SearchCode.capture ["Neg", "Lit.Neg"]
+                                      (SearchCode.literal "-"
+                                        (SearchCode.capture ["Pos", "Neg.Pos"]
+                                          (SearchCode.choice
+                                            (SearchCode.capture ["Zeros", "Pos.Zeros"]
+                                              (SearchCode.tokenRun (TokClass.asciiRange 48 48) LenSpec.atLeastOne
+                                                SearchCode.accept)
+                                              (SearchCode.capture ["NonZero", "Pos.NonZero"]
+                                                (SearchCode.tokenRun (TokClass.asciiRange 49 57) (LenSpec.exactly 1)
+                                                  SearchCode.accept)
+                                                (SearchCode.choice
+                                                  (SearchCode.capture ["Digits", "Pos.Digits"]
+                                                    (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne
+                                                      SearchCode.accept)
+                                                    SearchCode.accept)
+                                                  SearchCode.accept)))
+                                            (SearchCode.capture ["NonZero", "Pos.NonZero"]
+                                              (SearchCode.tokenRun (TokClass.asciiRange 49 57) (LenSpec.exactly 1)
+                                                SearchCode.accept)
+                                              (SearchCode.choice
+                                                (SearchCode.capture ["Digits", "Pos.Digits"]
+                                                  (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne
+                                                    SearchCode.accept)
+                                                  SearchCode.accept)
+                                                SearchCode.accept)))
+                                          SearchCode.accept))
+                                      SearchCode.accept)
+                                    (SearchCode.capture ["Pos", "Lit.Pos"]
+                                      (SearchCode.choice
+                                        (SearchCode.capture ["Zeros", "Pos.Zeros"]
+                                          (SearchCode.tokenRun (TokClass.asciiRange 48 48) LenSpec.atLeastOne
+                                            SearchCode.accept)
+                                          (SearchCode.capture ["NonZero", "Pos.NonZero"]
+                                            (SearchCode.tokenRun (TokClass.asciiRange 49 57) (LenSpec.exactly 1)
+                                              SearchCode.accept)
+                                            (SearchCode.choice
+                                              (SearchCode.capture ["Digits", "Pos.Digits"]
+                                                (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne
+                                                  SearchCode.accept)
+                                                SearchCode.accept)
+                                              SearchCode.accept)))
+                                        (SearchCode.capture ["NonZero", "Pos.NonZero"]
+                                          (SearchCode.tokenRun (TokClass.asciiRange 49 57) (LenSpec.exactly 1)
+                                            SearchCode.accept)
+                                          (SearchCode.choice
+                                            (SearchCode.capture ["Digits", "Pos.Digits"]
+                                              (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                                              SearchCode.accept)
+                                            SearchCode.accept)))
+                                      SearchCode.accept))
+                                  SearchCode.accept)
+                                1 none "Lit" (SearchCode.literal " " SearchCode.accept))
+                              (SearchCode.literal "0 "
+                                (SearchCode.choice
+                                  (SearchCode.capture ["RupHints", "Add.RupHints"]
+                                    (SearchCode.repetition " "
+                                      (SearchCode.capture ["RupHint", "RupHints.RupHint"]
+                                        (SearchCode.capture ["Pos", "RupHint.Pos"]
+                                          (SearchCode.choice
+                                            (SearchCode.capture ["Zeros", "Pos.Zeros"]
+                                              (SearchCode.tokenRun (TokClass.asciiRange 48 48) LenSpec.atLeastOne
+                                                SearchCode.accept)
+                                              (SearchCode.capture ["NonZero", "Pos.NonZero"]
+                                                (SearchCode.tokenRun (TokClass.asciiRange 49 57) (LenSpec.exactly 1)
+                                                  SearchCode.accept)
+                                                (SearchCode.choice
+                                                  (SearchCode.capture ["Digits", "Pos.Digits"]
+                                                    (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne
+                                                      SearchCode.accept)
+                                                    SearchCode.accept)
+                                                  SearchCode.accept)))
+                                            (SearchCode.capture ["NonZero", "Pos.NonZero"]
+                                              (SearchCode.tokenRun (TokClass.asciiRange 49 57) (LenSpec.exactly 1)
+                                                SearchCode.accept)
+                                              (SearchCode.choice
+                                                (SearchCode.capture ["Digits", "Pos.Digits"]
+                                                  (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne
+                                                    SearchCode.accept)
+                                                  SearchCode.accept)
+                                                SearchCode.accept)))
+                                          SearchCode.accept)
+                                        SearchCode.accept)
+                                      1 none "RupHint" (SearchCode.literal " " SearchCode.accept))
+                                    (SearchCode.choice
+                                      (SearchCode.capture ["RatSteps", "Add.RatSteps"]
+                                        (SearchCode.repetition " "
+                                          (SearchCode.capture ["RatStep", "RatSteps.RatStep"]
+                                            (SearchCode.capture ["RatPivot", "RatStep.RatPivot"]
+                                              (SearchCode.capture ["Neg", "RatPivot.Neg"]
+                                                (SearchCode.literal "-"
+                                                  (SearchCode.capture ["Pos", "Neg.Pos"]
+                                                    (SearchCode.choice
+                                                      (SearchCode.capture ["Zeros", "Pos.Zeros"]
+                                                        (SearchCode.tokenRun (TokClass.asciiRange 48 48)
+                                                          LenSpec.atLeastOne SearchCode.accept)
+                                                        (SearchCode.capture ["NonZero", "Pos.NonZero"]
+                                                          (SearchCode.tokenRun (TokClass.asciiRange 49 57)
+                                                            (LenSpec.exactly 1) SearchCode.accept)
+                                                          (SearchCode.choice
+                                                            (SearchCode.capture ["Digits", "Pos.Digits"]
+                                                              (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne
+                                                                SearchCode.accept)
+                                                              SearchCode.accept)
+                                                            SearchCode.accept)))
+                                                      (SearchCode.capture ["NonZero", "Pos.NonZero"]
+                                                        (SearchCode.tokenRun (TokClass.asciiRange 49 57)
+                                                          (LenSpec.exactly 1) SearchCode.accept)
+                                                        (SearchCode.choice
+                                                          (SearchCode.capture ["Digits", "Pos.Digits"]
+                                                            (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne
+                                                              SearchCode.accept)
+                                                            SearchCode.accept)
+                                                          SearchCode.accept)))
+                                                    SearchCode.accept))
+                                                SearchCode.accept)
+                                              (SearchCode.choice
+                                                (SearchCode.capture ["RatTail", "RatStep.RatTail"]
+                                                  (SearchCode.literal " "
+                                                    (SearchCode.capture ["RatHints", "RatTail.RatHints"]
+                                                      (SearchCode.repetition " "
+                                                        (SearchCode.capture ["RatHint", "RatHints.RatHint"]
+                                                          (SearchCode.capture ["Pos", "RatHint.Pos"]
+                                                            (SearchCode.choice
+                                                              (SearchCode.capture ["Zeros", "Pos.Zeros"]
+                                                                (SearchCode.tokenRun (TokClass.asciiRange 48 48)
+                                                                  LenSpec.atLeastOne SearchCode.accept)
+                                                                (SearchCode.capture ["NonZero", "Pos.NonZero"]
+                                                                  (SearchCode.tokenRun (TokClass.asciiRange 49 57)
+                                                                    (LenSpec.exactly 1) SearchCode.accept)
+                                                                  (SearchCode.choice
+                                                                    (SearchCode.capture ["Digits", "Pos.Digits"]
+                                                                      (SearchCode.tokenRun TokClass.digit
+                                                                        LenSpec.atLeastOne SearchCode.accept)
+                                                                      SearchCode.accept)
+                                                                    SearchCode.accept)))
+                                                              (SearchCode.capture ["NonZero", "Pos.NonZero"]
+                                                                (SearchCode.tokenRun (TokClass.asciiRange 49 57)
+                                                                  (LenSpec.exactly 1) SearchCode.accept)
+                                                                (SearchCode.choice
+                                                                  (SearchCode.capture ["Digits", "Pos.Digits"]
+                                                                    (SearchCode.tokenRun TokClass.digit
+                                                                      LenSpec.atLeastOne SearchCode.accept)
+                                                                    SearchCode.accept)
+                                                                  SearchCode.accept)))
+                                                            SearchCode.accept)
+                                                          SearchCode.accept)
+                                                        1 none "RatHint" SearchCode.accept)
+                                                      SearchCode.accept))
+                                                  SearchCode.accept)
+                                                SearchCode.accept))
+                                            SearchCode.accept)
+                                          1 none "RatStep" (SearchCode.literal " " SearchCode.accept))
+                                        (SearchCode.literal "0" SearchCode.accept))
+                                      (SearchCode.literal "0" SearchCode.accept)))
+                                  (SearchCode.choice
+                                    (SearchCode.capture ["RatSteps", "Add.RatSteps"]
+                                      (SearchCode.repetition " "
+                                        (SearchCode.capture ["RatStep", "RatSteps.RatStep"]
+                                          (SearchCode.capture ["RatPivot", "RatStep.RatPivot"]
+                                            (SearchCode.capture ["Neg", "RatPivot.Neg"]
+                                              (SearchCode.literal "-"
+                                                (SearchCode.capture ["Pos", "Neg.Pos"]
+                                                  (SearchCode.choice
+                                                    (SearchCode.capture ["Zeros", "Pos.Zeros"]
+                                                      (SearchCode.tokenRun (TokClass.asciiRange 48 48)
+                                                        LenSpec.atLeastOne SearchCode.accept)
+                                                      (SearchCode.capture ["NonZero", "Pos.NonZero"]
+                                                        (SearchCode.tokenRun (TokClass.asciiRange 49 57)
+                                                          (LenSpec.exactly 1) SearchCode.accept)
+                                                        (SearchCode.choice
+                                                          (SearchCode.capture ["Digits", "Pos.Digits"]
+                                                            (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne
+                                                              SearchCode.accept)
+                                                            SearchCode.accept)
+                                                          SearchCode.accept)))
+                                                    (SearchCode.capture ["NonZero", "Pos.NonZero"]
+                                                      (SearchCode.tokenRun (TokClass.asciiRange 49 57)
+                                                        (LenSpec.exactly 1) SearchCode.accept)
+                                                      (SearchCode.choice
+                                                        (SearchCode.capture ["Digits", "Pos.Digits"]
+                                                          (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne
+                                                            SearchCode.accept)
+                                                          SearchCode.accept)
+                                                        SearchCode.accept)))
+                                                  SearchCode.accept))
+                                              SearchCode.accept)
+                                            (SearchCode.choice
+                                              (SearchCode.capture ["RatTail", "RatStep.RatTail"]
+                                                (SearchCode.literal " "
+                                                  (SearchCode.capture ["RatHints", "RatTail.RatHints"]
+                                                    (SearchCode.repetition " "
+                                                      (SearchCode.capture ["RatHint", "RatHints.RatHint"]
+                                                        (SearchCode.capture ["Pos", "RatHint.Pos"]
+                                                          (SearchCode.choice
+                                                            (SearchCode.capture ["Zeros", "Pos.Zeros"]
+                                                              (SearchCode.tokenRun (TokClass.asciiRange 48 48)
+                                                                LenSpec.atLeastOne SearchCode.accept)
+                                                              (SearchCode.capture ["NonZero", "Pos.NonZero"]
+                                                                (SearchCode.tokenRun (TokClass.asciiRange 49 57)
+                                                                  (LenSpec.exactly 1) SearchCode.accept)
+                                                                (SearchCode.choice
+                                                                  (SearchCode.capture ["Digits", "Pos.Digits"]
+                                                                    (SearchCode.tokenRun TokClass.digit
+                                                                      LenSpec.atLeastOne SearchCode.accept)
+                                                                    SearchCode.accept)
+                                                                  SearchCode.accept)))
+                                                            (SearchCode.capture ["NonZero", "Pos.NonZero"]
+                                                              (SearchCode.tokenRun (TokClass.asciiRange 49 57)
+                                                                (LenSpec.exactly 1) SearchCode.accept)
+                                                              (SearchCode.choice
+                                                                (SearchCode.capture ["Digits", "Pos.Digits"]
+                                                                  (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne
+                                                                    SearchCode.accept)
+                                                                  SearchCode.accept)
+                                                                SearchCode.accept)))
+                                                          SearchCode.accept)
+                                                        SearchCode.accept)
+                                                      1 none "RatHint" SearchCode.accept)
+                                                    SearchCode.accept))
+                                                SearchCode.accept)
+                                              SearchCode.accept))
+                                          SearchCode.accept)
+                                        1 none "RatStep" (SearchCode.literal " " SearchCode.accept))
+                                      (SearchCode.literal "0" SearchCode.accept))
+                                    (SearchCode.literal "0" SearchCode.accept)))))
+                            (SearchCode.literal "0 "
+                              (SearchCode.choice
+                                (SearchCode.capture ["RupHints", "Add.RupHints"]
+                                  (SearchCode.repetition " "
+                                    (SearchCode.capture ["RupHint", "RupHints.RupHint"]
+                                      (SearchCode.capture ["Pos", "RupHint.Pos"]
+                                        (SearchCode.choice
+                                          (SearchCode.capture ["Zeros", "Pos.Zeros"]
+                                            (SearchCode.tokenRun (TokClass.asciiRange 48 48) LenSpec.atLeastOne
+                                              SearchCode.accept)
+                                            (SearchCode.capture ["NonZero", "Pos.NonZero"]
+                                              (SearchCode.tokenRun (TokClass.asciiRange 49 57) (LenSpec.exactly 1)
+                                                SearchCode.accept)
+                                              (SearchCode.choice
+                                                (SearchCode.capture ["Digits", "Pos.Digits"]
+                                                  (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne
+                                                    SearchCode.accept)
+                                                  SearchCode.accept)
+                                                SearchCode.accept)))
+                                          (SearchCode.capture ["NonZero", "Pos.NonZero"]
+                                            (SearchCode.tokenRun (TokClass.asciiRange 49 57) (LenSpec.exactly 1)
+                                              SearchCode.accept)
+                                            (SearchCode.choice
+                                              (SearchCode.capture ["Digits", "Pos.Digits"]
+                                                (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne
+                                                  SearchCode.accept)
+                                                SearchCode.accept)
+                                              SearchCode.accept)))
+                                        SearchCode.accept)
+                                      SearchCode.accept)
+                                    1 none "RupHint" (SearchCode.literal " " SearchCode.accept))
+                                  (SearchCode.choice
+                                    (SearchCode.capture ["RatSteps", "Add.RatSteps"]
+                                      (SearchCode.repetition " "
+                                        (SearchCode.capture ["RatStep", "RatSteps.RatStep"]
+                                          (SearchCode.capture ["RatPivot", "RatStep.RatPivot"]
+                                            (SearchCode.capture ["Neg", "RatPivot.Neg"]
+                                              (SearchCode.literal "-"
+                                                (SearchCode.capture ["Pos", "Neg.Pos"]
+                                                  (SearchCode.choice
+                                                    (SearchCode.capture ["Zeros", "Pos.Zeros"]
+                                                      (SearchCode.tokenRun (TokClass.asciiRange 48 48)
+                                                        LenSpec.atLeastOne SearchCode.accept)
+                                                      (SearchCode.capture ["NonZero", "Pos.NonZero"]
+                                                        (SearchCode.tokenRun (TokClass.asciiRange 49 57)
+                                                          (LenSpec.exactly 1) SearchCode.accept)
+                                                        (SearchCode.choice
+                                                          (SearchCode.capture ["Digits", "Pos.Digits"]
+                                                            (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne
+                                                              SearchCode.accept)
+                                                            SearchCode.accept)
+                                                          SearchCode.accept)))
+                                                    (SearchCode.capture ["NonZero", "Pos.NonZero"]
+                                                      (SearchCode.tokenRun (TokClass.asciiRange 49 57)
+                                                        (LenSpec.exactly 1) SearchCode.accept)
+                                                      (SearchCode.choice
+                                                        (SearchCode.capture ["Digits", "Pos.Digits"]
+                                                          (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne
+                                                            SearchCode.accept)
+                                                          SearchCode.accept)
+                                                        SearchCode.accept)))
+                                                  SearchCode.accept))
+                                              SearchCode.accept)
+                                            (SearchCode.choice
+                                              (SearchCode.capture ["RatTail", "RatStep.RatTail"]
+                                                (SearchCode.literal " "
+                                                  (SearchCode.capture ["RatHints", "RatTail.RatHints"]
+                                                    (SearchCode.repetition " "
+                                                      (SearchCode.capture ["RatHint", "RatHints.RatHint"]
+                                                        (SearchCode.capture ["Pos", "RatHint.Pos"]
+                                                          (SearchCode.choice
+                                                            (SearchCode.capture ["Zeros", "Pos.Zeros"]
+                                                              (SearchCode.tokenRun (TokClass.asciiRange 48 48)
+                                                                LenSpec.atLeastOne SearchCode.accept)
+                                                              (SearchCode.capture ["NonZero", "Pos.NonZero"]
+                                                                (SearchCode.tokenRun (TokClass.asciiRange 49 57)
+                                                                  (LenSpec.exactly 1) SearchCode.accept)
+                                                                (SearchCode.choice
+                                                                  (SearchCode.capture ["Digits", "Pos.Digits"]
+                                                                    (SearchCode.tokenRun TokClass.digit
+                                                                      LenSpec.atLeastOne SearchCode.accept)
+                                                                    SearchCode.accept)
+                                                                  SearchCode.accept)))
+                                                            (SearchCode.capture ["NonZero", "Pos.NonZero"]
+                                                              (SearchCode.tokenRun (TokClass.asciiRange 49 57)
+                                                                (LenSpec.exactly 1) SearchCode.accept)
+                                                              (SearchCode.choice
+                                                                (SearchCode.capture ["Digits", "Pos.Digits"]
+                                                                  (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne
+                                                                    SearchCode.accept)
+                                                                  SearchCode.accept)
+                                                                SearchCode.accept)))
+                                                          SearchCode.accept)
+                                                        SearchCode.accept)
+                                                      1 none "RatHint" SearchCode.accept)
+                                                    SearchCode.accept))
+                                                SearchCode.accept)
+                                              SearchCode.accept))
+                                          SearchCode.accept)
+                                        1 none "RatStep" (SearchCode.literal " " SearchCode.accept))
+                                      (SearchCode.literal "0" SearchCode.accept))
+                                    (SearchCode.literal "0" SearchCode.accept)))
                                 (SearchCode.choice
                                   (SearchCode.capture ["RatSteps", "Add.RatSteps"]
                                     (SearchCode.repetition " "
@@ -3019,255 +3607,14 @@ private abbrev Lrat.searchProgram : SearchProgram :=
                                         SearchCode.accept)
                                       1 none "RatStep" (SearchCode.literal " " SearchCode.accept))
                                     (SearchCode.literal "0" SearchCode.accept))
-                                  (SearchCode.literal "0" SearchCode.accept)))
-                              (SearchCode.choice
-                                (SearchCode.capture ["RatSteps", "Add.RatSteps"]
-                                  (SearchCode.repetition " "
-                                    (SearchCode.capture ["RatStep", "RatSteps.RatStep"]
-                                      (SearchCode.capture ["RatPivot", "RatStep.RatPivot"]
-                                        (SearchCode.capture ["Neg", "RatPivot.Neg"]
-                                          (SearchCode.literal "-"
-                                            (SearchCode.capture ["Pos", "Neg.Pos"]
-                                              (SearchCode.choice
-                                                (SearchCode.capture ["Zeros", "Pos.Zeros"]
-                                                  (SearchCode.tokenRun (TokClass.asciiRange 48 48) LenSpec.atLeastOne
-                                                    SearchCode.accept)
-                                                  (SearchCode.capture ["NonZero", "Pos.NonZero"]
-                                                    (SearchCode.tokenRun (TokClass.asciiRange 49 57) (LenSpec.exactly 1)
-                                                      SearchCode.accept)
-                                                    (SearchCode.choice
-                                                      (SearchCode.capture ["Digits", "Pos.Digits"]
-                                                        (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne
-                                                          SearchCode.accept)
-                                                        SearchCode.accept)
-                                                      SearchCode.accept)))
-                                                (SearchCode.capture ["NonZero", "Pos.NonZero"]
-                                                  (SearchCode.tokenRun (TokClass.asciiRange 49 57) (LenSpec.exactly 1)
-                                                    SearchCode.accept)
-                                                  (SearchCode.choice
-                                                    (SearchCode.capture ["Digits", "Pos.Digits"]
-                                                      (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne
-                                                        SearchCode.accept)
-                                                      SearchCode.accept)
-                                                    SearchCode.accept)))
-                                              SearchCode.accept))
-                                          SearchCode.accept)
-                                        (SearchCode.choice
-                                          (SearchCode.capture ["RatTail", "RatStep.RatTail"]
-                                            (SearchCode.literal " "
-                                              (SearchCode.capture ["RatHints", "RatTail.RatHints"]
-                                                (SearchCode.repetition " "
-                                                  (SearchCode.capture ["RatHint", "RatHints.RatHint"]
-                                                    (SearchCode.capture ["Pos", "RatHint.Pos"]
-                                                      (SearchCode.choice
-                                                        (SearchCode.capture ["Zeros", "Pos.Zeros"]
-                                                          (SearchCode.tokenRun (TokClass.asciiRange 48 48)
-                                                            LenSpec.atLeastOne SearchCode.accept)
-                                                          (SearchCode.capture ["NonZero", "Pos.NonZero"]
-                                                            (SearchCode.tokenRun (TokClass.asciiRange 49 57)
-                                                              (LenSpec.exactly 1) SearchCode.accept)
-                                                            (SearchCode.choice
-                                                              (SearchCode.capture ["Digits", "Pos.Digits"]
-                                                                (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne
-                                                                  SearchCode.accept)
-                                                                SearchCode.accept)
-                                                              SearchCode.accept)))
-                                                        (SearchCode.capture ["NonZero", "Pos.NonZero"]
-                                                          (SearchCode.tokenRun (TokClass.asciiRange 49 57)
-                                                            (LenSpec.exactly 1) SearchCode.accept)
-                                                          (SearchCode.choice
-                                                            (SearchCode.capture ["Digits", "Pos.Digits"]
-                                                              (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne
-                                                                SearchCode.accept)
-                                                              SearchCode.accept)
-                                                            SearchCode.accept)))
-                                                      SearchCode.accept)
-                                                    SearchCode.accept)
-                                                  1 none "RatHint" SearchCode.accept)
-                                                SearchCode.accept))
-                                            SearchCode.accept)
-                                          SearchCode.accept))
-                                      SearchCode.accept)
-                                    1 none "RatStep" (SearchCode.literal " " SearchCode.accept))
-                                  (SearchCode.literal "0" SearchCode.accept))
-                                (SearchCode.literal "0" SearchCode.accept)))))
-                        (SearchCode.literal "0 "
-                          (SearchCode.choice
-                            (SearchCode.capture ["RupHints", "Add.RupHints"]
-                              (SearchCode.repetition " "
-                                (SearchCode.capture ["RupHint", "RupHints.RupHint"]
-                                  (SearchCode.capture ["Pos", "RupHint.Pos"]
-                                    (SearchCode.choice
-                                      (SearchCode.capture ["Zeros", "Pos.Zeros"]
-                                        (SearchCode.tokenRun (TokClass.asciiRange 48 48) LenSpec.atLeastOne
-                                          SearchCode.accept)
-                                        (SearchCode.capture ["NonZero", "Pos.NonZero"]
-                                          (SearchCode.tokenRun (TokClass.asciiRange 49 57) (LenSpec.exactly 1)
-                                            SearchCode.accept)
-                                          (SearchCode.choice
-                                            (SearchCode.capture ["Digits", "Pos.Digits"]
-                                              (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
-                                              SearchCode.accept)
-                                            SearchCode.accept)))
-                                      (SearchCode.capture ["NonZero", "Pos.NonZero"]
-                                        (SearchCode.tokenRun (TokClass.asciiRange 49 57) (LenSpec.exactly 1)
-                                          SearchCode.accept)
-                                        (SearchCode.choice
-                                          (SearchCode.capture ["Digits", "Pos.Digits"]
-                                            (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
-                                            SearchCode.accept)
-                                          SearchCode.accept)))
-                                    SearchCode.accept)
-                                  SearchCode.accept)
-                                1 none "RupHint" (SearchCode.literal " " SearchCode.accept))
-                              (SearchCode.choice
-                                (SearchCode.capture ["RatSteps", "Add.RatSteps"]
-                                  (SearchCode.repetition " "
-                                    (SearchCode.capture ["RatStep", "RatSteps.RatStep"]
-                                      (SearchCode.capture ["RatPivot", "RatStep.RatPivot"]
-                                        (SearchCode.capture ["Neg", "RatPivot.Neg"]
-                                          (SearchCode.literal "-"
-                                            (SearchCode.capture ["Pos", "Neg.Pos"]
-                                              (SearchCode.choice
-                                                (SearchCode.capture ["Zeros", "Pos.Zeros"]
-                                                  (SearchCode.tokenRun (TokClass.asciiRange 48 48) LenSpec.atLeastOne
-                                                    SearchCode.accept)
-                                                  (SearchCode.capture ["NonZero", "Pos.NonZero"]
-                                                    (SearchCode.tokenRun (TokClass.asciiRange 49 57) (LenSpec.exactly 1)
-                                                      SearchCode.accept)
-                                                    (SearchCode.choice
-                                                      (SearchCode.capture ["Digits", "Pos.Digits"]
-                                                        (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne
-                                                          SearchCode.accept)
-                                                        SearchCode.accept)
-                                                      SearchCode.accept)))
-                                                (SearchCode.capture ["NonZero", "Pos.NonZero"]
-                                                  (SearchCode.tokenRun (TokClass.asciiRange 49 57) (LenSpec.exactly 1)
-                                                    SearchCode.accept)
-                                                  (SearchCode.choice
-                                                    (SearchCode.capture ["Digits", "Pos.Digits"]
-                                                      (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne
-                                                        SearchCode.accept)
-                                                      SearchCode.accept)
-                                                    SearchCode.accept)))
-                                              SearchCode.accept))
-                                          SearchCode.accept)
-                                        (SearchCode.choice
-                                          (SearchCode.capture ["RatTail", "RatStep.RatTail"]
-                                            (SearchCode.literal " "
-                                              (SearchCode.capture ["RatHints", "RatTail.RatHints"]
-                                                (SearchCode.repetition " "
-                                                  (SearchCode.capture ["RatHint", "RatHints.RatHint"]
-                                                    (SearchCode.capture ["Pos", "RatHint.Pos"]
-                                                      (SearchCode.choice
-                                                        (SearchCode.capture ["Zeros", "Pos.Zeros"]
-                                                          (SearchCode.tokenRun (TokClass.asciiRange 48 48)
-                                                            LenSpec.atLeastOne SearchCode.accept)
-                                                          (SearchCode.capture ["NonZero", "Pos.NonZero"]
-                                                            (SearchCode.tokenRun (TokClass.asciiRange 49 57)
-                                                              (LenSpec.exactly 1) SearchCode.accept)
-                                                            (SearchCode.choice
-                                                              (SearchCode.capture ["Digits", "Pos.Digits"]
-                                                                (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne
-                                                                  SearchCode.accept)
-                                                                SearchCode.accept)
-                                                              SearchCode.accept)))
-                                                        (SearchCode.capture ["NonZero", "Pos.NonZero"]
-                                                          (SearchCode.tokenRun (TokClass.asciiRange 49 57)
-                                                            (LenSpec.exactly 1) SearchCode.accept)
-                                                          (SearchCode.choice
-                                                            (SearchCode.capture ["Digits", "Pos.Digits"]
-                                                              (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne
-                                                                SearchCode.accept)
-                                                              SearchCode.accept)
-                                                            SearchCode.accept)))
-                                                      SearchCode.accept)
-                                                    SearchCode.accept)
-                                                  1 none "RatHint" SearchCode.accept)
-                                                SearchCode.accept))
-                                            SearchCode.accept)
-                                          SearchCode.accept))
-                                      SearchCode.accept)
-                                    1 none "RatStep" (SearchCode.literal " " SearchCode.accept))
-                                  (SearchCode.literal "0" SearchCode.accept))
-                                (SearchCode.literal "0" SearchCode.accept)))
-                            (SearchCode.choice
-                              (SearchCode.capture ["RatSteps", "Add.RatSteps"]
-                                (SearchCode.repetition " "
-                                  (SearchCode.capture ["RatStep", "RatSteps.RatStep"]
-                                    (SearchCode.capture ["RatPivot", "RatStep.RatPivot"]
-                                      (SearchCode.capture ["Neg", "RatPivot.Neg"]
-                                        (SearchCode.literal "-"
-                                          (SearchCode.capture ["Pos", "Neg.Pos"]
-                                            (SearchCode.choice
-                                              (SearchCode.capture ["Zeros", "Pos.Zeros"]
-                                                (SearchCode.tokenRun (TokClass.asciiRange 48 48) LenSpec.atLeastOne
-                                                  SearchCode.accept)
-                                                (SearchCode.capture ["NonZero", "Pos.NonZero"]
-                                                  (SearchCode.tokenRun (TokClass.asciiRange 49 57) (LenSpec.exactly 1)
-                                                    SearchCode.accept)
-                                                  (SearchCode.choice
-                                                    (SearchCode.capture ["Digits", "Pos.Digits"]
-                                                      (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne
-                                                        SearchCode.accept)
-                                                      SearchCode.accept)
-                                                    SearchCode.accept)))
-                                              (SearchCode.capture ["NonZero", "Pos.NonZero"]
-                                                (SearchCode.tokenRun (TokClass.asciiRange 49 57) (LenSpec.exactly 1)
-                                                  SearchCode.accept)
-                                                (SearchCode.choice
-                                                  (SearchCode.capture ["Digits", "Pos.Digits"]
-                                                    (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne
-                                                      SearchCode.accept)
-                                                    SearchCode.accept)
-                                                  SearchCode.accept)))
-                                            SearchCode.accept))
-                                        SearchCode.accept)
-                                      (SearchCode.choice
-                                        (SearchCode.capture ["RatTail", "RatStep.RatTail"]
-                                          (SearchCode.literal " "
-                                            (SearchCode.capture ["RatHints", "RatTail.RatHints"]
-                                              (SearchCode.repetition " "
-                                                (SearchCode.capture ["RatHint", "RatHints.RatHint"]
-                                                  (SearchCode.capture ["Pos", "RatHint.Pos"]
-                                                    (SearchCode.choice
-                                                      (SearchCode.capture ["Zeros", "Pos.Zeros"]
-                                                        (SearchCode.tokenRun (TokClass.asciiRange 48 48)
-                                                          LenSpec.atLeastOne SearchCode.accept)
-                                                        (SearchCode.capture ["NonZero", "Pos.NonZero"]
-                                                          (SearchCode.tokenRun (TokClass.asciiRange 49 57)
-                                                            (LenSpec.exactly 1) SearchCode.accept)
-                                                          (SearchCode.choice
-                                                            (SearchCode.capture ["Digits", "Pos.Digits"]
-                                                              (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne
-                                                                SearchCode.accept)
-                                                              SearchCode.accept)
-                                                            SearchCode.accept)))
-                                                      (SearchCode.capture ["NonZero", "Pos.NonZero"]
-                                                        (SearchCode.tokenRun (TokClass.asciiRange 49 57)
-                                                          (LenSpec.exactly 1) SearchCode.accept)
-                                                        (SearchCode.choice
-                                                          (SearchCode.capture ["Digits", "Pos.Digits"]
-                                                            (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne
-                                                              SearchCode.accept)
-                                                            SearchCode.accept)
-                                                          SearchCode.accept)))
-                                                    SearchCode.accept)
-                                                  SearchCode.accept)
-                                                1 none "RatHint" SearchCode.accept)
-                                              SearchCode.accept))
-                                          SearchCode.accept)
-                                        SearchCode.accept))
-                                    SearchCode.accept)
-                                  1 none "RatStep" (SearchCode.literal " " SearchCode.accept))
-                                (SearchCode.literal "0" SearchCode.accept))
-                              (SearchCode.literal "0" SearchCode.accept)))))
-                      SearchCode.accept))
-                  (SearchCode.capture ["Cr", "Line.Cr"]
-                    (SearchCode.choice (SearchCode.literal "\x0d" SearchCode.accept) SearchCode.accept)
-                    SearchCode.accept))))
+                                  (SearchCode.literal "0" SearchCode.accept)))))
+                          SearchCode.accept))
+                      (SearchCode.capture ["Cr", "Line.Cr"]
+                        (SearchCode.choice (SearchCode.literal "\x0d" SearchCode.accept) SearchCode.accept)
+                        SearchCode.accept))))
+                SearchCode.accept))
             SearchCode.accept)
-          1 none "Line" (SearchCode.literal "\n" SearchCode.accept) } :
+          1 none "Entry" (SearchCode.literal "\n" SearchCode.accept) } :
     SearchProgram)
 
 private theorem Lrat.searchProgram_lowered : lowerSearchPlan Lrat.searchPlan = Lrat.searchProgram := by decide
@@ -3287,13 +3634,14 @@ private theorem Lrat.searchNode_0_eq (input : List Char) (k : CaptureMap → Lis
   simp only [SearchCode.runK]
 
 private def Lrat.searchCode_1 : SearchCode :=
-  SearchCode.tokenRun (TokClass.asciiRange 48 48) LenSpec.atLeastOne Lrat.searchCode_0
+  SearchCode.tokenRun (TokClass.noneOf (List.cons '\x0d' (List.cons '\n' List.nil))) LenSpec.atLeastOne
+    Lrat.searchCode_0
 
 @[inline]
 private def Lrat.searchNode_1 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
   (List.range ((input).length + 1)).findSome? fun width =>
-    if termPrefixOk (TokClass.asciiRange 48 48) LenSpec.atLeastOne input width then
+    if termPrefixOk (TokClass.noneOf (List.cons '\x0d' (List.cons '\n' List.nil))) LenSpec.atLeastOne input width then
       Lrat.searchNode_0 ((input).drop width) k
     else none
 
@@ -3304,15 +3652,13 @@ private theorem Lrat.searchNode_1_eq (input : List Char) (k : CaptureMap → Lis
   simp only [SearchCode.runK, Lrat.searchNode_0_eq]
 
 private def Lrat.searchCode_2 : SearchCode :=
-  SearchCode.tokenRun (TokClass.asciiRange 49 57) (LenSpec.exactly 1) Lrat.searchCode_0
+  SearchCode.literal "\x0d" Lrat.searchCode_0
 
 @[inline]
 private def Lrat.searchNode_2 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  (List.range ((input).length + 1)).findSome? fun width =>
-    if termPrefixOk (TokClass.asciiRange 49 57) (LenSpec.exactly 1) input width then
-      Lrat.searchNode_0 ((input).drop width) k
-    else none
+  let characters := ("\x0d").toList
+  if characters.isPrefixOf input then Lrat.searchNode_0 ((input).drop characters.length) k else none
 
 private theorem Lrat.searchNode_2_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_2 input k = SearchCode.runK Lrat.searchCode_2 input k :=
@@ -3321,23 +3667,21 @@ private theorem Lrat.searchNode_2_eq (input : List Char) (k : CaptureMap → Lis
   simp only [SearchCode.runK, Lrat.searchNode_0_eq]
 
 private def Lrat.searchCode_3 : SearchCode :=
-  SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne Lrat.searchCode_0
+  SearchCode.choice Lrat.searchCode_2 Lrat.searchCode_0
 
 @[inline]
 private def Lrat.searchNode_3 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  (List.range ((input).length + 1)).findSome? fun width =>
-    if termPrefixOk TokClass.digit LenSpec.atLeastOne input width then Lrat.searchNode_0 ((input).drop width) k
-    else none
+  scanOrElse (Lrat.searchNode_2 input k) fun _ => Lrat.searchNode_0 input k
 
 private theorem Lrat.searchNode_3_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_3 input k = SearchCode.runK Lrat.searchCode_3 input k :=
   by
   unfold Lrat.searchNode_3 Lrat.searchCode_3
-  simp only [SearchCode.runK, Lrat.searchNode_0_eq]
+  simp only [SearchCode.runK, Lrat.searchNode_2_eq, Lrat.searchNode_0_eq]
 
 private def Lrat.searchCode_4 : SearchCode :=
-  SearchCode.capture ["Digits", "Pos.Digits"] Lrat.searchCode_3 Lrat.searchCode_0
+  SearchCode.capture ["Cr", "Comment.Cr"] Lrat.searchCode_3 Lrat.searchCode_0
 
 @[inline]
 private def Lrat.searchNode_4 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
@@ -3345,7 +3689,7 @@ private def Lrat.searchNode_4 (input : List Char) (k : CaptureMap → List Char 
   Lrat.searchNode_3 input fun bodyCaptures remaining =>
     let consumed := String.ofList ((input).take ((input).length - remaining.length))
     Lrat.searchNode_0 remaining fun tailCaptures suffix =>
-      k ((["Digits", "Pos.Digits"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+      k ((["Cr", "Comment.Cr"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
 
 private theorem Lrat.searchNode_4_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_4 input k = SearchCode.runK Lrat.searchCode_4 input k :=
@@ -3354,184 +3698,185 @@ private theorem Lrat.searchNode_4_eq (input : List Char) (k : CaptureMap → Lis
   simp only [SearchCode.runK, Lrat.searchNode_3_eq, Lrat.searchNode_0_eq]
 
 private def Lrat.searchCode_5 : SearchCode :=
-  SearchCode.choice Lrat.searchCode_4 Lrat.searchCode_0
+  SearchCode.capture ["Remark", "Comment.Remark"] Lrat.searchCode_1 Lrat.searchCode_4
 
 @[inline]
 private def Lrat.searchNode_5 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  scanOrElse (Lrat.searchNode_4 input k) fun _ => Lrat.searchNode_0 input k
+  Lrat.searchNode_1 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Lrat.searchNode_4 remaining fun tailCaptures suffix =>
+      k ((["Remark", "Comment.Remark"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
 
 private theorem Lrat.searchNode_5_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_5 input k = SearchCode.runK Lrat.searchCode_5 input k :=
   by
   unfold Lrat.searchNode_5 Lrat.searchCode_5
-  simp only [SearchCode.runK, Lrat.searchNode_4_eq, Lrat.searchNode_0_eq]
+  simp only [SearchCode.runK, Lrat.searchNode_1_eq, Lrat.searchNode_4_eq]
 
 private def Lrat.searchCode_6 : SearchCode :=
-  SearchCode.capture ["NonZero", "Pos.NonZero"] Lrat.searchCode_2 Lrat.searchCode_5
+  SearchCode.choice Lrat.searchCode_5 Lrat.searchCode_4
 
+@[inline]
 private def Lrat.searchNode_6 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  Lrat.searchNode_2 input fun bodyCaptures remaining =>
-    let consumed := String.ofList ((input).take ((input).length - remaining.length))
-    Lrat.searchNode_5 remaining fun tailCaptures suffix =>
-      k ((["NonZero", "Pos.NonZero"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+  scanOrElse (Lrat.searchNode_5 input k) fun _ => Lrat.searchNode_4 input k
 
 private theorem Lrat.searchNode_6_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_6 input k = SearchCode.runK Lrat.searchCode_6 input k :=
   by
   unfold Lrat.searchNode_6 Lrat.searchCode_6
-  simp only [SearchCode.runK, Lrat.searchNode_2_eq, Lrat.searchNode_5_eq]
+  simp only [SearchCode.runK, Lrat.searchNode_5_eq, Lrat.searchNode_4_eq]
 
 private def Lrat.searchCode_7 : SearchCode :=
-  SearchCode.capture ["Zeros", "Pos.Zeros"] Lrat.searchCode_1 Lrat.searchCode_6
+  SearchCode.literal "c" Lrat.searchCode_6
 
 @[inline]
 private def Lrat.searchNode_7 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  Lrat.searchNode_1 input fun bodyCaptures remaining =>
-    let consumed := String.ofList ((input).take ((input).length - remaining.length))
-    Lrat.searchNode_6 remaining fun tailCaptures suffix =>
-      k ((["Zeros", "Pos.Zeros"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+  let characters := ("c").toList
+  if characters.isPrefixOf input then Lrat.searchNode_6 ((input).drop characters.length) k else none
 
 private theorem Lrat.searchNode_7_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_7 input k = SearchCode.runK Lrat.searchCode_7 input k :=
   by
   unfold Lrat.searchNode_7 Lrat.searchCode_7
-  simp only [SearchCode.runK, Lrat.searchNode_1_eq, Lrat.searchNode_6_eq]
+  simp only [SearchCode.runK, Lrat.searchNode_6_eq]
 
 private def Lrat.searchCode_8 : SearchCode :=
-  SearchCode.choice Lrat.searchCode_7 Lrat.searchCode_6
+  SearchCode.capture ["Comment", "Entry.Comment"] Lrat.searchCode_7 Lrat.searchCode_0
 
+@[inline]
 private def Lrat.searchNode_8 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  scanOrElse (Lrat.searchNode_7 input k) fun _ => Lrat.searchNode_6 input k
+  Lrat.searchNode_7 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Lrat.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["Comment", "Entry.Comment"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
 
 private theorem Lrat.searchNode_8_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_8 input k = SearchCode.runK Lrat.searchCode_8 input k :=
   by
   unfold Lrat.searchNode_8 Lrat.searchCode_8
-  simp only [SearchCode.runK, Lrat.searchNode_7_eq, Lrat.searchNode_6_eq]
+  simp only [SearchCode.runK, Lrat.searchNode_7_eq, Lrat.searchNode_0_eq]
 
 private def Lrat.searchCode_9 : SearchCode :=
-  SearchCode.capture ["Pos", "Id.Pos"] Lrat.searchCode_8 Lrat.searchCode_0
+  SearchCode.tokenRun (TokClass.asciiRange 48 48) LenSpec.atLeastOne Lrat.searchCode_0
 
 @[inline]
 private def Lrat.searchNode_9 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  Lrat.searchNode_8 input fun bodyCaptures remaining =>
-    let consumed := String.ofList ((input).take ((input).length - remaining.length))
-    Lrat.searchNode_0 remaining fun tailCaptures suffix =>
-      k ((["Pos", "Id.Pos"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+  (List.range ((input).length + 1)).findSome? fun width =>
+    if termPrefixOk (TokClass.asciiRange 48 48) LenSpec.atLeastOne input width then
+      Lrat.searchNode_0 ((input).drop width) k
+    else none
 
 private theorem Lrat.searchNode_9_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_9 input k = SearchCode.runK Lrat.searchCode_9 input k :=
   by
   unfold Lrat.searchNode_9 Lrat.searchCode_9
-  simp only [SearchCode.runK, Lrat.searchNode_8_eq, Lrat.searchNode_0_eq]
+  simp only [SearchCode.runK, Lrat.searchNode_0_eq]
 
 private def Lrat.searchCode_10 : SearchCode :=
-  SearchCode.capture ["Pos", "DelId.Pos"] Lrat.searchCode_8 Lrat.searchCode_0
+  SearchCode.tokenRun (TokClass.asciiRange 49 57) (LenSpec.exactly 1) Lrat.searchCode_0
 
 @[inline]
 private def Lrat.searchNode_10 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  Lrat.searchNode_8 input fun bodyCaptures remaining =>
-    let consumed := String.ofList ((input).take ((input).length - remaining.length))
-    Lrat.searchNode_0 remaining fun tailCaptures suffix =>
-      k ((["Pos", "DelId.Pos"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+  (List.range ((input).length + 1)).findSome? fun width =>
+    if termPrefixOk (TokClass.asciiRange 49 57) (LenSpec.exactly 1) input width then
+      Lrat.searchNode_0 ((input).drop width) k
+    else none
 
 private theorem Lrat.searchNode_10_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_10 input k = SearchCode.runK Lrat.searchCode_10 input k :=
   by
   unfold Lrat.searchNode_10 Lrat.searchCode_10
-  simp only [SearchCode.runK, Lrat.searchNode_8_eq, Lrat.searchNode_0_eq]
+  simp only [SearchCode.runK, Lrat.searchNode_0_eq]
 
 private def Lrat.searchCode_11 : SearchCode :=
-  SearchCode.capture ["DelId", "DelIds.DelId"] Lrat.searchCode_10 Lrat.searchCode_0
+  SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne Lrat.searchCode_0
 
+@[inline]
 private def Lrat.searchNode_11 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  Lrat.searchNode_10 input fun bodyCaptures remaining =>
-    let consumed := String.ofList ((input).take ((input).length - remaining.length))
-    Lrat.searchNode_0 remaining fun tailCaptures suffix =>
-      k ((["DelId", "DelIds.DelId"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+  (List.range ((input).length + 1)).findSome? fun width =>
+    if termPrefixOk TokClass.digit LenSpec.atLeastOne input width then Lrat.searchNode_0 ((input).drop width) k
+    else none
 
 private theorem Lrat.searchNode_11_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_11 input k = SearchCode.runK Lrat.searchCode_11 input k :=
   by
   unfold Lrat.searchNode_11 Lrat.searchCode_11
-  simp only [SearchCode.runK, Lrat.searchNode_10_eq, Lrat.searchNode_0_eq]
+  simp only [SearchCode.runK, Lrat.searchNode_0_eq]
 
 private def Lrat.searchCode_12 : SearchCode :=
-  SearchCode.literal " " Lrat.searchCode_0
+  SearchCode.capture ["Digits", "Pos.Digits"] Lrat.searchCode_11 Lrat.searchCode_0
 
 @[inline]
 private def Lrat.searchNode_12 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  let characters := (" ").toList
-  if characters.isPrefixOf input then Lrat.searchNode_0 ((input).drop characters.length) k else none
+  Lrat.searchNode_11 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Lrat.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["Digits", "Pos.Digits"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
 
 private theorem Lrat.searchNode_12_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_12 input k = SearchCode.runK Lrat.searchCode_12 input k :=
   by
   unfold Lrat.searchNode_12 Lrat.searchCode_12
-  simp only [SearchCode.runK, Lrat.searchNode_0_eq]
+  simp only [SearchCode.runK, Lrat.searchNode_11_eq, Lrat.searchNode_0_eq]
 
 private def Lrat.searchCode_13 : SearchCode :=
-  SearchCode.repetition " " Lrat.searchCode_11 1 none "DelId" Lrat.searchCode_12
+  SearchCode.choice Lrat.searchCode_12 Lrat.searchCode_0
 
 @[inline]
 private def Lrat.searchNode_13 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  Lrat.searchNode_11 input fun firstCaptures remaining =>
-    scanStarK (fun itemInput itemK => Lrat.searchNode_11 itemInput itemK) (" ").toList 1 none (input).length remaining
-      firstCaptures 1 fun captures suffix itemCount =>
-      Lrat.searchNode_12 suffix fun tailCaptures finalSuffix =>
-        k ((("DelId" ++ "#count", toString itemCount) :: captures) ++ tailCaptures) finalSuffix
+  scanOrElse (Lrat.searchNode_12 input k) fun _ => Lrat.searchNode_0 input k
 
 private theorem Lrat.searchNode_13_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_13 input k = SearchCode.runK Lrat.searchCode_13 input k :=
   by
   unfold Lrat.searchNode_13 Lrat.searchCode_13
-  simp only [SearchCode.runK, Lrat.searchNode_11_eq, Lrat.searchNode_12_eq]
+  simp only [SearchCode.runK, Lrat.searchNode_12_eq, Lrat.searchNode_0_eq]
 
 private def Lrat.searchCode_14 : SearchCode :=
-  SearchCode.literal "0" Lrat.searchCode_0
+  SearchCode.capture ["NonZero", "Pos.NonZero"] Lrat.searchCode_10 Lrat.searchCode_13
 
-@[inline]
 private def Lrat.searchNode_14 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  let characters := ("0").toList
-  if characters.isPrefixOf input then Lrat.searchNode_0 ((input).drop characters.length) k else none
+  Lrat.searchNode_10 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Lrat.searchNode_13 remaining fun tailCaptures suffix =>
+      k ((["NonZero", "Pos.NonZero"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
 
 private theorem Lrat.searchNode_14_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_14 input k = SearchCode.runK Lrat.searchCode_14 input k :=
   by
   unfold Lrat.searchNode_14 Lrat.searchCode_14
-  simp only [SearchCode.runK, Lrat.searchNode_0_eq]
+  simp only [SearchCode.runK, Lrat.searchNode_10_eq, Lrat.searchNode_13_eq]
 
 private def Lrat.searchCode_15 : SearchCode :=
-  SearchCode.capture ["DelIds", "Delete.DelIds"] Lrat.searchCode_13 Lrat.searchCode_14
+  SearchCode.capture ["Zeros", "Pos.Zeros"] Lrat.searchCode_9 Lrat.searchCode_14
 
 @[inline]
 private def Lrat.searchNode_15 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  Lrat.searchNode_13 input fun bodyCaptures remaining =>
+  Lrat.searchNode_9 input fun bodyCaptures remaining =>
     let consumed := String.ofList ((input).take ((input).length - remaining.length))
     Lrat.searchNode_14 remaining fun tailCaptures suffix =>
-      k ((["DelIds", "Delete.DelIds"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+      k ((["Zeros", "Pos.Zeros"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
 
 private theorem Lrat.searchNode_15_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_15 input k = SearchCode.runK Lrat.searchCode_15 input k :=
   by
   unfold Lrat.searchNode_15 Lrat.searchCode_15
-  simp only [SearchCode.runK, Lrat.searchNode_13_eq, Lrat.searchNode_14_eq]
+  simp only [SearchCode.runK, Lrat.searchNode_9_eq, Lrat.searchNode_14_eq]
 
 private def Lrat.searchCode_16 : SearchCode :=
   SearchCode.choice Lrat.searchCode_15 Lrat.searchCode_14
 
-@[inline]
 private def Lrat.searchNode_16 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
   scanOrElse (Lrat.searchNode_15 input k) fun _ => Lrat.searchNode_14 input k
@@ -3543,109 +3888,113 @@ private theorem Lrat.searchNode_16_eq (input : List Char) (k : CaptureMap → Li
   simp only [SearchCode.runK, Lrat.searchNode_15_eq, Lrat.searchNode_14_eq]
 
 private def Lrat.searchCode_17 : SearchCode :=
-  SearchCode.literal "d " Lrat.searchCode_16
+  SearchCode.capture ["Pos", "Id.Pos"] Lrat.searchCode_16 Lrat.searchCode_0
 
 @[inline]
 private def Lrat.searchNode_17 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  let characters := ("d ").toList
-  if characters.isPrefixOf input then Lrat.searchNode_16 ((input).drop characters.length) k else none
+  Lrat.searchNode_16 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Lrat.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["Pos", "Id.Pos"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
 
 private theorem Lrat.searchNode_17_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_17 input k = SearchCode.runK Lrat.searchCode_17 input k :=
   by
   unfold Lrat.searchNode_17 Lrat.searchCode_17
-  simp only [SearchCode.runK, Lrat.searchNode_16_eq]
+  simp only [SearchCode.runK, Lrat.searchNode_16_eq, Lrat.searchNode_0_eq]
 
 private def Lrat.searchCode_18 : SearchCode :=
-  SearchCode.capture ["Delete", "Body.Delete"] Lrat.searchCode_17 Lrat.searchCode_0
+  SearchCode.capture ["Pos", "DelId.Pos"] Lrat.searchCode_16 Lrat.searchCode_0
 
 @[inline]
 private def Lrat.searchNode_18 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  Lrat.searchNode_17 input fun bodyCaptures remaining =>
+  Lrat.searchNode_16 input fun bodyCaptures remaining =>
     let consumed := String.ofList ((input).take ((input).length - remaining.length))
     Lrat.searchNode_0 remaining fun tailCaptures suffix =>
-      k ((["Delete", "Body.Delete"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+      k ((["Pos", "DelId.Pos"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
 
 private theorem Lrat.searchNode_18_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_18 input k = SearchCode.runK Lrat.searchCode_18 input k :=
   by
   unfold Lrat.searchNode_18 Lrat.searchCode_18
-  simp only [SearchCode.runK, Lrat.searchNode_17_eq, Lrat.searchNode_0_eq]
+  simp only [SearchCode.runK, Lrat.searchNode_16_eq, Lrat.searchNode_0_eq]
 
 private def Lrat.searchCode_19 : SearchCode :=
-  SearchCode.capture ["Pos", "Neg.Pos"] Lrat.searchCode_8 Lrat.searchCode_0
+  SearchCode.capture ["DelId", "DelIds.DelId"] Lrat.searchCode_18 Lrat.searchCode_0
 
-@[inline]
 private def Lrat.searchNode_19 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  Lrat.searchNode_8 input fun bodyCaptures remaining =>
+  Lrat.searchNode_18 input fun bodyCaptures remaining =>
     let consumed := String.ofList ((input).take ((input).length - remaining.length))
     Lrat.searchNode_0 remaining fun tailCaptures suffix =>
-      k ((["Pos", "Neg.Pos"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+      k ((["DelId", "DelIds.DelId"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
 
 private theorem Lrat.searchNode_19_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_19 input k = SearchCode.runK Lrat.searchCode_19 input k :=
   by
   unfold Lrat.searchNode_19 Lrat.searchCode_19
-  simp only [SearchCode.runK, Lrat.searchNode_8_eq, Lrat.searchNode_0_eq]
+  simp only [SearchCode.runK, Lrat.searchNode_18_eq, Lrat.searchNode_0_eq]
 
 private def Lrat.searchCode_20 : SearchCode :=
-  SearchCode.literal "-" Lrat.searchCode_19
+  SearchCode.literal " " Lrat.searchCode_0
 
+@[inline]
 private def Lrat.searchNode_20 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  let characters := ("-").toList
-  if characters.isPrefixOf input then Lrat.searchNode_19 ((input).drop characters.length) k else none
+  let characters := (" ").toList
+  if characters.isPrefixOf input then Lrat.searchNode_0 ((input).drop characters.length) k else none
 
 private theorem Lrat.searchNode_20_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_20 input k = SearchCode.runK Lrat.searchCode_20 input k :=
   by
   unfold Lrat.searchNode_20 Lrat.searchCode_20
-  simp only [SearchCode.runK, Lrat.searchNode_19_eq]
+  simp only [SearchCode.runK, Lrat.searchNode_0_eq]
 
 private def Lrat.searchCode_21 : SearchCode :=
-  SearchCode.capture ["Neg", "Lit.Neg"] Lrat.searchCode_20 Lrat.searchCode_0
+  SearchCode.repetition " " Lrat.searchCode_19 1 none "DelId" Lrat.searchCode_20
 
 @[inline]
 private def Lrat.searchNode_21 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  Lrat.searchNode_20 input fun bodyCaptures remaining =>
-    let consumed := String.ofList ((input).take ((input).length - remaining.length))
-    Lrat.searchNode_0 remaining fun tailCaptures suffix =>
-      k ((["Neg", "Lit.Neg"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+  Lrat.searchNode_19 input fun firstCaptures remaining =>
+    scanStarK (fun itemInput itemK => Lrat.searchNode_19 itemInput itemK) (" ").toList 1 none (input).length remaining
+      firstCaptures 1 fun captures suffix itemCount =>
+      Lrat.searchNode_20 suffix fun tailCaptures finalSuffix =>
+        k ((("DelId" ++ "#count", toString itemCount) :: captures) ++ tailCaptures) finalSuffix
 
 private theorem Lrat.searchNode_21_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_21 input k = SearchCode.runK Lrat.searchCode_21 input k :=
   by
   unfold Lrat.searchNode_21 Lrat.searchCode_21
-  simp only [SearchCode.runK, Lrat.searchNode_20_eq, Lrat.searchNode_0_eq]
+  simp only [SearchCode.runK, Lrat.searchNode_19_eq, Lrat.searchNode_20_eq]
 
 private def Lrat.searchCode_22 : SearchCode :=
-  SearchCode.capture ["Pos", "Lit.Pos"] Lrat.searchCode_8 Lrat.searchCode_0
+  SearchCode.literal "0" Lrat.searchCode_0
 
 @[inline]
 private def Lrat.searchNode_22 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  Lrat.searchNode_8 input fun bodyCaptures remaining =>
-    let consumed := String.ofList ((input).take ((input).length - remaining.length))
-    Lrat.searchNode_0 remaining fun tailCaptures suffix =>
-      k ((["Pos", "Lit.Pos"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+  let characters := ("0").toList
+  if characters.isPrefixOf input then Lrat.searchNode_0 ((input).drop characters.length) k else none
 
 private theorem Lrat.searchNode_22_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_22 input k = SearchCode.runK Lrat.searchCode_22 input k :=
   by
   unfold Lrat.searchNode_22 Lrat.searchCode_22
-  simp only [SearchCode.runK, Lrat.searchNode_8_eq, Lrat.searchNode_0_eq]
+  simp only [SearchCode.runK, Lrat.searchNode_0_eq]
 
 private def Lrat.searchCode_23 : SearchCode :=
-  SearchCode.choice Lrat.searchCode_21 Lrat.searchCode_22
+  SearchCode.capture ["DelIds", "Delete.DelIds"] Lrat.searchCode_21 Lrat.searchCode_22
 
 @[inline]
 private def Lrat.searchNode_23 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  scanOrElse (Lrat.searchNode_21 input k) fun _ => Lrat.searchNode_22 input k
+  Lrat.searchNode_21 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Lrat.searchNode_22 remaining fun tailCaptures suffix =>
+      k ((["DelIds", "Delete.DelIds"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
 
 private theorem Lrat.searchNode_23_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_23 input k = SearchCode.runK Lrat.searchCode_23 input k :=
@@ -3654,151 +4003,139 @@ private theorem Lrat.searchNode_23_eq (input : List Char) (k : CaptureMap → Li
   simp only [SearchCode.runK, Lrat.searchNode_21_eq, Lrat.searchNode_22_eq]
 
 private def Lrat.searchCode_24 : SearchCode :=
-  SearchCode.capture ["Lit", "Lits.Lit"] Lrat.searchCode_23 Lrat.searchCode_0
+  SearchCode.choice Lrat.searchCode_23 Lrat.searchCode_22
 
+@[inline]
 private def Lrat.searchNode_24 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  Lrat.searchNode_23 input fun bodyCaptures remaining =>
-    let consumed := String.ofList ((input).take ((input).length - remaining.length))
-    Lrat.searchNode_0 remaining fun tailCaptures suffix =>
-      k ((["Lit", "Lits.Lit"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+  scanOrElse (Lrat.searchNode_23 input k) fun _ => Lrat.searchNode_22 input k
 
 private theorem Lrat.searchNode_24_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_24 input k = SearchCode.runK Lrat.searchCode_24 input k :=
   by
   unfold Lrat.searchNode_24 Lrat.searchCode_24
-  simp only [SearchCode.runK, Lrat.searchNode_23_eq, Lrat.searchNode_0_eq]
+  simp only [SearchCode.runK, Lrat.searchNode_23_eq, Lrat.searchNode_22_eq]
 
 private def Lrat.searchCode_25 : SearchCode :=
-  SearchCode.repetition " " Lrat.searchCode_24 1 none "Lit" Lrat.searchCode_12
+  SearchCode.literal "d " Lrat.searchCode_24
 
 @[inline]
 private def Lrat.searchNode_25 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  Lrat.searchNode_24 input fun firstCaptures remaining =>
-    scanStarK (fun itemInput itemK => Lrat.searchNode_24 itemInput itemK) (" ").toList 1 none (input).length remaining
-      firstCaptures 1 fun captures suffix itemCount =>
-      Lrat.searchNode_12 suffix fun tailCaptures finalSuffix =>
-        k ((("Lit" ++ "#count", toString itemCount) :: captures) ++ tailCaptures) finalSuffix
+  let characters := ("d ").toList
+  if characters.isPrefixOf input then Lrat.searchNode_24 ((input).drop characters.length) k else none
 
 private theorem Lrat.searchNode_25_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_25 input k = SearchCode.runK Lrat.searchCode_25 input k :=
   by
   unfold Lrat.searchNode_25 Lrat.searchCode_25
-  simp only [SearchCode.runK, Lrat.searchNode_24_eq, Lrat.searchNode_12_eq]
+  simp only [SearchCode.runK, Lrat.searchNode_24_eq]
 
 private def Lrat.searchCode_26 : SearchCode :=
-  SearchCode.capture ["Pos", "RupHint.Pos"] Lrat.searchCode_8 Lrat.searchCode_0
+  SearchCode.capture ["Delete", "Body.Delete"] Lrat.searchCode_25 Lrat.searchCode_0
 
 @[inline]
 private def Lrat.searchNode_26 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  Lrat.searchNode_8 input fun bodyCaptures remaining =>
+  Lrat.searchNode_25 input fun bodyCaptures remaining =>
     let consumed := String.ofList ((input).take ((input).length - remaining.length))
     Lrat.searchNode_0 remaining fun tailCaptures suffix =>
-      k ((["Pos", "RupHint.Pos"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+      k ((["Delete", "Body.Delete"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
 
 private theorem Lrat.searchNode_26_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_26 input k = SearchCode.runK Lrat.searchCode_26 input k :=
   by
   unfold Lrat.searchNode_26 Lrat.searchCode_26
-  simp only [SearchCode.runK, Lrat.searchNode_8_eq, Lrat.searchNode_0_eq]
+  simp only [SearchCode.runK, Lrat.searchNode_25_eq, Lrat.searchNode_0_eq]
 
 private def Lrat.searchCode_27 : SearchCode :=
-  SearchCode.capture ["RupHint", "RupHints.RupHint"] Lrat.searchCode_26 Lrat.searchCode_0
+  SearchCode.capture ["Pos", "Neg.Pos"] Lrat.searchCode_16 Lrat.searchCode_0
 
+@[inline]
 private def Lrat.searchNode_27 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  Lrat.searchNode_26 input fun bodyCaptures remaining =>
+  Lrat.searchNode_16 input fun bodyCaptures remaining =>
     let consumed := String.ofList ((input).take ((input).length - remaining.length))
     Lrat.searchNode_0 remaining fun tailCaptures suffix =>
-      k ((["RupHint", "RupHints.RupHint"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+      k ((["Pos", "Neg.Pos"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
 
 private theorem Lrat.searchNode_27_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_27 input k = SearchCode.runK Lrat.searchCode_27 input k :=
   by
   unfold Lrat.searchNode_27 Lrat.searchCode_27
-  simp only [SearchCode.runK, Lrat.searchNode_26_eq, Lrat.searchNode_0_eq]
+  simp only [SearchCode.runK, Lrat.searchNode_16_eq, Lrat.searchNode_0_eq]
 
 private def Lrat.searchCode_28 : SearchCode :=
-  SearchCode.repetition " " Lrat.searchCode_27 1 none "RupHint" Lrat.searchCode_12
+  SearchCode.literal "-" Lrat.searchCode_27
 
-@[inline]
 private def Lrat.searchNode_28 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  Lrat.searchNode_27 input fun firstCaptures remaining =>
-    scanStarK (fun itemInput itemK => Lrat.searchNode_27 itemInput itemK) (" ").toList 1 none (input).length remaining
-      firstCaptures 1 fun captures suffix itemCount =>
-      Lrat.searchNode_12 suffix fun tailCaptures finalSuffix =>
-        k ((("RupHint" ++ "#count", toString itemCount) :: captures) ++ tailCaptures) finalSuffix
+  let characters := ("-").toList
+  if characters.isPrefixOf input then Lrat.searchNode_27 ((input).drop characters.length) k else none
 
 private theorem Lrat.searchNode_28_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_28 input k = SearchCode.runK Lrat.searchCode_28 input k :=
   by
   unfold Lrat.searchNode_28 Lrat.searchCode_28
-  simp only [SearchCode.runK, Lrat.searchNode_27_eq, Lrat.searchNode_12_eq]
+  simp only [SearchCode.runK, Lrat.searchNode_27_eq]
 
 private def Lrat.searchCode_29 : SearchCode :=
-  SearchCode.capture ["Neg", "RatPivot.Neg"] Lrat.searchCode_20 Lrat.searchCode_0
+  SearchCode.capture ["Neg", "Lit.Neg"] Lrat.searchCode_28 Lrat.searchCode_0
 
 @[inline]
 private def Lrat.searchNode_29 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  Lrat.searchNode_20 input fun bodyCaptures remaining =>
+  Lrat.searchNode_28 input fun bodyCaptures remaining =>
     let consumed := String.ofList ((input).take ((input).length - remaining.length))
     Lrat.searchNode_0 remaining fun tailCaptures suffix =>
-      k ((["Neg", "RatPivot.Neg"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+      k ((["Neg", "Lit.Neg"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
 
 private theorem Lrat.searchNode_29_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_29 input k = SearchCode.runK Lrat.searchCode_29 input k :=
   by
   unfold Lrat.searchNode_29 Lrat.searchCode_29
-  simp only [SearchCode.runK, Lrat.searchNode_20_eq, Lrat.searchNode_0_eq]
+  simp only [SearchCode.runK, Lrat.searchNode_28_eq, Lrat.searchNode_0_eq]
 
 private def Lrat.searchCode_30 : SearchCode :=
-  SearchCode.capture ["Pos", "RatHint.Pos"] Lrat.searchCode_8 Lrat.searchCode_0
+  SearchCode.capture ["Pos", "Lit.Pos"] Lrat.searchCode_16 Lrat.searchCode_0
 
 @[inline]
 private def Lrat.searchNode_30 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  Lrat.searchNode_8 input fun bodyCaptures remaining =>
+  Lrat.searchNode_16 input fun bodyCaptures remaining =>
     let consumed := String.ofList ((input).take ((input).length - remaining.length))
     Lrat.searchNode_0 remaining fun tailCaptures suffix =>
-      k ((["Pos", "RatHint.Pos"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+      k ((["Pos", "Lit.Pos"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
 
 private theorem Lrat.searchNode_30_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_30 input k = SearchCode.runK Lrat.searchCode_30 input k :=
   by
   unfold Lrat.searchNode_30 Lrat.searchCode_30
-  simp only [SearchCode.runK, Lrat.searchNode_8_eq, Lrat.searchNode_0_eq]
+  simp only [SearchCode.runK, Lrat.searchNode_16_eq, Lrat.searchNode_0_eq]
 
 private def Lrat.searchCode_31 : SearchCode :=
-  SearchCode.capture ["RatHint", "RatHints.RatHint"] Lrat.searchCode_30 Lrat.searchCode_0
+  SearchCode.choice Lrat.searchCode_29 Lrat.searchCode_30
 
+@[inline]
 private def Lrat.searchNode_31 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  Lrat.searchNode_30 input fun bodyCaptures remaining =>
-    let consumed := String.ofList ((input).take ((input).length - remaining.length))
-    Lrat.searchNode_0 remaining fun tailCaptures suffix =>
-      k ((["RatHint", "RatHints.RatHint"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+  scanOrElse (Lrat.searchNode_29 input k) fun _ => Lrat.searchNode_30 input k
 
 private theorem Lrat.searchNode_31_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_31 input k = SearchCode.runK Lrat.searchCode_31 input k :=
   by
   unfold Lrat.searchNode_31 Lrat.searchCode_31
-  simp only [SearchCode.runK, Lrat.searchNode_30_eq, Lrat.searchNode_0_eq]
+  simp only [SearchCode.runK, Lrat.searchNode_29_eq, Lrat.searchNode_30_eq]
 
 private def Lrat.searchCode_32 : SearchCode :=
-  SearchCode.repetition " " Lrat.searchCode_31 1 none "RatHint" Lrat.searchCode_0
+  SearchCode.capture ["Lit", "Lits.Lit"] Lrat.searchCode_31 Lrat.searchCode_0
 
-@[inline]
 private def Lrat.searchNode_32 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  Lrat.searchNode_31 input fun firstCaptures remaining =>
-    scanStarK (fun itemInput itemK => Lrat.searchNode_31 itemInput itemK) (" ").toList 1 none (input).length remaining
-      firstCaptures 1 fun captures suffix itemCount =>
-      Lrat.searchNode_0 suffix fun tailCaptures finalSuffix =>
-        k ((("RatHint" ++ "#count", toString itemCount) :: captures) ++ tailCaptures) finalSuffix
+  Lrat.searchNode_31 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Lrat.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["Lit", "Lits.Lit"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
 
 private theorem Lrat.searchNode_32_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_32 input k = SearchCode.runK Lrat.searchCode_32 input k :=
@@ -3807,47 +4144,49 @@ private theorem Lrat.searchNode_32_eq (input : List Char) (k : CaptureMap → Li
   simp only [SearchCode.runK, Lrat.searchNode_31_eq, Lrat.searchNode_0_eq]
 
 private def Lrat.searchCode_33 : SearchCode :=
-  SearchCode.capture ["RatHints", "RatTail.RatHints"] Lrat.searchCode_32 Lrat.searchCode_0
+  SearchCode.repetition " " Lrat.searchCode_32 1 none "Lit" Lrat.searchCode_20
 
 @[inline]
 private def Lrat.searchNode_33 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  Lrat.searchNode_32 input fun bodyCaptures remaining =>
-    let consumed := String.ofList ((input).take ((input).length - remaining.length))
-    Lrat.searchNode_0 remaining fun tailCaptures suffix =>
-      k ((["RatHints", "RatTail.RatHints"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+  Lrat.searchNode_32 input fun firstCaptures remaining =>
+    scanStarK (fun itemInput itemK => Lrat.searchNode_32 itemInput itemK) (" ").toList 1 none (input).length remaining
+      firstCaptures 1 fun captures suffix itemCount =>
+      Lrat.searchNode_20 suffix fun tailCaptures finalSuffix =>
+        k ((("Lit" ++ "#count", toString itemCount) :: captures) ++ tailCaptures) finalSuffix
 
 private theorem Lrat.searchNode_33_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_33 input k = SearchCode.runK Lrat.searchCode_33 input k :=
   by
   unfold Lrat.searchNode_33 Lrat.searchCode_33
-  simp only [SearchCode.runK, Lrat.searchNode_32_eq, Lrat.searchNode_0_eq]
+  simp only [SearchCode.runK, Lrat.searchNode_32_eq, Lrat.searchNode_20_eq]
 
 private def Lrat.searchCode_34 : SearchCode :=
-  SearchCode.literal " " Lrat.searchCode_33
+  SearchCode.capture ["Pos", "RupHint.Pos"] Lrat.searchCode_16 Lrat.searchCode_0
 
 @[inline]
 private def Lrat.searchNode_34 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  let characters := (" ").toList
-  if characters.isPrefixOf input then Lrat.searchNode_33 ((input).drop characters.length) k else none
+  Lrat.searchNode_16 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Lrat.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["Pos", "RupHint.Pos"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
 
 private theorem Lrat.searchNode_34_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_34 input k = SearchCode.runK Lrat.searchCode_34 input k :=
   by
   unfold Lrat.searchNode_34 Lrat.searchCode_34
-  simp only [SearchCode.runK, Lrat.searchNode_33_eq]
+  simp only [SearchCode.runK, Lrat.searchNode_16_eq, Lrat.searchNode_0_eq]
 
 private def Lrat.searchCode_35 : SearchCode :=
-  SearchCode.capture ["RatTail", "RatStep.RatTail"] Lrat.searchCode_34 Lrat.searchCode_0
+  SearchCode.capture ["RupHint", "RupHints.RupHint"] Lrat.searchCode_34 Lrat.searchCode_0
 
-@[inline]
 private def Lrat.searchNode_35 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
   Lrat.searchNode_34 input fun bodyCaptures remaining =>
     let consumed := String.ofList ((input).take ((input).length - remaining.length))
     Lrat.searchNode_0 remaining fun tailCaptures suffix =>
-      k ((["RatTail", "RatStep.RatTail"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+      k ((["RupHint", "RupHints.RupHint"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
 
 private theorem Lrat.searchNode_35_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_35 input k = SearchCode.runK Lrat.searchCode_35 input k :=
@@ -3856,311 +4195,321 @@ private theorem Lrat.searchNode_35_eq (input : List Char) (k : CaptureMap → Li
   simp only [SearchCode.runK, Lrat.searchNode_34_eq, Lrat.searchNode_0_eq]
 
 private def Lrat.searchCode_36 : SearchCode :=
-  SearchCode.choice Lrat.searchCode_35 Lrat.searchCode_0
+  SearchCode.repetition " " Lrat.searchCode_35 1 none "RupHint" Lrat.searchCode_20
 
 @[inline]
 private def Lrat.searchNode_36 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  scanOrElse (Lrat.searchNode_35 input k) fun _ => Lrat.searchNode_0 input k
+  Lrat.searchNode_35 input fun firstCaptures remaining =>
+    scanStarK (fun itemInput itemK => Lrat.searchNode_35 itemInput itemK) (" ").toList 1 none (input).length remaining
+      firstCaptures 1 fun captures suffix itemCount =>
+      Lrat.searchNode_20 suffix fun tailCaptures finalSuffix =>
+        k ((("RupHint" ++ "#count", toString itemCount) :: captures) ++ tailCaptures) finalSuffix
 
 private theorem Lrat.searchNode_36_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_36 input k = SearchCode.runK Lrat.searchCode_36 input k :=
   by
   unfold Lrat.searchNode_36 Lrat.searchCode_36
-  simp only [SearchCode.runK, Lrat.searchNode_35_eq, Lrat.searchNode_0_eq]
+  simp only [SearchCode.runK, Lrat.searchNode_35_eq, Lrat.searchNode_20_eq]
 
 private def Lrat.searchCode_37 : SearchCode :=
-  SearchCode.capture ["RatPivot", "RatStep.RatPivot"] Lrat.searchCode_29 Lrat.searchCode_36
+  SearchCode.capture ["Neg", "RatPivot.Neg"] Lrat.searchCode_28 Lrat.searchCode_0
 
 @[inline]
 private def Lrat.searchNode_37 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  Lrat.searchNode_29 input fun bodyCaptures remaining =>
+  Lrat.searchNode_28 input fun bodyCaptures remaining =>
     let consumed := String.ofList ((input).take ((input).length - remaining.length))
-    Lrat.searchNode_36 remaining fun tailCaptures suffix =>
-      k ((["RatPivot", "RatStep.RatPivot"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+    Lrat.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["Neg", "RatPivot.Neg"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
 
 private theorem Lrat.searchNode_37_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_37 input k = SearchCode.runK Lrat.searchCode_37 input k :=
   by
   unfold Lrat.searchNode_37 Lrat.searchCode_37
-  simp only [SearchCode.runK, Lrat.searchNode_29_eq, Lrat.searchNode_36_eq]
+  simp only [SearchCode.runK, Lrat.searchNode_28_eq, Lrat.searchNode_0_eq]
 
 private def Lrat.searchCode_38 : SearchCode :=
-  SearchCode.capture ["RatStep", "RatSteps.RatStep"] Lrat.searchCode_37 Lrat.searchCode_0
+  SearchCode.capture ["Pos", "RatHint.Pos"] Lrat.searchCode_16 Lrat.searchCode_0
 
+@[inline]
 private def Lrat.searchNode_38 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  Lrat.searchNode_37 input fun bodyCaptures remaining =>
+  Lrat.searchNode_16 input fun bodyCaptures remaining =>
     let consumed := String.ofList ((input).take ((input).length - remaining.length))
     Lrat.searchNode_0 remaining fun tailCaptures suffix =>
-      k ((["RatStep", "RatSteps.RatStep"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+      k ((["Pos", "RatHint.Pos"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
 
 private theorem Lrat.searchNode_38_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_38 input k = SearchCode.runK Lrat.searchCode_38 input k :=
   by
   unfold Lrat.searchNode_38 Lrat.searchCode_38
-  simp only [SearchCode.runK, Lrat.searchNode_37_eq, Lrat.searchNode_0_eq]
+  simp only [SearchCode.runK, Lrat.searchNode_16_eq, Lrat.searchNode_0_eq]
 
 private def Lrat.searchCode_39 : SearchCode :=
-  SearchCode.repetition " " Lrat.searchCode_38 1 none "RatStep" Lrat.searchCode_12
+  SearchCode.capture ["RatHint", "RatHints.RatHint"] Lrat.searchCode_38 Lrat.searchCode_0
 
-@[inline]
 private def Lrat.searchNode_39 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  Lrat.searchNode_38 input fun firstCaptures remaining =>
-    scanStarK (fun itemInput itemK => Lrat.searchNode_38 itemInput itemK) (" ").toList 1 none (input).length remaining
-      firstCaptures 1 fun captures suffix itemCount =>
-      Lrat.searchNode_12 suffix fun tailCaptures finalSuffix =>
-        k ((("RatStep" ++ "#count", toString itemCount) :: captures) ++ tailCaptures) finalSuffix
+  Lrat.searchNode_38 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Lrat.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["RatHint", "RatHints.RatHint"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
 
 private theorem Lrat.searchNode_39_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_39 input k = SearchCode.runK Lrat.searchCode_39 input k :=
   by
   unfold Lrat.searchNode_39 Lrat.searchCode_39
-  simp only [SearchCode.runK, Lrat.searchNode_38_eq, Lrat.searchNode_12_eq]
+  simp only [SearchCode.runK, Lrat.searchNode_38_eq, Lrat.searchNode_0_eq]
 
 private def Lrat.searchCode_40 : SearchCode :=
-  SearchCode.capture ["RatSteps", "Add.RatSteps"] Lrat.searchCode_39 Lrat.searchCode_14
+  SearchCode.repetition " " Lrat.searchCode_39 1 none "RatHint" Lrat.searchCode_0
 
 @[inline]
 private def Lrat.searchNode_40 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  Lrat.searchNode_39 input fun bodyCaptures remaining =>
-    let consumed := String.ofList ((input).take ((input).length - remaining.length))
-    Lrat.searchNode_14 remaining fun tailCaptures suffix =>
-      k ((["RatSteps", "Add.RatSteps"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+  Lrat.searchNode_39 input fun firstCaptures remaining =>
+    scanStarK (fun itemInput itemK => Lrat.searchNode_39 itemInput itemK) (" ").toList 1 none (input).length remaining
+      firstCaptures 1 fun captures suffix itemCount =>
+      Lrat.searchNode_0 suffix fun tailCaptures finalSuffix =>
+        k ((("RatHint" ++ "#count", toString itemCount) :: captures) ++ tailCaptures) finalSuffix
 
 private theorem Lrat.searchNode_40_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_40 input k = SearchCode.runK Lrat.searchCode_40 input k :=
   by
   unfold Lrat.searchNode_40 Lrat.searchCode_40
-  simp only [SearchCode.runK, Lrat.searchNode_39_eq, Lrat.searchNode_14_eq]
+  simp only [SearchCode.runK, Lrat.searchNode_39_eq, Lrat.searchNode_0_eq]
 
 private def Lrat.searchCode_41 : SearchCode :=
-  SearchCode.choice Lrat.searchCode_40 Lrat.searchCode_14
+  SearchCode.capture ["RatHints", "RatTail.RatHints"] Lrat.searchCode_40 Lrat.searchCode_0
 
+@[inline]
 private def Lrat.searchNode_41 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  scanOrElse (Lrat.searchNode_40 input k) fun _ => Lrat.searchNode_14 input k
+  Lrat.searchNode_40 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Lrat.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["RatHints", "RatTail.RatHints"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
 
 private theorem Lrat.searchNode_41_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_41 input k = SearchCode.runK Lrat.searchCode_41 input k :=
   by
   unfold Lrat.searchNode_41 Lrat.searchCode_41
-  simp only [SearchCode.runK, Lrat.searchNode_40_eq, Lrat.searchNode_14_eq]
+  simp only [SearchCode.runK, Lrat.searchNode_40_eq, Lrat.searchNode_0_eq]
 
 private def Lrat.searchCode_42 : SearchCode :=
-  SearchCode.capture ["RupHints", "Add.RupHints"] Lrat.searchCode_28 Lrat.searchCode_41
+  SearchCode.literal " " Lrat.searchCode_41
 
 @[inline]
 private def Lrat.searchNode_42 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  Lrat.searchNode_28 input fun bodyCaptures remaining =>
-    let consumed := String.ofList ((input).take ((input).length - remaining.length))
-    Lrat.searchNode_41 remaining fun tailCaptures suffix =>
-      k ((["RupHints", "Add.RupHints"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+  let characters := (" ").toList
+  if characters.isPrefixOf input then Lrat.searchNode_41 ((input).drop characters.length) k else none
 
 private theorem Lrat.searchNode_42_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_42 input k = SearchCode.runK Lrat.searchCode_42 input k :=
   by
   unfold Lrat.searchNode_42 Lrat.searchCode_42
-  simp only [SearchCode.runK, Lrat.searchNode_28_eq, Lrat.searchNode_41_eq]
+  simp only [SearchCode.runK, Lrat.searchNode_41_eq]
 
 private def Lrat.searchCode_43 : SearchCode :=
-  SearchCode.choice Lrat.searchCode_42 Lrat.searchCode_41
+  SearchCode.capture ["RatTail", "RatStep.RatTail"] Lrat.searchCode_42 Lrat.searchCode_0
 
 @[inline]
 private def Lrat.searchNode_43 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  scanOrElse (Lrat.searchNode_42 input k) fun _ => Lrat.searchNode_41 input k
+  Lrat.searchNode_42 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Lrat.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["RatTail", "RatStep.RatTail"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
 
 private theorem Lrat.searchNode_43_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_43 input k = SearchCode.runK Lrat.searchCode_43 input k :=
   by
   unfold Lrat.searchNode_43 Lrat.searchCode_43
-  simp only [SearchCode.runK, Lrat.searchNode_42_eq, Lrat.searchNode_41_eq]
+  simp only [SearchCode.runK, Lrat.searchNode_42_eq, Lrat.searchNode_0_eq]
 
 private def Lrat.searchCode_44 : SearchCode :=
-  SearchCode.literal "0 " Lrat.searchCode_43
+  SearchCode.choice Lrat.searchCode_43 Lrat.searchCode_0
 
+@[inline]
 private def Lrat.searchNode_44 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  let characters := ("0 ").toList
-  if characters.isPrefixOf input then Lrat.searchNode_43 ((input).drop characters.length) k else none
+  scanOrElse (Lrat.searchNode_43 input k) fun _ => Lrat.searchNode_0 input k
 
 private theorem Lrat.searchNode_44_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_44 input k = SearchCode.runK Lrat.searchCode_44 input k :=
   by
   unfold Lrat.searchNode_44 Lrat.searchCode_44
-  simp only [SearchCode.runK, Lrat.searchNode_43_eq]
+  simp only [SearchCode.runK, Lrat.searchNode_43_eq, Lrat.searchNode_0_eq]
 
 private def Lrat.searchCode_45 : SearchCode :=
-  SearchCode.capture ["Lits", "Add.Lits"] Lrat.searchCode_25 Lrat.searchCode_44
+  SearchCode.capture ["RatPivot", "RatStep.RatPivot"] Lrat.searchCode_37 Lrat.searchCode_44
 
 @[inline]
 private def Lrat.searchNode_45 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  Lrat.searchNode_25 input fun bodyCaptures remaining =>
+  Lrat.searchNode_37 input fun bodyCaptures remaining =>
     let consumed := String.ofList ((input).take ((input).length - remaining.length))
     Lrat.searchNode_44 remaining fun tailCaptures suffix =>
-      k ((["Lits", "Add.Lits"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+      k ((["RatPivot", "RatStep.RatPivot"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
 
 private theorem Lrat.searchNode_45_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_45 input k = SearchCode.runK Lrat.searchCode_45 input k :=
   by
   unfold Lrat.searchNode_45 Lrat.searchCode_45
-  simp only [SearchCode.runK, Lrat.searchNode_25_eq, Lrat.searchNode_44_eq]
+  simp only [SearchCode.runK, Lrat.searchNode_37_eq, Lrat.searchNode_44_eq]
 
 private def Lrat.searchCode_46 : SearchCode :=
-  SearchCode.choice Lrat.searchCode_45 Lrat.searchCode_44
+  SearchCode.capture ["RatStep", "RatSteps.RatStep"] Lrat.searchCode_45 Lrat.searchCode_0
 
-@[inline]
 private def Lrat.searchNode_46 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  scanOrElse (Lrat.searchNode_45 input k) fun _ => Lrat.searchNode_44 input k
+  Lrat.searchNode_45 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Lrat.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["RatStep", "RatSteps.RatStep"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
 
 private theorem Lrat.searchNode_46_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_46 input k = SearchCode.runK Lrat.searchCode_46 input k :=
   by
   unfold Lrat.searchNode_46 Lrat.searchCode_46
-  simp only [SearchCode.runK, Lrat.searchNode_45_eq, Lrat.searchNode_44_eq]
+  simp only [SearchCode.runK, Lrat.searchNode_45_eq, Lrat.searchNode_0_eq]
 
 private def Lrat.searchCode_47 : SearchCode :=
-  SearchCode.capture ["Add", "Body.Add"] Lrat.searchCode_46 Lrat.searchCode_0
+  SearchCode.repetition " " Lrat.searchCode_46 1 none "RatStep" Lrat.searchCode_20
 
 @[inline]
 private def Lrat.searchNode_47 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  Lrat.searchNode_46 input fun bodyCaptures remaining =>
-    let consumed := String.ofList ((input).take ((input).length - remaining.length))
-    Lrat.searchNode_0 remaining fun tailCaptures suffix =>
-      k ((["Add", "Body.Add"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+  Lrat.searchNode_46 input fun firstCaptures remaining =>
+    scanStarK (fun itemInput itemK => Lrat.searchNode_46 itemInput itemK) (" ").toList 1 none (input).length remaining
+      firstCaptures 1 fun captures suffix itemCount =>
+      Lrat.searchNode_20 suffix fun tailCaptures finalSuffix =>
+        k ((("RatStep" ++ "#count", toString itemCount) :: captures) ++ tailCaptures) finalSuffix
 
 private theorem Lrat.searchNode_47_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_47 input k = SearchCode.runK Lrat.searchCode_47 input k :=
   by
   unfold Lrat.searchNode_47 Lrat.searchCode_47
-  simp only [SearchCode.runK, Lrat.searchNode_46_eq, Lrat.searchNode_0_eq]
+  simp only [SearchCode.runK, Lrat.searchNode_46_eq, Lrat.searchNode_20_eq]
 
 private def Lrat.searchCode_48 : SearchCode :=
-  SearchCode.choice Lrat.searchCode_18 Lrat.searchCode_47
+  SearchCode.capture ["RatSteps", "Add.RatSteps"] Lrat.searchCode_47 Lrat.searchCode_22
 
 @[inline]
 private def Lrat.searchNode_48 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  scanOrElse (Lrat.searchNode_18 input k) fun _ => Lrat.searchNode_47 input k
+  Lrat.searchNode_47 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Lrat.searchNode_22 remaining fun tailCaptures suffix =>
+      k ((["RatSteps", "Add.RatSteps"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
 
 private theorem Lrat.searchNode_48_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_48 input k = SearchCode.runK Lrat.searchCode_48 input k :=
   by
   unfold Lrat.searchNode_48 Lrat.searchCode_48
-  simp only [SearchCode.runK, Lrat.searchNode_18_eq, Lrat.searchNode_47_eq]
+  simp only [SearchCode.runK, Lrat.searchNode_47_eq, Lrat.searchNode_22_eq]
 
 private def Lrat.searchCode_49 : SearchCode :=
-  SearchCode.literal "\x0d" Lrat.searchCode_0
+  SearchCode.choice Lrat.searchCode_48 Lrat.searchCode_22
 
-@[inline]
 private def Lrat.searchNode_49 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  let characters := ("\x0d").toList
-  if characters.isPrefixOf input then Lrat.searchNode_0 ((input).drop characters.length) k else none
+  scanOrElse (Lrat.searchNode_48 input k) fun _ => Lrat.searchNode_22 input k
 
 private theorem Lrat.searchNode_49_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_49 input k = SearchCode.runK Lrat.searchCode_49 input k :=
   by
   unfold Lrat.searchNode_49 Lrat.searchCode_49
-  simp only [SearchCode.runK, Lrat.searchNode_0_eq]
+  simp only [SearchCode.runK, Lrat.searchNode_48_eq, Lrat.searchNode_22_eq]
 
 private def Lrat.searchCode_50 : SearchCode :=
-  SearchCode.choice Lrat.searchCode_49 Lrat.searchCode_0
+  SearchCode.capture ["RupHints", "Add.RupHints"] Lrat.searchCode_36 Lrat.searchCode_49
 
 @[inline]
 private def Lrat.searchNode_50 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  scanOrElse (Lrat.searchNode_49 input k) fun _ => Lrat.searchNode_0 input k
+  Lrat.searchNode_36 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Lrat.searchNode_49 remaining fun tailCaptures suffix =>
+      k ((["RupHints", "Add.RupHints"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
 
 private theorem Lrat.searchNode_50_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_50 input k = SearchCode.runK Lrat.searchCode_50 input k :=
   by
   unfold Lrat.searchNode_50 Lrat.searchCode_50
-  simp only [SearchCode.runK, Lrat.searchNode_49_eq, Lrat.searchNode_0_eq]
+  simp only [SearchCode.runK, Lrat.searchNode_36_eq, Lrat.searchNode_49_eq]
 
 private def Lrat.searchCode_51 : SearchCode :=
-  SearchCode.capture ["Cr", "Line.Cr"] Lrat.searchCode_50 Lrat.searchCode_0
+  SearchCode.choice Lrat.searchCode_50 Lrat.searchCode_49
 
 @[inline]
 private def Lrat.searchNode_51 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  Lrat.searchNode_50 input fun bodyCaptures remaining =>
-    let consumed := String.ofList ((input).take ((input).length - remaining.length))
-    Lrat.searchNode_0 remaining fun tailCaptures suffix =>
-      k ((["Cr", "Line.Cr"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+  scanOrElse (Lrat.searchNode_50 input k) fun _ => Lrat.searchNode_49 input k
 
 private theorem Lrat.searchNode_51_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_51 input k = SearchCode.runK Lrat.searchCode_51 input k :=
   by
   unfold Lrat.searchNode_51 Lrat.searchCode_51
-  simp only [SearchCode.runK, Lrat.searchNode_50_eq, Lrat.searchNode_0_eq]
+  simp only [SearchCode.runK, Lrat.searchNode_50_eq, Lrat.searchNode_49_eq]
 
 private def Lrat.searchCode_52 : SearchCode :=
-  SearchCode.capture ["Body", "Line.Body"] Lrat.searchCode_48 Lrat.searchCode_51
+  SearchCode.literal "0 " Lrat.searchCode_51
 
-@[inline]
 private def Lrat.searchNode_52 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  Lrat.searchNode_48 input fun bodyCaptures remaining =>
-    let consumed := String.ofList ((input).take ((input).length - remaining.length))
-    Lrat.searchNode_51 remaining fun tailCaptures suffix =>
-      k ((["Body", "Line.Body"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+  let characters := ("0 ").toList
+  if characters.isPrefixOf input then Lrat.searchNode_51 ((input).drop characters.length) k else none
 
 private theorem Lrat.searchNode_52_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_52 input k = SearchCode.runK Lrat.searchCode_52 input k :=
   by
   unfold Lrat.searchNode_52 Lrat.searchCode_52
-  simp only [SearchCode.runK, Lrat.searchNode_48_eq, Lrat.searchNode_51_eq]
+  simp only [SearchCode.runK, Lrat.searchNode_51_eq]
 
 private def Lrat.searchCode_53 : SearchCode :=
-  SearchCode.literal " " Lrat.searchCode_52
+  SearchCode.capture ["Lits", "Add.Lits"] Lrat.searchCode_33 Lrat.searchCode_52
 
 @[inline]
 private def Lrat.searchNode_53 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  let characters := (" ").toList
-  if characters.isPrefixOf input then Lrat.searchNode_52 ((input).drop characters.length) k else none
+  Lrat.searchNode_33 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Lrat.searchNode_52 remaining fun tailCaptures suffix =>
+      k ((["Lits", "Add.Lits"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
 
 private theorem Lrat.searchNode_53_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_53 input k = SearchCode.runK Lrat.searchCode_53 input k :=
   by
   unfold Lrat.searchNode_53 Lrat.searchCode_53
-  simp only [SearchCode.runK, Lrat.searchNode_52_eq]
+  simp only [SearchCode.runK, Lrat.searchNode_33_eq, Lrat.searchNode_52_eq]
 
 private def Lrat.searchCode_54 : SearchCode :=
-  SearchCode.capture ["Id", "Line.Id"] Lrat.searchCode_9 Lrat.searchCode_53
+  SearchCode.choice Lrat.searchCode_53 Lrat.searchCode_52
 
 @[inline]
 private def Lrat.searchNode_54 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  Lrat.searchNode_9 input fun bodyCaptures remaining =>
-    let consumed := String.ofList ((input).take ((input).length - remaining.length))
-    Lrat.searchNode_53 remaining fun tailCaptures suffix =>
-      k ((["Id", "Line.Id"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+  scanOrElse (Lrat.searchNode_53 input k) fun _ => Lrat.searchNode_52 input k
 
 private theorem Lrat.searchNode_54_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_54 input k = SearchCode.runK Lrat.searchCode_54 input k :=
   by
   unfold Lrat.searchNode_54 Lrat.searchCode_54
-  simp only [SearchCode.runK, Lrat.searchNode_9_eq, Lrat.searchNode_53_eq]
+  simp only [SearchCode.runK, Lrat.searchNode_53_eq, Lrat.searchNode_52_eq]
 
 private def Lrat.searchCode_55 : SearchCode :=
-  SearchCode.capture ["Line"] Lrat.searchCode_54 Lrat.searchCode_0
+  SearchCode.capture ["Add", "Body.Add"] Lrat.searchCode_54 Lrat.searchCode_0
 
+@[inline]
 private def Lrat.searchNode_55 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
   Lrat.searchNode_54 input fun bodyCaptures remaining =>
     let consumed := String.ofList ((input).take ((input).length - remaining.length))
     Lrat.searchNode_0 remaining fun tailCaptures suffix =>
-      k ((["Line"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+      k ((["Add", "Body.Add"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
 
 private theorem Lrat.searchNode_55_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_55 input k = SearchCode.runK Lrat.searchCode_55 input k :=
@@ -4169,48 +4518,175 @@ private theorem Lrat.searchNode_55_eq (input : List Char) (k : CaptureMap → Li
   simp only [SearchCode.runK, Lrat.searchNode_54_eq, Lrat.searchNode_0_eq]
 
 private def Lrat.searchCode_56 : SearchCode :=
-  SearchCode.literal "\n" Lrat.searchCode_0
+  SearchCode.choice Lrat.searchCode_26 Lrat.searchCode_55
 
 @[inline]
 private def Lrat.searchNode_56 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  let characters := ("\n").toList
-  if characters.isPrefixOf input then Lrat.searchNode_0 ((input).drop characters.length) k else none
+  scanOrElse (Lrat.searchNode_26 input k) fun _ => Lrat.searchNode_55 input k
 
 private theorem Lrat.searchNode_56_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_56 input k = SearchCode.runK Lrat.searchCode_56 input k :=
   by
   unfold Lrat.searchNode_56 Lrat.searchCode_56
-  simp only [SearchCode.runK, Lrat.searchNode_0_eq]
+  simp only [SearchCode.runK, Lrat.searchNode_26_eq, Lrat.searchNode_55_eq]
 
 private def Lrat.searchCode_57 : SearchCode :=
-  SearchCode.repetition "\n" Lrat.searchCode_55 1 none "Line" Lrat.searchCode_56
+  SearchCode.capture ["Cr", "Line.Cr"] Lrat.searchCode_3 Lrat.searchCode_0
 
 @[inline]
 private def Lrat.searchNode_57 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Option CaptureMap :=
-  Lrat.searchNode_55 input fun firstCaptures remaining =>
-    scanStarK (fun itemInput itemK => Lrat.searchNode_55 itemInput itemK) ("\n").toList 1 none (input).length remaining
-      firstCaptures 1 fun captures suffix itemCount =>
-      Lrat.searchNode_56 suffix fun tailCaptures finalSuffix =>
-        k ((("Line" ++ "#count", toString itemCount) :: captures) ++ tailCaptures) finalSuffix
+  Lrat.searchNode_3 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Lrat.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["Cr", "Line.Cr"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
 
 private theorem Lrat.searchNode_57_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
     Lrat.searchNode_57 input k = SearchCode.runK Lrat.searchCode_57 input k :=
   by
   unfold Lrat.searchNode_57 Lrat.searchCode_57
-  simp only [SearchCode.runK, Lrat.searchNode_55_eq, Lrat.searchNode_56_eq]
+  simp only [SearchCode.runK, Lrat.searchNode_3_eq, Lrat.searchNode_0_eq]
+
+private def Lrat.searchCode_58 : SearchCode :=
+  SearchCode.capture ["Body", "Line.Body"] Lrat.searchCode_56 Lrat.searchCode_57
+
+@[inline]
+private def Lrat.searchNode_58 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  Lrat.searchNode_56 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Lrat.searchNode_57 remaining fun tailCaptures suffix =>
+      k ((["Body", "Line.Body"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem Lrat.searchNode_58_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Lrat.searchNode_58 input k = SearchCode.runK Lrat.searchCode_58 input k :=
+  by
+  unfold Lrat.searchNode_58 Lrat.searchCode_58
+  simp only [SearchCode.runK, Lrat.searchNode_56_eq, Lrat.searchNode_57_eq]
+
+private def Lrat.searchCode_59 : SearchCode :=
+  SearchCode.literal " " Lrat.searchCode_58
+
+@[inline]
+private def Lrat.searchNode_59 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  let characters := (" ").toList
+  if characters.isPrefixOf input then Lrat.searchNode_58 ((input).drop characters.length) k else none
+
+private theorem Lrat.searchNode_59_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Lrat.searchNode_59 input k = SearchCode.runK Lrat.searchCode_59 input k :=
+  by
+  unfold Lrat.searchNode_59 Lrat.searchCode_59
+  simp only [SearchCode.runK, Lrat.searchNode_58_eq]
+
+private def Lrat.searchCode_60 : SearchCode :=
+  SearchCode.capture ["Id", "Line.Id"] Lrat.searchCode_17 Lrat.searchCode_59
+
+@[inline]
+private def Lrat.searchNode_60 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  Lrat.searchNode_17 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Lrat.searchNode_59 remaining fun tailCaptures suffix =>
+      k ((["Id", "Line.Id"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem Lrat.searchNode_60_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Lrat.searchNode_60 input k = SearchCode.runK Lrat.searchCode_60 input k :=
+  by
+  unfold Lrat.searchNode_60 Lrat.searchCode_60
+  simp only [SearchCode.runK, Lrat.searchNode_17_eq, Lrat.searchNode_59_eq]
+
+private def Lrat.searchCode_61 : SearchCode :=
+  SearchCode.capture ["Line", "Entry.Line"] Lrat.searchCode_60 Lrat.searchCode_0
+
+@[inline]
+private def Lrat.searchNode_61 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  Lrat.searchNode_60 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Lrat.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["Line", "Entry.Line"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem Lrat.searchNode_61_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Lrat.searchNode_61 input k = SearchCode.runK Lrat.searchCode_61 input k :=
+  by
+  unfold Lrat.searchNode_61 Lrat.searchCode_61
+  simp only [SearchCode.runK, Lrat.searchNode_60_eq, Lrat.searchNode_0_eq]
+
+private def Lrat.searchCode_62 : SearchCode :=
+  SearchCode.choice Lrat.searchCode_8 Lrat.searchCode_61
+
+@[inline]
+private def Lrat.searchNode_62 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  scanOrElse (Lrat.searchNode_8 input k) fun _ => Lrat.searchNode_61 input k
+
+private theorem Lrat.searchNode_62_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Lrat.searchNode_62 input k = SearchCode.runK Lrat.searchCode_62 input k :=
+  by
+  unfold Lrat.searchNode_62 Lrat.searchCode_62
+  simp only [SearchCode.runK, Lrat.searchNode_8_eq, Lrat.searchNode_61_eq]
+
+private def Lrat.searchCode_63 : SearchCode :=
+  SearchCode.capture ["Entry"] Lrat.searchCode_62 Lrat.searchCode_0
+
+private def Lrat.searchNode_63 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  Lrat.searchNode_62 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Lrat.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["Entry"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem Lrat.searchNode_63_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Lrat.searchNode_63 input k = SearchCode.runK Lrat.searchCode_63 input k :=
+  by
+  unfold Lrat.searchNode_63 Lrat.searchCode_63
+  simp only [SearchCode.runK, Lrat.searchNode_62_eq, Lrat.searchNode_0_eq]
+
+private def Lrat.searchCode_64 : SearchCode :=
+  SearchCode.literal "\n" Lrat.searchCode_0
+
+@[inline]
+private def Lrat.searchNode_64 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  let characters := ("\n").toList
+  if characters.isPrefixOf input then Lrat.searchNode_0 ((input).drop characters.length) k else none
+
+private theorem Lrat.searchNode_64_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Lrat.searchNode_64 input k = SearchCode.runK Lrat.searchCode_64 input k :=
+  by
+  unfold Lrat.searchNode_64 Lrat.searchCode_64
+  simp only [SearchCode.runK, Lrat.searchNode_0_eq]
+
+private def Lrat.searchCode_65 : SearchCode :=
+  SearchCode.repetition "\n" Lrat.searchCode_63 1 none "Entry" Lrat.searchCode_64
+
+@[inline]
+private def Lrat.searchNode_65 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  Lrat.searchNode_63 input fun firstCaptures remaining =>
+    scanStarK (fun itemInput itemK => Lrat.searchNode_63 itemInput itemK) ("\n").toList 1 none (input).length remaining
+      firstCaptures 1 fun captures suffix itemCount =>
+      Lrat.searchNode_64 suffix fun tailCaptures finalSuffix =>
+        k ((("Entry" ++ "#count", toString itemCount) :: captures) ++ tailCaptures) finalSuffix
+
+private theorem Lrat.searchNode_65_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Lrat.searchNode_65 input k = SearchCode.runK Lrat.searchCode_65 input k :=
+  by
+  unfold Lrat.searchNode_65 Lrat.searchCode_65
+  simp only [SearchCode.runK, Lrat.searchNode_63_eq, Lrat.searchNode_64_eq]
 
 private def Lrat.directDecode (source : String) : Option CaptureMap :=
-  Lrat.searchNode_57 source.toList fun (captures : CaptureMap) (remaining : List Char) =>
+  Lrat.searchNode_65 source.toList fun (captures : CaptureMap) (remaining : List Char) =>
     if (remaining).isEmpty then some captures else none
 
 private theorem Lrat.directDecode_eq_searchProgram (source : String) :
     Lrat.directDecode source = SearchProgram.decode Lrat.searchProgram source :=
   by
-  have hcode : Lrat.searchCode_57 = (Lrat.searchProgram).code := rfl
+  have hcode : Lrat.searchCode_65 = (Lrat.searchProgram).code := rfl
   unfold Lrat.directDecode SearchProgram.decode
-  rw [Lrat.searchNode_57_eq, hcode]
+  rw [Lrat.searchNode_65_eq, hcode]
 
 private def Lrat.decodeCaptures (source : String) : Option CaptureMap :=
   Lrat.directDecode source
