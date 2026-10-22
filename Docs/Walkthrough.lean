@@ -59,6 +59,7 @@ triptych Decimal where
     value ∈ [Int64.MIN, Int64.MAX]
   parser Cedar.Spec.Ext.Decimal.parse
   printer decimalToStr
+  verus "../verus-experiments/cedar-ext/decimal/src/spec.rs"
   to "Outputs/Decimal"
 ```
 
@@ -87,23 +88,25 @@ def Decimal.IsWf.Sign : String → Prop :=
 fun s => s = "-" ∨ s = ""
 ```
 
-The top-level predicate composes them along the concatenation structure — one existentially
-quantified variable per named capture, one conjunct per production:
+The generated {name}`Decimal.Production` composes them along the root concatenation structure:
+one existentially quantified variable per named capture, one conjunct per referenced production.
+This is the parser-independent statement that a string has the shape of the root grammar rule:
 
 ```lean (name := isWfDecimal)
-#print Decimal.IsWf.Decimal
+#print Decimal.Production
 ```
 
 ```leanOutput isWfDecimal
-def Decimal.IsWf.Decimal : String → Prop :=
+def Decimal.Production : String → Prop :=
 fun s =>
   ∃ «sign» natural fraction,
     ((s = «sign» ++ natural ++ "." ++ fraction ∧ Decimal.IsWf.Sign «sign») ∧ Decimal.IsWf.Natural natural) ∧
       Decimal.IsWf.Fraction fraction
 ```
 
-The root predicate composes the productions, and {name}`Decimal.IsValid` conjoins shape with
-the final-value range:
+{name}`Decimal.IsWf.Decimal` is a compatibility alias for this relation. Top-level
+{name}`Decimal.IsWf` reuses {name}`Decimal.Production`, while {name}`Decimal.IsValid` additionally
+checks the final-value range:
 
 ```lean (name := isValidCheck)
 #print Decimal.IsValid
@@ -112,6 +115,23 @@ the final-value range:
 ```leanOutput isValidCheck
 @[reducible] def Decimal.IsValid : String → Prop :=
 fun s => Decimal.IsWf s ∧ Decimal.SatisfiesConstraints s
+```
+
+When a value clause is present, Triptych also generates a string/value relation.
+{name}`Decimal.Denotes` applied to {lit}`s` and {lit}`i` says that {lit}`s` is valid and that
+applying the readable value function to its named captures yields {lit}`i`:
+
+```lean (name := denotesCheck)
+#print Decimal.Denotes
+```
+
+```leanOutput denotesCheck
+def Decimal.Denotes : String → Int → Prop :=
+fun s i =>
+  Decimal.IsValid s ∧
+    i =
+      Decimal.value (component Decimal.grammar s "Sign") (component Decimal.grammar s "Natural")
+        (component Decimal.grammar s "Fraction")
 ```
 
 ## A typed field view
@@ -233,20 +253,24 @@ The readable specification says which strings are valid and what they mean. The 
 
 ```leanOutput parseDefinition
 def Decimal.parse : String → Option Int64 :=
-fun s => scannerParse Decimal.grammar Decimal.constraints Decimal.valueExpr Int64.ofInt s
+fun s => decodedViewParseCached Decimal.directView✝ Decimal.fastAccept✝ Decimal.View.denotation Int64.ofInt s
 ```
 
 Read this definition as a pipeline:
 
-1. {name}`scannerParse` scans the input once and obtains the named captures.
-2. It checks both grammar-derived and semantic constraints against that same capture map.
-3. For an accepted input, it evaluates {name}`Decimal.valueExpr` to the specification-level
-   {name}`Int`.
+1. The private generated capture decoder executes a cursor program specialized from the Decimal
+   grammar and records the named captures as source spans. Its certificate proves direct
+   completeness and exact rejection, so no generic scanner runs afterward.
+2. On success, it projects those spans directly into the generated {name}`Decimal.View`.
+3. It computes {name}`Decimal.View.denotation` once. The generated acceptance test reuses that
+   value when checking the semantic constraint, avoiding repeated string-key lookup, generic
+   {name}`ValExpr` interpretation, and duplicate value computation.
 4. {name}`Int64.ofInt` converts that value to the parser's {name}`Int64` result; a rejected input
    returns {name}`Option.none`.
 
-The generated {name}`Decimal.parse_eq_gated` theorem proves that this single-scan implementation
-has exactly the readable behavior “accept when {name}`Decimal.IsValid`, then return
+The generated {name}`Decimal.parse_eq_scanner` theorem proves that specialization preserves the
+generic scanner result. {name}`Decimal.parse_eq_gated` then proves that the implementation has
+exactly the readable behavior “accept when {name}`Decimal.IsValid`, then return
 {name}`Decimal.computeValue` converted by {name}`Int64.ofInt`.”
 
 The first two inputs below succeed. The third violates the grammar, while the fourth has the
@@ -302,7 +326,7 @@ This capture map is an engine representation. Ordinary clients use the typed
 {name}`Decimal.View` introduced in §2.2 instead of looking up these string keys.
 
 The scanner performs ordered search directly and stops at the first complete parse. The
-archived {name}`Triptych.decode` definition instead constructs lists of candidate splits; it is
+reference {name}`Triptych.decode` definition instead constructs lists of candidate splits; it is
 kept as a transparent reference semantics. The checked theorem {name}`Triptych.scan_eq_decode`
 proves that both select exactly the same capture map on every input, so replacing the runtime
 engine does not change the readable specification, computed value, or parser contracts.
@@ -392,9 +416,12 @@ Compiler-generated theorems use only {name}`propext`, {name}`Classical.choice`, 
 
 ## Why the parser is correct by construction
 
-Triptych generates the grammar, constraints, value expression, and scanner parser from the same
-DSL description. The generic theorem {name}`Triptych.scannerParse_eq_surfaceGatedParseOfSpec`
-proves that the one-scan implementation equals the readable
+Triptych generates the grammar, constraints, value expression, and specialized cursor parser from
+the same DSL description. A generated {name}`Triptych.ScanPlan.MirrorsGrammar` witness checks
+that the cursor plan represents the grammar, while a generated local certificate checks its
+positive widths and deterministic boundaries. Generic theorems prove that the direct parser equals
+{name}`Triptych.scannerParse`; then
+{name}`Triptych.scannerParse_eq_surfaceGatedParseOfSpec` connects that scanner to the readable
 {name}`Triptych.gatedParseOfSpec` contract.
 
 The generated contracts rewrite through {name}`Decimal.parse_eq_gated` and then apply generic

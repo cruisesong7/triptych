@@ -8,7 +8,10 @@ import Triptych.Architecture.Constraint
 import Triptych.Architecture.Assemble
 import Triptych.Theorems.Reconcile
 import Triptych.Theorems.Value
-import Triptych.Archive.DecodeLemmas
+import Triptych.Theorems.ParsePlan
+import Triptych.Theorems.ScanPlan
+import Triptych.Theorems.SearchPlan
+import Triptych.Reference.DecodeLemmas
 import Triptych.Theorems.Derivation
 import Triptych.Theorems.Scanner
 import Outputs.IPv4.spec
@@ -23,7 +26,7 @@ set_option linter.unnecessarySeqFocus false
 
 /- ══════════════════════════════ engine ══════════════════════════════
 The executable counterpart of the spec. A verified scanner extracts captured
-components and stops at the first complete parse. The archived reference `decode`
+components and stops at the first complete parse. The reference `decode`
 is used only in the agreement proof, not as a runtime fallback. `computeValue`
 evaluates the value function on those captures. Generated `DecidablePred` instances
 make the readable `IsWf` and `IsValid` predicates directly executable.
@@ -97,10 +100,22 @@ def IPv4.Derivation.V4Net.capturesWith (qual : String) : IPv4.Derivation.V4Net �
             IPv4.Derivation.Prefix.capturesWith "Prefix" part2 ++
           [])))
 
-def IPv4.valueFn := fun m : Triptych.CaptureMap =>
-  toIPv4Net ((Triptych.CaptureMap.toEnv m "Oct1").getD "") ((Triptych.CaptureMap.toEnv m "Oct2").getD "")
-    ((Triptych.CaptureMap.toEnv m "Oct3").getD "") ((Triptych.CaptureMap.toEnv m "Oct4").getD "")
-    ((Triptych.CaptureMap.toEnv m "Prefix").getD "")
+def IPv4.valueExpr : ValExpr :=
+  ValExpr.add
+    (ValExpr.mul
+      (ValExpr.add
+        (ValExpr.mul
+          (ValExpr.add
+            (ValExpr.mul (ValExpr.add (ValExpr.mul (ValExpr.nat "Oct1") (ValExpr.lit 256)) (ValExpr.nat "Oct2"))
+              (ValExpr.lit 256))
+            (ValExpr.nat "Oct3"))
+          (ValExpr.lit 256))
+        (ValExpr.nat "Oct4"))
+      (ValExpr.lit 33))
+    (ValExpr.iteEmpty "Prefix" (ValExpr.lit 32) (ValExpr.nat "Prefix"))
+
+def IPv4.valueFn : Env → Int :=
+  (IPv4.valueExpr).eval
 
 def IPv4.constraints : List ConstraintEntry :=
   [ConstraintEntry.dsl ConstraintPhase.wellFormed (Constraint.noLeadingZero "Oct1"),
@@ -122,15 +137,34 @@ def IPv4.constraints : List ConstraintEntry :=
     ConstraintEntry.dsl ConstraintPhase.wellFormed (Constraint.noLeadingZero "Prefix"),
     ConstraintEntry.dsl ConstraintPhase.wellFormed
       (Constraint.and (Constraint.le (ValExpr.lit 0) (ValExpr.nat "Prefix"))
-        (Constraint.le (ValExpr.nat "Prefix") (ValExpr.lit 32)))]
+        (Constraint.le (ValExpr.nat "Prefix") (ValExpr.lit 32))),
+    ConstraintEntry.dsl ConstraintPhase.value
+      (Constraint.and (Constraint.le (ValExpr.lit 0) IPv4.valueExpr)
+        (Constraint.le IPv4.valueExpr
+          (ValExpr.sub (ValExpr.mul (ValExpr.pow (ValExpr.lit 2) (ValExpr.lit 32)) (ValExpr.lit 33)) (ValExpr.lit 1))))]
 
-def IPv4.computeValue (s : String) :=
-  Triptych.scannerComputeValueMap IPv4.grammar IPv4.valueFn s
+def IPv4.computeValue (s : String) : Option Int :=
+  Triptych.scannerComputeValue IPv4.grammar IPv4.valueExpr s
 
 def IPv4.View.ofMap (input : String) (m : Triptych.CaptureMap) : IPv4.View :=
   IPv4.View.mk input ((Triptych.CaptureMap.toEnv m "Oct1").getD "") ((Triptych.CaptureMap.toEnv m "Oct2").getD "")
     ((Triptych.CaptureMap.toEnv m "Oct3").getD "") ((Triptych.CaptureMap.toEnv m "Oct4").getD "")
     (Triptych.CaptureMap.toEnv m "Prefix")
+
+private def IPv4.View.ofSpans (input : String) (chars : List Char) (spans : Triptych.LeanSpanCursor.SpanMap) :
+    IPv4.View :=
+  IPv4.View.mk input ((Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "Oct1").getD "")
+    ((Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "Oct2").getD "")
+    ((Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "Oct3").getD "")
+    ((Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "Oct4").getD "")
+    (Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "Prefix")
+
+private theorem IPv4.View.ofSpans_eq_ofMap (input : String) (chars : List Char)
+    (spans : Triptych.LeanSpanCursor.SpanMap) :
+    IPv4.View.ofSpans input chars spans = IPv4.View.ofMap input (spans.materialize chars) :=
+  by
+  unfold IPv4.View.ofSpans IPv4.View.ofMap
+  simp only [Triptych.LeanSpanCursor.SpanMap.captureMap_toEnv, Triptych.LeanSpanCursor.SpanMap.captureMap_toEnvList]
 
 def IPv4.decodeView (s : String) : Option IPv4.View :=
   (scan IPv4.grammar s).map (IPv4.View.ofMap s)
@@ -462,6 +496,18 @@ theorem IPv4.SatisfiesWfConstraints_of_decode {s : String} {m : Triptych.Capture
     Triptych.component_eq_of_decode h "Oct3", Triptych.component_eq_of_decode h "Oct4",
     Triptych.component_eq_of_decode h "Prefix"]
 
+theorem IPv4.SatisfiesConstraints_of_decode {s : String} {m : Triptych.CaptureMap}
+    (h : decode IPv4.grammar s = some m) :
+    IPv4.SatisfiesConstraints s ↔
+      IPv4.Constraints ((Triptych.CaptureMap.toEnv m "Oct1").getD "") ((Triptych.CaptureMap.toEnv m "Oct2").getD "")
+        ((Triptych.CaptureMap.toEnv m "Oct3").getD "") ((Triptych.CaptureMap.toEnv m "Oct4").getD "")
+        ((Triptych.CaptureMap.toEnv m "Prefix").getD "") :=
+  by
+  unfold IPv4.SatisfiesConstraints
+  simp only [Triptych.component_eq_of_decode h "Oct1", Triptych.component_eq_of_decode h "Oct2",
+    Triptych.component_eq_of_decode h "Oct3", Triptych.component_eq_of_decode h "Oct4",
+    Triptych.component_eq_of_decode h "Prefix"]
+
 theorem IPv4.Internal.matchesRef.Oct1 (fuel : Nat) (s : String) :
     matchesSym IPv4.grammar (fuel + 1) (Sym.ref "Oct1") s ↔ IPv4.IsWf.Oct1 s :=
   by
@@ -474,10 +520,10 @@ theorem IPv4.Internal.matchesRef.Oct1 (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold IPv4.IsWf.Oct1
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem IPv4.Internal.matchesRef.Oct2 (fuel : Nat) (s : String) :
@@ -492,10 +538,10 @@ theorem IPv4.Internal.matchesRef.Oct2 (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold IPv4.IsWf.Oct2
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem IPv4.Internal.matchesRef.Oct3 (fuel : Nat) (s : String) :
@@ -510,10 +556,10 @@ theorem IPv4.Internal.matchesRef.Oct3 (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold IPv4.IsWf.Oct3
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem IPv4.Internal.matchesRef.Oct4 (fuel : Nat) (s : String) :
@@ -528,10 +574,10 @@ theorem IPv4.Internal.matchesRef.Oct4 (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold IPv4.IsWf.Oct4
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem IPv4.Internal.matchesRef.V4Addr (fuel : Nat) (s : String) :
@@ -550,11 +596,11 @@ theorem IPv4.Internal.matchesRef.V4Addr (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold IPv4.IsWf.V4Addr
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     IPv4.Internal.matchesRef.Oct1, IPv4.Internal.matchesRef.Oct2, IPv4.Internal.matchesRef.Oct3,
     IPv4.Internal.matchesRef.Oct4]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem IPv4.Internal.matchesRef.Prefix (fuel : Nat) (s : String) :
@@ -569,14 +615,14 @@ theorem IPv4.Internal.matchesRef.Prefix (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold IPv4.IsWf.Prefix
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem IPv4.Internal.matchesRef.V4Net (fuel : Nat) (s : String) :
-    matchesSym IPv4.grammar (fuel + 3) (Sym.ref "V4Net") s ↔ IPv4.IsWf.V4Net s :=
+    matchesSym IPv4.grammar (fuel + 3) (Sym.ref "V4Net") s ↔ IPv4.Production s :=
   by
   rw [matchesSym,
     show
@@ -588,19 +634,20 @@ theorem IPv4.Internal.matchesRef.V4Net (fuel : Nat) (s : String) :
                 SymItem.mk (Sym.ref "Prefix") false]])
       from rfl]
   dsimp only
-  unfold matchesProd IPv4.IsWf.V4Net
+  unfold matchesProd IPv4.Production
   simp (config := { maxSteps := 1000000 }) only [List.mem_cons, List.mem_singleton, List.not_mem_nil,
-    Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_or_imp, exists_eq_left, exists_eq_left, if_true,
-    if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IPv4.Internal.matchesRef.V4Addr,
+    Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_or_imp, exists_eq_left, exists_eq_left, ite_true,
+    ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IPv4.Internal.matchesRef.V4Addr,
     IPv4.Internal.matchesRef.Prefix]
   repeat'
     first
     | apply or_congr
     | ( simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left,
-          ← and_assoc, exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+          ← and_assoc, exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left,
+          Option.some.injEq, forall_eq']
         try grind [String.append_assoc, String.append_empty])
 
-theorem IPv4.IsWfGrammar_equiv (s : String) : Triptych.IsWf IPv4.grammar s ↔ IPv4.IsWf.V4Net s :=
+theorem IPv4.IsWfGrammar_equiv (s : String) : Triptych.IsWf IPv4.grammar s ↔ IPv4.Production s :=
   by
   rw [isWf_eq_isWfProd_start, IsWfProd,
     show
@@ -647,10 +694,22 @@ theorem IPv4.IsWf_equiv (s : String) : IPv4.IsWf s ↔ Triptych.isWf IPv4.gramma
   rw [Triptych.scan_eq_decode]
   rw [← IPv4.IsWfGrammar_equiv, ← decodeSome_iff_IsWf IPv4.grammar (by decide)]
   unfold IPv4.SatisfiesWfConstraints IPv4.WfConstraints IPv4.constraints
-  simp only [Triptych.component, Triptych.componentList, Triptych.envOf, Triptych.captureMapOf, Triptych.scan_eq_decode,
-    List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const, ConstraintEntry.wfPart,
-    Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD,
-    Env.countVal, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
+  simp only [Triptych.component, Triptych.componentList, Triptych.componentWith, Triptych.envOf, Triptych.captureMapOf,
+    Triptych.scan_eq_decode, List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const,
+    ConstraintEntry.wfPart, Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD,
+    countOf_getD, signOf_getD, hexOf_getD, hexSeqOf_getD, segmentsOf_getD, Env.countVal, and_true, true_and,
+    false_implies, implies_true, Bool.false_eq_true]
+  try grind
+
+theorem IPv4.SatisfiesConstraints_equiv (s : String) :
+    IPv4.SatisfiesConstraints s ↔ Triptych.satisfiesConstraints IPv4.grammar IPv4.constraints s :=
+  by
+  unfold Triptych.satisfiesConstraints
+  unfold IPv4.SatisfiesConstraints IPv4.Constraints IPv4.constraints IPv4.value IPv4.valueExpr
+  simp only [Triptych.component, Triptych.envOf, Triptych.captureMapOf, Triptych.scan_eq_decode, List.forall_mem_cons,
+    List.forall_mem_singleton, List.not_mem_nil, forall_const, ConstraintEntry.valPart, Constraint.eval, ValExpr.eval,
+    presentCount, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, hexOf_getD, hexSeqOf_getD,
+    segmentsOf_getD, Env.countVal, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
   try grind
 
 theorem IPv4.IsValid_equiv (s : String) :
@@ -658,14 +717,7 @@ theorem IPv4.IsValid_equiv (s : String) :
       Triptych.isWf IPv4.grammar IPv4.constraints s ∧ Triptych.satisfiesConstraints IPv4.grammar IPv4.constraints s :=
   by
   unfold IPv4.IsValid
-  rw [(IPv4.IsWf_equiv s)]
-  unfold Triptych.satisfiesConstraints Triptych.captureMapOf IPv4.constraints
-  simp only [List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, ConstraintEntry.valPart, false_implies,
-    true_and, and_true]
-  constructor
-  · intro h
-    exact ⟨h, fun _ => True.intro⟩
-  · exact And.left
+  rw [(IPv4.IsWf_equiv s), (IPv4.SatisfiesConstraints_equiv s)]
 
 instance IPv4.instDecidableGrammar : DecidablePred IPv4.IsWf.V4Net := fun s =>
   @decidable_of_iff _ _ (IPv4.IsWfGrammar_equiv s) (Triptych.decIsWfScanner IPv4.grammar (by decide) s)
@@ -673,12 +725,21 @@ instance IPv4.instDecidableGrammar : DecidablePred IPv4.IsWf.V4Net := fun s =>
 instance IPv4.instDecidableIsWf : DecidablePred IPv4.IsWf := fun s =>
   @decidable_of_iff _ _ (IPv4.IsWf_equiv s).symm inferInstance
 
+instance IPv4.instDecidableSatisfiesConstraints : DecidablePred IPv4.SatisfiesConstraints := fun s =>
+  @decidable_of_iff _ _ (IPv4.SatisfiesConstraints_equiv s).symm inferInstance
+
 instance IPv4.instDecidableIsValid : DecidablePred IPv4.IsValid := fun s => inferInstance
 
 theorem IPv4.View.wfConstraints_of_decode {s : String} {m : Triptych.CaptureMap} (h : decode IPv4.grammar s = some m) :
     IPv4.SatisfiesWfConstraints s ↔ IPv4.View.WfConstraints (IPv4.View.ofMap s m) :=
   by
   rw [IPv4.SatisfiesWfConstraints_of_decode h]
+  rfl
+
+theorem IPv4.View.constraints_of_decode {s : String} {m : Triptych.CaptureMap} (h : decode IPv4.grammar s = some m) :
+    IPv4.SatisfiesConstraints s ↔ IPv4.View.Constraints (IPv4.View.ofMap s m) :=
+  by
+  rw [IPv4.SatisfiesConstraints_of_decode h]
   rfl
 
 theorem IPv4.IsValid_view (s : String) :
@@ -693,7 +754,10 @@ theorem IPv4.IsValid_view (s : String) :
     refine ⟨IPv4.View.ofMap s m, ?_, ?_⟩
     · unfold IPv4.decodeView
       simp [Triptych.scan_eq_decode, hmDecode]
-    · exact (IPv4.View.wfConstraints_of_decode hmDecode).mp hvalid.2
+    ·
+      exact
+        ⟨(IPv4.View.wfConstraints_of_decode hmDecode).mp hvalid.1.2,
+          (IPv4.View.constraints_of_decode hmDecode).mp hvalid.2⟩
   · rintro ⟨v, hview, hvalid⟩
     unfold IPv4.decodeView at hview
     rw [Option.map_eq_some_iff] at hview
@@ -702,7 +766,9 @@ theorem IPv4.IsValid_view (s : String) :
     have hmDecode : decode IPv4.grammar s = some m := by simpa only [Triptych.scan_eq_decode] using hm
     have hdecoded : (decode IPv4.grammar s).isSome = true := by simp [hmDecode]
     have hgrammar := (IPv4.IsWfGrammar_equiv s).mp ((decodeSome_iff_IsWf IPv4.grammar (by decide) s).mp hdecoded)
-    exact ⟨hgrammar, (IPv4.View.wfConstraints_of_decode hmDecode).mpr hvalid⟩
+    exact
+      ⟨⟨hgrammar, (IPv4.View.wfConstraints_of_decode hmDecode).mpr hvalid.1⟩,
+        (IPv4.View.constraints_of_decode hmDecode).mpr hvalid.2⟩
 
 theorem IPv4.computeValue_eq (s : String) :
     IPv4.computeValue s =
@@ -712,12 +778,15 @@ theorem IPv4.computeValue_eq (s : String) :
             (Triptych.component IPv4.grammar s "Oct3") (Triptych.component IPv4.grammar s "Oct4")
             (Triptych.component IPv4.grammar s "Prefix")) :=
   by
-  unfold IPv4.computeValue Triptych.scannerComputeValueMap Triptych.component Triptych.envOf Triptych.captureMapOf
-    IPv4.value IPv4.valueFn
+  unfold IPv4.computeValue Triptych.scannerComputeValue Triptych.component Triptych.envOf Triptych.captureMapOf
+    IPv4.valueExpr IPv4.value
   rw [Triptych.scan_eq_decode]
   cases h : decode IPv4.grammar s with
   | none => simp [h]
-  | some m => simp [h, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, Env.countVal, ValExpr.eval]
+  | some m =>
+    simp [h, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, hexOf_getD, hexSeqOf_getD, segmentsOf_getD,
+        Env.countVal, ValExpr.eval] <;>
+      ac_rfl
 
 theorem IPv4.computeValue_of_decode {s : String} {m : Triptych.CaptureMap} (h : decode IPv4.grammar s = some m) :
     IPv4.computeValue s =
@@ -748,10 +817,14 @@ theorem IPv4.computeValue_view (s : String) : IPv4.computeValue s = (IPv4.decode
     rfl
 
 /- ═══════════════════════════════ parser ══════════════════════════════
-The generated correct-by-construction parser `parse` scans once, checks constraints
-on that capture map, and computes the result from the same captures. `parse_eq_gated`
-proves equality with the readable validity-gated presentation. Its correctness and
-search-cost guarantees — `parse_sound`, `parse_complete`, `parse_reject`,
+The generated correct-by-construction parser `parse` uses a certified staged cursor
+program when the grammar supports one, projects its captures once into the typed
+`View`, checks `View.Valid`, and computes `View.denotation`. Certified cursor rejection
+is final; grammar
+shapes outside that fragment use the complete scanner. `parse_eq_scanner` and
+`parse_eq_gated` prove equality with the generic
+scanner and readable validity-gated presentation. Its correctness and search-cost
+guarantees — `parse_sound`, `parse_complete`, `parse_reject`,
 `parse_profile_result`, `parse_candidateChecks_le`, `parse_view`, and typed
 `parse_eq_some_iff_view` / `parse_eq_none_iff_view` normal forms — are all
 AUTO-DISCHARGED here.
@@ -759,70 +832,572 @@ When an external parser is declared, `checkedExtParse` additionally validates ea
 external result against this parser and ships an AUTO-DISCHARGED soundness theorem.
 A verified parser, no `sorry`. -/
 
+private abbrev IPv4.searchPlan : SearchPlan :=
+  ({ start := "V4Net",
+      alternatives :=
+        [[SearchPattern.capture "V4Addr" ["V4Addr"]
+              [[SearchPattern.capture "Oct1" ["Oct1", "V4Addr.Oct1"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.between 1 3)]],
+                  SearchPattern.literal ".",
+                  SearchPattern.capture "Oct2" ["Oct2", "V4Addr.Oct2"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.between 1 3)]],
+                  SearchPattern.literal ".",
+                  SearchPattern.capture "Oct3" ["Oct3", "V4Addr.Oct3"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.between 1 3)]],
+                  SearchPattern.literal ".",
+                  SearchPattern.capture "Oct4" ["Oct4", "V4Addr.Oct4"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.between 1 3)]]]]],
+          [SearchPattern.capture "V4Addr" ["V4Addr"]
+              [[SearchPattern.capture "Oct1" ["Oct1", "V4Addr.Oct1"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.between 1 3)]],
+                  SearchPattern.literal ".",
+                  SearchPattern.capture "Oct2" ["Oct2", "V4Addr.Oct2"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.between 1 3)]],
+                  SearchPattern.literal ".",
+                  SearchPattern.capture "Oct3" ["Oct3", "V4Addr.Oct3"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.between 1 3)]],
+                  SearchPattern.literal ".",
+                  SearchPattern.capture "Oct4" ["Oct4", "V4Addr.Oct4"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.between 1 3)]]]],
+            SearchPattern.literal "/",
+            SearchPattern.capture "Prefix" ["Prefix"]
+              [[SearchPattern.tokenRun TokClass.digit (LenSpec.between 1 2)]]]] } :
+    SearchPlan)
+
+private abbrev IPv4.parsePlan : ParsePlan :=
+  ParsePlan.search IPv4.searchPlan
+
+private theorem IPv4.searchPlan_mirrorsGrammar : SearchPlan.MirrorsGrammar IPv4.searchPlan IPv4.grammar :=
+  SearchPlan.MirrorsGrammar.intro (by rfl)
+    (Production.mk "V4Net"
+      [[SymItem.mk (Sym.ref "V4Addr") false],
+        [SymItem.mk (Sym.ref "V4Addr") false, SymItem.mk (Sym.lit "/") false, SymItem.mk (Sym.ref "Prefix") false]])
+    (by rfl)
+    (SearchPattern.MirrorsAlternatives.cons
+      (SearchPattern.MirrorsSequence.required
+        (SearchPattern.MirrorsSymbol.capture («grammar» := IPv4.grammar) (fuel := 6) (production :=
+          Production.mk "V4Addr"
+            [[SymItem.mk (Sym.ref "Oct1") false, SymItem.mk (Sym.lit ".") false, SymItem.mk (Sym.ref "Oct2") false,
+                SymItem.mk (Sym.lit ".") false, SymItem.mk (Sym.ref "Oct3") false, SymItem.mk (Sym.lit ".") false,
+                SymItem.mk (Sym.ref "Oct4") false]])
+          (by rfl) (by rfl)
+          (SearchPattern.MirrorsAlternatives.cons
+            (SearchPattern.MirrorsSequence.required
+              (SearchPattern.MirrorsSymbol.capture («grammar» := IPv4.grammar) (fuel := 5) (production :=
+                Production.mk "Oct1" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.between 1 3)) false]]) (by rfl)
+                (by rfl)
+                (SearchPattern.MirrorsAlternatives.cons
+                  (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                    SearchPattern.MirrorsSequence.empty)
+                  SearchPattern.MirrorsAlternatives.empty))
+              (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                (SearchPattern.MirrorsSequence.required
+                  (SearchPattern.MirrorsSymbol.capture («grammar» := IPv4.grammar) (fuel := 5) (production :=
+                    Production.mk "Oct2" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.between 1 3)) false]]) (by rfl)
+                    (by rfl)
+                    (SearchPattern.MirrorsAlternatives.cons
+                      (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                        SearchPattern.MirrorsSequence.empty)
+                      SearchPattern.MirrorsAlternatives.empty))
+                  (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                    (SearchPattern.MirrorsSequence.required
+                      (SearchPattern.MirrorsSymbol.capture («grammar» := IPv4.grammar) (fuel := 5) (production :=
+                        Production.mk "Oct3" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.between 1 3)) false]])
+                        (by rfl) (by rfl)
+                        (SearchPattern.MirrorsAlternatives.cons
+                          (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                            SearchPattern.MirrorsSequence.empty)
+                          SearchPattern.MirrorsAlternatives.empty))
+                      (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                        (SearchPattern.MirrorsSequence.required
+                          (SearchPattern.MirrorsSymbol.capture («grammar» := IPv4.grammar) (fuel := 5) (production :=
+                            Production.mk "Oct4" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.between 1 3)) false]])
+                            (by rfl) (by rfl)
+                            (SearchPattern.MirrorsAlternatives.cons
+                              (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                SearchPattern.MirrorsSequence.empty)
+                              SearchPattern.MirrorsAlternatives.empty))
+                          SearchPattern.MirrorsSequence.empty)))))))
+            SearchPattern.MirrorsAlternatives.empty))
+        SearchPattern.MirrorsSequence.empty)
+      (SearchPattern.MirrorsAlternatives.cons
+        (SearchPattern.MirrorsSequence.required
+          (SearchPattern.MirrorsSymbol.capture («grammar» := IPv4.grammar) (fuel := 6) (production :=
+            Production.mk "V4Addr"
+              [[SymItem.mk (Sym.ref "Oct1") false, SymItem.mk (Sym.lit ".") false, SymItem.mk (Sym.ref "Oct2") false,
+                  SymItem.mk (Sym.lit ".") false, SymItem.mk (Sym.ref "Oct3") false, SymItem.mk (Sym.lit ".") false,
+                  SymItem.mk (Sym.ref "Oct4") false]])
+            (by rfl) (by rfl)
+            (SearchPattern.MirrorsAlternatives.cons
+              (SearchPattern.MirrorsSequence.required
+                (SearchPattern.MirrorsSymbol.capture («grammar» := IPv4.grammar) (fuel := 5) (production :=
+                  Production.mk "Oct1" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.between 1 3)) false]]) (by rfl)
+                  (by rfl)
+                  (SearchPattern.MirrorsAlternatives.cons
+                    (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                      SearchPattern.MirrorsSequence.empty)
+                    SearchPattern.MirrorsAlternatives.empty))
+                (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                  (SearchPattern.MirrorsSequence.required
+                    (SearchPattern.MirrorsSymbol.capture («grammar» := IPv4.grammar) (fuel := 5) (production :=
+                      Production.mk "Oct2" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.between 1 3)) false]])
+                      (by rfl) (by rfl)
+                      (SearchPattern.MirrorsAlternatives.cons
+                        (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                          SearchPattern.MirrorsSequence.empty)
+                        SearchPattern.MirrorsAlternatives.empty))
+                    (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                      (SearchPattern.MirrorsSequence.required
+                        (SearchPattern.MirrorsSymbol.capture («grammar» := IPv4.grammar) (fuel := 5) (production :=
+                          Production.mk "Oct3" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.between 1 3)) false]])
+                          (by rfl) (by rfl)
+                          (SearchPattern.MirrorsAlternatives.cons
+                            (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                              SearchPattern.MirrorsSequence.empty)
+                            SearchPattern.MirrorsAlternatives.empty))
+                        (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                          (SearchPattern.MirrorsSequence.required
+                            (SearchPattern.MirrorsSymbol.capture («grammar» := IPv4.grammar) (fuel := 5) (production :=
+                              Production.mk "Oct4" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.between 1 3)) false]])
+                              (by rfl) (by rfl)
+                              (SearchPattern.MirrorsAlternatives.cons
+                                (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                  SearchPattern.MirrorsSequence.empty)
+                                SearchPattern.MirrorsAlternatives.empty))
+                            SearchPattern.MirrorsSequence.empty)))))))
+              SearchPattern.MirrorsAlternatives.empty))
+          (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+            (SearchPattern.MirrorsSequence.required
+              (SearchPattern.MirrorsSymbol.capture («grammar» := IPv4.grammar) (fuel := 6) (production :=
+                Production.mk "Prefix" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.between 1 2)) false]]) (by rfl)
+                (by rfl)
+                (SearchPattern.MirrorsAlternatives.cons
+                  (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                    SearchPattern.MirrorsSequence.empty)
+                  SearchPattern.MirrorsAlternatives.empty))
+              SearchPattern.MirrorsSequence.empty)))
+        SearchPattern.MirrorsAlternatives.empty))
+
+private abbrev IPv4.searchProgram : SearchProgram :=
+  ({ start := "V4Net",
+      code :=
+        SearchCode.choice
+          (SearchCode.capture ["V4Addr"]
+            (SearchCode.capture ["Oct1", "V4Addr.Oct1"]
+              (SearchCode.tokenRun TokClass.digit (LenSpec.between 1 3) SearchCode.accept)
+              (SearchCode.literal "."
+                (SearchCode.capture ["Oct2", "V4Addr.Oct2"]
+                  (SearchCode.tokenRun TokClass.digit (LenSpec.between 1 3) SearchCode.accept)
+                  (SearchCode.literal "."
+                    (SearchCode.capture ["Oct3", "V4Addr.Oct3"]
+                      (SearchCode.tokenRun TokClass.digit (LenSpec.between 1 3) SearchCode.accept)
+                      (SearchCode.literal "."
+                        (SearchCode.capture ["Oct4", "V4Addr.Oct4"]
+                          (SearchCode.tokenRun TokClass.digit (LenSpec.between 1 3) SearchCode.accept)
+                          SearchCode.accept)))))))
+            SearchCode.accept)
+          (SearchCode.capture ["V4Addr"]
+            (SearchCode.capture ["Oct1", "V4Addr.Oct1"]
+              (SearchCode.tokenRun TokClass.digit (LenSpec.between 1 3) SearchCode.accept)
+              (SearchCode.literal "."
+                (SearchCode.capture ["Oct2", "V4Addr.Oct2"]
+                  (SearchCode.tokenRun TokClass.digit (LenSpec.between 1 3) SearchCode.accept)
+                  (SearchCode.literal "."
+                    (SearchCode.capture ["Oct3", "V4Addr.Oct3"]
+                      (SearchCode.tokenRun TokClass.digit (LenSpec.between 1 3) SearchCode.accept)
+                      (SearchCode.literal "."
+                        (SearchCode.capture ["Oct4", "V4Addr.Oct4"]
+                          (SearchCode.tokenRun TokClass.digit (LenSpec.between 1 3) SearchCode.accept)
+                          SearchCode.accept)))))))
+            (SearchCode.literal "/"
+              (SearchCode.capture ["Prefix"]
+                (SearchCode.tokenRun TokClass.digit (LenSpec.between 1 2) SearchCode.accept) SearchCode.accept))) } :
+    SearchProgram)
+
+private theorem IPv4.searchProgram_lowered : lowerSearchPlan IPv4.searchPlan = IPv4.searchProgram := by decide
+
+private def IPv4.searchCode_0 : SearchCode :=
+  SearchCode.accept
+
+@[inline]
+private def IPv4.searchNode_0 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  k [] input
+
+private theorem IPv4.searchNode_0_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    IPv4.searchNode_0 input k = SearchCode.runK IPv4.searchCode_0 input k :=
+  by
+  unfold IPv4.searchNode_0 IPv4.searchCode_0
+  simp only [SearchCode.runK]
+
+private def IPv4.searchCode_1 : SearchCode :=
+  SearchCode.tokenRun TokClass.digit (LenSpec.between 1 3) IPv4.searchCode_0
+
+@[inline]
+private def IPv4.searchNode_1 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  (List.range ((input).length + 1)).findSome? fun width =>
+    if termPrefixOk TokClass.digit (LenSpec.between 1 3) input width then IPv4.searchNode_0 ((input).drop width) k
+    else none
+
+private theorem IPv4.searchNode_1_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    IPv4.searchNode_1 input k = SearchCode.runK IPv4.searchCode_1 input k :=
+  by
+  unfold IPv4.searchNode_1 IPv4.searchCode_1
+  simp only [SearchCode.runK, IPv4.searchNode_0_eq]
+
+private def IPv4.searchCode_2 : SearchCode :=
+  SearchCode.capture ["Oct4", "V4Addr.Oct4"] IPv4.searchCode_1 IPv4.searchCode_0
+
+@[inline]
+private def IPv4.searchNode_2 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  IPv4.searchNode_1 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    IPv4.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["Oct4", "V4Addr.Oct4"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem IPv4.searchNode_2_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    IPv4.searchNode_2 input k = SearchCode.runK IPv4.searchCode_2 input k :=
+  by
+  unfold IPv4.searchNode_2 IPv4.searchCode_2
+  simp only [SearchCode.runK, IPv4.searchNode_1_eq, IPv4.searchNode_0_eq]
+
+private def IPv4.searchCode_3 : SearchCode :=
+  SearchCode.literal "." IPv4.searchCode_2
+
+@[inline]
+private def IPv4.searchNode_3 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  let characters := (".").toList
+  if characters.isPrefixOf input then IPv4.searchNode_2 ((input).drop characters.length) k else none
+
+private theorem IPv4.searchNode_3_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    IPv4.searchNode_3 input k = SearchCode.runK IPv4.searchCode_3 input k :=
+  by
+  unfold IPv4.searchNode_3 IPv4.searchCode_3
+  simp only [SearchCode.runK, IPv4.searchNode_2_eq]
+
+private def IPv4.searchCode_4 : SearchCode :=
+  SearchCode.capture ["Oct3", "V4Addr.Oct3"] IPv4.searchCode_1 IPv4.searchCode_3
+
+@[inline]
+private def IPv4.searchNode_4 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  IPv4.searchNode_1 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    IPv4.searchNode_3 remaining fun tailCaptures suffix =>
+      k ((["Oct3", "V4Addr.Oct3"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem IPv4.searchNode_4_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    IPv4.searchNode_4 input k = SearchCode.runK IPv4.searchCode_4 input k :=
+  by
+  unfold IPv4.searchNode_4 IPv4.searchCode_4
+  simp only [SearchCode.runK, IPv4.searchNode_1_eq, IPv4.searchNode_3_eq]
+
+private def IPv4.searchCode_5 : SearchCode :=
+  SearchCode.literal "." IPv4.searchCode_4
+
+@[inline]
+private def IPv4.searchNode_5 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  let characters := (".").toList
+  if characters.isPrefixOf input then IPv4.searchNode_4 ((input).drop characters.length) k else none
+
+private theorem IPv4.searchNode_5_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    IPv4.searchNode_5 input k = SearchCode.runK IPv4.searchCode_5 input k :=
+  by
+  unfold IPv4.searchNode_5 IPv4.searchCode_5
+  simp only [SearchCode.runK, IPv4.searchNode_4_eq]
+
+private def IPv4.searchCode_6 : SearchCode :=
+  SearchCode.capture ["Oct2", "V4Addr.Oct2"] IPv4.searchCode_1 IPv4.searchCode_5
+
+@[inline]
+private def IPv4.searchNode_6 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  IPv4.searchNode_1 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    IPv4.searchNode_5 remaining fun tailCaptures suffix =>
+      k ((["Oct2", "V4Addr.Oct2"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem IPv4.searchNode_6_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    IPv4.searchNode_6 input k = SearchCode.runK IPv4.searchCode_6 input k :=
+  by
+  unfold IPv4.searchNode_6 IPv4.searchCode_6
+  simp only [SearchCode.runK, IPv4.searchNode_1_eq, IPv4.searchNode_5_eq]
+
+private def IPv4.searchCode_7 : SearchCode :=
+  SearchCode.literal "." IPv4.searchCode_6
+
+@[inline]
+private def IPv4.searchNode_7 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  let characters := (".").toList
+  if characters.isPrefixOf input then IPv4.searchNode_6 ((input).drop characters.length) k else none
+
+private theorem IPv4.searchNode_7_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    IPv4.searchNode_7 input k = SearchCode.runK IPv4.searchCode_7 input k :=
+  by
+  unfold IPv4.searchNode_7 IPv4.searchCode_7
+  simp only [SearchCode.runK, IPv4.searchNode_6_eq]
+
+private def IPv4.searchCode_8 : SearchCode :=
+  SearchCode.capture ["Oct1", "V4Addr.Oct1"] IPv4.searchCode_1 IPv4.searchCode_7
+
+private def IPv4.searchNode_8 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  IPv4.searchNode_1 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    IPv4.searchNode_7 remaining fun tailCaptures suffix =>
+      k ((["Oct1", "V4Addr.Oct1"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem IPv4.searchNode_8_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    IPv4.searchNode_8 input k = SearchCode.runK IPv4.searchCode_8 input k :=
+  by
+  unfold IPv4.searchNode_8 IPv4.searchCode_8
+  simp only [SearchCode.runK, IPv4.searchNode_1_eq, IPv4.searchNode_7_eq]
+
+private def IPv4.searchCode_9 : SearchCode :=
+  SearchCode.capture ["V4Addr"] IPv4.searchCode_8 IPv4.searchCode_0
+
+@[inline]
+private def IPv4.searchNode_9 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  IPv4.searchNode_8 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    IPv4.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["V4Addr"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem IPv4.searchNode_9_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    IPv4.searchNode_9 input k = SearchCode.runK IPv4.searchCode_9 input k :=
+  by
+  unfold IPv4.searchNode_9 IPv4.searchCode_9
+  simp only [SearchCode.runK, IPv4.searchNode_8_eq, IPv4.searchNode_0_eq]
+
+private def IPv4.searchCode_10 : SearchCode :=
+  SearchCode.tokenRun TokClass.digit (LenSpec.between 1 2) IPv4.searchCode_0
+
+@[inline]
+private def IPv4.searchNode_10 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  (List.range ((input).length + 1)).findSome? fun width =>
+    if termPrefixOk TokClass.digit (LenSpec.between 1 2) input width then IPv4.searchNode_0 ((input).drop width) k
+    else none
+
+private theorem IPv4.searchNode_10_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    IPv4.searchNode_10 input k = SearchCode.runK IPv4.searchCode_10 input k :=
+  by
+  unfold IPv4.searchNode_10 IPv4.searchCode_10
+  simp only [SearchCode.runK, IPv4.searchNode_0_eq]
+
+private def IPv4.searchCode_11 : SearchCode :=
+  SearchCode.capture ["Prefix"] IPv4.searchCode_10 IPv4.searchCode_0
+
+@[inline]
+private def IPv4.searchNode_11 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  IPv4.searchNode_10 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    IPv4.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["Prefix"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem IPv4.searchNode_11_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    IPv4.searchNode_11 input k = SearchCode.runK IPv4.searchCode_11 input k :=
+  by
+  unfold IPv4.searchNode_11 IPv4.searchCode_11
+  simp only [SearchCode.runK, IPv4.searchNode_10_eq, IPv4.searchNode_0_eq]
+
+private def IPv4.searchCode_12 : SearchCode :=
+  SearchCode.literal "/" IPv4.searchCode_11
+
+@[inline]
+private def IPv4.searchNode_12 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  let characters := ("/").toList
+  if characters.isPrefixOf input then IPv4.searchNode_11 ((input).drop characters.length) k else none
+
+private theorem IPv4.searchNode_12_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    IPv4.searchNode_12 input k = SearchCode.runK IPv4.searchCode_12 input k :=
+  by
+  unfold IPv4.searchNode_12 IPv4.searchCode_12
+  simp only [SearchCode.runK, IPv4.searchNode_11_eq]
+
+private def IPv4.searchCode_13 : SearchCode :=
+  SearchCode.capture ["V4Addr"] IPv4.searchCode_8 IPv4.searchCode_12
+
+@[inline]
+private def IPv4.searchNode_13 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  IPv4.searchNode_8 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    IPv4.searchNode_12 remaining fun tailCaptures suffix =>
+      k ((["V4Addr"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem IPv4.searchNode_13_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    IPv4.searchNode_13 input k = SearchCode.runK IPv4.searchCode_13 input k :=
+  by
+  unfold IPv4.searchNode_13 IPv4.searchCode_13
+  simp only [SearchCode.runK, IPv4.searchNode_8_eq, IPv4.searchNode_12_eq]
+
+private def IPv4.searchCode_14 : SearchCode :=
+  SearchCode.choice IPv4.searchCode_9 IPv4.searchCode_13
+
+@[inline]
+private def IPv4.searchNode_14 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  scanOrElse (IPv4.searchNode_9 input k) fun _ => IPv4.searchNode_13 input k
+
+private theorem IPv4.searchNode_14_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    IPv4.searchNode_14 input k = SearchCode.runK IPv4.searchCode_14 input k :=
+  by
+  unfold IPv4.searchNode_14 IPv4.searchCode_14
+  simp only [SearchCode.runK, IPv4.searchNode_9_eq, IPv4.searchNode_13_eq]
+
+private def IPv4.directDecode (source : String) : Option CaptureMap :=
+  IPv4.searchNode_14 source.toList fun (captures : CaptureMap) (remaining : List Char) =>
+    if (remaining).isEmpty then some captures else none
+
+private theorem IPv4.directDecode_eq_searchProgram (source : String) :
+    IPv4.directDecode source = SearchProgram.decode IPv4.searchProgram source :=
+  by
+  have hcode : IPv4.searchCode_14 = (IPv4.searchProgram).code := rfl
+  unfold IPv4.directDecode SearchProgram.decode
+  rw [IPv4.searchNode_14_eq, hcode]
+
+private def IPv4.decodeCaptures (source : String) : Option CaptureMap :=
+  IPv4.directDecode source
+
+private theorem IPv4.decodeCaptures_eq_parsePlan (source : String) :
+    IPv4.decodeCaptures source = ParsePlan.decode IPv4.parsePlan IPv4.grammar source := by
+  calc
+    IPv4.decodeCaptures source = SearchProgram.decode IPv4.searchProgram source := by
+      exact IPv4.directDecode_eq_searchProgram source
+    _ = SearchProgram.decode (lowerSearchPlan IPv4.searchPlan) source := by rw [IPv4.searchProgram_lowered]
+    _ = ParsePlan.decode IPv4.parsePlan IPv4.grammar source := by rfl
+
+private theorem IPv4.decodeCaptures_eq_scan (source : String) : IPv4.decodeCaptures source = scan IPv4.grammar source :=
+  by
+  calc
+    IPv4.decodeCaptures source = ParsePlan.decode IPv4.parsePlan IPv4.grammar source :=
+      IPv4.decodeCaptures_eq_parsePlan source
+    _ = scan IPv4.grammar source :=
+      ParsePlan.decode_eq_scan (ParsePlan.CertifiedFor.search IPv4.searchPlan_mirrorsGrammar) source
+
+private def IPv4.directView (source : String) : Option IPv4.View :=
+  (IPv4.directDecode source).map (IPv4.View.ofMap source)
+
+private theorem IPv4.directView_eq_decodeView (source : String) : IPv4.directView source = IPv4.decodeView source :=
+  by
+  unfold IPv4.directView IPv4.decodeView
+  rw [show IPv4.directDecode source = scan IPv4.grammar source by exact IPv4.decodeCaptures_eq_scan source]
+
+private instance IPv4.instDecidableViewValid : DecidablePred IPv4.View.Valid := fun view =>
+  by
+  unfold IPv4.View.Valid IPv4.View.WfConstraints IPv4.View.Constraints IPv4.WfConstraints IPv4.Constraints
+  infer_instance
+
+private def IPv4.fastAccept (view : IPv4.View) (computed : Int) : Bool :=
+  @decide (IPv4.View.WfConstraints view ∧ IPv4.View.ConstraintsWithValue view computed)
+    (by
+      unfold IPv4.View.WfConstraints IPv4.WfConstraints IPv4.View.ConstraintsWithValue
+      infer_instance)
+
+private theorem IPv4.fastAccept_denotation (view : IPv4.View) :
+    IPv4.fastAccept view (IPv4.View.denotation view) = true ↔ IPv4.View.Valid view := by
+  simp only [IPv4.fastAccept, decide_eq_true_eq, IPv4.View.ConstraintsWithValue_denotation]
+
 theorem IPv4.computeValue_isSome (s : String) : IPv4.IsValid s → (IPv4.computeValue s).isSome :=
   by
   intro h
   have hengine := (IPv4.IsValid_equiv s).mp h
   unfold Triptych.isWf at hengine
-  unfold IPv4.computeValue Triptych.scannerComputeValueMap
+  unfold IPv4.computeValue Triptych.scannerComputeValue
   rw [Option.isSome_map]
   exact hengine.1.1
 
 def IPv4.parse (s : String) :=
-  Triptych.scannerParseMap IPv4.grammar IPv4.constraints IPv4.valueFn id s
+  Triptych.decodedViewParseCached IPv4.directView IPv4.fastAccept IPv4.View.denotation ipv4CodeToNet s
 
-theorem IPv4.parse_eq_gated (s : String) : IPv4.parse s = Triptych.gatedParse IPv4.IsValid IPv4.computeValue s :=
+theorem IPv4.parse_eq_scanner (s : String) :
+    IPv4.parse s = Triptych.scannerParse IPv4.grammar IPv4.constraints IPv4.valueExpr ipv4CodeToNet s := by
+  calc
+    IPv4.parse s = Triptych.decodedViewParse IPv4.directView IPv4.View.Valid IPv4.View.denotation ipv4CodeToNet s :=
+      by
+      unfold IPv4.parse
+      exact
+        Triptych.decodedViewParseCached_eq_decodedViewParse IPv4.directView IPv4.fastAccept IPv4.View.Valid
+          IPv4.View.denotation ipv4CodeToNet IPv4.fastAccept_denotation s
+    _ = Triptych.gatedParseOfSpec IPv4.IsValid IPv4.computeValue ipv4CodeToNet s := by
+      exact
+        Triptych.decodedViewParse_eq_gatedParseOfSpec IPv4.directView IPv4.decodeView IPv4.View.Valid
+          IPv4.View.denotation ipv4CodeToNet IPv4.IsValid IPv4.computeValue IPv4.directView_eq_decodeView
+          IPv4.IsValid_view IPv4.computeValue_view s
+    _ = Triptych.scannerParse IPv4.grammar IPv4.constraints IPv4.valueExpr ipv4CodeToNet s :=
+      by
+      symm
+      unfold IPv4.computeValue
+      exact
+        Triptych.scannerParse_eq_surfaceGatedParseOfSpec IPv4.grammar IPv4.constraints IPv4.valueExpr ipv4CodeToNet
+          IPv4.IsValid IPv4.IsValid_equiv s
+
+theorem IPv4.parse_eq_gated (s : String) :
+    IPv4.parse s = Triptych.gatedParseOfSpec IPv4.IsValid IPv4.computeValue ipv4CodeToNet s :=
   by
-  unfold IPv4.parse IPv4.computeValue
+  rw [IPv4.parse_eq_scanner]
+  unfold IPv4.computeValue
   exact
-    Triptych.scannerParseMap_eq_surfaceGated IPv4.grammar IPv4.constraints IPv4.valueFn IPv4.IsValid IPv4.IsValid_equiv
-      s
+    Triptych.scannerParse_eq_surfaceGatedParseOfSpec IPv4.grammar IPv4.constraints IPv4.valueExpr ipv4CodeToNet
+      IPv4.IsValid IPv4.IsValid_equiv s
 
 theorem IPv4.parse_profile_result (s : String) :
-    (Triptych.scannerParseMapProfile IPv4.grammar IPv4.constraints IPv4.valueFn id s).result = IPv4.parse s :=
+    (Triptych.scannerParseProfile IPv4.grammar IPv4.constraints IPv4.valueExpr ipv4CodeToNet s).result = IPv4.parse s :=
   by
-  unfold IPv4.parse
-  exact Triptych.scannerParseMapProfile_result IPv4.grammar IPv4.constraints IPv4.valueFn id s
+  rw [Triptych.scannerParseProfile_result]
+  exact (IPv4.parse_eq_scanner s).symm
 
 theorem IPv4.parse_candidateChecks_le (s : String) :
-    (Triptych.scannerParseMapProfile IPv4.grammar IPv4.constraints IPv4.valueFn id s).candidateChecks ≤
+    (Triptych.scannerParseProfile IPv4.grammar IPv4.constraints IPv4.valueExpr ipv4CodeToNet s).candidateChecks ≤
       Triptych.scannerCandidateBudget IPv4.grammar s :=
-  Triptych.scannerParseMap_candidateChecks_le IPv4.grammar IPv4.constraints IPv4.valueFn id s
+  Triptych.scannerParse_candidateChecks_le IPv4.grammar IPv4.constraints IPv4.valueExpr ipv4CodeToNet s
 
 theorem IPv4.parse_candidateChecks_eq_zero_of_fastScan (s : String) (hunique : (IPv4.grammar).staticUnique = true)
     {captures : Triptych.CaptureMap} (hscan : Triptych.fastScan IPv4.grammar s = some captures) :
-    (Triptych.scannerParseMapProfile IPv4.grammar IPv4.constraints IPv4.valueFn id s).candidateChecks = 0 :=
-  Triptych.scannerParseMap_candidateChecks_eq_zero_of_fastScan IPv4.grammar IPv4.constraints IPv4.valueFn id s hunique
-    hscan
+    (Triptych.scannerParseProfile IPv4.grammar IPv4.constraints IPv4.valueExpr ipv4CodeToNet s).candidateChecks = 0 :=
+  Triptych.scannerParse_candidateChecks_eq_zero_of_fastScan IPv4.grammar IPv4.constraints IPv4.valueExpr ipv4CodeToNet s
+    hunique hscan
 
-theorem IPv4.parse_sound (s : String) (i : IPv4Net) :
-    IPv4.parse s = some i → IPv4.IsValid s ∧ IPv4.computeValue s = some i :=
+theorem IPv4.parse_sound (s : String) (c : Cedar.Spec.Ext.IPAddr.CIDR Cedar.Spec.Ext.IPAddr.V4_WIDTH) :
+    IPv4.parse s = some c → IPv4.IsValid s ∧ (IPv4.computeValue s).map ipv4CodeToNet = some c :=
   by
   rw [IPv4.parse_eq_gated]
-  exact Triptych.gatedParse_sound _ _ s i
+  exact Triptych.gatedParseOfSpec_sound _ _ _ s c
 
-theorem IPv4.parse_complete (s : String) (i : IPv4Net) :
-    IPv4.IsValid s → IPv4.computeValue s = some i → IPv4.parse s = some i :=
+theorem IPv4.parse_complete (s : String) (c : Cedar.Spec.Ext.IPAddr.CIDR Cedar.Spec.Ext.IPAddr.V4_WIDTH) :
+    IPv4.IsValid s → (IPv4.computeValue s).map ipv4CodeToNet = some c → IPv4.parse s = some c :=
   by
   rw [IPv4.parse_eq_gated]
-  exact Triptych.gatedParse_complete _ _ s i
+  exact Triptych.gatedParseOfSpec_complete _ _ _ s c
 
 theorem IPv4.parse_reject (s : String) : IPv4.parse s = none ↔ ¬IPv4.IsValid s :=
   by
   rw [IPv4.parse_eq_gated]
-  exact Triptych.gatedParse_reject _ _ IPv4.computeValue_isSome s
+  exact Triptych.gatedParseOfSpec_reject _ _ _ IPv4.computeValue_isSome s
 
 theorem IPv4.parse_view (s : String) :
-    IPv4.parse s = if decide (IPv4.IsValid s) then (IPv4.decodeView s).map IPv4.View.denotation else none :=
+    IPv4.parse s =
+      if decide (IPv4.IsValid s) then (IPv4.decodeView s).map (ipv4CodeToNet ∘ IPv4.View.denotation) else none :=
   by
   rw [IPv4.parse_eq_gated]
-  unfold Triptych.gatedParse
+  unfold Triptych.gatedParseOfSpec Triptych.gatedParse
   rw [IPv4.computeValue_view]
+  split <;> simp [Option.map_map]
 
-theorem IPv4.parse_eq_some_iff_view (s : String) (i : IPv4Net) :
+theorem IPv4.parse_eq_some_iff_view (s : String) (i : CedarExamples.IPv4.IPv4Net) :
     IPv4.parse s = some i ↔
       ∃ decodedView : IPv4.View,
-        IPv4.decodeView s = some decodedView ∧ IPv4.View.Valid decodedView ∧ IPv4.View.denotation decodedView = i :=
+        IPv4.decodeView s = some decodedView ∧
+          IPv4.View.Valid decodedView ∧ ipv4CodeToNet (IPv4.View.denotation decodedView) = i :=
   by
   constructor
   · intro hparse
@@ -830,12 +1405,12 @@ theorem IPv4.parse_eq_some_iff_view (s : String) (i : IPv4Net) :
     obtain ⟨decodedView, hview, hvalidView⟩ := (IPv4.IsValid_view s).mp hvalid
     refine ⟨decodedView, hview, hvalidView, ?_⟩
     rw [IPv4.computeValue_view, hview] at hvalue
-    exact Option.some.inj hvalue
+    simpa using Option.some.inj hvalue
   · rintro ⟨decodedView, hview, hvalidView, hvalue⟩
     apply IPv4.parse_complete s i
     · exact (IPv4.IsValid_view s).mpr ⟨decodedView, hview, hvalidView⟩
     · rw [IPv4.computeValue_view, hview]
-      exact congrArg some hvalue
+      simpa using congrArg some hvalue
 
 theorem IPv4.parse_eq_none_iff_view (s : String) :
     IPv4.parse s = none ↔ ¬∃ v : IPv4.View, IPv4.decodeView s = some v ∧ IPv4.View.Valid v :=
@@ -847,20 +1422,21 @@ theorem IPv4.parse_eq_none_iff_view (s : String) :
   · intro hnoview hvalid
     exact hnoview ((IPv4.IsValid_view s).mp hvalid)
 
-def IPv4.checkedExtParse (s : String) : Option IPv4Net :=
-  Triptych.checkedExternalParse IPv4.IsValid IPv4.computeValue ipv4Only id s
+def IPv4.checkedExtParse (s : String) : Option CedarExamples.IPv4.IPv4Net :=
+  Triptych.checkedExternalParse IPv4.IsValid IPv4.computeValue ipv4Only ipv4NetToCode s
 
-theorem IPv4.checkedExtParse_eq_some_iff (s : String) (i : IPv4Net) :
-    IPv4.checkedExtParse s = some i ↔ ipv4Only s = some i ∧ IPv4.IsValid s ∧ IPv4.computeValue s = some (id i) :=
-  Triptych.checkedExternalParse_eq_some_iff IPv4.IsValid IPv4.computeValue ipv4Only id s i
+theorem IPv4.checkedExtParse_eq_some_iff (s : String) (i : CedarExamples.IPv4.IPv4Net) :
+    IPv4.checkedExtParse s = some i ↔
+      ipv4Only s = some i ∧ IPv4.IsValid s ∧ IPv4.computeValue s = some (ipv4NetToCode i) :=
+  Triptych.checkedExternalParse_eq_some_iff IPv4.IsValid IPv4.computeValue ipv4Only ipv4NetToCode s i
 
-theorem IPv4.checkedExtParse_sound (s : String) (i : IPv4Net) :
-    IPv4.checkedExtParse s = some i → IPv4.IsValid s ∧ IPv4.computeValue s = some (id i) :=
-  Triptych.checkedExternalParse_sound IPv4.IsValid IPv4.computeValue ipv4Only id s i
+theorem IPv4.checkedExtParse_sound (s : String) (i : CedarExamples.IPv4.IPv4Net) :
+    IPv4.checkedExtParse s = some i → IPv4.IsValid s ∧ IPv4.computeValue s = some (ipv4NetToCode i) :=
+  Triptych.checkedExternalParse_sound IPv4.IsValid IPv4.computeValue ipv4Only ipv4NetToCode s i
 
-theorem IPv4.checkedExtParse_sound_view (s : String) (i : IPv4Net) :
+theorem IPv4.checkedExtParse_sound_view (s : String) (i : CedarExamples.IPv4.IPv4Net) :
     IPv4.checkedExtParse s = some i →
-      ∃ v : IPv4.View, IPv4.decodeView s = some v ∧ IPv4.View.Valid v ∧ IPv4.View.denotation v = id i :=
+      ∃ v : IPv4.View, IPv4.decodeView s = some v ∧ IPv4.View.Valid v ∧ IPv4.View.denotation v = ipv4NetToCode i :=
   by
   intro hparse
   obtain ⟨hvalid, hvalue⟩ := IPv4.checkedExtParse_sound s i hparse

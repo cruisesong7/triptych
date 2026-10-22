@@ -1,0 +1,55 @@
+/// A cached decimal interpretation tied to the exact source span that produced it.
+///
+/// The source is ghost state, so retaining this certificate has no runtime storage cost.
+#[derive(Copy, Clone)]
+struct CachedSemanticNatural {
+    source: Ghost<Seq<char>>,
+    capture: RuntimeCapture,
+    value: SemanticNat,
+}
+
+impl CachedSemanticNatural {
+    #[verifier::type_invariant]
+    spec fn well_formed(self) -> bool {
+        &&& self.capture.start <= self.capture.end
+        &&& self.capture.end <= self.source@.len()
+        &&& self.value@ as int == triptych_nat_of(
+            self.source@.subrange(
+                self.capture.start as int,
+                self.capture.end as int,
+            ),
+        )
+    }
+
+    spec fn source_matches(&self, input: Seq<char>) -> bool {
+        self.source@ == input
+    }
+
+    #[inline(always)]
+    fn new(
+        input: &str,
+        input_ascii: bool,
+        capture: RuntimeCapture,
+    ) -> (result: Self)
+        requires
+            input_ascii == input.is_ascii(),
+            capture.start <= capture.end <= input@.len(),
+        ensures
+            result.source_matches(input@),
+            result.capture == capture,
+    {
+        let span = SemanticSpan {
+            start: capture.start,
+            end: capture.end,
+            count: capture.count,
+            present: true,
+        };
+        let value = semantic_nat_of_span_fast(input, input_ascii, span);
+        Self {
+            source: Ghost(input@),
+            capture,
+            value,
+        }
+    }
+
+}

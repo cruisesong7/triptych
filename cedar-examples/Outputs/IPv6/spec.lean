@@ -7,10 +7,8 @@ import Triptych.Architecture.Constraint
 import Triptych.Architecture.Assemble
 import Triptych.Theorems.Reconcile
 import Triptych.Theorems.Value
-import Inputs.IPv6
 
 open Triptych
-open CedarExamples.IPv6
 
 set_option linter.unusedSimpArgs false
 set_option linter.unusedVariables false
@@ -19,7 +17,9 @@ set_option linter.unusedVariables false
 The more readable specification. Each production of the input grammar becomes an
 inlined well-formedness predicate `IsWf.*` written as a plain existential over the
 named captures, so you can read it side-by-side with the grammar and check that it
-says the same thing. When present, `WfConstraints` contains capture-derived format
+says the same thing. The start rule is named `Production`; `IsWf.<Start>` and
+top-level `IsWf` reuse it. When a value is present, `Denotes` combines valid syntax
+with the readable value function. `WfConstraints` contains capture-derived format
 conditions and `Constraints` contains conditions that explicitly mention the final
 `value`. Empty phases are omitted; `IsWf` and `IsValid` specialize accordingly.
 This file is proof-free — it is what you cite. -/
@@ -182,42 +182,52 @@ def IPv6.IsWf.V6Addr (s : String) : Prop :=
 def IPv6.IsWf.Prefix (s : String) : Prop :=
   IsDigitsBetween 1 3 s
 
-def IPv6.IsWf.V6Net (s : String) : Prop :=
+def IPv6.Production (s : String) : Prop :=
   IPv6.IsWf.V6Addr s ∨
     ∃ v6Addr «prefix», (s = v6Addr ++ "/" ++ «prefix» ∧ IPv6.IsWf.V6Addr v6Addr) ∧ IPv6.IsWf.Prefix «prefix»
 
-def IPv6.value (h16 : List String) (h16l : List String) (h16r : List String) («prefix» : String) :=
-  toIPv6Net h16 h16l h16r «prefix»
+abbrev IPv6.IsWf.V6Net (s : String) : Prop :=
+  IPv6.Production s
 
-def IPv6.WfConstraints (h16l_count : String) (h16r_count : String) («prefix» : String) : Prop :=
-  (countOf h16l_count + countOf h16r_count < (8 : Int) ∧ ((«prefix»).startsWith "0" → «prefix» = "0")) ∧
+def IPv6.value (full : String) (left : String) (right : String) («prefix» : String) : Int :=
+  (if full = "" then hexSeqOf left * (65536 : Int) ^ (((8 : Int) - segmentsOf left)).toNat + hexSeqOf right
+      else hexSeqOf full) *
+      (129 : Int) +
+    if «prefix» = "" then (128 : Int) else natOf «prefix»
+
+def IPv6.WfConstraints (left : String) (right : String) («prefix» : String) : Prop :=
+  (segmentsOf left + segmentsOf right < (8 : Int) ∧ ((«prefix»).startsWith "0" → «prefix» = "0")) ∧
     (0 : Int) ≤ natOf «prefix» ∧ natOf «prefix» ≤ (128 : Int)
 
 def IPv6.SatisfiesWfConstraints (s : String) : Prop :=
-  IPv6.WfConstraints (Triptych.component IPv6.grammar s "H16L#count") (Triptych.component IPv6.grammar s "H16R#count")
+  IPv6.WfConstraints (Triptych.component IPv6.grammar s "Left") (Triptych.component IPv6.grammar s "Right")
     (Triptych.component IPv6.grammar s "Prefix")
 
 abbrev IPv6.IsWf (s : String) : Prop :=
-  IPv6.IsWf.V6Net s ∧ IPv6.SatisfiesWfConstraints s
+  IPv6.Production s ∧ IPv6.SatisfiesWfConstraints s
 
 abbrev IPv6.IsValid (s : String) : Prop :=
   IPv6.IsWf s
 
+def IPv6.Denotes (s : String) (i : Int) : Prop :=
+  IPv6.IsValid s ∧
+    i =
+      IPv6.value (Triptych.component IPv6.grammar s "Full") (Triptych.component IPv6.grammar s "Left")
+        (Triptych.component IPv6.grammar s "Right") (Triptych.component IPv6.grammar s "Prefix")
+
 structure IPv6.View where
   input : String
-  h16All : List String
-  h16lAll : List String
-  h16rAll : List String
+  full : Option String
+  left : Option String
+  right : Option String
   «prefix» : Option String
-  h16l_count : Option String
-  h16r_count : Option String
 
 def IPv6.View.WfConstraints (v : IPv6.View) : Prop :=
-  IPv6.WfConstraints ((IPv6.View.h16l_count v).getD "") ((IPv6.View.h16r_count v).getD "")
-    ((IPv6.View.prefix v).getD "")
+  IPv6.WfConstraints ((IPv6.View.left v).getD "") ((IPv6.View.right v).getD "") ((IPv6.View.prefix v).getD "")
 
 abbrev IPv6.View.Valid (v : IPv6.View) : Prop :=
   IPv6.View.WfConstraints v
 
 def IPv6.View.denotation (v : IPv6.View) :=
-  IPv6.value (IPv6.View.h16All v) (IPv6.View.h16lAll v) (IPv6.View.h16rAll v) ((IPv6.View.prefix v).getD "")
+  IPv6.value ((IPv6.View.full v).getD "") ((IPv6.View.left v).getD "") ((IPv6.View.right v).getD "")
+    ((IPv6.View.prefix v).getD "")

@@ -151,7 +151,7 @@ private theorem parserFold_eq_readHex {s : String} (h : HexValid s) :
   rw [String.foldl_eq_foldl_toList, String.foldl_eq_foldl_toList]
   exact foldHex_eq s.toList h.1 0
 
-private theorem readHex_le {s : String} (h : HexValid s) :
+theorem readHex_le {s : String} (h : HexValid s) :
     CedarExamples.IPv6.readHex s ≤ 0xffff := by
   unfold CedarExamples.IPv6.readHex
   rw [String.foldl_eq_foldl_toList]

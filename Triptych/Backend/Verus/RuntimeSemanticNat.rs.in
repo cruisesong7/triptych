@@ -1,0 +1,243 @@
+/// Interpret one source span as a natural number, retaining its exact mathematical value.
+#[inline(always)]
+pub fn semantic_nat_of_span(
+    input: &str,
+    input_ascii: bool,
+    span: SemanticSpan,
+) -> (result: SemanticNat)
+    requires
+        input_ascii == input.is_ascii(),
+        span.start <= span.end <= input@.len(),
+        span.present || span.start == span.end,
+    ensures
+        result@ as int == triptych_nat_of(semantic_span_text(input@, span)),
+{
+    let ghost text = semantic_span_text(input@, span);
+    let mut result = SemanticNat::new(0);
+    let mut index = span.start;
+    proof {
+        reveal(triptych_nat_of);
+    }
+    while index < span.end
+        invariant
+            input_ascii == input.is_ascii(),
+            span.start <= index <= span.end <= input@.len(),
+            span.present || span.start == span.end,
+            text == semantic_span_text(input@, span),
+            span.present ==> text
+                == input@.subrange(span.start as int, span.end as int),
+            !span.present ==> text == seq![],
+            index - span.start <= text.len(),
+            triptych_nat_of_from(
+                text,
+                (index - span.start) as int,
+                result@ as int,
+            ) == triptych_nat_of(text),
+        decreases span.end - index,
+    {
+        proof {
+            if !span.present {
+                assert(span.start == span.end);
+                assert(index < span.end);
+                assert(index >= span.start);
+                assert(false);
+            }
+            assert(span.present);
+        }
+        let code = semantic_character_code_at(input, input_ascii, index);
+        let digit = if code < 48 { 0u128 } else { (code - 48) as u128 };
+        let ten = SemanticNat::new(10);
+        let multiplied = result.mul(&ten);
+        let digit_value = SemanticNat::new(digit);
+        let next = multiplied.add(&digit_value);
+        proof {
+            assert(text[(index - span.start) as int] == input@[index as int]);
+            assert(code as int == input@[index as int] as int);
+            assert(code as int == text[(index - span.start) as int] as int);
+            reveal_with_fuel(triptych_nat_of_from, 1);
+            assert(next@ as int == result@ as int * 10 + digit as int);
+        }
+        result = next;
+        index += 1;
+    }
+    proof {
+        if !span.present {
+            assert(span.start == span.end);
+        }
+        reveal_with_fuel(triptych_nat_of_from, 1);
+    }
+    result
+}
+
+/// Fixed-bound decimal decoding for compact fields such as IPv4 octets and date components.
+///
+/// The explicit four-step bound lets the Rust optimizer unroll this path, while the contract
+/// remains the same unbounded mathematical interpretation used by the readable specification.
+#[inline(always)]
+pub fn semantic_nat_of_short_span(
+    input: &str,
+    input_ascii: bool,
+    span: SemanticSpan,
+) -> (result: SemanticNat)
+    requires
+        input_ascii == input.is_ascii(),
+        span.start <= span.end <= input@.len(),
+        span.present || span.start == span.end,
+        span.end - span.start <= 4,
+    ensures
+        result@ as int == triptych_nat_of(semantic_span_text(input@, span)),
+{
+    let ghost text = semantic_span_text(input@, span);
+    let mut accumulator = 0u128;
+    let mut index = span.start;
+    let mut steps = 0usize;
+    proof {
+        reveal(triptych_nat_of);
+    }
+    while steps < 4 && index < span.end
+        invariant
+            input_ascii == input.is_ascii(),
+            span.start <= index <= span.end <= input@.len(),
+            span.present || span.start == span.end,
+            span.end - span.start <= 4,
+            steps <= 4,
+            index - span.start == steps,
+            text == semantic_span_text(input@, span),
+            span.present ==> text
+                == input@.subrange(span.start as int, span.end as int),
+            !span.present ==> text == seq![],
+            index - span.start <= text.len(),
+            triptych_nat_of_from(
+                text,
+                (index - span.start) as int,
+                accumulator as int,
+            ) == triptych_nat_of(text),
+        decreases 4 - steps,
+    {
+        proof {
+            if !span.present {
+                assert(span.start == span.end);
+                assert(index < span.end);
+                assert(index >= span.start);
+                assert(false);
+            }
+            assert(span.present);
+        }
+        let code = semantic_character_code_at(input, input_ascii, index);
+        let digit = if code < 48 { 0u128 } else { (code - 48) as u128 };
+        let multiplied = match accumulator.checked_mul(10u128) {
+            Some(value) => value,
+            None => return semantic_nat_of_span(input, input_ascii, span),
+        };
+        let next = match multiplied.checked_add(digit) {
+            Some(value) => value,
+            None => return semantic_nat_of_span(input, input_ascii, span),
+        };
+        proof {
+            assert(text[(index - span.start) as int] == input@[index as int]);
+            assert(code as int == input@[index as int] as int);
+            assert(code as int == text[(index - span.start) as int] as int);
+            assert(multiplied as int == accumulator as int * 10);
+            assert(next as int == accumulator as int * 10 + digit as int);
+            reveal_with_fuel(triptych_nat_of_from, 1);
+        }
+        accumulator = next;
+        index += 1;
+        steps += 1;
+    }
+    proof {
+        if index < span.end {
+            assert(steps == 4);
+            assert(index - span.start == 4);
+            assert(span.end - span.start <= 4);
+            assert(false);
+        }
+        assert(index == span.end);
+        if !span.present {
+            assert(span.start == span.end);
+        }
+        reveal_with_fuel(triptych_nat_of_from, 1);
+    }
+    SemanticNat::new(accumulator)
+}
+
+/// Primitive fast path for decimal spans. Overflow falls back to the exact `SemanticNat`
+/// implementation, so this function has the same unbounded specification on every input.
+#[inline(always)]
+pub fn semantic_nat_of_span_fast(
+    input: &str,
+    input_ascii: bool,
+    span: SemanticSpan,
+) -> (result: SemanticNat)
+    requires
+        input_ascii == input.is_ascii(),
+        span.start <= span.end <= input@.len(),
+        span.present || span.start == span.end,
+    ensures
+        result@ as int == triptych_nat_of(semantic_span_text(input@, span)),
+{
+    if span.end - span.start <= 4 {
+        return semantic_nat_of_short_span(input, input_ascii, span);
+    }
+    let ghost text = semantic_span_text(input@, span);
+    let mut accumulator = 0u128;
+    let mut index = span.start;
+    proof {
+        reveal(triptych_nat_of);
+    }
+    while index < span.end
+        invariant
+            input_ascii == input.is_ascii(),
+            span.start <= index <= span.end <= input@.len(),
+            span.present || span.start == span.end,
+            text == semantic_span_text(input@, span),
+            span.present ==> text
+                == input@.subrange(span.start as int, span.end as int),
+            !span.present ==> text == seq![],
+            index - span.start <= text.len(),
+            triptych_nat_of_from(
+                text,
+                (index - span.start) as int,
+                accumulator as int,
+            ) == triptych_nat_of(text),
+        decreases span.end - index,
+    {
+        proof {
+            if !span.present {
+                assert(span.start == span.end);
+                assert(index < span.end);
+                assert(index >= span.start);
+                assert(false);
+            }
+            assert(span.present);
+        }
+        let code = semantic_character_code_at(input, input_ascii, index);
+        let digit = if code < 48 { 0u128 } else { (code - 48) as u128 };
+        let multiplied = match accumulator.checked_mul(10u128) {
+            Some(value) => value,
+            None => return semantic_nat_of_span(input, input_ascii, span),
+        };
+        let next = match multiplied.checked_add(digit) {
+            Some(value) => value,
+            None => return semantic_nat_of_span(input, input_ascii, span),
+        };
+        proof {
+            assert(text[(index - span.start) as int] == input@[index as int]);
+            assert(code as int == input@[index as int] as int);
+            assert(code as int == text[(index - span.start) as int] as int);
+            assert(multiplied as int == accumulator as int * 10);
+            assert(next as int == accumulator as int * 10 + digit as int);
+            reveal_with_fuel(triptych_nat_of_from, 1);
+        }
+        accumulator = next;
+        index += 1;
+    }
+    let result = SemanticNat::new(accumulator);
+    proof {
+        if !span.present {
+            assert(span.start == span.end);
+        }
+        reveal_with_fuel(triptych_nat_of_from, 1);
+    }
+    result
+}

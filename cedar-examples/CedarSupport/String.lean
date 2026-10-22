@@ -9,8 +9,8 @@ namespace CedarSupport.String
 open Cedar.Spec.Ext
 open CedarSupport.StringInternals
 
-theorem digits_iff (s : String) : Triptych.IsDigits s ↔ _root_.IsDigits s := by
-  unfold Triptych.IsDigits Triptych.TokClass.all Triptych.TokClass.mem _root_.IsDigits
+theorem digits_iff (s : String) : Triptych.IsDigits s ↔ String.IsDigits s := by
+  unfold Triptych.IsDigits Triptych.TokClass.all Triptych.TokClass.mem String.IsDigits
   constructor
   · rintro ⟨hdigits, hlen⟩
     refine ⟨by omega, ?_⟩
@@ -27,7 +27,7 @@ theorem digits_iff (s : String) : Triptych.IsDigits s ↔ _root_.IsDigits s := b
     change 48 ≤ c.toNat ∧ c.toNat ≤ 57
     exact h
 
-theorem readNat_eq (s : String) (h : _root_.IsDigits s) :
+theorem readNat_eq (s : String) (h : String.IsDigits s) :
     toNat?' s = some (Triptych.readNat s) := by
   unfold toNat?'
   rw [noUnderscoreOfIsDigits h]
@@ -57,7 +57,7 @@ theorem readNat_toString (n : Nat) : Triptych.readNat (toString n) = n := by
     (Nat.toDigits 10 n) = n
   rw [foldlEqOfDigitChars, Nat.ofDigitChars_ten_toDigits]
 
-theorem digits_toString (n : Nat) : _root_.IsDigits (toString n) := by
+theorem digits_toString (n : Nat) : String.IsDigits (toString n) := by
   rw [Nat.toString_eq_repr, Nat.repr_eq_ofList_toDigits]
   constructor
   · simpa [String.length_ofList] using Nat.length_toDigits_pos (b := 10) (n := n)

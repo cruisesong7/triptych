@@ -33,7 +33,7 @@ that); the fuel is a definitional device, not an operational one — this is a `
 not a parser.
 
 The computational inverse is the verified runtime scanner. Its agreement proof factors through
-an archived list-producing reference decoder, which keeps this denotation independent of the
+a list-producing reference decoder, which keeps this denotation independent of the
 optimized execution strategy.
 -/
 
@@ -45,6 +45,8 @@ def TokClass.mem : TokClass → Char → Prop
   | .hexDigit, c => ('0' ≤ c ∧ c ≤ '9') ∨ ('a' ≤ c ∧ c ≤ 'f') ∨ ('A' ≤ c ∧ c ≤ 'F')
   | .bit,      c => c = '0' ∨ c = '1'
   | .asciiRange lo hi, c => lo ≤ c.toNat ∧ c.toNat ≤ hi
+  | .oneOf chars, c => c ∈ chars
+  | .noneOf chars, c => c ∉ chars
 
 instance (tok : TokClass) : DecidablePred tok.mem := by
   intro c; cases tok <;> unfold TokClass.mem <;> infer_instance

@@ -1,9 +1,20 @@
 import Outputs.Graph.parser
+import Triptych.Architecture.Syntax
 
 namespace TriptychBenchmark
 
 open Triptych
 open GraphExample
+
+set_option linter.unusedVariables false in
+triptych StagedDecimal where
+  grammar
+    Decimal  ::= Sign Natural "." Fraction
+    Sign     ::= sign
+    Natural  ::= digit+
+    Fraction ::= digit{1,4}
+  value
+    Sign * (nat Natural * 10 ^ 4 + nat Fraction * 10 ^ (4 - len Fraction))
 
 def completeGraphInput (order : Nat) : String :=
   s!"{order}:{String.ofList (List.replicate (order * (order - 1) / 2) '1')}"
@@ -44,7 +55,19 @@ def runParserCase (label : String) (input : String) (iterations : Nat) : IO Unit
     {speedupTenths % 10}x, accepted={generatedAccepted}/{legacyAccepted}, \
     input={input.length} chars"
 
+def runDirectCase (label : String) (input : String) (iterations : Nat) : IO Unit := do
+  let generic :=
+    scannerParse StagedDecimal.grammar StagedDecimal.constraints StagedDecimal.valueExpr id
+  let (directTime, directAccepted) ← measure StagedDecimal.parse input iterations
+  let (genericTime, genericAccepted) ← measure generic input iterations
+  let speedupTenths := if directTime = 0 then 0 else genericTime * 10 / directTime
+  IO.println s!"{label}: {iterations} parses, direct={formatMicros directTime}, \
+    generic-scanner={formatMicros genericTime}, speedup={speedupTenths / 10}.\
+    {speedupTenths % 10}x, accepted={directAccepted}/{genericAccepted}"
+
 def run : IO Unit := do
+  runDirectCase "Staged Decimal valid direct/generic" "-1234567890.1234" 10000
+  runDirectCase "Staged Decimal invalid direct/generic" "-1234567890.x" 10000
   let k8 := completeGraphInput 8
   let k16 := completeGraphInput 16
   let k32 := completeGraphInput 32

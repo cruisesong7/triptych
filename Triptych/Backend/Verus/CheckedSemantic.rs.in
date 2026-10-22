@@ -1,0 +1,84 @@
+/// Parse one captured ASCII digit run while retaining its exact mathematical value even when
+/// the executable `u64` representation overflows.
+fn triptych_checked_nat_range(
+    input: &str,
+    start: usize,
+    end: usize,
+) -> (result: vstd::arithmetic::overflow::CheckedU64)
+    requires
+        input.is_ascii(),
+        start <= end <= input@.len(),
+        forall|index: int| start <= index < end ==>
+            #[trigger] triptych_is_digit(input@[index]),
+    ensures
+        result@ as int
+            == triptych_nat_of(input@.subrange(start as int, end as int)),
+{
+    let ghost digits = input@.subrange(start as int, end as int);
+    let mut result = vstd::arithmetic::overflow::CheckedU64::new(0);
+    let mut index = start;
+    proof {
+        reveal(triptych_nat_of);
+    }
+    while index < end
+        invariant
+            input.is_ascii(),
+            start <= index <= end <= input@.len(),
+            digits == input@.subrange(start as int, end as int),
+            index - start <= digits.len(),
+            triptych_nat_of_from(
+                digits,
+                (index - start) as int,
+                result@ as int,
+            ) == triptych_nat_of(digits),
+            forall|checked: int| start <= checked < end ==>
+                #[trigger] triptych_is_digit(input@[checked]),
+        decreases end - index,
+    {
+        let byte = plan_ascii_character_at(input, index);
+        proof {
+            assert(triptych_is_digit(input@[index as int]));
+            reveal(triptych_is_digit);
+            assert(b'0' <= byte);
+        }
+        let digit = (byte - b'0') as u64;
+        let multiplied = result.mul_value(10);
+        let next = multiplied.add_value(digit);
+        proof {
+            assert(digits[(index - start) as int] == input@[index as int]);
+            assert(triptych_is_digit(input@[index as int]));
+            reveal_with_fuel(triptych_nat_of_from, 1);
+            assert(next@ as int == result@ as int * 10 + digit as int);
+        }
+        result = next;
+        index += 1;
+    }
+    proof {
+        reveal_with_fuel(triptych_nat_of_from, 1);
+    }
+    result
+}
+
+/// Compute `10^exponent` with a ghost exact value and a checked executable representation.
+fn triptych_checked_pow10(
+    exponent: usize,
+) -> (result: vstd::arithmetic::overflow::CheckedU64)
+    ensures
+        result@ as int == triptych_int_pow(10, exponent as int),
+    decreases exponent,
+{
+    if exponent == 0 {
+        proof {
+            reveal_with_fuel(triptych_int_pow, 1);
+        }
+        vstd::arithmetic::overflow::CheckedU64::new(1)
+    } else {
+        let rest = triptych_checked_pow10(exponent - 1);
+        let result = rest.mul_value(10);
+        proof {
+            reveal_with_fuel(triptych_int_pow, 1);
+            assert(exponent as int - 1 == (exponent - 1) as int);
+        }
+        result
+    }
+}

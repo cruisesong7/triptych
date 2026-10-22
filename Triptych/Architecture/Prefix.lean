@@ -19,7 +19,7 @@ import Triptych.Architecture.Denote
 /-!
 # Shared prefix recognition
 
-These leaf checks are shared by the runtime scanner and the archived reference decoder. Keeping
+These leaf checks are shared by the runtime scanner and the reference decoder. Keeping
 them outside the archive makes the scanner executable without importing the list-producing
 reference implementation.
 -/

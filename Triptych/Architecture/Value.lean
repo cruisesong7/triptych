@@ -31,9 +31,12 @@ denotation, and later (b) *analyze* it for affinity to auto-generate roundtrip /
 soundness proofs. `eval e` IS the value function (a total Lean function), so the
 "translation into Lean" is just the denotation.
 
-Scope of this first increment: scalar `Int`-valued formulas (covers decimal, duration).
-Deferred: structured / non-`Int` output (IPAddr's `IPNet`), non-recursive `where`
-helpers (datetime's `isLeapYear`/`daysInMonth`), and the affinity analysis pass.
+The core remains `Int`-valued, with `ofSpec`/`toSpec` conversions providing structured domain
+values. Its vocabulary covers the four Cedar extension parsers: decimal and signed arithmetic,
+duration components, Gregorian calendar arithmetic, qualified captures, hexadecimal and
+colon-separated IPv6 fields, segment counts, conditionals, truncating division, and remainder.
+Format-specific arithmetic helpers such as `daysFromCivil` expand into this same inspectable AST.
+The affinity analysis pass remains separate.
 -/
 
 namespace Triptych
@@ -52,16 +55,79 @@ inductive ValExpr where
   /-- `count X` — number of elements matched by a `rep X ...` (0 if absent). The scanner
       records this under the derived capture key `X#count`. -/
   | count  (field : String)
+  /-- `hex X` — unsigned hexadecimal value of capture `X` (0 if absent). -/
+  | hex    (field : String)
+  /-- `hexSeq X` — base-65536 concatenation of a colon-separated hexadecimal capture. -/
+  | hexSeq (field : String)
+  /-- `segments X` — number of colon-separated components (0 for an absent capture). -/
+  | segments (field : String)
   /-- `sign X` — `-1` if capture `X` starts with `-`, else `+1` (used for the doc's
       `sign` helper; `+1` if absent). -/
   | signOf (field : String)
+  /-- `prefixSign X` — sign of any captured string, including a compound capture whose first
+      character is `+` or `-`. Unlike a bare sign reference, this need not name `X ::= sign`. -/
+  | prefixSign (field : String)
   | add    (a b : ValExpr)
   | sub    (a b : ValExpr)
   | mul    (a b : ValExpr)
+  /-- Rust/Lean truncating integer division. The divisor must be nonzero on valid inputs. -/
+  | tdiv   (a b : ValExpr)
+  /-- Integer remainder. The divisor must be nonzero on valid inputs. -/
+  | mod    (a b : ValExpr)
   /-- `base ^ exp` — exponent is evaluated then truncated to `Nat` (always ≥ 0 here). -/
   | pow    (base exp : ValExpr)
   | neg    (a : ValExpr)
+  /-- Integer-valued conditionals, kept in the same deep AST as their arithmetic branches. -/
+  | iteEq    (left right thenBranch elseBranch : ValExpr)
+  | iteLt    (left right thenBranch elseBranch : ValExpr)
+  | iteLe    (left right thenBranch elseBranch : ValExpr)
+  | iteEmpty (field : String) (thenBranch elseBranch : ValExpr)
   deriving Repr, Inhabited, DecidableEq
+
+namespace ValExpr
+
+/-- Proleptic-Gregorian leap-year predicate encoded as `1`/`0` inside the arithmetic DSL. -/
+def leapYearFlag (year : ValExpr) : ValExpr :=
+  .iteEq (.mod year (.lit 4)) (.lit 0)
+    (.iteEq (.mod year (.lit 100)) (.lit 0)
+      (.iteEq (.mod year (.lit 400)) (.lit 0) (.lit 1) (.lit 0))
+      (.lit 1))
+    (.lit 0)
+
+/-- Number of days in a proleptic-Gregorian month. This is syntax sugar for nested,
+    fully inspectable arithmetic conditionals rather than an opaque calendar callback. -/
+def daysInMonth (year month : ValExpr) : ValExpr :=
+  .iteEq month (.lit 4) (.lit 30)
+    (.iteEq month (.lit 6) (.lit 30)
+      (.iteEq month (.lit 9) (.lit 30)
+        (.iteEq month (.lit 11) (.lit 30)
+          (.iteEq month (.lit 2)
+            (.iteEq (leapYearFlag year) (.lit 1) (.lit 29) (.lit 28))
+            (.lit 31)))))
+
+/-- Howard Hinnant's `days_from_civil`, expanded entirely into the generic arithmetic DSL.
+    The result is the signed number of days from 1970-01-01. -/
+def daysFromCivil (year month day : ValExpr) : ValExpr :=
+  let adjustedYear := .iteLt (.lit 2) month year (.sub year (.lit 1))
+  let era :=
+    .iteLe (.lit 0) adjustedYear
+      (.tdiv adjustedYear (.lit 400))
+      (.tdiv (.sub adjustedYear (.lit 399)) (.lit 400))
+  let yearOfEra := .sub adjustedYear (.mul era (.lit 400))
+  let shiftedMonth := .add month (.iteLt (.lit 2) month (.lit (-3)) (.lit 9))
+  let dayOfYear :=
+    .add
+      (.tdiv (.add (.mul (.lit 153) shiftedMonth) (.lit 2)) (.lit 5))
+      (.sub day (.lit 1))
+  let dayOfEra :=
+    .add
+      (.sub
+        (.add (.mul yearOfEra (.lit 365)) (.tdiv yearOfEra (.lit 4)))
+        (.tdiv yearOfEra (.lit 100)))
+      dayOfYear
+  .sub (.add (.mul era (.lit 146097)) dayOfEra) (.lit 719468)
+
+end ValExpr
 
 /-- Reader: unsigned decimal value of a digit string (`"345" ↦ 345`).
 
@@ -78,8 +144,96 @@ inductive ValExpr where
     (2) stdlib is more permissive than our grammar (accepts leading zeros, possibly
     Unicode digits), which would let the value function diverge from `IsWf`. Owning the
     reader keeps its digit-rule identical to `TokClass.digit` and version-stable. -/
+def readNatChars (characters : List Char) : Nat :=
+  characters.foldl (fun acc c => acc * 10 + (c.toNat - '0'.toNat)) 0
+
 def readNat (s : String) : Nat :=
   s.foldl (fun acc c => acc * 10 + (c.toNat - '0'.toNat)) 0
+
+/-- Numeric value of one ASCII hexadecimal digit. Non-hexadecimal input maps to zero; grammar
+    well-formedness excludes that branch at every generated call site. -/
+def hexDigitValue (c : Char) : Nat :=
+  if 48 ≤ c.toNat && c.toNat ≤ 57 then c.toNat - 48
+  else if 97 ≤ c.toNat && c.toNat ≤ 102 then c.toNat - 97 + 10
+  else if 65 ≤ c.toNat && c.toNat ≤ 70 then c.toNat - 65 + 10
+  else 0
+
+/-- List-level hexadecimal reader used to relate Lean strings to backend byte sequences. -/
+def readHexChars (characters : List Char) : Nat :=
+  characters.foldl (fun acc c => acc * 16 + hexDigitValue c) 0
+
+/-- Unsigned hexadecimal value of a digit string. -/
+def readHex (s : String) : Nat :=
+  readHexChars s.toList
+
+/-- Integer-valued hexadecimal digit reader used by `ValExpr`. -/
+def hexDigitValueInt (c : Char) : Int :=
+  if (48 : Int) ≤ (c.toNat : Int) ∧ (c.toNat : Int) ≤ 57 then (c.toNat : Int) - 48
+  else if (97 : Int) ≤ (c.toNat : Int) ∧ (c.toNat : Int) ≤ 102 then
+    (c.toNat : Int) - 97 + 10
+  else if (65 : Int) ≤ (c.toNat : Int) ∧ (c.toNat : Int) ≤ 70 then
+    (c.toNat : Int) - 65 + 10
+  else 0
+
+/-- Integer-valued hexadecimal fold used directly by the value DSL. -/
+def hexOfChars (characters : List Char) (accumulator : Int := 0) : Int :=
+  characters.foldl (fun acc c => acc * 16 + hexDigitValueInt c) accumulator
+
+/-- Integer-valued hexadecimal reader used directly by the value DSL. -/
+def hexOf (s : String) : Int :=
+  hexOfChars s.toList
+
+/-- List-level state machine for colon-separated base-65536 digits. -/
+def readHexSequenceChars : List Char → Nat → Nat → Nat
+  | [], accumulator, current => accumulator * 65536 + current
+  | ':' :: rest, accumulator, current =>
+      readHexSequenceChars rest (accumulator * 65536 + current) 0
+  | c :: rest, accumulator, current =>
+      readHexSequenceChars rest accumulator (current * 16 + hexDigitValue c)
+
+/-- Concatenate colon-separated hexadecimal groups as base-65536 digits.
+    For example, `"2001:db8:0:1"` denotes `(((0x2001·65536 + 0xdb8)·65536)·65536 + 1)`. -/
+def readHexSequence (s : String) : Nat :=
+  readHexSequenceChars s.toList 0 0
+
+@[simp]
+theorem readHexSequence_empty : readHexSequence "" = 0 := by
+  rfl
+
+/-- Integer-valued state machine for colon-separated base-65536 digits. -/
+def hexSeqOfChars : List Char → Int → Int → Int
+  | [], accumulator, current => accumulator * 65536 + current
+  | character :: rest, accumulator, current =>
+      if character = ':' then
+        hexSeqOfChars rest (accumulator * 65536 + current) 0
+      else
+        hexSeqOfChars rest accumulator (current * 16 + hexDigitValueInt character)
+
+/-- Integer-valued colon-separated hexadecimal reader used directly by the value DSL. -/
+def hexSeqOf (s : String) : Int :=
+  hexSeqOfChars s.toList 0 0
+
+/-- Count colon-separated groups at the character-list level. -/
+def segmentCountChars (characters : List Char) : Nat :=
+  if characters.isEmpty then 0
+  else characters.foldl (fun count c => if c = ':' then count + 1 else count) 1
+
+/-- Number of colon-separated groups, with the empty optional capture represented by zero. -/
+def segmentCount (s : String) : Nat :=
+  segmentCountChars s.toList
+
+/-- Integer-valued segment counter used directly by the value DSL. -/
+def segmentsOf (s : String) : Int :=
+  if s.toList.isEmpty then 0
+  else s.toList.foldl (fun current c => if c = ':' then current + 1 else current) 1
+
+@[simp]
+theorem readNat_empty : readNat "" = 0 := by
+  simp [readNat]
+
+theorem readNat_eq_readNatChars (s : String) : readNat s = readNatChars s.toList := by
+  unfold readNat readNatChars
+  rw [String.foldl_eq_foldl_toList]
 
 /-- Reader: signed decimal value (leading `-` ⟹ negative; `"-12" ↦ -12`).
     PRECONDITION: `s` is optionally a leading `-` then a digit run, per the grammar's
@@ -106,6 +260,83 @@ def CaptureMap.toEnv (m : CaptureMap) : Env :=
 def CaptureMap.toEnvList (m : CaptureMap) (k : String) : List String :=
   (m.filter (·.1 == k)).map (·.2)
 
+/-- The production a capture key belongs to: `Parent.X`, `X`, and `X#count` all name `X`. -/
+def CaptureMap.keyProduction (key : String) : String :=
+  let unqualified := (key.splitOn ".").getLast?.getD key
+  (unqualified.dropSuffix? "#count").map (·.toString) |>.getD unqualified
+
+/-- Whether the capture entry at the head of `m` was recorded inside an occurrence. Below the
+    start production every reference is recorded twice, as `X` followed by its qualified twin
+    `Parent.X`, so the twin names the parent production: a qualified entry is inside when its
+    parent is, and a bare entry when its twin is. A bare entry without a twin was recorded by the
+    start production and is outside. A `B#count` entry carries no parent and is judged by
+    `insideCount`. -/
+def CaptureMap.entryInside (insideParent insideCount : String → Bool) : CaptureMap → Bool
+  | [] => false
+  | (k, _) :: rest =>
+      if k.endsWith "#count" then insideCount k
+      else
+        match k.splitOn "." with
+        | [parent, _] => insideParent parent
+        | [_] =>
+            match rest with
+            | (twin, _) :: _ =>
+                match twin.splitOn "." with
+                | [parent, child] => child == k && insideParent parent
+                | _ => false
+            | [] => false
+        | _ => false
+
+/-- Split off the leading entries recorded inside an occurrence. -/
+def CaptureMap.takeInside (insideParent insideCount : String → Bool) :
+    CaptureMap → CaptureMap × CaptureMap
+  | [] => ([], [])
+  | entry :: rest =>
+      if CaptureMap.entryInside insideParent insideCount (entry :: rest) then
+        let (taken, after) := CaptureMap.takeInside insideParent insideCount rest
+        (entry :: taken, after)
+      else
+        ([], entry :: rest)
+
+theorem CaptureMap.takeInside_length_le (insideParent insideCount : String → Bool) :
+    ∀ m : CaptureMap, (CaptureMap.takeInside insideParent insideCount m).2.length ≤ m.length
+  | [] => by simp [CaptureMap.takeInside]
+  | entry :: rest => by
+      unfold CaptureMap.takeInside
+      split
+      · have := CaptureMap.takeInside_length_le insideParent insideCount rest
+        simp only [List.length_cons]
+        omega
+      · simp
+
+/-- Split a capture map into the captures recorded inside each occurrence of `key`.
+
+Capture maps are preorder: an occurrence's own entries (`key` and its qualified `Parent.key`)
+precede the captures of its subtree. Each occurrence owns the following run of entries recorded
+inside it (`entryInside`). `inside` lists `key`, the productions reachable below it, and the
+count keys of repetitions within it; the generator supplies it from the grammar. Because
+Triptych grammars are acyclic, a later sibling's first entry has a parent outside `inside`, so
+the run stops exactly at the occurrence's end. Each segment starts with the occurrence's own
+`key` entry, so a group can also read its own text. -/
+def CaptureMap.groups (key : String) (inside : List String) (m : CaptureMap) :
+    List CaptureMap :=
+  match m with
+  | [] => []
+  | (k, text) :: rest =>
+      if k == key then
+        let body := rest.dropWhile (·.1.endsWith ("." ++ key))
+        let split := CaptureMap.takeInside inside.contains inside.contains body
+        ((k, text) :: split.1) :: groups key inside split.2
+      else
+        groups key inside rest
+termination_by m.length
+decreasing_by
+  all_goals simp_wf
+  all_goals first
+    | omega
+    | exact Nat.lt_succ_of_le
+        (Nat.le_trans (CaptureMap.takeInside_length_le _ _ _) (List.dropWhile_suffix _).length_le)
+
 /-! ## Readable field readers
 
 These are the per-field-reference cases of `ValExpr.eval`, named to read like the doc's
@@ -119,6 +350,12 @@ def Env.natVal  (env : Env) (f : String) : Int := match env f with | some s => (
 def Env.intVal  (env : Env) (f : String) : Int := match env f with | some s => readInt s          | none => 0
 def Env.lenVal  (env : Env) (f : String) : Int := match env f with | some s => (s.length : Int)   | none => 0
 def Env.countVal (env : Env) (f : String) : Int := env.natVal (f ++ "#count")
+def Env.hexVal (env : Env) (f : String) : Int :=
+  match env f with | some s => hexOf s | none => 0
+def Env.hexSeqVal (env : Env) (f : String) : Int :=
+  match env f with | some s => hexSeqOf s | none => 0
+def Env.segmentVal (env : Env) (f : String) : Int :=
+  match env f with | some s => segmentsOf s | none => 0
 def Env.signVal (env : Env) (f : String) : Int := match env f with | some s => if s.startsWith "-" then -1 else 1 | none => 1
 
 /-! ### String-level readers (surface API)
@@ -150,12 +387,22 @@ def ValExpr.eval (env : Env) : ValExpr → Int
   | .int f    => env.intVal f
   | .len f    => env.lenVal f
   | .count f  => env.countVal f
+  | .hex f    => env.hexVal f
+  | .hexSeq f => env.hexSeqVal f
+  | .segments f => env.segmentVal f
   | .signOf f => env.signVal f
+  | .prefixSign f => env.signVal f
   | .add a b  => a.eval env + b.eval env
   | .sub a b  => a.eval env - b.eval env
   | .mul a b  => a.eval env * b.eval env
+  | .tdiv a b => (a.eval env).tdiv (b.eval env)
+  | .mod a b  => (a.eval env).tmod (b.eval env)
   | .pow b e  => (b.eval env) ^ (e.eval env).toNat
   | .neg a    => -(a.eval env)
+  | .iteEq a b t e => if a.eval env = b.eval env then t.eval env else e.eval env
+  | .iteLt a b t e => if a.eval env < b.eval env then t.eval env else e.eval env
+  | .iteLe a b t e => if a.eval env ≤ b.eval env then t.eval env else e.eval env
+  | .iteEmpty f t e => if (env f).getD "" = "" then t.eval env else e.eval env
 
 /-! ## Surface syntax: math-style formulas → `ValExpr`
 
@@ -172,6 +419,18 @@ syntax:max "nat " rawIdent    : valExpr
 syntax:max "int " rawIdent    : valExpr
 syntax:max "len " rawIdent    : valExpr
 syntax:max "count " rawIdent  : valExpr
+syntax:max "hex " rawIdent    : valExpr
+syntax:max "hexSeq " rawIdent : valExpr
+syntax:max "segments " rawIdent : valExpr
+syntax:max "prefixSign " rawIdent : valExpr
+syntax:max "tdiv(" valExpr ", " valExpr ")" : valExpr
+syntax:max "mod(" valExpr ", " valExpr ")" : valExpr
+syntax:max "ifEq(" valExpr ", " valExpr ", " valExpr ", " valExpr ")" : valExpr
+syntax:max "ifLt(" valExpr ", " valExpr ", " valExpr ", " valExpr ")" : valExpr
+syntax:max "ifLe(" valExpr ", " valExpr ", " valExpr ", " valExpr ")" : valExpr
+syntax:max "ifEmpty(" rawIdent ", " valExpr ", " valExpr ")" : valExpr
+syntax:max "daysInMonth(" valExpr ", " valExpr ")" : valExpr
+syntax:max "daysFromCivil(" valExpr ", " valExpr ", " valExpr ")" : valExpr
 -- A BARE capture name denotes its SIGN (±1): `Sign` ⟺ the old `sign Sign`. Reserved for
 -- productions declared `Sign ::= sign` (a dedicated sign capture); the `"nat "`/`"int "`/`"len "`
 -- atoms above are keywords, so a bare ident never collides with them. See `elabTriptych`,
@@ -212,6 +471,54 @@ partial def parseValExprWithUsage (valueSub : Option ValExpr) :
   | `(valExpr| int $i:ident) => pure ⟨.int i.getId.toString, false⟩
   | `(valExpr| len $i:ident) => pure ⟨.len i.getId.toString, false⟩
   | `(valExpr| count $i:ident) => pure ⟨.count i.getId.toString, false⟩
+  | `(valExpr| hex $i:ident) => pure ⟨.hex i.getId.toString, false⟩
+  | `(valExpr| hexSeq $i:ident) => pure ⟨.hexSeq i.getId.toString, false⟩
+  | `(valExpr| segments $i:ident) => pure ⟨.segments i.getId.toString, false⟩
+  | `(valExpr| prefixSign $i:ident) => pure ⟨.prefixSign i.getId.toString, false⟩
+  | `(valExpr| tdiv( $a:valExpr , $b:valExpr )) => do
+      let a ← parseValExprWithUsage valueSub a
+      let b ← parseValExprWithUsage valueSub b
+      return ⟨.tdiv a.expression b.expression, a.usesValue || b.usesValue⟩
+  | `(valExpr| mod( $a:valExpr , $b:valExpr )) => do
+      let a ← parseValExprWithUsage valueSub a
+      let b ← parseValExprWithUsage valueSub b
+      return ⟨.mod a.expression b.expression, a.usesValue || b.usesValue⟩
+  | `(valExpr| ifEq( $a:valExpr , $b:valExpr , $t:valExpr , $e:valExpr )) => do
+      let a ← parseValExprWithUsage valueSub a
+      let b ← parseValExprWithUsage valueSub b
+      let t ← parseValExprWithUsage valueSub t
+      let e ← parseValExprWithUsage valueSub e
+      return ⟨.iteEq a.expression b.expression t.expression e.expression,
+        a.usesValue || b.usesValue || t.usesValue || e.usesValue⟩
+  | `(valExpr| ifLt( $a:valExpr , $b:valExpr , $t:valExpr , $e:valExpr )) => do
+      let a ← parseValExprWithUsage valueSub a
+      let b ← parseValExprWithUsage valueSub b
+      let t ← parseValExprWithUsage valueSub t
+      let e ← parseValExprWithUsage valueSub e
+      return ⟨.iteLt a.expression b.expression t.expression e.expression,
+        a.usesValue || b.usesValue || t.usesValue || e.usesValue⟩
+  | `(valExpr| ifLe( $a:valExpr , $b:valExpr , $t:valExpr , $e:valExpr )) => do
+      let a ← parseValExprWithUsage valueSub a
+      let b ← parseValExprWithUsage valueSub b
+      let t ← parseValExprWithUsage valueSub t
+      let e ← parseValExprWithUsage valueSub e
+      return ⟨.iteLe a.expression b.expression t.expression e.expression,
+        a.usesValue || b.usesValue || t.usesValue || e.usesValue⟩
+  | `(valExpr| ifEmpty( $i:ident , $t:valExpr , $e:valExpr )) => do
+      let t ← parseValExprWithUsage valueSub t
+      let e ← parseValExprWithUsage valueSub e
+      return ⟨.iteEmpty i.getId.toString t.expression e.expression,
+        t.usesValue || e.usesValue⟩
+  | `(valExpr| daysInMonth( $y:valExpr , $m:valExpr )) => do
+      let y ← parseValExprWithUsage valueSub y
+      let m ← parseValExprWithUsage valueSub m
+      return ⟨ValExpr.daysInMonth y.expression m.expression, y.usesValue || m.usesValue⟩
+  | `(valExpr| daysFromCivil( $y:valExpr , $m:valExpr , $d:valExpr )) => do
+      let y ← parseValExprWithUsage valueSub y
+      let m ← parseValExprWithUsage valueSub m
+      let d ← parseValExprWithUsage valueSub d
+      return ⟨ValExpr.daysFromCivil y.expression m.expression d.expression,
+        y.usesValue || m.usesValue || d.usesValue⟩
   | `(valExpr| $i:ident) => pure ⟨.signOf i.getId.toString, false⟩
   | `(valExpr| ( $e:valExpr )) => parseValExprWithUsage valueSub e
   | `(valExpr| $a:valExpr + $b:valExpr) => do
@@ -262,16 +569,36 @@ partial def quoteValExprWith
   | .int field => `(ValExpr.int $(quote field))
   | .len field => `(ValExpr.len $(quote field))
   | .count field => `(ValExpr.count $(quote field))
+  | .hex field => `(ValExpr.hex $(quote field))
+  | .hexSeq field => `(ValExpr.hexSeq $(quote field))
+  | .segments field => `(ValExpr.segments $(quote field))
   | .signOf field => `(ValExpr.signOf $(quote field))
+  | .prefixSign field => `(ValExpr.prefixSign $(quote field))
   | .add a b =>
       `(ValExpr.add $(← quoteValExprWith valueRef a) $(← quoteValExprWith valueRef b))
   | .sub a b =>
       `(ValExpr.sub $(← quoteValExprWith valueRef a) $(← quoteValExprWith valueRef b))
   | .mul a b =>
       `(ValExpr.mul $(← quoteValExprWith valueRef a) $(← quoteValExprWith valueRef b))
+  | .tdiv a b =>
+      `(ValExpr.tdiv $(← quoteValExprWith valueRef a) $(← quoteValExprWith valueRef b))
+  | .mod a b =>
+      `(ValExpr.mod $(← quoteValExprWith valueRef a) $(← quoteValExprWith valueRef b))
   | .pow a b =>
       `(ValExpr.pow $(← quoteValExprWith valueRef a) $(← quoteValExprWith valueRef b))
   | .neg a => `(ValExpr.neg $(← quoteValExprWith valueRef a))
+  | .iteEq a b t e =>
+      `(ValExpr.iteEq $(← quoteValExprWith valueRef a) $(← quoteValExprWith valueRef b)
+        $(← quoteValExprWith valueRef t) $(← quoteValExprWith valueRef e))
+  | .iteLt a b t e =>
+      `(ValExpr.iteLt $(← quoteValExprWith valueRef a) $(← quoteValExprWith valueRef b)
+        $(← quoteValExprWith valueRef t) $(← quoteValExprWith valueRef e))
+  | .iteLe a b t e =>
+      `(ValExpr.iteLe $(← quoteValExprWith valueRef a) $(← quoteValExprWith valueRef b)
+        $(← quoteValExprWith valueRef t) $(← quoteValExprWith valueRef e))
+  | .iteEmpty field t e =>
+      `(ValExpr.iteEmpty $(quote field) $(← quoteValExprWith valueRef t)
+        $(← quoteValExprWith valueRef e))
 
 /-- Reify a parsed `ValExpr` with no named substitution. -/
 partial def quoteValExpr (expression : ValExpr) : MacroM (TSyntax `term) :=
@@ -336,7 +663,19 @@ partial def quoteValReadableWith
   | .count field =>
       let binder := mkIdent (Name.mkSimple (surfaceBinder (field ++ "#count")))
       `(countOf $binder)
+  | .hex field =>
+      let binder := mkIdent (Name.mkSimple (surfaceBinder field))
+      `(hexOf $binder)
+  | .hexSeq field =>
+      let binder := mkIdent (Name.mkSimple (surfaceBinder field))
+      `(hexSeqOf $binder)
+  | .segments field =>
+      let binder := mkIdent (Name.mkSimple (surfaceBinder field))
+      `(segmentsOf $binder)
   | .signOf field =>
+      let binder := mkIdent (Name.mkSimple (surfaceBinder field))
+      `(signOf $binder)
+  | .prefixSign field =>
       let binder := mkIdent (Name.mkSimple (surfaceBinder field))
       `(signOf $binder)
   | .add a b =>
@@ -353,14 +692,46 @@ partial def quoteValReadableWith
         | .add _ _ | .sub _ _ => `(($bTerm))
         | _ => pure bTerm
       `($aTerm * $bTerm)
+  | .tdiv a b => do
+      let left ← quoteValReadableWith valueRef a
+      let right ← quoteValReadableWith valueRef b
+      `(Int.tdiv $left $right)
+  | .mod a b => do
+      let left ← quoteValReadableWith valueRef a
+      let right ← quoteValReadableWith valueRef b
+      `(Int.tmod $left $right)
   | .pow a b => do
       let base ← quoteValReadableWith valueRef a
       let exponent ← quoteValReadableWith valueRef b
       let exponent ← match b with
-        | .lit _ | .nat _ | .int _ | .len _ | .count _ | .signOf _ => pure exponent
+        | .lit _ | .nat _ | .int _ | .len _ | .count _ | .hex _ | .hexSeq _
+        | .segments _ | .signOf _ | .prefixSign _ => pure exponent
         | _ => `(($exponent))
       `($base ^ ($exponent).toNat)
   | .neg a => `(-$(← quoteValReadableWith valueRef a))
+  | .iteEq a b t e => do
+      let left ← quoteValReadableWith valueRef a
+      let right ← quoteValReadableWith valueRef b
+      let thenBranch ← quoteValReadableWith valueRef t
+      let elseBranch ← quoteValReadableWith valueRef e
+      `(if $left = $right then $thenBranch else $elseBranch)
+  | .iteLt a b t e => do
+      let left ← quoteValReadableWith valueRef a
+      let right ← quoteValReadableWith valueRef b
+      let thenBranch ← quoteValReadableWith valueRef t
+      let elseBranch ← quoteValReadableWith valueRef e
+      `(if $left < $right then $thenBranch else $elseBranch)
+  | .iteLe a b t e => do
+      let left ← quoteValReadableWith valueRef a
+      let right ← quoteValReadableWith valueRef b
+      let thenBranch ← quoteValReadableWith valueRef t
+      let elseBranch ← quoteValReadableWith valueRef e
+      `(if $left ≤ $right then $thenBranch else $elseBranch)
+  | .iteEmpty field t e => do
+      let binder := mkIdent (Name.mkSimple (surfaceBinder field))
+      let thenBranch ← quoteValReadableWith valueRef t
+      let elseBranch ← quoteValReadableWith valueRef e
+      `(if $binder = "" then $thenBranch else $elseBranch)
 
 /-- Render a parsed value AST as the readable Lean surface. -/
 partial def quoteValReadable (expression : ValExpr) : MacroM (TSyntax `term) :=
@@ -378,13 +749,24 @@ partial def ValExpr.captures : ValExpr → List String
   | .nat field
   | .int field
   | .len field
-  | .signOf field => [field]
+  | .hex field
+  | .hexSeq field
+  | .segments field
+  | .signOf field
+  | .prefixSign field => [field]
   | .count field => [field ++ "#count"]
   | .add a b
   | .sub a b
   | .mul a b
+  | .tdiv a b
+  | .mod a b
   | .pow a b => (a.captures ++ b.captures).eraseDups
   | .neg a => a.captures
+  | .iteEq a b t e
+  | .iteLt a b t e
+  | .iteLe a b t e =>
+      (a.captures ++ b.captures ++ t.captures ++ e.captures).eraseDups
+  | .iteEmpty field t e => (field :: (t.captures ++ e.captures)).eraseDups
 
 /-- Captures used as bare sign readers by a parsed value expression. -/
 partial def ValExpr.signCaptures : ValExpr → List String
@@ -392,8 +774,15 @@ partial def ValExpr.signCaptures : ValExpr → List String
   | .add a b
   | .sub a b
   | .mul a b
+  | .tdiv a b
+  | .mod a b
   | .pow a b => (a.signCaptures ++ b.signCaptures).eraseDups
   | .neg a => a.signCaptures
+  | .iteEq a b t e
+  | .iteLt a b t e
+  | .iteLe a b t e =>
+      (a.signCaptures ++ b.signCaptures ++ t.signCaptures ++ e.signCaptures).eraseDups
+  | .iteEmpty _ t e => (t.signCaptures ++ e.signCaptures).eraseDups
   | _ => []
 
 /-- Repetition item names read through `count` by a parsed value expression. -/
@@ -402,8 +791,15 @@ partial def ValExpr.countCaptures : ValExpr → List String
   | .add a b
   | .sub a b
   | .mul a b
+  | .tdiv a b
+  | .mod a b
   | .pow a b => (a.countCaptures ++ b.countCaptures).eraseDups
   | .neg a => a.countCaptures
+  | .iteEq a b t e
+  | .iteLt a b t e
+  | .iteLe a b t e =>
+      (a.countCaptures ++ b.countCaptures ++ t.countCaptures ++ e.countCaptures).eraseDups
+  | .iteEmpty _ t e => (t.countCaptures ++ e.countCaptures).eraseDups
   | _ => []
 
 end Triptych

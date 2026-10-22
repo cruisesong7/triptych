@@ -8,7 +8,10 @@ import Triptych.Architecture.Constraint
 import Triptych.Architecture.Assemble
 import Triptych.Theorems.Reconcile
 import Triptych.Theorems.Value
-import Triptych.Archive.DecodeLemmas
+import Triptych.Theorems.ParsePlan
+import Triptych.Theorems.ScanPlan
+import Triptych.Theorems.SearchPlan
+import Triptych.Reference.DecodeLemmas
 import Triptych.Theorems.Derivation
 import Triptych.Theorems.Scanner
 import Outputs.SMT.SpecConstant.spec
@@ -23,7 +26,7 @@ set_option linter.unnecessarySeqFocus false
 
 /- ══════════════════════════════ engine ══════════════════════════════
 The executable counterpart of the spec. A verified scanner extracts captured
-components and stops at the first complete parse. The archived reference `decode`
+components and stops at the first complete parse. The reference `decode`
 is used only in the agreement proof, not as a runtime fallback. `computeValue`
 evaluates the value function on those captures. Generated `DecidablePred` instances
 make the readable `IsWf` and `IsValid` predicates directly executable.
@@ -118,6 +121,20 @@ def SpecConstant.computeValue (s : String) :=
 def SpecConstant.View.ofMap (input : String) (m : Triptych.CaptureMap) : SpecConstant.View :=
   SpecConstant.View.mk input (Triptych.CaptureMap.toEnv m "StringLiteral") (Triptych.CaptureMap.toEnv m "Sign")
     (Triptych.CaptureMap.toEnv m "Natural") (Triptych.CaptureMap.toEnv m "Fraction")
+
+private def SpecConstant.View.ofSpans (input : String) (chars : List Char) (spans : Triptych.LeanSpanCursor.SpanMap) :
+    SpecConstant.View :=
+  SpecConstant.View.mk input (Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "StringLiteral")
+    (Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "Sign")
+    (Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "Natural")
+    (Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "Fraction")
+
+private theorem SpecConstant.View.ofSpans_eq_ofMap (input : String) (chars : List Char)
+    (spans : Triptych.LeanSpanCursor.SpanMap) :
+    SpecConstant.View.ofSpans input chars spans = SpecConstant.View.ofMap input (spans.materialize chars) :=
+  by
+  unfold SpecConstant.View.ofSpans SpecConstant.View.ofMap
+  simp only [Triptych.LeanSpanCursor.SpanMap.captureMap_toEnv, Triptych.LeanSpanCursor.SpanMap.captureMap_toEnvList]
 
 def SpecConstant.decodeView (s : String) : Option SpecConstant.View :=
   (scan SpecConstant.grammar s).map (SpecConstant.View.ofMap s)
@@ -416,9 +433,9 @@ theorem SpecConstant.Internal.matchesRef.StringLiteral (fuel : Nat) (s : String)
   rw [matchesProd_single]
   unfold SpecConstant.IsWf.StringLiteral
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym]
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem SpecConstant.Internal.matchesRef.Sign (fuel : Nat) (s : String) :
@@ -430,9 +447,9 @@ theorem SpecConstant.Internal.matchesRef.Sign (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold SpecConstant.IsWf.Sign
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym]
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem SpecConstant.Internal.matchesRef.Natural (fuel : Nat) (s : String) :
@@ -447,10 +464,10 @@ theorem SpecConstant.Internal.matchesRef.Natural (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold SpecConstant.IsWf.Natural
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem SpecConstant.Internal.matchesRef.Fraction (fuel : Nat) (s : String) :
@@ -465,10 +482,10 @@ theorem SpecConstant.Internal.matchesRef.Fraction (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold SpecConstant.IsWf.Fraction
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem SpecConstant.Internal.matchesRef.DecimalPart (fuel : Nat) (s : String) :
@@ -483,10 +500,10 @@ theorem SpecConstant.Internal.matchesRef.DecimalPart (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold SpecConstant.IsWf.DecimalPart
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     SpecConstant.Internal.matchesRef.Fraction]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem SpecConstant.Internal.matchesRef.NumericLiteral (fuel : Nat) (s : String) :
@@ -504,15 +521,15 @@ theorem SpecConstant.Internal.matchesRef.NumericLiteral (fuel : Nat) (s : String
   rw [matchesProd_single]
   unfold SpecConstant.IsWf.NumericLiteral
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     SpecConstant.Internal.matchesRef.Sign, SpecConstant.Internal.matchesRef.Natural,
     SpecConstant.Internal.matchesRef.DecimalPart]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem SpecConstant.Internal.matchesRef.SpecConstant (fuel : Nat) (s : String) :
-    matchesSym SpecConstant.grammar (fuel + 4) (Sym.ref "SpecConstant") s ↔ SpecConstant.IsWf.SpecConstant s :=
+    matchesSym SpecConstant.grammar (fuel + 4) (Sym.ref "SpecConstant") s ↔ SpecConstant.Production s :=
   by
   rw [matchesSym,
     show
@@ -522,20 +539,21 @@ theorem SpecConstant.Internal.matchesRef.SpecConstant (fuel : Nat) (s : String) 
             [[SymItem.mk (Sym.ref "StringLiteral") false], [SymItem.mk (Sym.ref "NumericLiteral") false]])
       from rfl]
   dsimp only
-  unfold matchesProd SpecConstant.IsWf.SpecConstant
+  unfold matchesProd SpecConstant.Production
   simp (config := { maxSteps := 1000000 }) only [List.mem_cons, List.mem_singleton, List.not_mem_nil,
-    Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_or_imp, exists_eq_left, exists_eq_left, if_true,
-    if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_or_imp, exists_eq_left, exists_eq_left, ite_true,
+    ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     SpecConstant.Internal.matchesRef.StringLiteral, SpecConstant.Internal.matchesRef.NumericLiteral]
   repeat'
     first
     | apply or_congr
     | ( simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left,
-          ← and_assoc, exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+          ← and_assoc, exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left,
+          Option.some.injEq, forall_eq']
         try grind [String.append_assoc, String.append_empty])
 
 theorem SpecConstant.IsWfGrammar_equiv (s : String) :
-    Triptych.IsWf SpecConstant.grammar s ↔ SpecConstant.IsWf.SpecConstant s :=
+    Triptych.IsWf SpecConstant.grammar s ↔ SpecConstant.Production s :=
   by
   rw [isWf_eq_isWfProd_start, IsWfProd,
     show
@@ -576,10 +594,11 @@ theorem SpecConstant.IsWf_equiv (s : String) :
   rw [Triptych.scan_eq_decode]
   rw [← SpecConstant.IsWfGrammar_equiv, ← decodeSome_iff_IsWf SpecConstant.grammar (by decide)]
   unfold SpecConstant.constraints
-  simp only [Triptych.component, Triptych.componentList, Triptych.envOf, Triptych.captureMapOf, Triptych.scan_eq_decode,
-    List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const, ConstraintEntry.wfPart,
-    Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD,
-    Env.countVal, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
+  simp only [Triptych.component, Triptych.componentList, Triptych.componentWith, Triptych.envOf, Triptych.captureMapOf,
+    Triptych.scan_eq_decode, List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const,
+    ConstraintEntry.wfPart, Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD,
+    countOf_getD, signOf_getD, hexOf_getD, hexSeqOf_getD, segmentsOf_getD, Env.countVal, and_true, true_and,
+    false_implies, implies_true, Bool.false_eq_true]
   try grind
 
 theorem SpecConstant.IsValid_equiv (s : String) :
@@ -639,11 +658,14 @@ theorem SpecConstant.computeValue_eq (s : String) :
             (Triptych.component SpecConstant.grammar s "Fraction")) :=
   by
   unfold SpecConstant.computeValue Triptych.scannerComputeValueMap Triptych.component Triptych.envOf
-    Triptych.captureMapOf SpecConstant.value SpecConstant.valueFn
+    Triptych.captureMapOf SpecConstant.valueFn SpecConstant.value
   rw [Triptych.scan_eq_decode]
   cases h : decode SpecConstant.grammar s with
   | none => simp [h]
-  | some m => simp [h, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, Env.countVal, ValExpr.eval]
+  | some m =>
+    simp [h, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, hexOf_getD, hexSeqOf_getD, segmentsOf_getD,
+        Env.countVal, ValExpr.eval] <;>
+      ac_rfl
 
 theorem SpecConstant.computeValue_of_decode {s : String} {m : Triptych.CaptureMap}
     (h : decode SpecConstant.grammar s = some m) :
@@ -677,16 +699,389 @@ theorem SpecConstant.computeValue_view (s : String) :
     rfl
 
 /- ═══════════════════════════════ parser ══════════════════════════════
-The generated correct-by-construction parser `parse` scans once, checks constraints
-on that capture map, and computes the result from the same captures. `parse_eq_gated`
-proves equality with the readable validity-gated presentation. Its correctness and
-search-cost guarantees — `parse_sound`, `parse_complete`, `parse_reject`,
+The generated correct-by-construction parser `parse` uses a certified staged cursor
+program when the grammar supports one, projects its captures once into the typed
+`View`, checks `View.Valid`, and computes `View.denotation`. Certified cursor rejection
+is final; grammar
+shapes outside that fragment use the complete scanner. `parse_eq_scanner` and
+`parse_eq_gated` prove equality with the generic
+scanner and readable validity-gated presentation. Its correctness and search-cost
+guarantees — `parse_sound`, `parse_complete`, `parse_reject`,
 `parse_profile_result`, `parse_candidateChecks_le`, `parse_view`, and typed
 `parse_eq_some_iff_view` / `parse_eq_none_iff_view` normal forms — are all
 AUTO-DISCHARGED here.
 When an external parser is declared, `checkedExtParse` additionally validates each
 external result against this parser and ships an AUTO-DISCHARGED soundness theorem.
 A verified parser, no `sorry`. -/
+
+private abbrev SpecConstant.searchPlan : SearchPlan :=
+  ({ start := "SpecConstant",
+      alternatives :=
+        [[SearchPattern.capture "StringLiteral" ["StringLiteral"] [[SearchPattern.stringLiteral]]],
+          [SearchPattern.capture "NumericLiteral" ["NumericLiteral"]
+              [[SearchPattern.capture "Sign" ["Sign", "NumericLiteral.Sign"]
+                    [[SearchPattern.optional (SearchPattern.literal "-")]],
+                  SearchPattern.capture "Natural" ["Natural", "NumericLiteral.Natural"]
+                    [[SearchPattern.tokenRun TokClass.digit LenSpec.atLeastOne]],
+                  SearchPattern.optional
+                    (SearchPattern.capture "DecimalPart" ["DecimalPart", "NumericLiteral.DecimalPart"]
+                      [[SearchPattern.literal ".",
+                          SearchPattern.capture "Fraction" ["Fraction", "DecimalPart.Fraction"]
+                            [[SearchPattern.tokenRun TokClass.digit LenSpec.atLeastOne]]]])]]]] } :
+    SearchPlan)
+
+private abbrev SpecConstant.parsePlan : ParsePlan :=
+  ParsePlan.search SpecConstant.searchPlan
+
+private theorem SpecConstant.searchPlan_mirrorsGrammar :
+    SearchPlan.MirrorsGrammar SpecConstant.searchPlan SpecConstant.grammar :=
+  SearchPlan.MirrorsGrammar.intro (by rfl)
+    (Production.mk "SpecConstant"
+      [[SymItem.mk (Sym.ref "StringLiteral") false], [SymItem.mk (Sym.ref "NumericLiteral") false]])
+    (by rfl)
+    (SearchPattern.MirrorsAlternatives.cons
+      (SearchPattern.MirrorsSequence.required
+        (SearchPattern.MirrorsSymbol.capture («grammar» := SpecConstant.grammar) (fuel := 6) (production :=
+          Production.mk "StringLiteral" [[SymItem.mk Sym.str false]]) (by rfl) (by rfl)
+          (SearchPattern.MirrorsAlternatives.cons
+            (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.stringLiteral
+              SearchPattern.MirrorsSequence.empty)
+            SearchPattern.MirrorsAlternatives.empty))
+        SearchPattern.MirrorsSequence.empty)
+      (SearchPattern.MirrorsAlternatives.cons
+        (SearchPattern.MirrorsSequence.required
+          (SearchPattern.MirrorsSymbol.capture («grammar» := SpecConstant.grammar) (fuel := 6) (production :=
+            Production.mk "NumericLiteral"
+              [[SymItem.mk (Sym.ref "Sign") false, SymItem.mk (Sym.ref "Natural") false,
+                  SymItem.mk (Sym.ref "DecimalPart") true]])
+            (by rfl) (by rfl)
+            (SearchPattern.MirrorsAlternatives.cons
+              (SearchPattern.MirrorsSequence.required
+                (SearchPattern.MirrorsSymbol.capture («grammar» := SpecConstant.grammar) (fuel := 5) (production :=
+                  Production.mk "Sign" [[SymItem.mk (Sym.lit "-") true]]) (by rfl) (by rfl)
+                  (SearchPattern.MirrorsAlternatives.cons
+                    (SearchPattern.MirrorsSequence.optional SearchPattern.MirrorsSymbol.literal
+                      SearchPattern.MirrorsSequence.empty)
+                    SearchPattern.MirrorsAlternatives.empty))
+                (SearchPattern.MirrorsSequence.required
+                  (SearchPattern.MirrorsSymbol.capture («grammar» := SpecConstant.grammar) (fuel := 5) (production :=
+                    Production.mk "Natural" [[SymItem.mk (Sym.term TokClass.digit LenSpec.atLeastOne) false]]) (by rfl)
+                    (by rfl)
+                    (SearchPattern.MirrorsAlternatives.cons
+                      (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                        SearchPattern.MirrorsSequence.empty)
+                      SearchPattern.MirrorsAlternatives.empty))
+                  (SearchPattern.MirrorsSequence.optional
+                    (SearchPattern.MirrorsSymbol.capture («grammar» := SpecConstant.grammar) (fuel := 5) (production :=
+                      Production.mk "DecimalPart"
+                        [[SymItem.mk (Sym.lit ".") false, SymItem.mk (Sym.ref "Fraction") false]])
+                      (by rfl) (by rfl)
+                      (SearchPattern.MirrorsAlternatives.cons
+                        (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                          (SearchPattern.MirrorsSequence.required
+                            (SearchPattern.MirrorsSymbol.capture («grammar» := SpecConstant.grammar) (fuel := 4)
+                              (production :=
+                              Production.mk "Fraction"
+                                [[SymItem.mk (Sym.term TokClass.digit LenSpec.atLeastOne) false]])
+                              (by rfl) (by rfl)
+                              (SearchPattern.MirrorsAlternatives.cons
+                                (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                  SearchPattern.MirrorsSequence.empty)
+                                SearchPattern.MirrorsAlternatives.empty))
+                            SearchPattern.MirrorsSequence.empty))
+                        SearchPattern.MirrorsAlternatives.empty))
+                    SearchPattern.MirrorsSequence.empty)))
+              SearchPattern.MirrorsAlternatives.empty))
+          SearchPattern.MirrorsSequence.empty)
+        SearchPattern.MirrorsAlternatives.empty))
+
+private abbrev SpecConstant.searchProgram : SearchProgram :=
+  ({ start := "SpecConstant",
+      code :=
+        SearchCode.choice
+          (SearchCode.capture ["StringLiteral"] (SearchCode.stringLiteral SearchCode.accept) SearchCode.accept)
+          (SearchCode.capture ["NumericLiteral"]
+            (SearchCode.capture ["Sign", "NumericLiteral.Sign"]
+              (SearchCode.choice (SearchCode.literal "-" SearchCode.accept) SearchCode.accept)
+              (SearchCode.capture ["Natural", "NumericLiteral.Natural"]
+                (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                (SearchCode.choice
+                  (SearchCode.capture ["DecimalPart", "NumericLiteral.DecimalPart"]
+                    (SearchCode.literal "."
+                      (SearchCode.capture ["Fraction", "DecimalPart.Fraction"]
+                        (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept) SearchCode.accept))
+                    SearchCode.accept)
+                  SearchCode.accept)))
+            SearchCode.accept) } :
+    SearchProgram)
+
+private theorem SpecConstant.searchProgram_lowered :
+    lowerSearchPlan SpecConstant.searchPlan = SpecConstant.searchProgram := by decide
+
+private def SpecConstant.searchCode_0 : SearchCode :=
+  SearchCode.accept
+
+@[inline]
+private def SpecConstant.searchNode_0 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  k [] input
+
+private theorem SpecConstant.searchNode_0_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    SpecConstant.searchNode_0 input k = SearchCode.runK SpecConstant.searchCode_0 input k :=
+  by
+  unfold SpecConstant.searchNode_0 SpecConstant.searchCode_0
+  simp only [SearchCode.runK]
+
+private def SpecConstant.searchCode_1 : SearchCode :=
+  SearchCode.stringLiteral SpecConstant.searchCode_0
+
+@[inline]
+private def SpecConstant.searchNode_1 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  (List.range ((input).length + 1)).findSome? fun width =>
+    if stringPrefixOk input width then SpecConstant.searchNode_0 ((input).drop width) k else none
+
+private theorem SpecConstant.searchNode_1_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    SpecConstant.searchNode_1 input k = SearchCode.runK SpecConstant.searchCode_1 input k :=
+  by
+  unfold SpecConstant.searchNode_1 SpecConstant.searchCode_1
+  simp only [SearchCode.runK, SpecConstant.searchNode_0_eq]
+
+private def SpecConstant.searchCode_2 : SearchCode :=
+  SearchCode.capture ["StringLiteral"] SpecConstant.searchCode_1 SpecConstant.searchCode_0
+
+@[inline]
+private def SpecConstant.searchNode_2 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  SpecConstant.searchNode_1 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    SpecConstant.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["StringLiteral"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem SpecConstant.searchNode_2_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    SpecConstant.searchNode_2 input k = SearchCode.runK SpecConstant.searchCode_2 input k :=
+  by
+  unfold SpecConstant.searchNode_2 SpecConstant.searchCode_2
+  simp only [SearchCode.runK, SpecConstant.searchNode_1_eq, SpecConstant.searchNode_0_eq]
+
+private def SpecConstant.searchCode_3 : SearchCode :=
+  SearchCode.literal "-" SpecConstant.searchCode_0
+
+@[inline]
+private def SpecConstant.searchNode_3 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  let characters := ("-").toList
+  if characters.isPrefixOf input then SpecConstant.searchNode_0 ((input).drop characters.length) k else none
+
+private theorem SpecConstant.searchNode_3_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    SpecConstant.searchNode_3 input k = SearchCode.runK SpecConstant.searchCode_3 input k :=
+  by
+  unfold SpecConstant.searchNode_3 SpecConstant.searchCode_3
+  simp only [SearchCode.runK, SpecConstant.searchNode_0_eq]
+
+private def SpecConstant.searchCode_4 : SearchCode :=
+  SearchCode.choice SpecConstant.searchCode_3 SpecConstant.searchCode_0
+
+@[inline]
+private def SpecConstant.searchNode_4 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  scanOrElse (SpecConstant.searchNode_3 input k) fun _ => SpecConstant.searchNode_0 input k
+
+private theorem SpecConstant.searchNode_4_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    SpecConstant.searchNode_4 input k = SearchCode.runK SpecConstant.searchCode_4 input k :=
+  by
+  unfold SpecConstant.searchNode_4 SpecConstant.searchCode_4
+  simp only [SearchCode.runK, SpecConstant.searchNode_3_eq, SpecConstant.searchNode_0_eq]
+
+private def SpecConstant.searchCode_5 : SearchCode :=
+  SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SpecConstant.searchCode_0
+
+@[inline]
+private def SpecConstant.searchNode_5 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  (List.range ((input).length + 1)).findSome? fun width =>
+    if termPrefixOk TokClass.digit LenSpec.atLeastOne input width then SpecConstant.searchNode_0 ((input).drop width) k
+    else none
+
+private theorem SpecConstant.searchNode_5_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    SpecConstant.searchNode_5 input k = SearchCode.runK SpecConstant.searchCode_5 input k :=
+  by
+  unfold SpecConstant.searchNode_5 SpecConstant.searchCode_5
+  simp only [SearchCode.runK, SpecConstant.searchNode_0_eq]
+
+private def SpecConstant.searchCode_6 : SearchCode :=
+  SearchCode.capture ["Fraction", "DecimalPart.Fraction"] SpecConstant.searchCode_5 SpecConstant.searchCode_0
+
+@[inline]
+private def SpecConstant.searchNode_6 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  SpecConstant.searchNode_5 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    SpecConstant.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["Fraction", "DecimalPart.Fraction"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem SpecConstant.searchNode_6_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    SpecConstant.searchNode_6 input k = SearchCode.runK SpecConstant.searchCode_6 input k :=
+  by
+  unfold SpecConstant.searchNode_6 SpecConstant.searchCode_6
+  simp only [SearchCode.runK, SpecConstant.searchNode_5_eq, SpecConstant.searchNode_0_eq]
+
+private def SpecConstant.searchCode_7 : SearchCode :=
+  SearchCode.literal "." SpecConstant.searchCode_6
+
+@[inline]
+private def SpecConstant.searchNode_7 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  let characters := (".").toList
+  if characters.isPrefixOf input then SpecConstant.searchNode_6 ((input).drop characters.length) k else none
+
+private theorem SpecConstant.searchNode_7_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    SpecConstant.searchNode_7 input k = SearchCode.runK SpecConstant.searchCode_7 input k :=
+  by
+  unfold SpecConstant.searchNode_7 SpecConstant.searchCode_7
+  simp only [SearchCode.runK, SpecConstant.searchNode_6_eq]
+
+private def SpecConstant.searchCode_8 : SearchCode :=
+  SearchCode.capture ["DecimalPart", "NumericLiteral.DecimalPart"] SpecConstant.searchCode_7 SpecConstant.searchCode_0
+
+@[inline]
+private def SpecConstant.searchNode_8 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  SpecConstant.searchNode_7 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    SpecConstant.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["DecimalPart", "NumericLiteral.DecimalPart"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem SpecConstant.searchNode_8_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    SpecConstant.searchNode_8 input k = SearchCode.runK SpecConstant.searchCode_8 input k :=
+  by
+  unfold SpecConstant.searchNode_8 SpecConstant.searchCode_8
+  simp only [SearchCode.runK, SpecConstant.searchNode_7_eq, SpecConstant.searchNode_0_eq]
+
+private def SpecConstant.searchCode_9 : SearchCode :=
+  SearchCode.choice SpecConstant.searchCode_8 SpecConstant.searchCode_0
+
+@[inline]
+private def SpecConstant.searchNode_9 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  scanOrElse (SpecConstant.searchNode_8 input k) fun _ => SpecConstant.searchNode_0 input k
+
+private theorem SpecConstant.searchNode_9_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    SpecConstant.searchNode_9 input k = SearchCode.runK SpecConstant.searchCode_9 input k :=
+  by
+  unfold SpecConstant.searchNode_9 SpecConstant.searchCode_9
+  simp only [SearchCode.runK, SpecConstant.searchNode_8_eq, SpecConstant.searchNode_0_eq]
+
+private def SpecConstant.searchCode_10 : SearchCode :=
+  SearchCode.capture ["Natural", "NumericLiteral.Natural"] SpecConstant.searchCode_5 SpecConstant.searchCode_9
+
+@[inline]
+private def SpecConstant.searchNode_10 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  SpecConstant.searchNode_5 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    SpecConstant.searchNode_9 remaining fun tailCaptures suffix =>
+      k ((["Natural", "NumericLiteral.Natural"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem SpecConstant.searchNode_10_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    SpecConstant.searchNode_10 input k = SearchCode.runK SpecConstant.searchCode_10 input k :=
+  by
+  unfold SpecConstant.searchNode_10 SpecConstant.searchCode_10
+  simp only [SearchCode.runK, SpecConstant.searchNode_5_eq, SpecConstant.searchNode_9_eq]
+
+private def SpecConstant.searchCode_11 : SearchCode :=
+  SearchCode.capture ["Sign", "NumericLiteral.Sign"] SpecConstant.searchCode_4 SpecConstant.searchCode_10
+
+@[inline]
+private def SpecConstant.searchNode_11 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  SpecConstant.searchNode_4 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    SpecConstant.searchNode_10 remaining fun tailCaptures suffix =>
+      k ((["Sign", "NumericLiteral.Sign"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem SpecConstant.searchNode_11_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    SpecConstant.searchNode_11 input k = SearchCode.runK SpecConstant.searchCode_11 input k :=
+  by
+  unfold SpecConstant.searchNode_11 SpecConstant.searchCode_11
+  simp only [SearchCode.runK, SpecConstant.searchNode_4_eq, SpecConstant.searchNode_10_eq]
+
+private def SpecConstant.searchCode_12 : SearchCode :=
+  SearchCode.capture ["NumericLiteral"] SpecConstant.searchCode_11 SpecConstant.searchCode_0
+
+@[inline]
+private def SpecConstant.searchNode_12 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  SpecConstant.searchNode_11 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    SpecConstant.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["NumericLiteral"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem SpecConstant.searchNode_12_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    SpecConstant.searchNode_12 input k = SearchCode.runK SpecConstant.searchCode_12 input k :=
+  by
+  unfold SpecConstant.searchNode_12 SpecConstant.searchCode_12
+  simp only [SearchCode.runK, SpecConstant.searchNode_11_eq, SpecConstant.searchNode_0_eq]
+
+private def SpecConstant.searchCode_13 : SearchCode :=
+  SearchCode.choice SpecConstant.searchCode_2 SpecConstant.searchCode_12
+
+@[inline]
+private def SpecConstant.searchNode_13 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  scanOrElse (SpecConstant.searchNode_2 input k) fun _ => SpecConstant.searchNode_12 input k
+
+private theorem SpecConstant.searchNode_13_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    SpecConstant.searchNode_13 input k = SearchCode.runK SpecConstant.searchCode_13 input k :=
+  by
+  unfold SpecConstant.searchNode_13 SpecConstant.searchCode_13
+  simp only [SearchCode.runK, SpecConstant.searchNode_2_eq, SpecConstant.searchNode_12_eq]
+
+private def SpecConstant.directDecode (source : String) : Option CaptureMap :=
+  SpecConstant.searchNode_13 source.toList fun (captures : CaptureMap) (remaining : List Char) =>
+    if (remaining).isEmpty then some captures else none
+
+private theorem SpecConstant.directDecode_eq_searchProgram (source : String) :
+    SpecConstant.directDecode source = SearchProgram.decode SpecConstant.searchProgram source :=
+  by
+  have hcode : SpecConstant.searchCode_13 = (SpecConstant.searchProgram).code := rfl
+  unfold SpecConstant.directDecode SearchProgram.decode
+  rw [SpecConstant.searchNode_13_eq, hcode]
+
+private def SpecConstant.decodeCaptures (source : String) : Option CaptureMap :=
+  SpecConstant.directDecode source
+
+private theorem SpecConstant.decodeCaptures_eq_parsePlan (source : String) :
+    SpecConstant.decodeCaptures source = ParsePlan.decode SpecConstant.parsePlan SpecConstant.grammar source := by
+  calc
+    SpecConstant.decodeCaptures source = SearchProgram.decode SpecConstant.searchProgram source := by
+      exact SpecConstant.directDecode_eq_searchProgram source
+    _ = SearchProgram.decode (lowerSearchPlan SpecConstant.searchPlan) source := by
+      rw [SpecConstant.searchProgram_lowered]
+    _ = ParsePlan.decode SpecConstant.parsePlan SpecConstant.grammar source := by rfl
+
+private theorem SpecConstant.decodeCaptures_eq_scan (source : String) :
+    SpecConstant.decodeCaptures source = scan SpecConstant.grammar source := by
+  calc
+    SpecConstant.decodeCaptures source = ParsePlan.decode SpecConstant.parsePlan SpecConstant.grammar source :=
+      SpecConstant.decodeCaptures_eq_parsePlan source
+    _ = scan SpecConstant.grammar source :=
+      ParsePlan.decode_eq_scan (ParsePlan.CertifiedFor.search SpecConstant.searchPlan_mirrorsGrammar) source
+
+private def SpecConstant.directView (source : String) : Option SpecConstant.View :=
+  (SpecConstant.directDecode source).map (SpecConstant.View.ofMap source)
+
+private theorem SpecConstant.directView_eq_decodeView (source : String) :
+    SpecConstant.directView source = SpecConstant.decodeView source :=
+  by
+  unfold SpecConstant.directView SpecConstant.decodeView
+  rw [show SpecConstant.directDecode source = scan SpecConstant.grammar source by
+      exact SpecConstant.decodeCaptures_eq_scan source]
+
+private instance SpecConstant.instDecidableViewValid : DecidablePred SpecConstant.View.Valid := fun _ =>
+  by
+  unfold SpecConstant.View.Valid
+  infer_instance
 
 theorem SpecConstant.computeValue_isSome (s : String) : SpecConstant.IsValid s → (SpecConstant.computeValue s).isSome :=
   by
@@ -698,12 +1093,34 @@ theorem SpecConstant.computeValue_isSome (s : String) : SpecConstant.IsValid s �
   exact hengine.1.1
 
 def SpecConstant.parse (s : String) :=
-  Triptych.scannerParseMap SpecConstant.grammar SpecConstant.constraints SpecConstant.valueFn id s
+  Triptych.decodedViewParse SpecConstant.directView SpecConstant.View.Valid SpecConstant.View.denotation id s
+
+theorem SpecConstant.parse_eq_scanner (s : String) :
+    SpecConstant.parse s =
+      Triptych.scannerParseMap SpecConstant.grammar SpecConstant.constraints SpecConstant.valueFn id s :=
+  by
+  calc
+    SpecConstant.parse s = Triptych.gatedParseOfSpec SpecConstant.IsValid SpecConstant.computeValue id s :=
+      by
+      unfold SpecConstant.parse
+      exact
+        Triptych.decodedViewParse_eq_gatedParseOfSpec SpecConstant.directView SpecConstant.decodeView
+          SpecConstant.View.Valid SpecConstant.View.denotation id SpecConstant.IsValid SpecConstant.computeValue
+          SpecConstant.directView_eq_decodeView SpecConstant.IsValid_view SpecConstant.computeValue_view s
+    _ = Triptych.gatedParse SpecConstant.IsValid SpecConstant.computeValue s := by simp [Triptych.gatedParseOfSpec]
+    _ = Triptych.scannerParseMap SpecConstant.grammar SpecConstant.constraints SpecConstant.valueFn id s :=
+      by
+      symm
+      unfold SpecConstant.computeValue
+      exact
+        Triptych.scannerParseMap_eq_surfaceGated SpecConstant.grammar SpecConstant.constraints SpecConstant.valueFn
+          SpecConstant.IsValid SpecConstant.IsValid_equiv s
 
 theorem SpecConstant.parse_eq_gated (s : String) :
     SpecConstant.parse s = Triptych.gatedParse SpecConstant.IsValid SpecConstant.computeValue s :=
   by
-  unfold SpecConstant.parse SpecConstant.computeValue
+  rw [SpecConstant.parse_eq_scanner]
+  unfold SpecConstant.computeValue
   exact
     Triptych.scannerParseMap_eq_surfaceGated SpecConstant.grammar SpecConstant.constraints SpecConstant.valueFn
       SpecConstant.IsValid SpecConstant.IsValid_equiv s
@@ -712,8 +1129,8 @@ theorem SpecConstant.parse_profile_result (s : String) :
     (Triptych.scannerParseMapProfile SpecConstant.grammar SpecConstant.constraints SpecConstant.valueFn id s).result =
       SpecConstant.parse s :=
   by
-  unfold SpecConstant.parse
-  exact Triptych.scannerParseMapProfile_result SpecConstant.grammar SpecConstant.constraints SpecConstant.valueFn id s
+  rw [Triptych.scannerParseMapProfile_result]
+  exact (SpecConstant.parse_eq_scanner s).symm
 
 theorem SpecConstant.parse_candidateChecks_le (s : String) :
     (Triptych.scannerParseMapProfile SpecConstant.grammar SpecConstant.constraints SpecConstant.valueFn id
@@ -730,13 +1147,13 @@ theorem SpecConstant.parse_candidateChecks_eq_zero_of_fastScan (s : String)
   Triptych.scannerParseMap_candidateChecks_eq_zero_of_fastScan SpecConstant.grammar SpecConstant.constraints
     SpecConstant.valueFn id s hunique hscan
 
-theorem SpecConstant.parse_sound (s : String) (v : Value) :
+theorem SpecConstant.parse_sound (s : String) (v : StrataExamples.SMT.SpecConstant.Value) :
     SpecConstant.parse s = some v → SpecConstant.IsValid s ∧ SpecConstant.computeValue s = some v :=
   by
   rw [SpecConstant.parse_eq_gated]
   exact Triptych.gatedParse_sound _ _ s v
 
-theorem SpecConstant.parse_complete (s : String) (v : Value) :
+theorem SpecConstant.parse_complete (s : String) (v : StrataExamples.SMT.SpecConstant.Value) :
     SpecConstant.IsValid s → SpecConstant.computeValue s = some v → SpecConstant.parse s = some v :=
   by
   rw [SpecConstant.parse_eq_gated]
@@ -755,7 +1172,7 @@ theorem SpecConstant.parse_view (s : String) :
   unfold Triptych.gatedParse
   rw [SpecConstant.computeValue_view]
 
-theorem SpecConstant.parse_eq_some_iff_view (s : String) (v : Value) :
+theorem SpecConstant.parse_eq_some_iff_view (s : String) (v : StrataExamples.SMT.SpecConstant.Value) :
     SpecConstant.parse s = some v ↔
       ∃ decodedView : SpecConstant.View,
         SpecConstant.decodeView s = some decodedView ∧

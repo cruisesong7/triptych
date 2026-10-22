@@ -1,7 +1,7 @@
 # Design Note: Grammar-to-Specification Compiler for Cedar Extension Parsers
 
 Status: implemented (design 2026-07; the `triptych` command, engine, emitted
-equivalence/decidability proofs, and the six examples all build under Lean v4.31.0).
+equivalence/decidability proofs, and the examples all build under Lean v4.34.0).
 This note captures the design developed while verifying the Cedar extension-type
 parsers (`Decimal`, `Duration`, `Datetime`, `IPAddr`). It describes the current
 implementation; future work is labeled explicitly and tracked in `ROADMAP.md`.
@@ -21,10 +21,19 @@ gated on the decidable acceptance predicate) and discharges that parser's
 sound/complete/reject contracts for free — so every generated spec ships a verified
 parser, not merely an obligation surface.
 
-The generated parser uses a continuation scanner proved extensionally equal to the archived
-list decoder. The tool does not claim streaming or error recovery. Its formal performance model
-bounds completed root-candidate checks for every grammar and records zero such backtracking when
-the certified fast path succeeds; ambiguous grammars can still have exponential candidate trees.
+The compiler first creates one backend-neutral `ParsePlan`, selecting a certified cursor plan or
+a resolved ordered-search plan. A third constructor records why specialized compilation failed;
+public Lean and Verus emitters report that diagnostic instead of silently substituting a generic
+runtime parser. Both backends consume the same decision rather than repeating grammar capability
+analysis. Generated Lean parsers emit staged cursor code for deterministic grammars and
+continuation-fused `SearchProgram` code for supported branching grammars. Structural
+`MirrorsGrammar` witnesses let Lean check that each specialized program represents the generated
+grammar. Every staged parser is proved equal to the scanner, which is proved extensionally equal
+to the reference list decoder. Search-program reduction is also proved not to increase its static
+control-flow node count. The tool does not claim streaming or error recovery. Its formal
+performance model bounds completed root-candidate checks for every grammar and records zero such
+backtracking when the certified fast path succeeds; ambiguous grammars can still have exponential
+candidate trees.
 The tool's distinctive job is also to validate a
 *separate, external, hand-written* parser (e.g. the `Std.Time`-based `Datetime.parse`,
 or the `splitToList`-based `Decimal.parse`) against the generated spec, via the
@@ -212,6 +221,14 @@ Because the layout combinators are a closed, pre-verified library:
   The generated `decodeView_input` theorem anchors every successful view to its source string,
   `IsValid_view` packages recognition as successful `decodeView` plus `View.Valid`, and
   `computeValue_view` packages denotation as mapping `View.denotation` over that same view.
+  Eligible staged parsers defer captures as source spans and project the view directly from those
+  spans, so rejected inputs allocate no captured strings and the runtime path never constructs a
+  generic `CaptureMap`. `View.Valid` and `View.denotation` replace repeated string-key lookup and
+  generic constraint/value-AST interpretation. For analyzable value constraints, the emitted
+  parser computes `View.denotation` once and reuses it for both acceptance and the returned value.
+  `decodedViewParse_eq_gatedParseOfSpec` and
+  `decodedViewParseCached_eq_decodedViewParse` prove these specializations preserve the readable
+  validity-gated parser.
   `parse_view` writes the generated parser as the engine validity guard followed by typed-view
   denotation (and the declared `ofSpec` conversion, when present). `parse_eq_some_iff_view` and
   `parse_eq_none_iff_view` remove that guard for proofs: parser success is equivalent to one
@@ -539,12 +556,65 @@ Novelty = "occupies an empty, practically-important niche," not "new metatheory.
 
 Triptych supports **verify what is shipped**: keep Cedar's hand-written extension parsers,
 generate an independent parser and specification, and prove the external implementations agree.
-The generated parser now runs the continuation-based scanner; the list decoder is retained only
-as an executable reference semantics, with `scan_eq_decode` proving exact agreement. A project
+For eligible deterministic grammars, the generated parser now runs emitted straight-line cursor
+code whose certificate proves direct completeness and exact rejection. Supported acyclic
+branching grammars compile to a resolved `SearchPlan`: production references and capture keys are
+computed once, while ordered alternatives, optionals, and repetitions remain explicit. A
+verified lowering fuses that plan into `SearchProgram`, where sequence tails and choices become
+explicit continuations suitable for backend code generation. A verified reduction removes dead
+failure arms and shares literal, fixed-width token, or certified committed capture prefixes
+without changing the source-ordered result. `SearchCode.nodeCount_reduce_le` proves that this pass
+cannot enlarge the staged control-flow tree. A total second lowering produces `SearchMachine`,
+where capture boundaries and repetitions are explicit first-order states.
+`SearchMachine.lowerSearchPlan_decode_eq_scan` proves exact agreement with the complete scanner
+for every certified search plan. Lean emits one function per distinct fused-program state, taking
+its continuation as an argument and calling successor states by name, so generated code and its
+one-step equation proofs are linear in the number of states; states referenced once are marked
+`@[inline]`. (Splicing continuations as syntax instead copies the remaining parse into every
+success point and grows exponentially with nesting.) Verus hash-conses the
+machine graph and emits a specification/executable function pair for each state. Finite separated
+repetitions are unrolled into direct item, separator, ordered-stop, and count-capture states.
+Generated executable states mutate one bounded search state transactionally: every failed state
+restores its input cursor, captures, and marker stack. Ordered choice therefore reuses the same
+state without whole-state cloning, while the emitted Verus contracts prove that this imperative
+rollback implements the functional state specification.
+The generated Verus semantic stage also carries a selected-candidate contract. A successful
+result is valid and has the readable denotation. A rejection means either that the selected
+candidate is semantically invalid or that its generated `candidate_runtime_safe` predicate does
+not hold. Runtime safety records valid capture spans, positive divisors, and machine-range bounds
+for every checked intermediate. This conditional form is the strongest generic statement for
+the current arithmetic DSL: a machine intermediate may overflow even when later arithmetic
+cancels into the final result range. The specialized fixed-point path states the same boundary
+with a selected typed view and `view_runtime_safe`.
+The generated entry point hoists input length and ASCII classification. Literal matching uses an
+ASCII byte path with a Unicode fallback, and variable-width token states scan their accepted
+prefix once before testing scheduled widths in source order. Capture slots and stack capacities
+are assigned at generation time. These optimizations preserve the same machine-state
+specifications; they do not add a separate unchecked fast parser.
+Unsupported direct shapes are rejected during generation with the recorded lowering or rendering
+diagnostic. The generic scanner remains the executable specification used by equivalence proofs,
+not a silent production fallback.
+The generated parser-equivalence theorems prove that these choices do not change behavior, while
+`scan_eq_decode` connects the scanner to the executable reference semantics. A project
 that wants to replace a production parser should still benchmark its workloads and integration
 requirements. Triptych does not claim streaming or error recovery. Its generic complexity
-theorem bounds completed candidate checks by the finite candidate tree; it deliberately does
-not claim a polynomial bound for ambiguous grammars.
+theorem bounds completed candidate checks by the finite candidate tree; it deliberately does not
+claim a polynomial bound for ambiguous grammars. It is not a bound on runtime steps: the search
+path tries token widths and repetition counts by backtracking, and no automaton construction is
+performed.
+
+**Trust boundary of the Verus backend.** Lean proves that the value/constraint translation into
+the Verus IR preserves meaning (`Backend/Verus/Preservation.lean`). The parser control flow,
+pretty-printer, `*.rs.in` templates, and the Verus-only search-code rewrites (`fuse`,
+`boundedRepetition`, literal dispatch, interning) are checked only by Verus, and only when
+`verus-experiments/verify.sh` is run. Cursor-path parsers (Decimal) are
+proved against the readable `*_is_wf_*` grammar predicate in `spec.rs`. Search-path parsers
+(Duration, Datetime, IPv4, IPv6) are proved against a spec-function copy of their own generated
+state machine, not yet against `spec.rs`, so a backend-only rewrite can change behavior without a
+proof failure; `verus-experiments/search-order/` is a regression for one such ordered-choice bug.
+`ROADMAP.md` tracks the Lean-side plan that closes this gap. CI runs Verus on every generated
+crate without the Cedar conformance dev-dependencies. Completeness of the semantic stage is
+conditional on the generated `*_runtime_safe` predicate.
 
 ## 16. The implemented `triptych` DSL
 
@@ -555,21 +625,26 @@ not claim a polynomial bound for ambiguous grammars.
 Constraints are split by whether they explicitly reference the final `value`:
 
 ```lean
+Production            s : Prop  -- readable root grammar production
 IsWf                  s : Prop  -- grammar plus capture-only constraints
 SatisfiesConstraints  s : Prop  -- final-value constraints, when present
 IsValid               s : Prop  -- IsWf, or IsWf ∧ SatisfiesConstraints
+Denotes             s v : Prop  -- valid syntax whose readable value is v
 computeValue          s : Option β
 ```
 
-Empty phases are omitted. Without capture constraints, `IsWf` aliases the start-production
-predicate. Without final-value constraints, `IsValid` aliases `IsWf`. The generated parser is
-the executable `IsValid` guard applied to `computeValue`, with an optional `ofSpec` conversion.
+The start production's inlined grammar equation is emitted once as `Production`;
+`IsWf.<Start>` is a compatibility alias. Empty constraint phases are omitted. Without capture
+constraints, `IsWf` aliases `Production`. Without final-value constraints, `IsValid` aliases
+`IsWf`. `Denotes` reuses `IsValid` and the readable value function. The generated parser is the
+executable `IsValid` guard applied to `computeValue`, with an optional `ofSpec` conversion.
 `IsValid_equiv` connects that public predicate directly to the generic interpreter expression;
 `computeValue_eq` and the parser contracts connect the remaining readable and engine layers.
 
-`Denotes g accept valFn s v` is the value/string relation: some full parse of `s` has capture
-map `m`, `accept m` holds, and `valFn m = v`. When static capture functionality succeeds, the
-DSL emits `parse_iff_denotes`; with `ofSpec`, its relational reader is `ofSpec ∘ valFn`.
+The lower-level `Triptych.Denotes g accept valFn s v` relation says that some full parse of `s`
+has capture map `m`, `accept m` holds, and `valFn m = v`. When static capture functionality
+succeeds, the DSL emits `parse_iff_denotes`; with `ofSpec`, its relational reader is
+`ofSpec ∘ valFn`.
 
 ### 16.2 Decidability
 
@@ -607,16 +682,38 @@ triptych IPv4 where
 ```
 
 - **`grammar`** defines a non-recursive DAG of productions with concatenation, finite
-  alternatives, optional symbols, token runs, and separated group repetition. It generates
-  readable predicates, the executable scanner, and typed derivation trees.
+  alternatives, optional symbols, token runs, and group repetition. It generates readable
+  predicates, the executable scanner, and typed derivation trees. Token classes are `digit`,
+  `hexDigit`, `bit`, `ascii[lo,hi]`, and the character sets `oneOf "…"` and `noneOf "…"`
+  (whitespace, rest of a line). Repetition is either separated, `rep X sepBy "s" <len>`, or
+  separator-free, `rep X <len>`; the latter requires `X` to consume input on every match
+  (`Sym.consumes`, proved sound by `consumes_sound`), which keeps the item count recoverable and
+  the scanner/denotation round trip intact.
 - **`constraints`** is the analyzable constraint AST. Capture-only entries contribute to
   `IsWf`; entries that mention `value` contribute to `SatisfiesConstraints`. Forms include
-  `noLeadingZero`, string equality, arithmetic comparisons/ranges, and cardinality.
+  `noLeadingZero`, string equality, arithmetic comparisons/ranges, cardinality, `count X`, and
+  `forall P, c`, which requires `c` inside every occurrence of the repeated production `P`
+  (captures inside `P` are read per occurrence, others from the whole input). A `forall` entry
+  elaborates to a generated readable Boolean predicate over the group `[P ⟨…⟩]`.
 - **`constraints'`** applies arbitrary Boolean Lean functions to scalar capture strings and,
   with `[X]`, ordered lists of repeated captures. Scalar and list arguments may be mixed.
-- **`value`** is the scalar `Int` expression AST described below.
+- **`value`** is the scalar `Int` expression AST described below, or a list comprehension
+  `[P ↦ body]` producing one element per occurrence of `P`, with `body` a scalar expression or
+  a nested comprehension (`[Clause ↦ [Lit ↦ Sign * nat Var]]` gives `List (List Int)`). The
+  readable value is generated from the comprehension as nested `List.map`s over the group
+  `[P ⟨…⟩]`. The DIMACS example in `other-examples` is written entirely in these analyzable
+  forms.
 - **`value'`** applies an arbitrary typed Lean function to scalar capture strings and,
-  with `[X]`, ordered lists of repeated captures.
+  with `[X]`, ordered lists of repeated captures. A group `[P ⟨a, …⟩]` passes one tuple of the
+  arguments `a, …` per occurrence of the repeated production `P`, each read inside that
+  occurrence; groups nest, so `[Line ⟨Id, [Lit], [RatStep ⟨RatPivot, [RatHint]⟩]⟩]` gives a
+  `List (String × List String × List (String × List String))`. `CaptureMap.groups` computes the
+  occurrences generically: capture maps are preorder and grammars are acyclic, so each
+  occurrence owns the following run of captures from productions reachable below `P`. Group
+  fields must be such productions. The readable specification reads groups through
+  `componentWith`, applying the same reader as the engine, so value agreement stays definitional.
+  Groups are also accepted by `constraints'`. The LRAT example in `other-examples` builds
+  `Std`'s `Array IntAction` this way and agrees with `Std`'s text parser on its corpus.
 - **`parser`** names an external `String → Option δ` implementation to validate.
 - **`printer`** names a canonical serializer, or `printer auto` requests synthesis for a
   supported invertible scalar pattern.

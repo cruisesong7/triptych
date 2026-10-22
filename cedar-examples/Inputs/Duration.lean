@@ -65,6 +65,7 @@ triptych Duration where
     value ∈ [Int64.MIN, Int64.MAX]
   parser Cedar.Spec.Ext.Datetime.Duration.parse
   printer durationToStr
+  verus "../verus-experiments/cedar-ext/duration/src/spec.rs"
   to "Outputs/Duration"
 
 #eval Duration.computeValue "1d2h30m"   -- some 95400000

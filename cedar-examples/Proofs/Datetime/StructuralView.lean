@@ -1,5 +1,5 @@
 import Proofs.Datetime.GrammarView
-import Triptych.Archive.DecodeLemmas
+import Triptych.Reference.DecodeLemmas
 
 /-! Exact structural reconstruction for Datetime's generated decoded view. -/
 

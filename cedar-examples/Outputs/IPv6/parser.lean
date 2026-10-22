@@ -8,7 +8,10 @@ import Triptych.Architecture.Constraint
 import Triptych.Architecture.Assemble
 import Triptych.Theorems.Reconcile
 import Triptych.Theorems.Value
-import Triptych.Archive.DecodeLemmas
+import Triptych.Theorems.ParsePlan
+import Triptych.Theorems.ScanPlan
+import Triptych.Theorems.SearchPlan
+import Triptych.Reference.DecodeLemmas
 import Triptych.Theorems.Derivation
 import Triptych.Theorems.Scanner
 import Outputs.IPv6.spec
@@ -23,7 +26,7 @@ set_option linter.unnecessarySeqFocus false
 
 /- ══════════════════════════════ engine ══════════════════════════════
 The executable counterpart of the spec. A verified scanner extracts captured
-components and stops at the first complete parse. The archived reference `decode`
+components and stops at the first complete parse. The reference `decode`
 is used only in the agreement proof, not as a runtime fallback. `computeValue`
 evaluates the value function on those captures. Generated `DecidablePred` instances
 make the readable `IsWf` and `IsValid` predicates directly executable.
@@ -140,25 +143,49 @@ def IPv6.Derivation.V6Net.capturesWith (qual : String) : IPv6.Derivation.V6Net �
             IPv6.Derivation.Prefix.capturesWith "Prefix" part2 ++
           [])))
 
-def IPv6.valueFn := fun m : Triptych.CaptureMap =>
-  toIPv6Net (Triptych.CaptureMap.toEnvList m "H16") (Triptych.CaptureMap.toEnvList m "H16L")
-    (Triptych.CaptureMap.toEnvList m "H16R") ((Triptych.CaptureMap.toEnv m "Prefix").getD "")
+def IPv6.valueExpr : ValExpr :=
+  ValExpr.add
+    (ValExpr.mul
+      (ValExpr.iteEmpty "Full"
+        (ValExpr.add
+          (ValExpr.mul (ValExpr.hexSeq "Left")
+            (ValExpr.pow (ValExpr.lit 65536) (ValExpr.sub (ValExpr.lit 8) (ValExpr.segments "Left"))))
+          (ValExpr.hexSeq "Right"))
+        (ValExpr.hexSeq "Full"))
+      (ValExpr.lit 129))
+    (ValExpr.iteEmpty "Prefix" (ValExpr.lit 128) (ValExpr.nat "Prefix"))
+
+def IPv6.valueFn : Env → Int :=
+  (IPv6.valueExpr).eval
 
 def IPv6.constraints : List ConstraintEntry :=
   [ConstraintEntry.dsl ConstraintPhase.wellFormed
-      (Constraint.lt (ValExpr.add (ValExpr.count "H16L") (ValExpr.count "H16R")) (ValExpr.lit 8)),
+      (Constraint.lt (ValExpr.add (ValExpr.segments "Left") (ValExpr.segments "Right")) (ValExpr.lit 8)),
     ConstraintEntry.dsl ConstraintPhase.wellFormed (Constraint.noLeadingZero "Prefix"),
     ConstraintEntry.dsl ConstraintPhase.wellFormed
       (Constraint.and (Constraint.le (ValExpr.lit 0) (ValExpr.nat "Prefix"))
         (Constraint.le (ValExpr.nat "Prefix") (ValExpr.lit 128)))]
 
-def IPv6.computeValue (s : String) :=
-  Triptych.scannerComputeValueMap IPv6.grammar IPv6.valueFn s
+def IPv6.computeValue (s : String) : Option Int :=
+  Triptych.scannerComputeValue IPv6.grammar IPv6.valueExpr s
 
 def IPv6.View.ofMap (input : String) (m : Triptych.CaptureMap) : IPv6.View :=
-  IPv6.View.mk input (Triptych.CaptureMap.toEnvList m "H16") (Triptych.CaptureMap.toEnvList m "H16L")
-    (Triptych.CaptureMap.toEnvList m "H16R") (Triptych.CaptureMap.toEnv m "Prefix")
-    (Triptych.CaptureMap.toEnv m "H16L#count") (Triptych.CaptureMap.toEnv m "H16R#count")
+  IPv6.View.mk input (Triptych.CaptureMap.toEnv m "Full") (Triptych.CaptureMap.toEnv m "Left")
+    (Triptych.CaptureMap.toEnv m "Right") (Triptych.CaptureMap.toEnv m "Prefix")
+
+private def IPv6.View.ofSpans (input : String) (chars : List Char) (spans : Triptych.LeanSpanCursor.SpanMap) :
+    IPv6.View :=
+  IPv6.View.mk input (Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "Full")
+    (Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "Left")
+    (Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "Right")
+    (Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "Prefix")
+
+private theorem IPv6.View.ofSpans_eq_ofMap (input : String) (chars : List Char)
+    (spans : Triptych.LeanSpanCursor.SpanMap) :
+    IPv6.View.ofSpans input chars spans = IPv6.View.ofMap input (spans.materialize chars) :=
+  by
+  unfold IPv6.View.ofSpans IPv6.View.ofMap
+  simp only [Triptych.LeanSpanCursor.SpanMap.captureMap_toEnv, Triptych.LeanSpanCursor.SpanMap.captureMap_toEnvList]
 
 def IPv6.decodeView (s : String) : Option IPv6.View :=
   (scan IPv6.grammar s).map (IPv6.View.ofMap s)
@@ -217,7 +244,7 @@ theorem IPv6.Derivation.Full.matches (qual : String) (fuel : Nat) (d : IPv6.Deri
             exact
               (by
                 apply Triptych.symMatch_rep (valid := fun entry => IPv6.Derivation.H16.Valid entry)
-                · decide
+                · exact Or.inl (by decide)
                 · exact hpart0
                 · intro entry hentry
                   exact
@@ -272,7 +299,7 @@ theorem IPv6.Derivation.Left.matches (qual : String) (fuel : Nat) (d : IPv6.Deri
             exact
               (by
                 apply Triptych.symMatch_rep (valid := fun entry => IPv6.Derivation.H16L.Valid entry)
-                · decide
+                · exact Or.inl (by decide)
                 · exact hpart0
                 · intro entry hentry
                   exact
@@ -327,7 +354,7 @@ theorem IPv6.Derivation.Right.matches (qual : String) (fuel : Nat) (d : IPv6.Der
             exact
               (by
                 apply Triptych.symMatch_rep (valid := fun entry => IPv6.Derivation.H16R.Valid entry)
-                · decide
+                · exact Or.inl (by decide)
                 · exact hpart0
                 · intro entry hentry
                   exact
@@ -567,11 +594,11 @@ theorem IPv6.Derivation.V6Net.decodeView_render_of_captureFunctional
 theorem IPv6.SatisfiesWfConstraints_of_decode {s : String} {m : Triptych.CaptureMap}
     (h : decode IPv6.grammar s = some m) :
     IPv6.SatisfiesWfConstraints s ↔
-      IPv6.WfConstraints ((Triptych.CaptureMap.toEnv m "H16L#count").getD "")
-        ((Triptych.CaptureMap.toEnv m "H16R#count").getD "") ((Triptych.CaptureMap.toEnv m "Prefix").getD "") :=
+      IPv6.WfConstraints ((Triptych.CaptureMap.toEnv m "Left").getD "") ((Triptych.CaptureMap.toEnv m "Right").getD "")
+        ((Triptych.CaptureMap.toEnv m "Prefix").getD "") :=
   by
   unfold IPv6.SatisfiesWfConstraints
-  simp only [Triptych.component_eq_of_decode h "H16L#count", Triptych.component_eq_of_decode h "H16R#count",
+  simp only [Triptych.component_eq_of_decode h "Left", Triptych.component_eq_of_decode h "Right",
     Triptych.component_eq_of_decode h "Prefix"]
 
 theorem IPv6.Internal.matchesRef.H16 (fuel : Nat) (s : String) :
@@ -586,10 +613,10 @@ theorem IPv6.Internal.matchesRef.H16 (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold IPv6.IsWf.H16
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsHexDigits_matchesTerm,
-    IsFixedHexDigits_matchesTerm, IsHexDigitsBetween_matchesTerm]
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    IsHexDigits_matchesTerm, IsFixedHexDigits_matchesTerm, IsHexDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem IPv6.Internal.matchesRef.Full (fuel : Nat) (s : String) :
@@ -604,10 +631,10 @@ theorem IPv6.Internal.matchesRef.Full (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold IPv6.IsWf.Full
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     IPv6.Internal.matchesRef.H16]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem IPv6.Internal.matchesRef.H16L (fuel : Nat) (s : String) :
@@ -622,10 +649,10 @@ theorem IPv6.Internal.matchesRef.H16L (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold IPv6.IsWf.H16L
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsHexDigits_matchesTerm,
-    IsFixedHexDigits_matchesTerm, IsHexDigitsBetween_matchesTerm]
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    IsHexDigits_matchesTerm, IsFixedHexDigits_matchesTerm, IsHexDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem IPv6.Internal.matchesRef.Left (fuel : Nat) (s : String) :
@@ -640,10 +667,10 @@ theorem IPv6.Internal.matchesRef.Left (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold IPv6.IsWf.Left
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     IPv6.Internal.matchesRef.H16L]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem IPv6.Internal.matchesRef.H16R (fuel : Nat) (s : String) :
@@ -658,10 +685,10 @@ theorem IPv6.Internal.matchesRef.H16R (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold IPv6.IsWf.H16R
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsHexDigits_matchesTerm,
-    IsFixedHexDigits_matchesTerm, IsHexDigitsBetween_matchesTerm]
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    IsHexDigits_matchesTerm, IsFixedHexDigits_matchesTerm, IsHexDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem IPv6.Internal.matchesRef.Right (fuel : Nat) (s : String) :
@@ -676,10 +703,10 @@ theorem IPv6.Internal.matchesRef.Right (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold IPv6.IsWf.Right
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     IPv6.Internal.matchesRef.H16R]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem IPv6.Internal.matchesRef.Compressed (fuel : Nat) (s : String) :
@@ -696,10 +723,10 @@ theorem IPv6.Internal.matchesRef.Compressed (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold IPv6.IsWf.Compressed
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     IPv6.Internal.matchesRef.Left, IPv6.Internal.matchesRef.Right]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem IPv6.Internal.matchesRef.V6Addr (fuel : Nat) (s : String) :
@@ -713,14 +740,15 @@ theorem IPv6.Internal.matchesRef.V6Addr (fuel : Nat) (s : String) :
   dsimp only
   unfold matchesProd IPv6.IsWf.V6Addr
   simp (config := { maxSteps := 1000000 }) only [List.mem_cons, List.mem_singleton, List.not_mem_nil,
-    Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_or_imp, exists_eq_left, exists_eq_left, if_true,
-    if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IPv6.Internal.matchesRef.Full,
+    Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_or_imp, exists_eq_left, exists_eq_left, ite_true,
+    ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IPv6.Internal.matchesRef.Full,
     IPv6.Internal.matchesRef.Compressed]
   repeat'
     first
     | apply or_congr
     | ( simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left,
-          ← and_assoc, exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+          ← and_assoc, exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left,
+          Option.some.injEq, forall_eq']
         try grind [String.append_assoc, String.append_empty])
 
 theorem IPv6.Internal.matchesRef.Prefix (fuel : Nat) (s : String) :
@@ -735,14 +763,14 @@ theorem IPv6.Internal.matchesRef.Prefix (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold IPv6.IsWf.Prefix
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem IPv6.Internal.matchesRef.V6Net (fuel : Nat) (s : String) :
-    matchesSym IPv6.grammar (fuel + 5) (Sym.ref "V6Net") s ↔ IPv6.IsWf.V6Net s :=
+    matchesSym IPv6.grammar (fuel + 5) (Sym.ref "V6Net") s ↔ IPv6.Production s :=
   by
   rw [matchesSym,
     show
@@ -754,19 +782,20 @@ theorem IPv6.Internal.matchesRef.V6Net (fuel : Nat) (s : String) :
                 SymItem.mk (Sym.ref "Prefix") false]])
       from rfl]
   dsimp only
-  unfold matchesProd IPv6.IsWf.V6Net
+  unfold matchesProd IPv6.Production
   simp (config := { maxSteps := 1000000 }) only [List.mem_cons, List.mem_singleton, List.not_mem_nil,
-    Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_or_imp, exists_eq_left, exists_eq_left, if_true,
-    if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IPv6.Internal.matchesRef.V6Addr,
+    Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_or_imp, exists_eq_left, exists_eq_left, ite_true,
+    ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IPv6.Internal.matchesRef.V6Addr,
     IPv6.Internal.matchesRef.Prefix]
   repeat'
     first
     | apply or_congr
     | ( simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left,
-          ← and_assoc, exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+          ← and_assoc, exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left,
+          Option.some.injEq, forall_eq']
         try grind [String.append_assoc, String.append_empty])
 
-theorem IPv6.IsWfGrammar_equiv (s : String) : Triptych.IsWf IPv6.grammar s ↔ IPv6.IsWf.V6Net s :=
+theorem IPv6.IsWfGrammar_equiv (s : String) : Triptych.IsWf IPv6.grammar s ↔ IPv6.Production s :=
   by
   rw [isWf_eq_isWfProd_start, IsWfProd,
     show
@@ -813,10 +842,11 @@ theorem IPv6.IsWf_equiv (s : String) : IPv6.IsWf s ↔ Triptych.isWf IPv6.gramma
   rw [Triptych.scan_eq_decode]
   rw [← IPv6.IsWfGrammar_equiv, ← decodeSome_iff_IsWf IPv6.grammar (by decide)]
   unfold IPv6.SatisfiesWfConstraints IPv6.WfConstraints IPv6.constraints
-  simp only [Triptych.component, Triptych.componentList, Triptych.envOf, Triptych.captureMapOf, Triptych.scan_eq_decode,
-    List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const, ConstraintEntry.wfPart,
-    Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD,
-    Env.countVal, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
+  simp only [Triptych.component, Triptych.componentList, Triptych.componentWith, Triptych.envOf, Triptych.captureMapOf,
+    Triptych.scan_eq_decode, List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const,
+    ConstraintEntry.wfPart, Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD,
+    countOf_getD, signOf_getD, hexOf_getD, hexSeqOf_getD, segmentsOf_getD, Env.countVal, and_true, true_and,
+    false_implies, implies_true, Bool.false_eq_true]
   try grind
 
 theorem IPv6.IsValid_equiv (s : String) :
@@ -874,25 +904,28 @@ theorem IPv6.computeValue_eq (s : String) :
     IPv6.computeValue s =
       (decode IPv6.grammar s).map
         (fun _ =>
-          IPv6.value (Triptych.componentList IPv6.grammar s "H16") (Triptych.componentList IPv6.grammar s "H16L")
-            (Triptych.componentList IPv6.grammar s "H16R") (Triptych.component IPv6.grammar s "Prefix")) :=
+          IPv6.value (Triptych.component IPv6.grammar s "Full") (Triptych.component IPv6.grammar s "Left")
+            (Triptych.component IPv6.grammar s "Right") (Triptych.component IPv6.grammar s "Prefix")) :=
   by
-  unfold IPv6.computeValue Triptych.scannerComputeValueMap Triptych.componentList Triptych.component Triptych.envOf
-    Triptych.captureMapOf IPv6.value IPv6.valueFn
+  unfold IPv6.computeValue Triptych.scannerComputeValue Triptych.component Triptych.envOf Triptych.captureMapOf
+    IPv6.valueExpr IPv6.value
   rw [Triptych.scan_eq_decode]
   cases h : decode IPv6.grammar s with
   | none => simp [h]
-  | some m => simp [h, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, Env.countVal, ValExpr.eval]
+  | some m =>
+    simp [h, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, hexOf_getD, hexSeqOf_getD, segmentsOf_getD,
+        Env.countVal, ValExpr.eval] <;>
+      ac_rfl
 
 theorem IPv6.computeValue_of_decode {s : String} {m : Triptych.CaptureMap} (h : decode IPv6.grammar s = some m) :
     IPv6.computeValue s =
       some
-        (IPv6.value (Triptych.CaptureMap.toEnvList m "H16") (Triptych.CaptureMap.toEnvList m "H16L")
-          (Triptych.CaptureMap.toEnvList m "H16R") ((Triptych.CaptureMap.toEnv m "Prefix").getD "")) :=
+        (IPv6.value ((Triptych.CaptureMap.toEnv m "Full").getD "") ((Triptych.CaptureMap.toEnv m "Left").getD "")
+          ((Triptych.CaptureMap.toEnv m "Right").getD "") ((Triptych.CaptureMap.toEnv m "Prefix").getD "")) :=
   by
   rw [IPv6.computeValue_eq, h]
-  simp only [Option.map_some, Triptych.componentList_eq_of_decode h "H16", Triptych.componentList_eq_of_decode h "H16L",
-    Triptych.componentList_eq_of_decode h "H16R", Triptych.component_eq_of_decode h "Prefix"]
+  simp only [Option.map_some, Triptych.component_eq_of_decode h "Full", Triptych.component_eq_of_decode h "Left",
+    Triptych.component_eq_of_decode h "Right", Triptych.component_eq_of_decode h "Prefix"]
 
 theorem IPv6.computeValue_view (s : String) : IPv6.computeValue s = (IPv6.decodeView s).map IPv6.View.denotation :=
   by
@@ -911,10 +944,14 @@ theorem IPv6.computeValue_view (s : String) : IPv6.computeValue s = (IPv6.decode
     rfl
 
 /- ═══════════════════════════════ parser ══════════════════════════════
-The generated correct-by-construction parser `parse` scans once, checks constraints
-on that capture map, and computes the result from the same captures. `parse_eq_gated`
-proves equality with the readable validity-gated presentation. Its correctness and
-search-cost guarantees — `parse_sound`, `parse_complete`, `parse_reject`,
+The generated correct-by-construction parser `parse` uses a certified staged cursor
+program when the grammar supports one, projects its captures once into the typed
+`View`, checks `View.Valid`, and computes `View.denotation`. Certified cursor rejection
+is final; grammar
+shapes outside that fragment use the complete scanner. `parse_eq_scanner` and
+`parse_eq_gated` prove equality with the generic
+scanner and readable validity-gated presentation. Its correctness and search-cost
+guarantees — `parse_sound`, `parse_complete`, `parse_reject`,
 `parse_profile_result`, `parse_candidateChecks_le`, `parse_view`, and typed
 `parse_eq_some_iff_view` / `parse_eq_none_iff_view` normal forms — are all
 AUTO-DISCHARGED here.
@@ -922,70 +959,788 @@ When an external parser is declared, `checkedExtParse` additionally validates ea
 external result against this parser and ships an AUTO-DISCHARGED soundness theorem.
 A verified parser, no `sorry`. -/
 
+private abbrev IPv6.searchPlan : SearchPlan :=
+  ({ start := "V6Net",
+      alternatives :=
+        [[SearchPattern.capture "V6Addr" ["V6Addr"]
+              [[SearchPattern.capture "Full" ["Full", "V6Addr.Full"]
+                    [[SearchPattern.repetition ":"
+                          (SearchPattern.capture "H16" ["H16", "Full.H16"]
+                            [[SearchPattern.tokenRun TokClass.hexDigit (LenSpec.between 1 4)]])
+                          8 (some 8) "H16"]]],
+                [SearchPattern.capture "Compressed" ["Compressed", "V6Addr.Compressed"]
+                    [[SearchPattern.optional
+                          (SearchPattern.capture "Left" ["Left", "Compressed.Left"]
+                            [[SearchPattern.repetition ":"
+                                  (SearchPattern.capture "H16L" ["H16L", "Left.H16L"]
+                                    [[SearchPattern.tokenRun TokClass.hexDigit (LenSpec.between 1 4)]])
+                                  1 (some 7) "H16L"]]),
+                        SearchPattern.literal "::",
+                        SearchPattern.optional
+                          (SearchPattern.capture "Right" ["Right", "Compressed.Right"]
+                            [[SearchPattern.repetition ":"
+                                  (SearchPattern.capture "H16R" ["H16R", "Right.H16R"]
+                                    [[SearchPattern.tokenRun TokClass.hexDigit (LenSpec.between 1 4)]])
+                                  1 (some 7) "H16R"]])]]]]],
+          [SearchPattern.capture "V6Addr" ["V6Addr"]
+              [[SearchPattern.capture "Full" ["Full", "V6Addr.Full"]
+                    [[SearchPattern.repetition ":"
+                          (SearchPattern.capture "H16" ["H16", "Full.H16"]
+                            [[SearchPattern.tokenRun TokClass.hexDigit (LenSpec.between 1 4)]])
+                          8 (some 8) "H16"]]],
+                [SearchPattern.capture "Compressed" ["Compressed", "V6Addr.Compressed"]
+                    [[SearchPattern.optional
+                          (SearchPattern.capture "Left" ["Left", "Compressed.Left"]
+                            [[SearchPattern.repetition ":"
+                                  (SearchPattern.capture "H16L" ["H16L", "Left.H16L"]
+                                    [[SearchPattern.tokenRun TokClass.hexDigit (LenSpec.between 1 4)]])
+                                  1 (some 7) "H16L"]]),
+                        SearchPattern.literal "::",
+                        SearchPattern.optional
+                          (SearchPattern.capture "Right" ["Right", "Compressed.Right"]
+                            [[SearchPattern.repetition ":"
+                                  (SearchPattern.capture "H16R" ["H16R", "Right.H16R"]
+                                    [[SearchPattern.tokenRun TokClass.hexDigit (LenSpec.between 1 4)]])
+                                  1 (some 7) "H16R"]])]]]],
+            SearchPattern.literal "/",
+            SearchPattern.capture "Prefix" ["Prefix"]
+              [[SearchPattern.tokenRun TokClass.digit (LenSpec.between 1 3)]]]] } :
+    SearchPlan)
+
+private abbrev IPv6.parsePlan : ParsePlan :=
+  ParsePlan.search IPv6.searchPlan
+
+private theorem IPv6.searchPlan_mirrorsGrammar : SearchPlan.MirrorsGrammar IPv6.searchPlan IPv6.grammar :=
+  SearchPlan.MirrorsGrammar.intro (by rfl)
+    (Production.mk "V6Net"
+      [[SymItem.mk (Sym.ref "V6Addr") false],
+        [SymItem.mk (Sym.ref "V6Addr") false, SymItem.mk (Sym.lit "/") false, SymItem.mk (Sym.ref "Prefix") false]])
+    (by rfl)
+    (SearchPattern.MirrorsAlternatives.cons
+      (SearchPattern.MirrorsSequence.required
+        (SearchPattern.MirrorsSymbol.capture («grammar» := IPv6.grammar) (fuel := 9) (production :=
+          Production.mk "V6Addr" [[SymItem.mk (Sym.ref "Full") false], [SymItem.mk (Sym.ref "Compressed") false]])
+          (by rfl) (by rfl)
+          (SearchPattern.MirrorsAlternatives.cons
+            (SearchPattern.MirrorsSequence.required
+              (SearchPattern.MirrorsSymbol.capture («grammar» := IPv6.grammar) (fuel := 8) (production :=
+                Production.mk "Full" [[SymItem.mk (Sym.rep ":" (Sym.ref "H16") 8 (some 8)) false]]) (by rfl) (by rfl)
+                (SearchPattern.MirrorsAlternatives.cons
+                  (SearchPattern.MirrorsSequence.required
+                    (SearchPattern.MirrorsSymbol.repetition (by rfl)
+                      (SearchPattern.MirrorsSymbol.capture («grammar» := IPv6.grammar) (fuel := 7) (production :=
+                        Production.mk "H16" [[SymItem.mk (Sym.term TokClass.hexDigit (LenSpec.between 1 4)) false]])
+                        (by rfl) (by rfl)
+                        (SearchPattern.MirrorsAlternatives.cons
+                          (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                            SearchPattern.MirrorsSequence.empty)
+                          SearchPattern.MirrorsAlternatives.empty)))
+                    SearchPattern.MirrorsSequence.empty)
+                  SearchPattern.MirrorsAlternatives.empty))
+              SearchPattern.MirrorsSequence.empty)
+            (SearchPattern.MirrorsAlternatives.cons
+              (SearchPattern.MirrorsSequence.required
+                (SearchPattern.MirrorsSymbol.capture («grammar» := IPv6.grammar) (fuel := 8) (production :=
+                  Production.mk "Compressed"
+                    [[SymItem.mk (Sym.ref "Left") true, SymItem.mk (Sym.lit "::") false,
+                        SymItem.mk (Sym.ref "Right") true]])
+                  (by rfl) (by rfl)
+                  (SearchPattern.MirrorsAlternatives.cons
+                    (SearchPattern.MirrorsSequence.optional
+                      (SearchPattern.MirrorsSymbol.capture («grammar» := IPv6.grammar) (fuel := 7) (production :=
+                        Production.mk "Left" [[SymItem.mk (Sym.rep ":" (Sym.ref "H16L") 1 (some 7)) false]]) (by rfl)
+                        (by rfl)
+                        (SearchPattern.MirrorsAlternatives.cons
+                          (SearchPattern.MirrorsSequence.required
+                            (SearchPattern.MirrorsSymbol.repetition (by rfl)
+                              (SearchPattern.MirrorsSymbol.capture («grammar» := IPv6.grammar) (fuel := 6)
+                                (production :=
+                                Production.mk "H16L"
+                                  [[SymItem.mk (Sym.term TokClass.hexDigit (LenSpec.between 1 4)) false]])
+                                (by rfl) (by rfl)
+                                (SearchPattern.MirrorsAlternatives.cons
+                                  (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                    SearchPattern.MirrorsSequence.empty)
+                                  SearchPattern.MirrorsAlternatives.empty)))
+                            SearchPattern.MirrorsSequence.empty)
+                          SearchPattern.MirrorsAlternatives.empty))
+                      (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                        (SearchPattern.MirrorsSequence.optional
+                          (SearchPattern.MirrorsSymbol.capture («grammar» := IPv6.grammar) (fuel := 7) (production :=
+                            Production.mk "Right" [[SymItem.mk (Sym.rep ":" (Sym.ref "H16R") 1 (some 7)) false]])
+                            (by rfl) (by rfl)
+                            (SearchPattern.MirrorsAlternatives.cons
+                              (SearchPattern.MirrorsSequence.required
+                                (SearchPattern.MirrorsSymbol.repetition (by rfl)
+                                  (SearchPattern.MirrorsSymbol.capture («grammar» := IPv6.grammar) (fuel := 6)
+                                    (production :=
+                                    Production.mk "H16R"
+                                      [[SymItem.mk (Sym.term TokClass.hexDigit (LenSpec.between 1 4)) false]])
+                                    (by rfl) (by rfl)
+                                    (SearchPattern.MirrorsAlternatives.cons
+                                      (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                        SearchPattern.MirrorsSequence.empty)
+                                      SearchPattern.MirrorsAlternatives.empty)))
+                                SearchPattern.MirrorsSequence.empty)
+                              SearchPattern.MirrorsAlternatives.empty))
+                          SearchPattern.MirrorsSequence.empty)))
+                    SearchPattern.MirrorsAlternatives.empty))
+                SearchPattern.MirrorsSequence.empty)
+              SearchPattern.MirrorsAlternatives.empty)))
+        SearchPattern.MirrorsSequence.empty)
+      (SearchPattern.MirrorsAlternatives.cons
+        (SearchPattern.MirrorsSequence.required
+          (SearchPattern.MirrorsSymbol.capture («grammar» := IPv6.grammar) (fuel := 9) (production :=
+            Production.mk "V6Addr" [[SymItem.mk (Sym.ref "Full") false], [SymItem.mk (Sym.ref "Compressed") false]])
+            (by rfl) (by rfl)
+            (SearchPattern.MirrorsAlternatives.cons
+              (SearchPattern.MirrorsSequence.required
+                (SearchPattern.MirrorsSymbol.capture («grammar» := IPv6.grammar) (fuel := 8) (production :=
+                  Production.mk "Full" [[SymItem.mk (Sym.rep ":" (Sym.ref "H16") 8 (some 8)) false]]) (by rfl) (by rfl)
+                  (SearchPattern.MirrorsAlternatives.cons
+                    (SearchPattern.MirrorsSequence.required
+                      (SearchPattern.MirrorsSymbol.repetition (by rfl)
+                        (SearchPattern.MirrorsSymbol.capture («grammar» := IPv6.grammar) (fuel := 7) (production :=
+                          Production.mk "H16" [[SymItem.mk (Sym.term TokClass.hexDigit (LenSpec.between 1 4)) false]])
+                          (by rfl) (by rfl)
+                          (SearchPattern.MirrorsAlternatives.cons
+                            (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                              SearchPattern.MirrorsSequence.empty)
+                            SearchPattern.MirrorsAlternatives.empty)))
+                      SearchPattern.MirrorsSequence.empty)
+                    SearchPattern.MirrorsAlternatives.empty))
+                SearchPattern.MirrorsSequence.empty)
+              (SearchPattern.MirrorsAlternatives.cons
+                (SearchPattern.MirrorsSequence.required
+                  (SearchPattern.MirrorsSymbol.capture («grammar» := IPv6.grammar) (fuel := 8) (production :=
+                    Production.mk "Compressed"
+                      [[SymItem.mk (Sym.ref "Left") true, SymItem.mk (Sym.lit "::") false,
+                          SymItem.mk (Sym.ref "Right") true]])
+                    (by rfl) (by rfl)
+                    (SearchPattern.MirrorsAlternatives.cons
+                      (SearchPattern.MirrorsSequence.optional
+                        (SearchPattern.MirrorsSymbol.capture («grammar» := IPv6.grammar) (fuel := 7) (production :=
+                          Production.mk "Left" [[SymItem.mk (Sym.rep ":" (Sym.ref "H16L") 1 (some 7)) false]]) (by rfl)
+                          (by rfl)
+                          (SearchPattern.MirrorsAlternatives.cons
+                            (SearchPattern.MirrorsSequence.required
+                              (SearchPattern.MirrorsSymbol.repetition (by rfl)
+                                (SearchPattern.MirrorsSymbol.capture («grammar» := IPv6.grammar) (fuel := 6)
+                                  (production :=
+                                  Production.mk "H16L"
+                                    [[SymItem.mk (Sym.term TokClass.hexDigit (LenSpec.between 1 4)) false]])
+                                  (by rfl) (by rfl)
+                                  (SearchPattern.MirrorsAlternatives.cons
+                                    (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                      SearchPattern.MirrorsSequence.empty)
+                                    SearchPattern.MirrorsAlternatives.empty)))
+                              SearchPattern.MirrorsSequence.empty)
+                            SearchPattern.MirrorsAlternatives.empty))
+                        (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                          (SearchPattern.MirrorsSequence.optional
+                            (SearchPattern.MirrorsSymbol.capture («grammar» := IPv6.grammar) (fuel := 7) (production :=
+                              Production.mk "Right" [[SymItem.mk (Sym.rep ":" (Sym.ref "H16R") 1 (some 7)) false]])
+                              (by rfl) (by rfl)
+                              (SearchPattern.MirrorsAlternatives.cons
+                                (SearchPattern.MirrorsSequence.required
+                                  (SearchPattern.MirrorsSymbol.repetition (by rfl)
+                                    (SearchPattern.MirrorsSymbol.capture («grammar» := IPv6.grammar) (fuel := 6)
+                                      (production :=
+                                      Production.mk "H16R"
+                                        [[SymItem.mk (Sym.term TokClass.hexDigit (LenSpec.between 1 4)) false]])
+                                      (by rfl) (by rfl)
+                                      (SearchPattern.MirrorsAlternatives.cons
+                                        (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                          SearchPattern.MirrorsSequence.empty)
+                                        SearchPattern.MirrorsAlternatives.empty)))
+                                  SearchPattern.MirrorsSequence.empty)
+                                SearchPattern.MirrorsAlternatives.empty))
+                            SearchPattern.MirrorsSequence.empty)))
+                      SearchPattern.MirrorsAlternatives.empty))
+                  SearchPattern.MirrorsSequence.empty)
+                SearchPattern.MirrorsAlternatives.empty)))
+          (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+            (SearchPattern.MirrorsSequence.required
+              (SearchPattern.MirrorsSymbol.capture («grammar» := IPv6.grammar) (fuel := 9) (production :=
+                Production.mk "Prefix" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.between 1 3)) false]]) (by rfl)
+                (by rfl)
+                (SearchPattern.MirrorsAlternatives.cons
+                  (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                    SearchPattern.MirrorsSequence.empty)
+                  SearchPattern.MirrorsAlternatives.empty))
+              SearchPattern.MirrorsSequence.empty)))
+        SearchPattern.MirrorsAlternatives.empty))
+
+private abbrev IPv6.searchProgram : SearchProgram :=
+  ({ start := "V6Net",
+      code :=
+        SearchCode.choice
+          (SearchCode.capture ["V6Addr"]
+            (SearchCode.choice
+              (SearchCode.capture ["Full", "V6Addr.Full"]
+                (SearchCode.repetition ":"
+                  (SearchCode.capture ["H16", "Full.H16"]
+                    (SearchCode.tokenRun TokClass.hexDigit (LenSpec.between 1 4) SearchCode.accept) SearchCode.accept)
+                  8 (some 8) "H16" SearchCode.accept)
+                SearchCode.accept)
+              (SearchCode.capture ["Compressed", "V6Addr.Compressed"]
+                (SearchCode.choice
+                  (SearchCode.capture ["Left", "Compressed.Left"]
+                    (SearchCode.repetition ":"
+                      (SearchCode.capture ["H16L", "Left.H16L"]
+                        (SearchCode.tokenRun TokClass.hexDigit (LenSpec.between 1 4) SearchCode.accept)
+                        SearchCode.accept)
+                      1 (some 7) "H16L" SearchCode.accept)
+                    (SearchCode.literal "::"
+                      (SearchCode.choice
+                        (SearchCode.capture ["Right", "Compressed.Right"]
+                          (SearchCode.repetition ":"
+                            (SearchCode.capture ["H16R", "Right.H16R"]
+                              (SearchCode.tokenRun TokClass.hexDigit (LenSpec.between 1 4) SearchCode.accept)
+                              SearchCode.accept)
+                            1 (some 7) "H16R" SearchCode.accept)
+                          SearchCode.accept)
+                        SearchCode.accept)))
+                  (SearchCode.literal "::"
+                    (SearchCode.choice
+                      (SearchCode.capture ["Right", "Compressed.Right"]
+                        (SearchCode.repetition ":"
+                          (SearchCode.capture ["H16R", "Right.H16R"]
+                            (SearchCode.tokenRun TokClass.hexDigit (LenSpec.between 1 4) SearchCode.accept)
+                            SearchCode.accept)
+                          1 (some 7) "H16R" SearchCode.accept)
+                        SearchCode.accept)
+                      SearchCode.accept)))
+                SearchCode.accept))
+            SearchCode.accept)
+          (SearchCode.capture ["V6Addr"]
+            (SearchCode.choice
+              (SearchCode.capture ["Full", "V6Addr.Full"]
+                (SearchCode.repetition ":"
+                  (SearchCode.capture ["H16", "Full.H16"]
+                    (SearchCode.tokenRun TokClass.hexDigit (LenSpec.between 1 4) SearchCode.accept) SearchCode.accept)
+                  8 (some 8) "H16" SearchCode.accept)
+                SearchCode.accept)
+              (SearchCode.capture ["Compressed", "V6Addr.Compressed"]
+                (SearchCode.choice
+                  (SearchCode.capture ["Left", "Compressed.Left"]
+                    (SearchCode.repetition ":"
+                      (SearchCode.capture ["H16L", "Left.H16L"]
+                        (SearchCode.tokenRun TokClass.hexDigit (LenSpec.between 1 4) SearchCode.accept)
+                        SearchCode.accept)
+                      1 (some 7) "H16L" SearchCode.accept)
+                    (SearchCode.literal "::"
+                      (SearchCode.choice
+                        (SearchCode.capture ["Right", "Compressed.Right"]
+                          (SearchCode.repetition ":"
+                            (SearchCode.capture ["H16R", "Right.H16R"]
+                              (SearchCode.tokenRun TokClass.hexDigit (LenSpec.between 1 4) SearchCode.accept)
+                              SearchCode.accept)
+                            1 (some 7) "H16R" SearchCode.accept)
+                          SearchCode.accept)
+                        SearchCode.accept)))
+                  (SearchCode.literal "::"
+                    (SearchCode.choice
+                      (SearchCode.capture ["Right", "Compressed.Right"]
+                        (SearchCode.repetition ":"
+                          (SearchCode.capture ["H16R", "Right.H16R"]
+                            (SearchCode.tokenRun TokClass.hexDigit (LenSpec.between 1 4) SearchCode.accept)
+                            SearchCode.accept)
+                          1 (some 7) "H16R" SearchCode.accept)
+                        SearchCode.accept)
+                      SearchCode.accept)))
+                SearchCode.accept))
+            (SearchCode.literal "/"
+              (SearchCode.capture ["Prefix"]
+                (SearchCode.tokenRun TokClass.digit (LenSpec.between 1 3) SearchCode.accept) SearchCode.accept))) } :
+    SearchProgram)
+
+private theorem IPv6.searchProgram_lowered : lowerSearchPlan IPv6.searchPlan = IPv6.searchProgram := by decide
+
+private def IPv6.searchCode_0 : SearchCode :=
+  SearchCode.accept
+
+@[inline]
+private def IPv6.searchNode_0 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  k [] input
+
+private theorem IPv6.searchNode_0_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    IPv6.searchNode_0 input k = SearchCode.runK IPv6.searchCode_0 input k :=
+  by
+  unfold IPv6.searchNode_0 IPv6.searchCode_0
+  simp only [SearchCode.runK]
+
+private def IPv6.searchCode_1 : SearchCode :=
+  SearchCode.tokenRun TokClass.hexDigit (LenSpec.between 1 4) IPv6.searchCode_0
+
+@[inline]
+private def IPv6.searchNode_1 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  (List.range ((input).length + 1)).findSome? fun width =>
+    if termPrefixOk TokClass.hexDigit (LenSpec.between 1 4) input width then IPv6.searchNode_0 ((input).drop width) k
+    else none
+
+private theorem IPv6.searchNode_1_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    IPv6.searchNode_1 input k = SearchCode.runK IPv6.searchCode_1 input k :=
+  by
+  unfold IPv6.searchNode_1 IPv6.searchCode_1
+  simp only [SearchCode.runK, IPv6.searchNode_0_eq]
+
+private def IPv6.searchCode_2 : SearchCode :=
+  SearchCode.capture ["H16", "Full.H16"] IPv6.searchCode_1 IPv6.searchCode_0
+
+@[inline]
+private def IPv6.searchNode_2 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  IPv6.searchNode_1 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    IPv6.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["H16", "Full.H16"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem IPv6.searchNode_2_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    IPv6.searchNode_2 input k = SearchCode.runK IPv6.searchCode_2 input k :=
+  by
+  unfold IPv6.searchNode_2 IPv6.searchCode_2
+  simp only [SearchCode.runK, IPv6.searchNode_1_eq, IPv6.searchNode_0_eq]
+
+private def IPv6.searchCode_3 : SearchCode :=
+  SearchCode.repetition ":" IPv6.searchCode_2 8 (some 8) "H16" IPv6.searchCode_0
+
+@[inline]
+private def IPv6.searchNode_3 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  IPv6.searchNode_2 input fun firstCaptures remaining =>
+    scanStarK (fun itemInput itemK => IPv6.searchNode_2 itemInput itemK) (":").toList 8 (some 8) (input).length
+      remaining firstCaptures 1 fun captures suffix itemCount =>
+      IPv6.searchNode_0 suffix fun tailCaptures finalSuffix =>
+        k ((("H16" ++ "#count", toString itemCount) :: captures) ++ tailCaptures) finalSuffix
+
+private theorem IPv6.searchNode_3_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    IPv6.searchNode_3 input k = SearchCode.runK IPv6.searchCode_3 input k :=
+  by
+  unfold IPv6.searchNode_3 IPv6.searchCode_3
+  simp only [SearchCode.runK, IPv6.searchNode_2_eq, IPv6.searchNode_0_eq]
+
+private def IPv6.searchCode_4 : SearchCode :=
+  SearchCode.capture ["Full", "V6Addr.Full"] IPv6.searchCode_3 IPv6.searchCode_0
+
+@[inline]
+private def IPv6.searchNode_4 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  IPv6.searchNode_3 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    IPv6.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["Full", "V6Addr.Full"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem IPv6.searchNode_4_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    IPv6.searchNode_4 input k = SearchCode.runK IPv6.searchCode_4 input k :=
+  by
+  unfold IPv6.searchNode_4 IPv6.searchCode_4
+  simp only [SearchCode.runK, IPv6.searchNode_3_eq, IPv6.searchNode_0_eq]
+
+private def IPv6.searchCode_5 : SearchCode :=
+  SearchCode.capture ["H16L", "Left.H16L"] IPv6.searchCode_1 IPv6.searchCode_0
+
+@[inline]
+private def IPv6.searchNode_5 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  IPv6.searchNode_1 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    IPv6.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["H16L", "Left.H16L"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem IPv6.searchNode_5_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    IPv6.searchNode_5 input k = SearchCode.runK IPv6.searchCode_5 input k :=
+  by
+  unfold IPv6.searchNode_5 IPv6.searchCode_5
+  simp only [SearchCode.runK, IPv6.searchNode_1_eq, IPv6.searchNode_0_eq]
+
+private def IPv6.searchCode_6 : SearchCode :=
+  SearchCode.repetition ":" IPv6.searchCode_5 1 (some 7) "H16L" IPv6.searchCode_0
+
+@[inline]
+private def IPv6.searchNode_6 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  IPv6.searchNode_5 input fun firstCaptures remaining =>
+    scanStarK (fun itemInput itemK => IPv6.searchNode_5 itemInput itemK) (":").toList 1 (some 7) (input).length
+      remaining firstCaptures 1 fun captures suffix itemCount =>
+      IPv6.searchNode_0 suffix fun tailCaptures finalSuffix =>
+        k ((("H16L" ++ "#count", toString itemCount) :: captures) ++ tailCaptures) finalSuffix
+
+private theorem IPv6.searchNode_6_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    IPv6.searchNode_6 input k = SearchCode.runK IPv6.searchCode_6 input k :=
+  by
+  unfold IPv6.searchNode_6 IPv6.searchCode_6
+  simp only [SearchCode.runK, IPv6.searchNode_5_eq, IPv6.searchNode_0_eq]
+
+private def IPv6.searchCode_7 : SearchCode :=
+  SearchCode.capture ["H16R", "Right.H16R"] IPv6.searchCode_1 IPv6.searchCode_0
+
+@[inline]
+private def IPv6.searchNode_7 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  IPv6.searchNode_1 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    IPv6.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["H16R", "Right.H16R"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem IPv6.searchNode_7_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    IPv6.searchNode_7 input k = SearchCode.runK IPv6.searchCode_7 input k :=
+  by
+  unfold IPv6.searchNode_7 IPv6.searchCode_7
+  simp only [SearchCode.runK, IPv6.searchNode_1_eq, IPv6.searchNode_0_eq]
+
+private def IPv6.searchCode_8 : SearchCode :=
+  SearchCode.repetition ":" IPv6.searchCode_7 1 (some 7) "H16R" IPv6.searchCode_0
+
+@[inline]
+private def IPv6.searchNode_8 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  IPv6.searchNode_7 input fun firstCaptures remaining =>
+    scanStarK (fun itemInput itemK => IPv6.searchNode_7 itemInput itemK) (":").toList 1 (some 7) (input).length
+      remaining firstCaptures 1 fun captures suffix itemCount =>
+      IPv6.searchNode_0 suffix fun tailCaptures finalSuffix =>
+        k ((("H16R" ++ "#count", toString itemCount) :: captures) ++ tailCaptures) finalSuffix
+
+private theorem IPv6.searchNode_8_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    IPv6.searchNode_8 input k = SearchCode.runK IPv6.searchCode_8 input k :=
+  by
+  unfold IPv6.searchNode_8 IPv6.searchCode_8
+  simp only [SearchCode.runK, IPv6.searchNode_7_eq, IPv6.searchNode_0_eq]
+
+private def IPv6.searchCode_9 : SearchCode :=
+  SearchCode.capture ["Right", "Compressed.Right"] IPv6.searchCode_8 IPv6.searchCode_0
+
+@[inline]
+private def IPv6.searchNode_9 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  IPv6.searchNode_8 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    IPv6.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["Right", "Compressed.Right"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem IPv6.searchNode_9_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    IPv6.searchNode_9 input k = SearchCode.runK IPv6.searchCode_9 input k :=
+  by
+  unfold IPv6.searchNode_9 IPv6.searchCode_9
+  simp only [SearchCode.runK, IPv6.searchNode_8_eq, IPv6.searchNode_0_eq]
+
+private def IPv6.searchCode_10 : SearchCode :=
+  SearchCode.choice IPv6.searchCode_9 IPv6.searchCode_0
+
+@[inline]
+private def IPv6.searchNode_10 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  scanOrElse (IPv6.searchNode_9 input k) fun _ => IPv6.searchNode_0 input k
+
+private theorem IPv6.searchNode_10_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    IPv6.searchNode_10 input k = SearchCode.runK IPv6.searchCode_10 input k :=
+  by
+  unfold IPv6.searchNode_10 IPv6.searchCode_10
+  simp only [SearchCode.runK, IPv6.searchNode_9_eq, IPv6.searchNode_0_eq]
+
+private def IPv6.searchCode_11 : SearchCode :=
+  SearchCode.literal "::" IPv6.searchCode_10
+
+private def IPv6.searchNode_11 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  let characters := ("::").toList
+  if characters.isPrefixOf input then IPv6.searchNode_10 ((input).drop characters.length) k else none
+
+private theorem IPv6.searchNode_11_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    IPv6.searchNode_11 input k = SearchCode.runK IPv6.searchCode_11 input k :=
+  by
+  unfold IPv6.searchNode_11 IPv6.searchCode_11
+  simp only [SearchCode.runK, IPv6.searchNode_10_eq]
+
+private def IPv6.searchCode_12 : SearchCode :=
+  SearchCode.capture ["Left", "Compressed.Left"] IPv6.searchCode_6 IPv6.searchCode_11
+
+@[inline]
+private def IPv6.searchNode_12 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  IPv6.searchNode_6 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    IPv6.searchNode_11 remaining fun tailCaptures suffix =>
+      k ((["Left", "Compressed.Left"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem IPv6.searchNode_12_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    IPv6.searchNode_12 input k = SearchCode.runK IPv6.searchCode_12 input k :=
+  by
+  unfold IPv6.searchNode_12 IPv6.searchCode_12
+  simp only [SearchCode.runK, IPv6.searchNode_6_eq, IPv6.searchNode_11_eq]
+
+private def IPv6.searchCode_13 : SearchCode :=
+  SearchCode.choice IPv6.searchCode_12 IPv6.searchCode_11
+
+@[inline]
+private def IPv6.searchNode_13 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  scanOrElse (IPv6.searchNode_12 input k) fun _ => IPv6.searchNode_11 input k
+
+private theorem IPv6.searchNode_13_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    IPv6.searchNode_13 input k = SearchCode.runK IPv6.searchCode_13 input k :=
+  by
+  unfold IPv6.searchNode_13 IPv6.searchCode_13
+  simp only [SearchCode.runK, IPv6.searchNode_12_eq, IPv6.searchNode_11_eq]
+
+private def IPv6.searchCode_14 : SearchCode :=
+  SearchCode.capture ["Compressed", "V6Addr.Compressed"] IPv6.searchCode_13 IPv6.searchCode_0
+
+@[inline]
+private def IPv6.searchNode_14 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  IPv6.searchNode_13 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    IPv6.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["Compressed", "V6Addr.Compressed"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem IPv6.searchNode_14_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    IPv6.searchNode_14 input k = SearchCode.runK IPv6.searchCode_14 input k :=
+  by
+  unfold IPv6.searchNode_14 IPv6.searchCode_14
+  simp only [SearchCode.runK, IPv6.searchNode_13_eq, IPv6.searchNode_0_eq]
+
+private def IPv6.searchCode_15 : SearchCode :=
+  SearchCode.choice IPv6.searchCode_4 IPv6.searchCode_14
+
+private def IPv6.searchNode_15 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  scanOrElse (IPv6.searchNode_4 input k) fun _ => IPv6.searchNode_14 input k
+
+private theorem IPv6.searchNode_15_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    IPv6.searchNode_15 input k = SearchCode.runK IPv6.searchCode_15 input k :=
+  by
+  unfold IPv6.searchNode_15 IPv6.searchCode_15
+  simp only [SearchCode.runK, IPv6.searchNode_4_eq, IPv6.searchNode_14_eq]
+
+private def IPv6.searchCode_16 : SearchCode :=
+  SearchCode.capture ["V6Addr"] IPv6.searchCode_15 IPv6.searchCode_0
+
+@[inline]
+private def IPv6.searchNode_16 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  IPv6.searchNode_15 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    IPv6.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["V6Addr"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem IPv6.searchNode_16_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    IPv6.searchNode_16 input k = SearchCode.runK IPv6.searchCode_16 input k :=
+  by
+  unfold IPv6.searchNode_16 IPv6.searchCode_16
+  simp only [SearchCode.runK, IPv6.searchNode_15_eq, IPv6.searchNode_0_eq]
+
+private def IPv6.searchCode_17 : SearchCode :=
+  SearchCode.tokenRun TokClass.digit (LenSpec.between 1 3) IPv6.searchCode_0
+
+@[inline]
+private def IPv6.searchNode_17 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  (List.range ((input).length + 1)).findSome? fun width =>
+    if termPrefixOk TokClass.digit (LenSpec.between 1 3) input width then IPv6.searchNode_0 ((input).drop width) k
+    else none
+
+private theorem IPv6.searchNode_17_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    IPv6.searchNode_17 input k = SearchCode.runK IPv6.searchCode_17 input k :=
+  by
+  unfold IPv6.searchNode_17 IPv6.searchCode_17
+  simp only [SearchCode.runK, IPv6.searchNode_0_eq]
+
+private def IPv6.searchCode_18 : SearchCode :=
+  SearchCode.capture ["Prefix"] IPv6.searchCode_17 IPv6.searchCode_0
+
+@[inline]
+private def IPv6.searchNode_18 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  IPv6.searchNode_17 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    IPv6.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["Prefix"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem IPv6.searchNode_18_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    IPv6.searchNode_18 input k = SearchCode.runK IPv6.searchCode_18 input k :=
+  by
+  unfold IPv6.searchNode_18 IPv6.searchCode_18
+  simp only [SearchCode.runK, IPv6.searchNode_17_eq, IPv6.searchNode_0_eq]
+
+private def IPv6.searchCode_19 : SearchCode :=
+  SearchCode.literal "/" IPv6.searchCode_18
+
+@[inline]
+private def IPv6.searchNode_19 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  let characters := ("/").toList
+  if characters.isPrefixOf input then IPv6.searchNode_18 ((input).drop characters.length) k else none
+
+private theorem IPv6.searchNode_19_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    IPv6.searchNode_19 input k = SearchCode.runK IPv6.searchCode_19 input k :=
+  by
+  unfold IPv6.searchNode_19 IPv6.searchCode_19
+  simp only [SearchCode.runK, IPv6.searchNode_18_eq]
+
+private def IPv6.searchCode_20 : SearchCode :=
+  SearchCode.capture ["V6Addr"] IPv6.searchCode_15 IPv6.searchCode_19
+
+@[inline]
+private def IPv6.searchNode_20 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  IPv6.searchNode_15 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    IPv6.searchNode_19 remaining fun tailCaptures suffix =>
+      k ((["V6Addr"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem IPv6.searchNode_20_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    IPv6.searchNode_20 input k = SearchCode.runK IPv6.searchCode_20 input k :=
+  by
+  unfold IPv6.searchNode_20 IPv6.searchCode_20
+  simp only [SearchCode.runK, IPv6.searchNode_15_eq, IPv6.searchNode_19_eq]
+
+private def IPv6.searchCode_21 : SearchCode :=
+  SearchCode.choice IPv6.searchCode_16 IPv6.searchCode_20
+
+@[inline]
+private def IPv6.searchNode_21 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  scanOrElse (IPv6.searchNode_16 input k) fun _ => IPv6.searchNode_20 input k
+
+private theorem IPv6.searchNode_21_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    IPv6.searchNode_21 input k = SearchCode.runK IPv6.searchCode_21 input k :=
+  by
+  unfold IPv6.searchNode_21 IPv6.searchCode_21
+  simp only [SearchCode.runK, IPv6.searchNode_16_eq, IPv6.searchNode_20_eq]
+
+private def IPv6.directDecode (source : String) : Option CaptureMap :=
+  IPv6.searchNode_21 source.toList fun (captures : CaptureMap) (remaining : List Char) =>
+    if (remaining).isEmpty then some captures else none
+
+private theorem IPv6.directDecode_eq_searchProgram (source : String) :
+    IPv6.directDecode source = SearchProgram.decode IPv6.searchProgram source :=
+  by
+  have hcode : IPv6.searchCode_21 = (IPv6.searchProgram).code := rfl
+  unfold IPv6.directDecode SearchProgram.decode
+  rw [IPv6.searchNode_21_eq, hcode]
+
+private def IPv6.decodeCaptures (source : String) : Option CaptureMap :=
+  IPv6.directDecode source
+
+private theorem IPv6.decodeCaptures_eq_parsePlan (source : String) :
+    IPv6.decodeCaptures source = ParsePlan.decode IPv6.parsePlan IPv6.grammar source := by
+  calc
+    IPv6.decodeCaptures source = SearchProgram.decode IPv6.searchProgram source := by
+      exact IPv6.directDecode_eq_searchProgram source
+    _ = SearchProgram.decode (lowerSearchPlan IPv6.searchPlan) source := by rw [IPv6.searchProgram_lowered]
+    _ = ParsePlan.decode IPv6.parsePlan IPv6.grammar source := by rfl
+
+private theorem IPv6.decodeCaptures_eq_scan (source : String) : IPv6.decodeCaptures source = scan IPv6.grammar source :=
+  by
+  calc
+    IPv6.decodeCaptures source = ParsePlan.decode IPv6.parsePlan IPv6.grammar source :=
+      IPv6.decodeCaptures_eq_parsePlan source
+    _ = scan IPv6.grammar source :=
+      ParsePlan.decode_eq_scan (ParsePlan.CertifiedFor.search IPv6.searchPlan_mirrorsGrammar) source
+
+private def IPv6.directView (source : String) : Option IPv6.View :=
+  (IPv6.directDecode source).map (IPv6.View.ofMap source)
+
+private theorem IPv6.directView_eq_decodeView (source : String) : IPv6.directView source = IPv6.decodeView source :=
+  by
+  unfold IPv6.directView IPv6.decodeView
+  rw [show IPv6.directDecode source = scan IPv6.grammar source by exact IPv6.decodeCaptures_eq_scan source]
+
+private instance IPv6.instDecidableViewValid : DecidablePred IPv6.View.Valid := fun view =>
+  by
+  unfold IPv6.View.Valid IPv6.View.WfConstraints IPv6.WfConstraints
+  infer_instance
+
 theorem IPv6.computeValue_isSome (s : String) : IPv6.IsValid s → (IPv6.computeValue s).isSome :=
   by
   intro h
   have hengine := (IPv6.IsValid_equiv s).mp h
   unfold Triptych.isWf at hengine
-  unfold IPv6.computeValue Triptych.scannerComputeValueMap
+  unfold IPv6.computeValue Triptych.scannerComputeValue
   rw [Option.isSome_map]
   exact hengine.1.1
 
 def IPv6.parse (s : String) :=
-  Triptych.scannerParseMap IPv6.grammar IPv6.constraints IPv6.valueFn id s
+  Triptych.decodedViewParse IPv6.directView IPv6.View.Valid IPv6.View.denotation ipv6CodeToNet s
 
-theorem IPv6.parse_eq_gated (s : String) : IPv6.parse s = Triptych.gatedParse IPv6.IsValid IPv6.computeValue s :=
+theorem IPv6.parse_eq_scanner (s : String) :
+    IPv6.parse s = Triptych.scannerParse IPv6.grammar IPv6.constraints IPv6.valueExpr ipv6CodeToNet s := by
+  calc
+    IPv6.parse s = Triptych.gatedParseOfSpec IPv6.IsValid IPv6.computeValue ipv6CodeToNet s :=
+      by
+      unfold IPv6.parse
+      exact
+        Triptych.decodedViewParse_eq_gatedParseOfSpec IPv6.directView IPv6.decodeView IPv6.View.Valid
+          IPv6.View.denotation ipv6CodeToNet IPv6.IsValid IPv6.computeValue IPv6.directView_eq_decodeView
+          IPv6.IsValid_view IPv6.computeValue_view s
+    _ = Triptych.scannerParse IPv6.grammar IPv6.constraints IPv6.valueExpr ipv6CodeToNet s :=
+      by
+      symm
+      unfold IPv6.computeValue
+      exact
+        Triptych.scannerParse_eq_surfaceGatedParseOfSpec IPv6.grammar IPv6.constraints IPv6.valueExpr ipv6CodeToNet
+          IPv6.IsValid IPv6.IsValid_equiv s
+
+theorem IPv6.parse_eq_gated (s : String) :
+    IPv6.parse s = Triptych.gatedParseOfSpec IPv6.IsValid IPv6.computeValue ipv6CodeToNet s :=
   by
-  unfold IPv6.parse IPv6.computeValue
+  rw [IPv6.parse_eq_scanner]
+  unfold IPv6.computeValue
   exact
-    Triptych.scannerParseMap_eq_surfaceGated IPv6.grammar IPv6.constraints IPv6.valueFn IPv6.IsValid IPv6.IsValid_equiv
-      s
+    Triptych.scannerParse_eq_surfaceGatedParseOfSpec IPv6.grammar IPv6.constraints IPv6.valueExpr ipv6CodeToNet
+      IPv6.IsValid IPv6.IsValid_equiv s
 
 theorem IPv6.parse_profile_result (s : String) :
-    (Triptych.scannerParseMapProfile IPv6.grammar IPv6.constraints IPv6.valueFn id s).result = IPv6.parse s :=
+    (Triptych.scannerParseProfile IPv6.grammar IPv6.constraints IPv6.valueExpr ipv6CodeToNet s).result = IPv6.parse s :=
   by
-  unfold IPv6.parse
-  exact Triptych.scannerParseMapProfile_result IPv6.grammar IPv6.constraints IPv6.valueFn id s
+  rw [Triptych.scannerParseProfile_result]
+  exact (IPv6.parse_eq_scanner s).symm
 
 theorem IPv6.parse_candidateChecks_le (s : String) :
-    (Triptych.scannerParseMapProfile IPv6.grammar IPv6.constraints IPv6.valueFn id s).candidateChecks ≤
+    (Triptych.scannerParseProfile IPv6.grammar IPv6.constraints IPv6.valueExpr ipv6CodeToNet s).candidateChecks ≤
       Triptych.scannerCandidateBudget IPv6.grammar s :=
-  Triptych.scannerParseMap_candidateChecks_le IPv6.grammar IPv6.constraints IPv6.valueFn id s
+  Triptych.scannerParse_candidateChecks_le IPv6.grammar IPv6.constraints IPv6.valueExpr ipv6CodeToNet s
 
 theorem IPv6.parse_candidateChecks_eq_zero_of_fastScan (s : String) (hunique : (IPv6.grammar).staticUnique = true)
     {captures : Triptych.CaptureMap} (hscan : Triptych.fastScan IPv6.grammar s = some captures) :
-    (Triptych.scannerParseMapProfile IPv6.grammar IPv6.constraints IPv6.valueFn id s).candidateChecks = 0 :=
-  Triptych.scannerParseMap_candidateChecks_eq_zero_of_fastScan IPv6.grammar IPv6.constraints IPv6.valueFn id s hunique
-    hscan
+    (Triptych.scannerParseProfile IPv6.grammar IPv6.constraints IPv6.valueExpr ipv6CodeToNet s).candidateChecks = 0 :=
+  Triptych.scannerParse_candidateChecks_eq_zero_of_fastScan IPv6.grammar IPv6.constraints IPv6.valueExpr ipv6CodeToNet s
+    hunique hscan
 
-theorem IPv6.parse_sound (s : String) (i : IPv6Net) :
-    IPv6.parse s = some i → IPv6.IsValid s ∧ IPv6.computeValue s = some i :=
+theorem IPv6.parse_sound (s : String) (c : Cedar.Spec.Ext.IPAddr.CIDR Cedar.Spec.Ext.IPAddr.V6_WIDTH) :
+    IPv6.parse s = some c → IPv6.IsValid s ∧ (IPv6.computeValue s).map ipv6CodeToNet = some c :=
   by
   rw [IPv6.parse_eq_gated]
-  exact Triptych.gatedParse_sound _ _ s i
+  exact Triptych.gatedParseOfSpec_sound _ _ _ s c
 
-theorem IPv6.parse_complete (s : String) (i : IPv6Net) :
-    IPv6.IsValid s → IPv6.computeValue s = some i → IPv6.parse s = some i :=
+theorem IPv6.parse_complete (s : String) (c : Cedar.Spec.Ext.IPAddr.CIDR Cedar.Spec.Ext.IPAddr.V6_WIDTH) :
+    IPv6.IsValid s → (IPv6.computeValue s).map ipv6CodeToNet = some c → IPv6.parse s = some c :=
   by
   rw [IPv6.parse_eq_gated]
-  exact Triptych.gatedParse_complete _ _ s i
+  exact Triptych.gatedParseOfSpec_complete _ _ _ s c
 
 theorem IPv6.parse_reject (s : String) : IPv6.parse s = none ↔ ¬IPv6.IsValid s :=
   by
   rw [IPv6.parse_eq_gated]
-  exact Triptych.gatedParse_reject _ _ IPv6.computeValue_isSome s
+  exact Triptych.gatedParseOfSpec_reject _ _ _ IPv6.computeValue_isSome s
 
 theorem IPv6.parse_view (s : String) :
-    IPv6.parse s = if decide (IPv6.IsValid s) then (IPv6.decodeView s).map IPv6.View.denotation else none :=
+    IPv6.parse s =
+      if decide (IPv6.IsValid s) then (IPv6.decodeView s).map (ipv6CodeToNet ∘ IPv6.View.denotation) else none :=
   by
   rw [IPv6.parse_eq_gated]
-  unfold Triptych.gatedParse
+  unfold Triptych.gatedParseOfSpec Triptych.gatedParse
   rw [IPv6.computeValue_view]
+  split <;> simp [Option.map_map]
 
-theorem IPv6.parse_eq_some_iff_view (s : String) (i : IPv6Net) :
+theorem IPv6.parse_eq_some_iff_view (s : String) (i : CedarExamples.IPv6.IPv6Net) :
     IPv6.parse s = some i ↔
       ∃ decodedView : IPv6.View,
-        IPv6.decodeView s = some decodedView ∧ IPv6.View.Valid decodedView ∧ IPv6.View.denotation decodedView = i :=
+        IPv6.decodeView s = some decodedView ∧
+          IPv6.View.Valid decodedView ∧ ipv6CodeToNet (IPv6.View.denotation decodedView) = i :=
   by
   constructor
   · intro hparse
@@ -993,12 +1748,12 @@ theorem IPv6.parse_eq_some_iff_view (s : String) (i : IPv6Net) :
     obtain ⟨decodedView, hview, hvalidView⟩ := (IPv6.IsValid_view s).mp hvalid
     refine ⟨decodedView, hview, hvalidView, ?_⟩
     rw [IPv6.computeValue_view, hview] at hvalue
-    exact Option.some.inj hvalue
+    simpa using Option.some.inj hvalue
   · rintro ⟨decodedView, hview, hvalidView, hvalue⟩
     apply IPv6.parse_complete s i
     · exact (IPv6.IsValid_view s).mpr ⟨decodedView, hview, hvalidView⟩
     · rw [IPv6.computeValue_view, hview]
-      exact congrArg some hvalue
+      simpa using congrArg some hvalue
 
 theorem IPv6.parse_eq_none_iff_view (s : String) :
     IPv6.parse s = none ↔ ¬∃ v : IPv6.View, IPv6.decodeView s = some v ∧ IPv6.View.Valid v :=
@@ -1010,20 +1765,21 @@ theorem IPv6.parse_eq_none_iff_view (s : String) :
   · intro hnoview hvalid
     exact hnoview ((IPv6.IsValid_view s).mp hvalid)
 
-def IPv6.checkedExtParse (s : String) : Option IPv6Net :=
-  Triptych.checkedExternalParse IPv6.IsValid IPv6.computeValue ipv6Only id s
+def IPv6.checkedExtParse (s : String) : Option CedarExamples.IPv6.IPv6Net :=
+  Triptych.checkedExternalParse IPv6.IsValid IPv6.computeValue ipv6Only ipv6NetToCode s
 
-theorem IPv6.checkedExtParse_eq_some_iff (s : String) (i : IPv6Net) :
-    IPv6.checkedExtParse s = some i ↔ ipv6Only s = some i ∧ IPv6.IsValid s ∧ IPv6.computeValue s = some (id i) :=
-  Triptych.checkedExternalParse_eq_some_iff IPv6.IsValid IPv6.computeValue ipv6Only id s i
+theorem IPv6.checkedExtParse_eq_some_iff (s : String) (i : CedarExamples.IPv6.IPv6Net) :
+    IPv6.checkedExtParse s = some i ↔
+      ipv6Only s = some i ∧ IPv6.IsValid s ∧ IPv6.computeValue s = some (ipv6NetToCode i) :=
+  Triptych.checkedExternalParse_eq_some_iff IPv6.IsValid IPv6.computeValue ipv6Only ipv6NetToCode s i
 
-theorem IPv6.checkedExtParse_sound (s : String) (i : IPv6Net) :
-    IPv6.checkedExtParse s = some i → IPv6.IsValid s ∧ IPv6.computeValue s = some (id i) :=
-  Triptych.checkedExternalParse_sound IPv6.IsValid IPv6.computeValue ipv6Only id s i
+theorem IPv6.checkedExtParse_sound (s : String) (i : CedarExamples.IPv6.IPv6Net) :
+    IPv6.checkedExtParse s = some i → IPv6.IsValid s ∧ IPv6.computeValue s = some (ipv6NetToCode i) :=
+  Triptych.checkedExternalParse_sound IPv6.IsValid IPv6.computeValue ipv6Only ipv6NetToCode s i
 
-theorem IPv6.checkedExtParse_sound_view (s : String) (i : IPv6Net) :
+theorem IPv6.checkedExtParse_sound_view (s : String) (i : CedarExamples.IPv6.IPv6Net) :
     IPv6.checkedExtParse s = some i →
-      ∃ v : IPv6.View, IPv6.decodeView s = some v ∧ IPv6.View.Valid v ∧ IPv6.View.denotation v = id i :=
+      ∃ v : IPv6.View, IPv6.decodeView s = some v ∧ IPv6.View.Valid v ∧ IPv6.View.denotation v = ipv6NetToCode i :=
   by
   intro hparse
   obtain ⟨hvalid, hvalue⟩ := IPv6.checkedExtParse_sound s i hparse

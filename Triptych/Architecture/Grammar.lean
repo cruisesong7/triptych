@@ -24,7 +24,7 @@ DAG of named productions in an EBNF subset, matching the `::=` grammars written 
 
 Deliberately *not* here: the value function. An analyzable `value` clause elaborates to the
 separate `ValExpr` AST, while a `value'` escape supplies a Lean function over captures.
-Generated computation composes either form with `scan`; the archived reference decoder is used
+Generated computation composes either form with `scan`; the reference decoder is used
 only in proofs of the scanner and reconciliation layer.
 
 The class encoded here:
@@ -49,6 +49,10 @@ inductive TokClass where
   /-- An inclusive ASCII code-point range. This keeps compact textual encodings such as
       Graph6 inside the grammar instead of expanding a character class into many alternatives. -/
   | asciiRange (lo hi : Nat)
+  /-- Any of the listed characters (`oneOf " \t\r\n"` for whitespace). -/
+  | oneOf (chars : List Char)
+  /-- Any character except the listed ones (`noneOf "\n"` for the rest of a line). -/
+  | noneOf (chars : List Char)
   deriving Repr, DecidableEq, Inhabited
 
 /-- Length constraint on a terminal token run (the `Digit⁺` / `Digit{4}` / `Digit{1,4}`
@@ -145,11 +149,51 @@ def repOk : Sym → Bool
   | .rep sep item lo _ => sep ≠ "" && decide (1 ≤ lo) && item.repOk
   | _                  => true
 
+/-- Whether a length specification admits only non-empty token runs. -/
+def _root_.Triptych.LenSpec.positive : LenSpec → Bool
+  | .exactly n => decide (1 ≤ n)
+  | .between lo _ => decide (1 ≤ lo)
+  | .atLeastOne => true
+
+/-- Whether every match of `sym` is non-empty, conservatively. `fuel` bounds how many reference
+    levels are unfolded; out of fuel, a reference is not known to consume. The outer recursion is
+    on `fuel` and the inner one on the symbol, so concrete checks reduce by `decide`. -/
+def consumes (g : Grammar) : Nat → Sym → Bool
+  | 0 => consumesWith fun _ => false
+  | fuel + 1 => consumesWith fun name =>
+      match g.prod? name with
+      | some production =>
+          production.alts.all fun alt => alt.any fun item =>
+            !item.optional && consumes g fuel item.sym
+      | none => false
+where
+  /-- `consumes` for one symbol, given the verdict for each referenced production. -/
+  consumesWith (refConsumes : String → Bool) : Sym → Bool
+    | .lit text => !text.isEmpty
+    | .str => false
+    | .term _ length => length.positive
+    | .ref name => refConsumes name
+    | .rep _ item lo _ => decide (1 ≤ lo) && consumesWith refConsumes item
+
+/-- `repOk` relative to a grammar: a repetition may omit its separator when its item is known to
+    consume input (`rep Tok +` with `Tok ::= Lit Ws`). Each iteration then still consumes at least
+    one character, which is what the scanner/denotation agreement needs. -/
+def repOkIn (g : Grammar) (fuel : Nat) : Sym → Bool
+  | .rep sep item lo _ =>
+      (sep ≠ "" || consumes g fuel item) && decide (1 ≤ lo) && repOkIn g fuel item
+  | _ => true
+
 end Sym
 
-/-- Every `rep` in the grammar is in the scanner-agreeing class (see `Sym.repOk`). Decidable;
+/-- Every `rep` in the grammar is in the scanner-agreeing class (see `Sym.repOkIn`). Decidable;
     the hypothesis under which executable scanning and `IsWf` provably agree. -/
 def Grammar.repOk (g : Grammar) : Bool :=
+  g.prods.all (fun p => p.alts.all (fun alt => alt.all (fun it =>
+    it.sym.repOkIn g g.prods.length)))
+
+/-- Every `rep` has a non-empty literal separator (`Sym.repOk`). Backends that compile
+    separated repetitions directly, such as Verus, require this stricter form. -/
+def Grammar.repSeparated (g : Grammar) : Bool :=
   g.prods.all (fun p => p.alts.all (fun alt => alt.all (fun it => it.sym.repOk)))
 
 end Triptych

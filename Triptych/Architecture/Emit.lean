@@ -19,11 +19,14 @@ import Triptych.Architecture.Grammar
 import Triptych.Architecture.Classify
 import Triptych.Architecture.Derivation
 import Triptych.Architecture.Denote
-import Triptych.Archive.DecodeLemmas
+import Triptych.Reference.DecodeLemmas
 import Triptych.Theorems.Derivation
 import Triptych.Theorems.Reconcile
 import Triptych.Theorems.RelationalParser
 import Triptych.Theorems.Scanner
+import Triptych.Theorems.ParsePlan
+import Triptych.Architecture.LeanCursor
+import Triptych.Architecture.LeanSpanCursor
 import Triptych.Architecture.Value
 
 /-!
@@ -49,6 +52,12 @@ def subscript (n : Nat) : String :=
   let subs := "₀₁₂₃₄₅₆₇₈₉".toList
   String.ofList ((toString n).toList.map (fun c => subs[(c.toNat - '0'.toNat)]!))
 
+/-- Quote a length specification. -/
+private def lenSpecTerm : LenSpec → CommandElabM (TSyntax `term)
+  | .exactly n => `(LenSpec.exactly $(quote n))
+  | .between lo hi => `(LenSpec.between $(quote lo) $(quote hi))
+  | .atLeastOne => `(LenSpec.atLeastOne)
+
 /-- The readable leaf predicate for a `term tok len`, matching the hand specs'
     vocabulary (`IsDigits`, `IsFixedDigits`, …). Names are emitted UNQUALIFIED (the
     generated file `open`s `Triptych`), so they read like the doc. -/
@@ -72,6 +81,10 @@ def termPred (tok : TokClass) (ls : LenSpec) (v : TSyntax `term) : CommandElabM 
   | .asciiRange lo hi, .between min max =>
       `(matchesTerm ((TokClass.asciiRange $(quote lo) $(quote hi) : TokClass))
           (LenSpec.between $(quote min) $(quote max)) $v)
+  | .oneOf chars, length => do
+      `(matchesTerm (TokClass.oneOf $(quote chars)) $(← lenSpecTerm length) $v)
+  | .noneOf chars, length => do
+      `(matchesTerm (TokClass.noneOf $(quote chars)) $(← lenSpecTerm length) $v)
 
 /-- Predicate that string `v` matches symbol `sym`. Refs resolve to the sibling
     per-production predicate `<specName>.IsWf.<Nt>`. -/
@@ -294,13 +307,14 @@ where
             goName g r st.1 st.2) (visited, acc)
           (visited, p :: acc)
 
-/-! ## Reconciliation proof synthesis (engine `IsWf` ⟺ surface `IsWf.<Prod>`)
+/-! ## Reconciliation proof synthesis (engine `IsWf` ⟺ readable production predicates)
 
 Emits, per production (leaf-first), a lemma `<Name>.matchesRef.<Prod>` proving the engine
 denotation of a *reference* to `<Prod>` equals the surface predicate `<Name>.IsWf.<Prod>`,
-plus a top-level `<Name>.IsWf_equiv` bridging `IsWf grammar` to `<Name>.IsWf.<start>`. The
-proofs are a fixed skeleton discharged by the `Triptych/Reconcile.lean` lemmas + a uniform
-`simp`/`grind` closer; see that module and design note §16. -/
+except that the start rule is stated directly as `<Name>.Production`. A top-level
+`<Name>.IsWf_equiv` bridges `IsWf grammar` to that root relation. The proofs are a fixed skeleton
+discharged by the `Triptych/Reconcile.lean` lemmas plus a uniform `simp`/`grind` closer; see that
+module and design note §16. -/
 
 /-- Subtree depth of a production: the longest chain of nonterminal references starting at
     `name` (a leaf with no refs has depth 1). This is the exact fuel *offset* at which the
@@ -329,6 +343,8 @@ private partial def symLit : Sym → CommandElabM (TSyntax `term)
         | .bit      => `(TokClass.bit)
         | .asciiRange lo hi =>
             `((TokClass.asciiRange $(quote lo) $(quote hi) : TokClass))
+        | .oneOf chars => `(TokClass.oneOf $(quote chars))
+        | .noneOf chars => `(TokClass.noneOf $(quote chars))
       let lsT ← match ls with
         | .exactly n    => `(LenSpec.exactly $(quote n))
         | .between lo hi => `(LenSpec.between $(quote lo) $(quote hi))
@@ -371,6 +387,8 @@ private def tokSource : TokClass → String
   | .hexDigit => "TokClass.hexDigit"
   | .bit => "TokClass.bit"
   | .asciiRange lo hi => s!"(TokClass.asciiRange {lo} {hi})"
+  | .oneOf chars => s!"(TokClass.oneOf {repr chars})"
+  | .noneOf chars => s!"(TokClass.noneOf {repr chars})"
 
 private def lenSource : LenSpec → String
   | .exactly n => s!"LenSpec.exactly {n}"
@@ -598,14 +616,23 @@ private partial def derivationSymProof (specName : Name) (g : Grammar)
         s!"{sourceString name} {binder})\n" ++
         s!"      ({childType}.matches {sourceString name} {childFuel} {binder} " ++
         s!"{validProof})))"
-  | .rep _ item _ _ =>
+  | .rep sep item _ _ =>
       let itemValid := derivationSymValid specName item "entry"
       let itemProof :=
         derivationSymProof specName g parentDepth baseFuel matchFuel qual
           item "entry" "hentry"
+      -- A separator-free repetition justifies termination by its consuming item instead.
+      let stepProof :=
+        if sep.isEmpty then
+          "  · exact Or.inr fun entry hentry =>\n" ++
+            s!"      Triptych.ne_empty_of_symMatch (g := {specName.toString true}.grammar) " ++
+            s!"(item := {symSource item}) (by decide) (by decide) (by decide)\n" ++
+            s!"        ({itemProof})\n"
+        else
+          "  · exact Or.inl (by decide)\n"
       "(by\n" ++
         s!"  apply Triptych.symMatch_rep (valid := fun entry => {itemValid})\n" ++
-        "  · decide\n" ++
+        stepProof ++
         s!"  · exact {validProof}\n" ++
         "  · intro entry hentry\n" ++
         s!"    exact {itemProof})"
@@ -792,7 +819,7 @@ private def leafLemmasFor (p : Production) : List (TSyntax `term) := Id.run do
       | some .digit    => haveDigits := true
       | some .hexDigit => haveHex := true
       | some .bit      => haveBit := true
-      | some (.asciiRange _ _) => pure ()
+      | some (.asciiRange _ _) | some (.oneOf _) | some (.noneOf _) => pure ()
       | none           => pure ()
   -- Reference the leaf-collapse lemmas by (unresolved) name — they live in
   -- `Triptych.Theorems.Reconcile`, which the GENERATED file imports; resolving them here would
@@ -833,9 +860,11 @@ private def altAllOptional (alt : Seq) : Bool :=
     <Name>.IsWf.<Prod> s` (or, for the start/top production called via `matchesProd`, the
     `matchesProd` form). `depth` = `subtreeDepth`. -/
 def matchesRefProof (specName : Name) (grammarId : TSyntax `ident) (p : Production)
-    (depth : Nat) : CommandElabM (TSyntax `command) := do
+    (depth : Nat) (isStart : Bool := false) : CommandElabM (TSyntax `command) := do
   let lemId := mkIdent (matchesRefName specName p.name)
-  let surfId := mkIdent (specName ++ `IsWf ++ p.name.toName)
+  let surfId :=
+    mkIdent <| if isStart then specName ++ `Production
+      else specName ++ `IsWf ++ p.name.toName
   let prodT ← prodLit p
   let nameLit := Syntax.mkStrLit p.name
   let depthLit := Syntax.mkNatLit depth
@@ -861,7 +890,7 @@ def matchesRefProof (specName : Name) (grammarId : TSyntax `ident) (p : Producti
       (do pure [← mk ``exists_eq_or_imp, ← mk ``exists_eq_left])
     else pure []
   -- shared boolean/if reducers
-  let reducers ← [``exists_eq_left, ``if_true, ``if_false, ``Bool.false_eq_true,
+  let reducers ← [``exists_eq_left, ``ite_true, ``ite_false, ``Bool.false_eq_true,
     ``false_and, ``or_false, ``or_assoc].mapM mk
   let matchesSymL ← mk ``matchesSym
   let allBody : Array (TSyntax `Lean.Parser.Tactic.simpLemma) :=
@@ -879,6 +908,7 @@ def matchesRefProof (specName : Name) (grammarId : TSyntax `ident) (p : Producti
           | apply or_congr
           | (simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left,
                 ← and_assoc, exists_eq_left, exists_eq_left', exists_eq_right, and_true,
+                exists_append_lit_left,
                 Option.some.injEq, forall_eq']
              try grind [String.append_assoc, String.append_empty]))
   else
@@ -891,11 +921,12 @@ def matchesRefProof (specName : Name) (grammarId : TSyntax `ident) (p : Producti
         simp (config := { maxSteps := 1000000 }) only [$allBody,*]
         simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left,
           ← and_assoc, exists_eq_left, exists_eq_left', exists_eq_right, and_true,
+          exists_append_lit_left,
           Option.some.injEq, forall_eq']
         try grind [String.append_assoc, String.append_empty])
 
 /-- Emit the grammar-layout bridge
-    `<Name>.IsWfGrammar_equiv : IsWf g s ↔ <Name>.IsWf.<start> s`.
+    `<Name>.IsWfGrammar_equiv : IsWf g s ↔ <Name>.Production s`.
     Reduces `IsWf` to the start production's `matchesProd` at concrete fuel `g.prods.length`,
     re-folds it as a `matchesSym` reference (`matchesSym g (N+1) (ref start) = matchesProd g N
     …` definitionally), then applies the start production's `matchesRef` lemma (`∀ fuel`, so
@@ -904,7 +935,7 @@ def isWfGrammarEquivProof (specName : Name) (grammarId : TSyntax `ident) (start 
     : CommandElabM (TSyntax `command) := do
   let equivId := mkIdent (specName ++ `IsWfGrammar_equiv)
   let startRef := mkIdent (matchesRefName specName start.name)
-  let surfId := mkIdent (specName ++ `IsWf ++ start.name.toName)
+  let surfId := mkIdent (specName ++ `Production)
   let startLit := Syntax.mkStrLit start.name
   let prodT ← prodLit start
   `(theorem $equivId (s : String) : Triptych.IsWf $grammarId s ↔ $surfId s := by
@@ -939,11 +970,12 @@ def isWfEquivProof (specName : Name) (hasWfConstraints : Bool) :
       rw [Triptych.scan_eq_decode]
       rw [← $grammarEq, ← decodeSome_iff_IsWf $grammarId (by decide)]
       unfold $[$unfolds:ident]*
-      simp only [Triptych.component, Triptych.componentList, Triptych.envOf,
+      simp only [Triptych.component, Triptych.componentList, Triptych.componentWith, Triptych.envOf,
         Triptych.captureMapOf, Triptych.scan_eq_decode,
         List.forall_mem_cons, List.forall_mem_singleton,
         List.not_mem_nil, forall_const, ConstraintEntry.wfPart, Constraint.eval, ValExpr.eval,
         presentCount, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD,
+        hexOf_getD, hexSeqOf_getD, segmentsOf_getD,
         Env.countVal, and_true, true_and,
         false_implies, implies_true, Bool.false_eq_true]
       try grind)
@@ -971,6 +1003,7 @@ def satisfiesConstraintsEquivProof (specName : Name)
         List.forall_mem_cons, List.forall_mem_singleton,
         List.not_mem_nil, forall_const, ConstraintEntry.valPart, Constraint.eval, ValExpr.eval,
         presentCount, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD,
+        hexOf_getD, hexSeqOf_getD, segmentsOf_getD,
         Env.countVal, and_true, true_and,
         false_implies, implies_true, Bool.false_eq_true]
       try grind)
@@ -1018,16 +1051,16 @@ def isValidEquivProof (specName : Name) (hasValueConstraints : Bool) :
     `value'` escape unfolds `valueFn` (surface and engine share the author's fn, so the two
     sides are defeq after `Option.map_some`). -/
 def computeValueEqProof (specName : Name) (grammarId : TSyntax `ident)
-    (caps : List (String × Bool)) (isDsl : Bool) : CommandElabM (TSyntax `command) := do
+    (caps : List (String × ArgShape)) (isDsl : Bool) : CommandElabM (TSyntax `command) := do
   let equivId := mkIdent (specName ++ `computeValue_eq)
   let cvId    := mkIdent (specName ++ `computeValue)
   let valId   := mkIdent (specName ++ `value)
   -- `value <reader g s "c₀"> …` — the readable value on decoded components. A SCALAR cap reads
   -- via `component` (its string), a LIST cap (`[X]`, escape tier only) via `componentList` (all
   -- its repeated spans) — matching how `valueFn` reads the `CaptureMap` (`toEnv`/`toEnvList`).
-  let compArgs : Array (TSyntax `term) ← caps.toArray.mapM (fun (c, isList) =>
-    if isList then `(Triptych.componentList $grammarId s $(Syntax.mkStrLit c))
-    else `(Triptych.component $grammarId s $(Syntax.mkStrLit c)))
+  let sTerm ← `(s)
+  let compArgs : Array (TSyntax `term) ← caps.toArray.mapM (fun (c, shape) =>
+    liftMacroM (shape.readableTerm grammarId sTerm c))
   -- Tier-specific unfolds: the engine value entry point + the value definition it reduces to.
   -- DSL → `computeValue`/`valueExpr`; escape → `computeValueMap`/`valueFn`. Both readers
   -- (`component` = `(toEnv m ·).getD ""`, `componentList` = `toEnvList m ·`) unfold to the same
@@ -1037,41 +1070,39 @@ def computeValueEqProof (specName : Name) (grammarId : TSyntax `ident)
   let valDef   := mkIdent (specName ++ (if isDsl then `valueExpr else `valueFn))
   -- Only unfold a reader that actually appears in the goal (`unfold` errors on an absent target):
   -- `component` iff some scalar cap, `componentList` iff some list cap.
-  let hasScalar := caps.any (!·.2)
+  let hasScalar := caps.any (·.2 == .scalar)
   let compUnf : Array (TSyntax `ident) :=
-    (if caps.any (·.2) then #[mkIdent `Triptych.componentList] else #[])
+    (if caps.any (·.2 == .list) then #[mkIdent `Triptych.componentList] else #[])
+      ++ (if caps.any (fun (_, shape) => shape.isCollection && shape != .list) then
+            #[mkIdent `Triptych.componentWith] else #[])
       -- `component` unfolds through `envOf`, so unfold both (only when a scalar cap is present).
       ++ (if hasScalar then #[mkIdent `Triptych.component, mkIdent `Triptych.envOf] else #[])
       ++ #[mkIdent `Triptych.captureMapOf]
   `(theorem $equivId (s : String) :
         $cvId s = (decode $grammarId s).map (fun _ => $valId $compArgs*) := by
-      unfold $cvId $cvEntry $[$compUnf:ident]* $valId $valDef
+      unfold $cvId $cvEntry $[$compUnf:ident]* $valDef $valId
       rw [Triptych.scan_eq_decode]
       cases h : decode $grammarId s with
       | none => simp [h]
       | some m =>
         simp [h, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD,
-          Env.countVal, ValExpr.eval])
+          hexOf_getD, hexSeqOf_getD, segmentsOf_getD, Env.countVal, ValExpr.eval] <;> ac_rfl)
 
 /-- Emit the decode-elimination specialization of `computeValue_eq`. Once an external-parser
     proof identifies the exact selected capture map, this theorem exposes the readable value
     directly, without requiring the user to unfold `computeValue`, `component`, or `envOf`. -/
 def computeValueOfDecodeProof (specName : Name) (grammarId : TSyntax `ident)
-    (caps : List (String × Bool)) : CommandElabM (TSyntax `command) := do
+    (caps : List (String × ArgShape)) : CommandElabM (TSyntax `command) := do
   let theoremId := mkIdent (specName ++ `computeValue_of_decode)
   let computeEqId := mkIdent (specName ++ `computeValue_eq)
   let cvId := mkIdent (specName ++ `computeValue)
   let valId := mkIdent (specName ++ `value)
-  let args : Array (TSyntax `term) ← caps.toArray.mapM (fun (name, isList) =>
-    if isList then
-      `(Triptych.CaptureMap.toEnvList m $(Syntax.mkStrLit name))
-    else
-      `((Triptych.CaptureMap.toEnv m $(Syntax.mkStrLit name)).getD ""))
-  let rewrites : Array (TSyntax `term) ← caps.toArray.mapM (fun (name, isList) =>
-    if isList then
-      `(Triptych.componentList_eq_of_decode h $(Syntax.mkStrLit name))
-    else
-      `(Triptych.component_eq_of_decode h $(Syntax.mkStrLit name)))
+  let mTerm ← `(m)
+  let hTerm ← `(h)
+  let args : Array (TSyntax `term) ← caps.toArray.mapM (fun (name, shape) =>
+    liftMacroM (shape.mapRead mTerm name))
+  let rewrites : Array (TSyntax `term) ← caps.toArray.mapM (fun (name, shape) =>
+    liftMacroM (shape.decodeRewrite hTerm name))
   let asSimp := fun (t : TSyntax `term) =>
     show CommandElabM (TSyntax `Lean.Parser.Tactic.simpLemma) from
       `(Lean.Parser.Tactic.simpLemma| $t:term)
@@ -1088,7 +1119,7 @@ def computeValueOfDecodeProof (specName : Name) (grammarId : TSyntax `ident)
     rewrites the string-level component readers to direct lookups in a known capture map, which
     is the form parse views and external-parser bridges need. -/
 def constraintsOfDecodeProof (specName : Name) (grammarId : TSyntax `ident)
-    (caps : List (String × Bool)) (wellFormed : Bool) :
+    (caps : List (String × ArgShape)) (wellFormed : Bool) :
     CommandElabM (TSyntax `command) := do
   let theoremId := mkIdent
     (specName ++ if wellFormed then `SatisfiesWfConstraints_of_decode
@@ -1097,16 +1128,12 @@ def constraintsOfDecodeProof (specName : Name) (grammarId : TSyntax `ident)
     (specName ++ if wellFormed then `SatisfiesWfConstraints else `SatisfiesConstraints)
   let relationId := mkIdent
     (specName ++ if wellFormed then `WfConstraints else `Constraints)
-  let args : Array (TSyntax `term) ← caps.toArray.mapM (fun (name, isList) =>
-    if isList then
-      `(Triptych.CaptureMap.toEnvList m $(Syntax.mkStrLit name))
-    else
-      `((Triptych.CaptureMap.toEnv m $(Syntax.mkStrLit name)).getD ""))
-  let rewrites : Array (TSyntax `term) ← caps.toArray.mapM (fun (name, isList) =>
-    if isList then
-      `(Triptych.componentList_eq_of_decode h $(Syntax.mkStrLit name))
-    else
-      `(Triptych.component_eq_of_decode h $(Syntax.mkStrLit name)))
+  let mTerm ← `(m)
+  let hTerm ← `(h)
+  let args : Array (TSyntax `term) ← caps.toArray.mapM (fun (name, shape) =>
+    liftMacroM (shape.mapRead mTerm name))
+  let rewrites : Array (TSyntax `term) ← caps.toArray.mapM (fun (name, shape) =>
+    liftMacroM (shape.decodeRewrite hTerm name))
   let asSimp := fun (t : TSyntax `term) =>
     show CommandElabM (TSyntax `Lean.Parser.Tactic.simpLemma) from
       `(Lean.Parser.Tactic.simpLemma| $t:term)
@@ -1120,7 +1147,7 @@ def constraintsOfDecodeProof (specName : Name) (grammarId : TSyntax `ident)
 /-- One field of the generated proof-facing decoded view. -/
 structure ViewFieldSpec where
   capture : String
-  isList : Bool
+  shape : ArgShape
   isOptional : Bool
   fieldName : Name
 
@@ -1161,33 +1188,36 @@ def requiredCaptures (g : Grammar) : List String :=
 
 /-- Turn a capture key into a stable Lean field name. List-valued readers receive an `All`
     suffix so scalar and collection views of the same capture can coexist. -/
-private def viewFieldBase (capture : String) (isList : Bool) : String :=
+private def viewFieldBase (capture : String) (shape : ArgShape) : String :=
   let clean := String.ofList ((surfaceBinder capture).toList.map fun c =>
     if c.isAlphanum || c = '_' then c else '_')
   let clean :=
     match clean.toList with
     | c :: _ => if c.isDigit then "_" ++ clean else clean
     | [] => "component"
-  if isList then clean ++ "All" else clean
+  match shape with
+  | .scalar => clean
+  | .list => clean ++ "All"
+  | .group .. => clean ++ "Groups"
 
 /-- Deduplicate requested capture readers and assign collision-free generated field names.
     Scalar fields become `Option String` exactly when the grammar does not guarantee their
     presence in every complete parse. -/
-def viewFieldSpecs (g : Grammar) (caps : List (String × Bool)) : List ViewFieldSpec := Id.run do
-  let mut seenCaps : List (String × Bool) := []
+def viewFieldSpecs (g : Grammar) (caps : List (String × ArgShape)) : List ViewFieldSpec := Id.run do
+  let mut seenCaps : List (String × ArgShape) := []
   let mut used : Std.HashMap String Nat := {}
   let required := requiredCaptures g
   used := used.insert "input" 1
   let mut out : List ViewFieldSpec := []
-  for (capture, isList) in caps do
-    unless seenCaps.contains (capture, isList) do
-      seenCaps := seenCaps ++ [(capture, isList)]
-      let base := viewFieldBase capture isList
+  for (capture, shape) in caps do
+    unless seenCaps.contains (capture, shape) do
+      seenCaps := seenCaps ++ [(capture, shape)]
+      let base := viewFieldBase capture shape
       let index := used.getD base 0
       used := used.insert base (index + 1)
       let field := if index = 0 then base else base ++ toString index
-      let isOptional := !isList && !(required.contains capture)
-      out := out ++ [⟨capture, isList, isOptional, Name.mkSimple field⟩]
+      let isOptional := !shape.isCollection && !(required.contains capture)
+      out := out ++ [⟨capture, shape, isOptional, Name.mkSimple field⟩]
   return out
 
 /-- Emit `<Name>.View`, the typed component record used by generated bridge theorems. -/
@@ -1195,9 +1225,7 @@ def viewStructureCommand (specName : Name) (fields : List ViewFieldSpec) :
     CommandElabM (TSyntax `command) := do
   let fieldLines := "  input : String" :: fields.map fun field =>
       let ty :=
-        if field.isList then "List String"
-        else if field.isOptional then "Option String"
-        else "String"
+        if field.isOptional then "Option String" else field.shape.typeString
       s!"  «{field.fieldName.toString false}» : {ty}"
   let source :=
     s!"structure {specName.toString true}.View where\n{String.intercalate "\n" fieldLines}"
@@ -1222,18 +1250,20 @@ private def viewFieldValueTerm (specName : Name) (field : ViewFieldSpec)
 /-- Emit the pure, reader-facing operations on `<Name>.View`: only constraint phases that are
     present, `Valid` specialized to those phases, and (when a value exists) `denotation`. -/
 def viewSurfaceCommands (specName : Name) (fields : List ViewFieldSpec)
-    (wfCaps valueConstraintCaps valueCaps : List (String × Bool))
-    (hasValue : Bool) : CommandElabM (Array (TSyntax `command)) := do
+    (wfCaps valueConstraintCaps valueCaps : List (String × ArgShape))
+    (hasValue : Bool) (valueAst? : Option ValExpr)
+    (valueConstraintAsts : List Constraint) :
+    CommandElabM (Array (TSyntax `command)) := do
   let viewId := mkIdent (specName ++ `View)
   let v ← `(v)
   let wfId := mkIdent (specName ++ `View ++ `WfConstraints)
   let constraintsId := mkIdent (specName ++ `View ++ `Constraints)
   let validId := mkIdent (specName ++ `View ++ `Valid)
-  let findField (capture : String) (isList : Bool) : Option ViewFieldSpec :=
-    fields.find? (fun field => field.capture = capture && field.isList = isList)
-  let captureArgs (caps : List (String × Bool)) : CommandElabM (Array (TSyntax `term)) :=
-    caps.toArray.mapM fun (capture, isList) =>
-      match findField capture isList with
+  let findField (capture : String) (shape : ArgShape) : Option ViewFieldSpec :=
+    fields.find? (fun field => field.capture = capture && field.shape == shape)
+  let captureArgs (caps : List (String × ArgShape)) : CommandElabM (Array (TSyntax `term)) :=
+    caps.toArray.mapM fun (capture, shape) =>
+      match findField capture shape with
       | some field => viewFieldValueTerm specName field v
       | none => throwError "internal error: no generated view field for capture `{capture}`"
   let mut commands : Array (TSyntax `command) := #[]
@@ -1261,36 +1291,92 @@ def viewSurfaceCommands (specName : Name) (fields : List ViewFieldSpec)
   if hasValue then
     let denotationId := mkIdent (specName ++ `View ++ `denotation)
     let valueId := mkIdent (specName ++ `value)
-    let args : Array (TSyntax `term) ← valueCaps.toArray.mapM fun (capture, isList) =>
-      match findField capture isList with
+    let args : Array (TSyntax `term) ← valueCaps.toArray.mapM fun (capture, shape) =>
+      match findField capture shape with
       | some field => viewFieldValueTerm specName field v
       | none => throwError "internal error: no generated view field for capture `{capture}`"
     commands := commands.push
       (← `(def $denotationId (v : $viewId) := $valueId $args*))
+    if let some valueAst := valueAst? then
+      unless valueConstraintAsts.isEmpty do
+        let cachedId := mkIdent (specName ++ `View ++ `ConstraintsWithValue)
+        let cachedEqId :=
+          mkIdent (specName ++ `View ++ `ConstraintsWithValue_denotation)
+        let computed := mkIdent `computed
+        let computedTerm : TSyntax `term := ⟨computed.raw⟩
+        let terms ← valueConstraintAsts.toArray.mapM fun constraint =>
+          liftMacroM
+            (quoteConstraintReadable (some (valueAst, computedTerm)) constraint)
+        let mut body ← match terms.toList with
+          | [] => `(True)
+          | first :: rest => rest.foldlM (fun acc term => `($acc ∧ $term)) first
+        for (capture, shape) in valueConstraintCaps.reverse do
+          let field ←
+            match findField capture shape with
+            | some field => pure field
+            | none =>
+                throwError
+                  "internal error: no generated view field for capture `{capture}`"
+          let fieldValue ← viewFieldValueTerm specName field v
+          let binder := mkIdent (Name.mkSimple (surfaceBinder capture))
+          body ← `(let $binder := $fieldValue; $body)
+        commands := commands.push
+          (← `(def $cachedId (v : $viewId) ($computed : Int) : Prop := $body))
+        commands := commands.push
+          (← `(theorem $cachedEqId (v : $viewId) :
+              $cachedId v ($denotationId v) ↔ $constraintsId v := by
+            unfold $cachedId $denotationId $constraintsId
+            rfl))
   return commands
 
-/-- Emit `View.ofMap` and `decodeView`, the executable projection from scanner captures to the
-    generated typed view. -/
+/-- Emit the executable projections from legacy capture maps and deferred source spans to the
+    generated typed view, followed by the specification-facing `decodeView`. -/
 def viewEngineCommands (specName : Name) (grammarId : TSyntax `ident)
     (fields : List ViewFieldSpec) : CommandElabM (Array (TSyntax `command)) := do
   let viewId := mkIdent (specName ++ `View)
   let ctorId := mkIdent (specName ++ `View ++ `mk)
   let ofMapId := mkIdent (specName ++ `View ++ `ofMap)
+  let ofSpansId := mkIdent (specName ++ `View ++ `ofSpans)
+  let ofSpansEqId := mkIdent (specName ++ `View ++ `ofSpans_eq_ofMap)
   let decodeViewId := mkIdent (specName ++ `decodeView)
-  let args : Array (TSyntax `term) ← fields.toArray.mapM fun field =>
-    if field.isList then
-      `(Triptych.CaptureMap.toEnvList m $(Syntax.mkStrLit field.capture))
-    else if field.isOptional then
+  let mTerm ← `(m)
+  let mapArgs : Array (TSyntax `term) ← fields.toArray.mapM fun field =>
+    if field.isOptional then
       `(Triptych.CaptureMap.toEnv m $(Syntax.mkStrLit field.capture))
     else
-      `((Triptych.CaptureMap.toEnv m $(Syntax.mkStrLit field.capture)).getD "")
+      liftMacroM (field.shape.mapRead mTerm field.capture)
+  let materialized ← `(spans.materialize chars)
+  let spanArgs : Array (TSyntax `term) ← fields.toArray.mapM fun field =>
+    if let .group .. := field.shape then
+      liftMacroM (field.shape.mapRead materialized field.capture)
+    else if field.shape == .list then
+      `(Triptych.LeanSpanCursor.SpanMap.toEnvList chars spans
+          $(Syntax.mkStrLit field.capture))
+    else if field.isOptional then
+      `(Triptych.LeanSpanCursor.SpanMap.toEnv chars spans
+          $(Syntax.mkStrLit field.capture))
+    else
+      `((Triptych.LeanSpanCursor.SpanMap.toEnv chars spans
+          $(Syntax.mkStrLit field.capture)).getD "")
   let ofMap ←
     `(def $ofMapId (input : String) (m : Triptych.CaptureMap) : $viewId :=
-        $ctorId input $args*)
+        $ctorId input $mapArgs*)
+  let ofSpans ←
+    `(private def $ofSpansId (input : String) (chars : List Char)
+        (spans : Triptych.LeanSpanCursor.SpanMap) : $viewId :=
+      $ctorId input $spanArgs*)
+  let ofSpansEq ←
+    `(private theorem $ofSpansEqId (input : String) (chars : List Char)
+        (spans : Triptych.LeanSpanCursor.SpanMap) :
+        $ofSpansId input chars spans =
+          $ofMapId input (spans.materialize chars) := by
+      unfold $ofSpansId $ofMapId
+      simp only [Triptych.LeanSpanCursor.SpanMap.captureMap_toEnv,
+        Triptych.LeanSpanCursor.SpanMap.captureMap_toEnvList])
   let decodeView ←
     `(def $decodeViewId (s : String) : Option $viewId :=
         (scan $grammarId s).map ($ofMapId s))
-  return #[ofMap, decodeView]
+  return #[ofMap, ofSpans, ofSpansEq, decodeView]
 
 /-- Emit the exact-input invariant carried by every successful generated view. -/
 def decodeViewInputProof (specName : Name) : CommandElabM (TSyntax `command) := do
@@ -1438,7 +1524,9 @@ def optionPayloadBinder (fnId : TSyntax `term) : CommandElabM (TSyntax `term × 
     let cod ← Meta.whnf body
     unless cod.isAppOfArity ``Option 1 do return fallback
     let payload := cod.appArg!
-    let payloadStx ← Lean.PrettyPrinter.delab payload
+    let payloadStx ←
+      withOptions (Lean.pp.fullNames.set · true) <|
+        Lean.PrettyPrinter.delab payload
     -- Binder name = lowercased first letter of the payload type's head constant.
     let nm : Name :=
       match payload.getAppFn.constName? with
@@ -1481,7 +1569,9 @@ def ofSpecCodomainBinder (ofSpecId : TSyntax `term) : CommandElabM (TSyntax `ter
     let ty ← Meta.whnf (← Meta.inferType e)
     let .forallE _ _ body _ := ty | return fallback
     let cod ← Meta.whnf body
-    let codStx ← Lean.PrettyPrinter.delab cod
+    let codStx ←
+      withOptions (Lean.pp.fullNames.set · true) <|
+        Lean.PrettyPrinter.delab cod
     let nm : Name :=
       match cod.getAppFn.constName? with
       | some c =>
@@ -1505,7 +1595,9 @@ def serializerDomainBinder (toStrId : TSyntax `term) : CommandElabM (TSyntax `te
     let ty ← Meta.whnf (← Meta.inferType e)
     let .forallE _ dom _ _ := ty | return fallback
     let dom ← Meta.whnf dom
-    let domStx ← Lean.PrettyPrinter.delab dom
+    let domStx ←
+      withOptions (Lean.pp.fullNames.set · true) <|
+        Lean.PrettyPrinter.delab dom
     let nm : Name :=
       match dom.getAppFn.constName? with
       | some c =>
@@ -1514,6 +1606,809 @@ def serializerDomainBinder (toStrId : TSyntax `term) : CommandElabM (TSyntax `te
         | [] => `d
       | none => `d
     return (domStx, nm)
+
+/-- Quote one lowered cursor run into generated Lean source. -/
+private def cursorRunTerm : CursorRun → CommandElabM (TSyntax `term)
+  | .fixed width => `(CursorRun.fixed $(quote width))
+  | .greedyBetween lower upper =>
+      `(CursorRun.greedyBetween $(quote lower) $(quote upper))
+  | .greedyAtLeastOne => `(CursorRun.greedyAtLeastOne)
+
+/-- Quote one token class into generated Lean source. -/
+private def cursorTokenTerm : TokClass → CommandElabM (TSyntax `term)
+  | .digit => `(TokClass.digit)
+  | .hexDigit => `(TokClass.hexDigit)
+  | .bit => `(TokClass.bit)
+  | .asciiRange lower upper =>
+      `(TokClass.asciiRange $(quote lower) $(quote upper))
+  | .oneOf chars => `(TokClass.oneOf $(quote chars))
+  | .noneOf chars => `(TokClass.noneOf $(quote chars))
+
+private def lengthTerm : LenSpec → CommandElabM (TSyntax `term)
+  | .exactly width => `(LenSpec.exactly $(quote width))
+  | .between lower upper => `(LenSpec.between $(quote lower) $(quote upper))
+  | .atLeastOne => `(LenSpec.atLeastOne)
+
+private def stringListTerm (values : List String) : CommandElabM (TSyntax `term) := do
+  let terms ← values.mapM fun entry => `($(Syntax.mkStrLit entry))
+  let separated : Syntax.TSepArray `term "," := .ofElems terms.toArray
+  `([$separated,*])
+
+/-- Quote one cursor instruction into generated Lean source. -/
+private def cursorOpTerm : CursorOp → CommandElabM (TSyntax `term)
+  | .beginCapture name keys => do
+      let keysTerm ← stringListTerm keys
+      `(CursorOp.beginCapture $(Syntax.mkStrLit name) $keysTerm)
+  | .endCapture name =>
+      `(CursorOp.endCapture $(Syntax.mkStrLit name))
+  | .expect character =>
+      `(CursorOp.expect $(quote character))
+  | .consumeOptional character =>
+      `(CursorOp.consumeOptional $(quote character))
+  | .consumeRun token run => do
+      let tokenTerm ← cursorTokenTerm token
+      let runTerm ← cursorRunTerm run
+      `(CursorOp.consumeRun $tokenTerm $runTerm)
+
+/-- Quote the structured scan pattern checked by the generic correctness theorem. -/
+private def scanPatternTerm : ScanPattern → CommandElabM (TSyntax `term)
+  | .empty => `(ScanPattern.empty)
+  | .literal character rest => do
+      let restTerm ← scanPatternTerm rest
+      `(ScanPattern.literal $(quote character) $restTerm)
+  | .optionalLiteral character rest => do
+      let restTerm ← scanPatternTerm rest
+      `(ScanPattern.optionalLiteral $(quote character) $restTerm)
+  | .tokenRun token length rest => do
+      let tokenTerm ← cursorTokenTerm token
+      let lengthSyntax ← lengthTerm length
+      let restTerm ← scanPatternTerm rest
+      `(ScanPattern.tokenRun $tokenTerm $lengthSyntax $restTerm)
+  | .capture name keys body rest => do
+      let keysTerm ← stringListTerm keys
+      let bodyTerm ← scanPatternTerm body
+      let restTerm ← scanPatternTerm rest
+      `(ScanPattern.capture $(Syntax.mkStrLit name) $keysTerm $bodyTerm $restTerm)
+
+/-- Quote the complete structured plan emitted into a generated parser module. -/
+private def scanPlanTerm (plan : ScanPlan) : CommandElabM (TSyntax `term) := do
+  let patternTerm ← scanPatternTerm plan.pattern
+  `(({ start := $(Syntax.mkStrLit plan.start), pattern := $patternTerm } : ScanPlan))
+
+mutual
+
+/-- Quote one reference-resolved ordered-search pattern. -/
+private partial def searchPatternTerm : SearchPattern → CommandElabM (TSyntax `term)
+  | .literal text =>
+      `(SearchPattern.literal $(Syntax.mkStrLit text))
+  | .stringLiteral =>
+      `(SearchPattern.stringLiteral)
+  | .tokenRun token length => do
+      let tokenTerm ← cursorTokenTerm token
+      let lengthSyntax ← lengthTerm length
+      `(SearchPattern.tokenRun $tokenTerm $lengthSyntax)
+  | .capture name keys alternatives => do
+      let keysTerm ← stringListTerm keys
+      let alternativesTerm ← searchAlternativesTerm alternatives
+      `(SearchPattern.capture $(Syntax.mkStrLit name) $keysTerm $alternativesTerm)
+  | .repetition separator item lower upper countKey => do
+      let itemTerm ← searchPatternTerm item
+      let upperTerm ← match upper with
+        | none => `(none)
+        | some bound => `(some $(quote bound))
+      `(SearchPattern.repetition $(Syntax.mkStrLit separator) $itemTerm
+          $(quote lower) $upperTerm $(Syntax.mkStrLit countKey))
+  | .optional body => do
+      let bodyTerm ← searchPatternTerm body
+      `(SearchPattern.optional $bodyTerm)
+
+/-- Quote one ordered-search sequence. -/
+private partial def searchSequenceTerm (patterns : List SearchPattern) :
+    CommandElabM (TSyntax `term) := do
+  let patternTerms ← patterns.mapM searchPatternTerm
+  let separated : Syntax.TSepArray `term "," := .ofElems patternTerms.toArray
+  `([$separated,*])
+
+/-- Quote source-ordered resolved alternatives. -/
+private partial def searchAlternativesTerm (alternatives : List (List SearchPattern)) :
+    CommandElabM (TSyntax `term) := do
+  let alternativeTerms ← alternatives.mapM searchSequenceTerm
+  let separated : Syntax.TSepArray `term "," := .ofElems alternativeTerms.toArray
+  `([$separated,*])
+
+end
+
+/-- Quote a complete ordered search plan. -/
+private def searchPlanTerm (plan : SearchPlan) : CommandElabM (TSyntax `term) := do
+  let alternativesTerm ← searchAlternativesTerm plan.alternatives
+  `(({ start := $(Syntax.mkStrLit plan.start), alternatives := $alternativesTerm } : SearchPlan))
+
+private partial def searchCodeTerm : SearchCode → CommandElabM (TSyntax `term)
+  | .accept =>
+      `(SearchCode.accept)
+  | .fail =>
+      `(SearchCode.fail)
+  | .literal text next => do
+      let nextTerm ← searchCodeTerm next
+      `(SearchCode.literal $(Syntax.mkStrLit text) $nextTerm)
+  | .stringLiteral next => do
+      let nextTerm ← searchCodeTerm next
+      `(SearchCode.stringLiteral $nextTerm)
+  | .tokenRun token length next => do
+      let tokenTerm ← cursorTokenTerm token
+      let lengthSyntax ← lengthTerm length
+      let nextTerm ← searchCodeTerm next
+      `(SearchCode.tokenRun $tokenTerm $lengthSyntax $nextTerm)
+  | .capture keys body next => do
+      let keysTerm ← stringListTerm keys
+      let bodyTerm ← searchCodeTerm body
+      let nextTerm ← searchCodeTerm next
+      `(SearchCode.capture $keysTerm $bodyTerm $nextTerm)
+  | .choice first second => do
+      let firstTerm ← searchCodeTerm first
+      let secondTerm ← searchCodeTerm second
+      `(SearchCode.choice $firstTerm $secondTerm)
+  | .repetition separator item lower upper countKey next => do
+      let itemTerm ← searchCodeTerm item
+      let upperTerm ← match upper with
+        | none => `(none)
+        | some bound => `(some $(quote bound))
+      let nextTerm ← searchCodeTerm next
+      `(SearchCode.repetition $(Syntax.mkStrLit separator) $itemTerm
+          $(quote lower) $upperTerm $(Syntax.mkStrLit countKey) $nextTerm)
+
+/-- Quote a continuation-fused search program, so generated parsers do not lower source sequences
+    at runtime. -/
+private def searchProgramTerm (program : SearchProgram) :
+    CommandElabM (TSyntax `term) := do
+  let codeTerm ← searchCodeTerm program.code
+  `(({ start := $(Syntax.mkStrLit program.start), code := $codeTerm } : SearchProgram))
+
+private def sequenceTerm (sequence : Triptych.Seq) : CommandElabM (TSyntax `term) := do
+  let itemTerms ← sequence.mapM symItemLit
+  let items : Syntax.TSepArray `term "," := .ofElems itemTerms.toArray
+  `([$items,*])
+
+/-- Reify the structural proof that the compiled pattern mirrors its source grammar sequence.
+    The emitter performs only shape-directed constructor selection; Lean checks the resulting
+    witness against the generated grammar and plan. -/
+private partial def mirrorsSequenceTerm (grammarId : TSyntax `ident) (grammar : Grammar)
+    (qual : String) (fuel : Nat) (sequence : Triptych.Seq) (pattern : ScanPattern) :
+    CommandElabM (TSyntax `term) := do
+  match sequence, pattern with
+  | [], .empty =>
+      `(ScanPattern.MirrorsSequence.empty)
+  | { sym := .lit text, optional := true } :: rest,
+      .optionalLiteral character tail => do
+      unless text.toList = [character] do
+        throwError "internal error: optional-literal scan pattern does not mirror the grammar"
+      let tailProof ← mirrorsSequenceTerm grammarId grammar qual fuel rest tail
+      `(ScanPattern.MirrorsSequence.optionalLiteral (by rfl) $tailProof)
+  | { sym := .lit text, optional := false } :: rest,
+      .literal character tail => do
+      unless text.toList = [character] do
+        throwError "internal error: literal scan pattern does not mirror the grammar"
+      let tailProof ← mirrorsSequenceTerm grammarId grammar qual fuel rest tail
+      `(ScanPattern.MirrorsSequence.literal (by rfl) $tailProof)
+  | { sym := .term token length, optional := false } :: rest,
+      .tokenRun foundToken foundLength tail => do
+      unless token = foundToken && length = foundLength do
+        throwError "internal error: token-run scan pattern does not mirror the grammar"
+      let tailProof ← mirrorsSequenceTerm grammarId grammar qual fuel rest tail
+      `(ScanPattern.MirrorsSequence.tokenRun rfl rfl $tailProof)
+  | { sym := .ref name, optional := false } :: rest,
+      .capture foundName keys body tail => do
+      unless name = foundName && keys = ScanPattern.expectedCaptureKeys qual name do
+        throwError "internal error: capture scan pattern does not mirror the grammar"
+      let remainingFuel ←
+        match fuel with
+        | 0 => throwError "internal error: capture scan pattern exhausted grammar fuel"
+        | remaining + 1 => pure remaining
+      let production ←
+        match grammar.prod? name with
+        | some production => pure production
+        | none => throwError m!"internal error: unresolved scan-plan production `{name}`"
+      let alternative ←
+        match production.alts with
+        | [alternative] => pure alternative
+        | _ => throwError m!"internal error: scan-plan production `{name}` is not singular"
+      let bodyProof ←
+        mirrorsSequenceTerm grammarId grammar name remainingFuel alternative body
+      let tailProof ← mirrorsSequenceTerm grammarId grammar qual fuel rest tail
+      `(ScanPattern.MirrorsSequence.capture
+          (grammar := $grammarId) rfl rfl (by rfl) (by rfl) $bodyProof $tailProof)
+  | _, _ =>
+      throwError "internal error: compiled scan pattern does not mirror its grammar sequence"
+
+mutual
+
+/-- Reify the structural proof that one resolved search pattern mirrors its source symbol. As for
+    scan plans, the emitter only selects constructors; Lean's kernel checks the witness. -/
+private partial def searchMirrorsSymbolTerm (grammarId : TSyntax `ident) (grammar : Grammar)
+    (qual : String) (fuel : Nat) (symbol : Sym) (pattern : SearchPattern) :
+    CommandElabM (TSyntax `term) := do
+  match symbol, pattern with
+  | .lit text, .literal found => do
+      unless text = found do
+        throwError "internal error: literal search pattern does not mirror the grammar"
+      `(SearchPattern.MirrorsSymbol.literal)
+  | .str, .stringLiteral =>
+      `(SearchPattern.MirrorsSymbol.stringLiteral)
+  | .term token length, .tokenRun foundToken foundLength => do
+      unless token = foundToken && length = foundLength do
+        throwError "internal error: token-run search pattern does not mirror the grammar"
+      `(SearchPattern.MirrorsSymbol.tokenRun)
+  | .rep separator item lower upper,
+      .repetition foundSeparator body foundLower foundUpper countKey => do
+      unless separator = foundSeparator && lower = foundLower && upper = foundUpper &&
+          countKey = item.refName?.getD qual do
+        throwError "internal error: repetition search pattern does not mirror the grammar"
+      let bodyProof ← searchMirrorsSymbolTerm grammarId grammar qual fuel item body
+      `(SearchPattern.MirrorsSymbol.repetition (by rfl) $bodyProof)
+  | .ref name, .capture foundName keys alternatives => do
+      unless name = foundName && keys = SearchPattern.expectedCaptureKeys qual name do
+        throwError "internal error: capture search pattern does not mirror the grammar"
+      let remainingFuel ←
+        match fuel with
+        | 0 => throwError "internal error: capture search pattern exhausted grammar fuel"
+        | remaining + 1 => pure remaining
+      let production ←
+        match grammar.prod? name with
+        | some production => pure production
+        | none => throwError m!"internal error: unresolved search-plan production `{name}`"
+      let productionTerm ← prodLit production
+      let bodyProof ←
+        searchMirrorsAlternativesTerm grammarId grammar name remainingFuel
+          production.alts alternatives
+      `(SearchPattern.MirrorsSymbol.capture (grammar := $grammarId)
+          (fuel := $(quote remainingFuel)) (production := $productionTerm)
+          (by rfl) (by rfl) $bodyProof)
+  | _, _ =>
+      throwError "internal error: compiled search pattern does not mirror its grammar symbol"
+
+/-- Reify the structural proof for one resolved search sequence. -/
+private partial def searchMirrorsSequenceTerm (grammarId : TSyntax `ident) (grammar : Grammar)
+    (qual : String) (fuel : Nat) (sequence : Triptych.Seq) (patterns : List SearchPattern) :
+    CommandElabM (TSyntax `term) := do
+  match sequence, patterns with
+  | [], [] =>
+      `(SearchPattern.MirrorsSequence.empty)
+  | { sym := symbol, optional := true } :: rest, .optional pattern :: patterns => do
+      let headProof ← searchMirrorsSymbolTerm grammarId grammar qual fuel symbol pattern
+      let tailProof ← searchMirrorsSequenceTerm grammarId grammar qual fuel rest patterns
+      `(SearchPattern.MirrorsSequence.optional $headProof $tailProof)
+  | { sym := symbol, optional := false } :: rest, pattern :: patterns => do
+      let headProof ← searchMirrorsSymbolTerm grammarId grammar qual fuel symbol pattern
+      let tailProof ← searchMirrorsSequenceTerm grammarId grammar qual fuel rest patterns
+      `(SearchPattern.MirrorsSequence.required $headProof $tailProof)
+  | _, _ =>
+      throwError "internal error: compiled search sequence does not mirror its grammar sequence"
+
+/-- Reify the structural proof for source-ordered resolved alternatives. -/
+private partial def searchMirrorsAlternativesTerm (grammarId : TSyntax `ident)
+    (grammar : Grammar) (qual : String) (fuel : Nat) (alternatives : List Triptych.Seq)
+    (patterns : List (List SearchPattern)) : CommandElabM (TSyntax `term) := do
+  match alternatives, patterns with
+  | [], [] =>
+      `(SearchPattern.MirrorsAlternatives.empty)
+  | alternative :: alternatives, pattern :: patterns => do
+      let headProof ←
+        searchMirrorsSequenceTerm grammarId grammar qual fuel alternative pattern
+      let tailProof ←
+        searchMirrorsAlternativesTerm grammarId grammar qual fuel alternatives patterns
+      `(SearchPattern.MirrorsAlternatives.cons $headProof $tailProof)
+  | _, _ =>
+      throwError "internal error: compiled search alternatives do not mirror the grammar"
+
+end
+
+/-- Reify the root-level structural certificate for an ordered search plan. -/
+private def searchMirrorsGrammarTerm (grammarId : TSyntax `ident) (grammar : Grammar)
+    (plan : SearchPlan) : CommandElabM (TSyntax `term) := do
+  unless plan.start = grammar.start do
+    throwError "internal error: search plan and grammar have different start productions"
+  let production ←
+    match grammar.startProd? with
+    | some production => pure production
+    | none => throwError "internal error: search-plan grammar has no start production"
+  let productionTerm ← prodLit production
+  let alternativesProof ←
+    searchMirrorsAlternativesTerm grammarId grammar "" grammar.prods.length
+      production.alts plan.alternatives
+  `(SearchPlan.MirrorsGrammar.intro (by rfl) $productionTerm (by rfl) $alternativesProof)
+
+/-- Reify the root-level structural certificate checked by staged parser correctness. -/
+private def mirrorsGrammarTerm (grammarId : TSyntax `ident) (grammar : Grammar)
+    (plan : ScanPlan) : CommandElabM (TSyntax `term) := do
+  unless plan.start = grammar.start do
+    throwError "internal error: scan plan and grammar have different start productions"
+  let production ←
+    match grammar.startProd? with
+    | some production => pure production
+    | none => throwError "internal error: scan-plan grammar has no start production"
+  let alternative ←
+    match production.alts with
+    | [alternative] => pure alternative
+    | _ => throwError "internal error: scan-plan start production is not singular"
+  let productionTerm ← prodLit production
+  let alternativeTerm ← sequenceTerm alternative
+  let sequenceProof ←
+    mirrorsSequenceTerm grammarId grammar "" grammar.prods.length alternative plan.pattern
+  `(ScanPlan.MirrorsGrammar.intro
+      rfl $productionTerm $alternativeTerm (by rfl) (by rfl) $sequenceProof)
+
+/-- Quote a complete lowered cursor program. -/
+private def cursorProgramTerm (program : CursorProgram) :
+    CommandElabM (TSyntax `term) := do
+  let operationTerms ← program.operations.mapM cursorOpTerm
+  let operations : Syntax.TSepArray `term "," := .ofElems operationTerms.toArray
+  let captures ← stringListTerm program.captures
+  let captureKeyTerms ← program.captureKeys.mapM fun (name, keys) => do
+    let keysTerm ← stringListTerm keys
+    `(($(Syntax.mkStrLit name), $keysTerm))
+  let captureKeys : Syntax.TSepArray `term "," := .ofElems captureKeyTerms.toArray
+  `(({ start := $(Syntax.mkStrLit program.start)
+       operations := [$operations,*]
+       captures := $captures
+       captureKeys := [$captureKeys,*] } : CursorProgram))
+
+/-- Compile one known cursor instruction to its specialized Lean runtime primitive. The generated
+    parser therefore contains no runtime `CursorOp` dispatch. -/
+private def directCursorStep (state : TSyntax `term) :
+    CursorOp → CommandElabM (TSyntax `term)
+  | .beginCapture name keys => do
+      let keysTerm ← stringListTerm keys
+      `(LeanSpanCursor.beginCapture $(Syntax.mkStrLit name) $keysTerm $state)
+  | .endCapture name =>
+      `(LeanSpanCursor.endCapture $(Syntax.mkStrLit name) $state)
+  | .expect character =>
+      `(LeanSpanCursor.expect $(quote character) $state)
+  | .consumeOptional character =>
+      `(LeanSpanCursor.consumeOptional $(quote character) $state)
+  | .consumeRun token run => do
+      let tokenTerm ← cursorTokenTerm token
+      let runTerm ← cursorRunTerm run
+      `(LeanSpanCursor.consumeRun $tokenTerm $runTerm $state)
+
+/-- Unroll a known cursor program into a right-associated chain of specialized streaming calls.
+    The shape remains definitionally equal to `LeanSpanCursor.executeOperations` on the quoted
+    instruction list. -/
+private def unrolledCursorExecution (state : TSyntax `term) :
+    List CursorOp → CommandElabM (TSyntax `term)
+  | [] => `(some $state)
+  | operation :: rest => do
+      let step ← directCursorStep state operation
+      let next := mkIdent `next
+      let tail ← unrolledCursorExecution (← `($next)) rest
+      `(Option.bind
+          $step
+          (fun $next => $tail))
+
+/-- Names of one emitted search state: its `SearchCode` constant, its specialized function, and
+    the one-step equation lemma relating the two. -/
+private structure SearchNodeNames where
+  code : TSyntax `ident
+  node : TSyntax `ident
+  eq : TSyntax `ident
+  deriving Inhabited
+
+/-- Rewrite one `runK` step and the successor states of an emitted search state. -/
+private def searchNodeEqTactic (children : Array SearchNodeNames) :
+    CommandElabM (TSyntax `tactic) :=
+  match children.toList with
+  | [] => `(tactic| simp only [SearchCode.runK])
+  | [first] => `(tactic| simp only [SearchCode.runK, $(first.eq):ident])
+  | first :: second :: _ =>
+      `(tactic| simp only [SearchCode.runK, $(first.eq):ident, $(second.eq):ident])
+
+/-- Emission state for hash-consed search states: each distinct subtree is emitted once. -/
+private structure SearchNodeState where
+  assigned : Array (SearchCode × SearchNodeNames) := #[]
+  /-- Per state: its code definition, its function body, its equation lemma, and the number of
+      references its body makes to each successor state. -/
+  pieces : Array (TSyntax `command × TSyntax `term × TSyntax `command) := #[]
+  successors : Array (List Nat) := #[]
+
+/-- Emit one definition per distinct `SearchCode` subtree, children first.
+
+Each state `searchNode_i input k` performs exactly one `SearchCode.runK` step and calls its
+successor states by name, with the continuation `k` passed as an ordinary argument. Generated code
+and proof size are therefore linear in the number of distinct states. Inlining continuations as
+syntax would instead copy the whole remaining parse into every success point of a capture or
+repetition body, which grows exponentially with nesting depth. `searchNode_i_eq` proves the state
+equal to `runK searchCode_i` by unfolding one step and rewriting successors with their own
+equation lemmas. -/
+private partial def emitSearchNodes (specName : Name) (code : SearchCode) :
+    StateT SearchNodeState CommandElabM SearchNodeNames := do
+  if let some (_, names) := (← get).assigned.find? (·.1 == code) then
+    return names
+  let children ← match code with
+    | .accept | .fail => pure #[]
+    | .literal _ next | .stringLiteral next | .tokenRun _ _ next =>
+        pure #[← emitSearchNodes specName next]
+    | .capture _ body next =>
+        pure #[← emitSearchNodes specName body, ← emitSearchNodes specName next]
+    | .choice first second =>
+        pure #[← emitSearchNodes specName first, ← emitSearchNodes specName second]
+    | .repetition _ item _ _ _ next =>
+        pure #[← emitSearchNodes specName item, ← emitSearchNodes specName next]
+  let index := (← get).assigned.size
+  let names : SearchNodeNames :=
+    { code := mkIdent (specName ++ Name.mkSimple s!"searchCode_{index}")
+      node := mkIdent (specName ++ Name.mkSimple s!"searchNode_{index}")
+      eq := mkIdent (specName ++ Name.mkSimple s!"searchNode_{index}_eq") }
+  let child (position : Nat) : SearchNodeNames := children[position]!
+  let input := mkIdent `input
+  let k := mkIdent `k
+  let (codeTerm, body) ← match code with
+    | .accept =>
+        pure (← `(SearchCode.accept), ← `($k [] $input))
+    | .fail =>
+        pure (← `(SearchCode.fail), ← `(none))
+    | .literal text _ => do
+        let next := child 0
+        let textTerm := Syntax.mkStrLit text
+        pure (← `(SearchCode.literal $textTerm $(next.code)),
+          ← `(let characters := ($textTerm).toList
+              if characters.isPrefixOf $input then
+                $(next.node) (($input).drop characters.length) $k
+              else
+                none))
+    | .stringLiteral _ => do
+        let next := child 0
+        pure (← `(SearchCode.stringLiteral $(next.code)),
+          ← `((List.range (($input).length + 1)).findSome? fun width =>
+                if stringPrefixOk $input width then
+                  $(next.node) (($input).drop width) $k
+                else
+                  none))
+    | .tokenRun token length _ => do
+        let next := child 0
+        let tokenTerm ← cursorTokenTerm token
+        let lengthSyntax ← lengthTerm length
+        pure (← `(SearchCode.tokenRun $tokenTerm $lengthSyntax $(next.code)),
+          ← `((List.range (($input).length + 1)).findSome? fun width =>
+                if termPrefixOk $tokenTerm $lengthSyntax $input width then
+                  $(next.node) (($input).drop width) $k
+                else
+                  none))
+    | .capture keys _ _ => do
+        let body := child 0
+        let next := child 1
+        let keysTerm ← stringListTerm keys
+        pure (← `(SearchCode.capture $keysTerm $(body.code) $(next.code)),
+          ← `($(body.node) $input fun bodyCaptures remaining =>
+                let consumed := String.ofList (($input).take (($input).length - remaining.length))
+                $(next.node) remaining fun tailCaptures suffix =>
+                  $k (($keysTerm).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix))
+    | .choice _ _ => do
+        let first := child 0
+        let second := child 1
+        pure (← `(SearchCode.choice $(first.code) $(second.code)),
+          ← `(scanOrElse ($(first.node) $input $k) fun _ => $(second.node) $input $k))
+    | .repetition separator _ lower upper countKey _ => do
+        let item := child 0
+        let next := child 1
+        let separatorTerm := Syntax.mkStrLit separator
+        let countKeyTerm := Syntax.mkStrLit countKey
+        let upperTerm ← match upper with
+          | none => `(none)
+          | some bound => `(some $(quote bound))
+        pure (← `(SearchCode.repetition $separatorTerm $(item.code) $(quote lower) $upperTerm
+              $countKeyTerm $(next.code)),
+          ← `($(item.node) $input fun firstCaptures remaining =>
+                scanStarK (fun itemInput itemK => $(item.node) itemInput itemK)
+                  ($separatorTerm).toList $(quote lower) $upperTerm ($input).length
+                  remaining firstCaptures 1 fun captures suffix itemCount =>
+                    $(next.node) suffix fun tailCaptures finalSuffix =>
+                      $k ((($countKeyTerm ++ "#count", toString itemCount) :: captures) ++
+                        tailCaptures) finalSuffix))
+  let codeDef ← `(private def $(names.code) : SearchCode := $codeTerm)
+  let eqTactic ← searchNodeEqTactic children
+  let nodeEq ←
+    `(private theorem $(names.eq) ($input : List Char)
+        ($k : CaptureMap → List Char → Option CaptureMap) :
+        $(names.node) $input $k = SearchCode.runK $(names.code) $input $k := by
+      unfold $(names.node) $(names.code)
+      $eqTactic:tactic)
+  let assigned := (← get).assigned
+  let indexOf (child : SearchNodeNames) : Nat :=
+    (assigned.findIdx? fun (_, names) => names.node == child.node).getD 0
+  -- A repetition body calls its item twice: once for the first item and once per later item.
+  let successorUses := match code with
+    | .repetition .. => [indexOf (child 0), indexOf (child 0), indexOf (child 1)]
+    | _ => children.toList.map indexOf
+  modify fun state =>
+    { state with
+      assigned := state.assigned.push (code, names)
+      pieces := state.pieces.push (codeDef, body, nodeEq)
+      successors := state.successors.push successorUses }
+  return names
+
+/-- Assemble emitted search states. A state referenced from exactly one place is marked
+    `@[inline]`: inlining it cannot duplicate code, so the compiled parser keeps the straight-line
+    shape of the previous fully unrolled emitter while shared states remain ordinary functions.
+    Shared states of at most six control-flow nodes are also inlined; copying them is cheap and
+    bounded, and avoids a call per alternative for short common suffixes. -/
+private def searchNodeCommands (state : SearchNodeState) (root : Nat) :
+    CommandElabM (Array (TSyntax `command)) := do
+  let uses : Array Nat := state.successors.foldl
+    (fun counts successors => successors.foldl (fun counts index =>
+      counts.modify index (· + 1)) counts)
+    ((Array.replicate state.assigned.size 0).modify root (· + 1))
+  let input := mkIdent `input
+  let k := mkIdent `k
+  let mut commands := #[]
+  for index in [0:state.assigned.size] do
+    let names := state.assigned[index]!.2
+    let (codeDef, body, nodeEq) := state.pieces[index]!
+    let nodeDef ←
+      if uses[index]! == 1 || state.assigned[index]!.1.nodeCount ≤ 6 then
+        `(@[inline] private def $(names.node) ($input : List Char)
+            ($k : CaptureMap → List Char → Option CaptureMap) : Option CaptureMap :=
+          $body)
+      else
+        `(private def $(names.node) ($input : List Char)
+            ($k : CaptureMap → List Char → Option CaptureMap) : Option CaptureMap :=
+          $body)
+    commands := commands ++ #[codeDef, nodeDef, nodeEq]
+  return commands
+
+/-- Emit the staged Lean fast path and its generic completeness bridge. The generated execution
+    chain contains one statically known call per cursor instruction and no runtime operation-list
+    traversal. -/
+def directLeanParserCommands (specName : Name) (grammar : Grammar) (plan : ScanPlan) :
+    CommandElabM (Array (TSyntax `command)) := do
+  let program := lowerScanPlan plan
+  let grammarId := mkIdent (specName ++ `grammar)
+  let parsePlanId := mkIdent (specName ++ `parsePlan)
+  let planId := mkIdent (specName ++ `scanPlan)
+  let planMirrorsId := mkIdent (specName ++ `scanPlan_mirrorsGrammar)
+  let planCertifiedId := mkIdent (specName ++ `scanPlan_certified)
+  let grammarFunctionalId := mkIdent (specName ++ `grammarCaptureFunctional)
+  let cursorId := mkIdent (specName ++ `cursorProgram)
+  let cursorLoweredId := mkIdent (specName ++ `cursorProgram_lowered)
+  let directSpanRunId := mkIdent (specName ++ `directSpanRun)
+  let directSpanRunEqId := mkIdent (specName ++ `directSpanRun_eq_cursor)
+  let directRunId := mkIdent (specName ++ `directRun)
+  let directRunEqId := mkIdent (specName ++ `directRun_eq_cursor)
+  let directDecodeId := mkIdent (specName ++ `directDecode)
+  let directDecodeEqId := mkIdent (specName ++ `directDecode_eq_cursor)
+  let decodeId := mkIdent (specName ++ `decodeCaptures)
+  let decodePlanEqId := mkIdent (specName ++ `decodeCaptures_eq_parsePlan)
+  let decodeEqId := mkIdent (specName ++ `decodeCaptures_eq_scan)
+  let directViewId := mkIdent (specName ++ `directView)
+  let directViewDecodeId := mkIdent (specName ++ `directView_eq_directDecode)
+  let directViewEqId := mkIdent (specName ++ `directView_eq_decodeView)
+  let viewId := mkIdent (specName ++ `View)
+  let viewOfMapId := mkIdent (specName ++ `View ++ `ofMap)
+  let viewOfSpansId := mkIdent (specName ++ `View ++ `ofSpans)
+  let viewOfSpansEqId := mkIdent (specName ++ `View ++ `ofSpans_eq_ofMap)
+  let decodeViewId := mkIdent (specName ++ `decodeView)
+  let directSpanRunEqRw ←
+    `(Lean.Parser.Tactic.rwRule| $directSpanRunEqId:ident)
+  let directRunEqRw ←
+    `(Lean.Parser.Tactic.rwRule| $directRunEqId:ident)
+  let decodeEqRw ←
+    `(Lean.Parser.Tactic.rwRule| $decodeEqId:ident)
+  let cursorLoweredRw ←
+    `(Lean.Parser.Tactic.rwRule| $cursorLoweredId:ident)
+  let planTerm ← scanPlanTerm plan
+  let planMirrorsTerm ← mirrorsGrammarTerm grammarId grammar plan
+  let cursorTerm ← cursorProgramTerm program
+  let input := mkIdent `input
+  let initial ← `(LeanSpanCursor.initial $input)
+  let execute ← unrolledCursorExecution initial program.operations
+  let planDef ←
+    `(private abbrev $planId : ScanPlan := $planTerm)
+  let parsePlanDef ←
+    `(private abbrev $parsePlanId : ParsePlan := ParsePlan.cursor $planId)
+  let planMirrors ←
+    `(private theorem $planMirrorsId :
+        ScanPlan.MirrorsGrammar $planId $grammarId :=
+      $planMirrorsTerm)
+  let planCertified ←
+    `(private theorem $planCertifiedId : ScanPlan.certified $planId = true := by
+      decide)
+  let cursorDef ← `(private abbrev $cursorId : CursorProgram := $cursorTerm)
+  let cursorLowered ←
+    `(private theorem $cursorLoweredId :
+        lowerScanPlan $planId = $cursorId := by
+      rfl)
+  let directSpanRunDef ←
+    `(private def $directSpanRunId (source : String) : Option LeanSpanCursor.Result :=
+        let $input := source.toList
+        Option.bind $execute fun state =>
+          LeanSpanCursor.finishSpans $input state)
+  let directSpanRunEq ←
+    `(private theorem $directSpanRunEqId (source : String) :
+        $directSpanRunId source = LeanSpanCursor.runSpans $cursorId source := by
+      rfl)
+  let directRunDef ←
+    `(private def $directRunId (source : String) : Option ScanResult :=
+        ($directSpanRunId source).map fun result =>
+          result.toScanResult source.toList)
+  let directRunEq ←
+    `(private theorem $directRunEqId (source : String) :
+        $directRunId source = CursorProgram.run $cursorId source := by
+      calc
+        $directRunId source = LeanSpanCursor.run $cursorId source := by
+          unfold $directRunId
+          rw [$directSpanRunEqRw]
+          rfl
+        _ = CursorProgram.run $cursorId source :=
+          LeanSpanCursor.run_eq_cursorProgram $cursorId source)
+  let directDecodeDef ←
+    `(private def $directDecodeId (source : String) : Option CaptureMap :=
+        ($directRunId source).map (·.captureMap))
+  let directDecodeEq ←
+    `(private theorem $directDecodeEqId (source : String) :
+        $directDecodeId source = CursorProgram.decode $cursorId source := by
+      unfold $directDecodeId CursorProgram.decode
+      rw [$directRunEqRw])
+  let decodeDef ←
+    `(private def $decodeId (source : String) : Option CaptureMap :=
+        $directDecodeId source)
+  let decodePlanEq ←
+    `(private theorem $decodePlanEqId (source : String) :
+        $decodeId source = ParsePlan.decode $parsePlanId $grammarId source := by
+      calc
+        $decodeId source =
+            CursorProgram.decode $cursorId source := by
+              unfold $decodeId
+              exact $directDecodeEqId source
+        _ = CursorProgram.decode (lowerScanPlan $planId) source := by
+              rw [$cursorLoweredRw]
+        _ = ParsePlan.decode $parsePlanId $grammarId source := by
+              rfl)
+  let decodeEq ←
+    `(private theorem $decodeEqId (source : String) :
+        $decodeId source = scan $grammarId source := by
+      calc
+        $decodeId source = ParsePlan.decode $parsePlanId $grammarId source :=
+          $decodePlanEqId source
+        _ = scan $grammarId source :=
+              ParsePlan.cursor_decode_eq_scan_of_mirrors
+                $planMirrorsId $grammarFunctionalId $planCertifiedId source)
+  let directViewDef ←
+    `(private def $directViewId (source : String) : Option $viewId :=
+        ($directSpanRunId source).map fun result =>
+          $viewOfSpansId source source.toList result.spans)
+  let directViewDecode ←
+    `(private theorem $directViewDecodeId (source : String) :
+        $directViewId source =
+          ($directDecodeId source).map ($viewOfMapId source) := by
+      unfold $directViewId $directDecodeId $directRunId
+      cases hrun : $directSpanRunId source with
+      | none => simp
+      | some result =>
+          simp only [Option.map_some]
+          exact congrArg some
+            ($viewOfSpansEqId source source.toList result.spans))
+  let directViewEq ←
+    `(private theorem $directViewEqId (source : String) :
+        $directViewId source = $decodeViewId source := by
+      calc
+        $directViewId source =
+            ($directDecodeId source).map ($viewOfMapId source) :=
+          $directViewDecodeId source
+        _ = ($decodeId source).map ($viewOfMapId source) := by
+          rfl
+        _ = $decodeViewId source := by
+          unfold $decodeViewId
+          rw [$decodeEqRw])
+  return #[planDef, parsePlanDef, planMirrors, planCertified, cursorDef, cursorLowered,
+    directSpanRunDef, directSpanRunEq, directRunDef, directRunEq, directDecodeDef,
+    directDecodeEq, decodeDef, decodePlanEq, decodeEq, directViewDef, directViewDecode,
+    directViewEq]
+
+/-- Emit a grammar-lookup-free ordered-search parser and its checked bridge to the complete
+    scanner. Unlike the cursor tier, this retains branching and bounded backtracking, but all
+    references and capture keys have already been resolved by the generator. -/
+def directSearchParserCommands (specName : Name) (grammar : Grammar) (plan : SearchPlan) :
+    CommandElabM (Array (TSyntax `command)) := do
+  let program := lowerSearchPlan plan
+  let grammarId := mkIdent (specName ++ `grammar)
+  let planId := mkIdent (specName ++ `searchPlan)
+  let parsePlanId := mkIdent (specName ++ `parsePlan)
+  let planMirrorsId := mkIdent (specName ++ `searchPlan_mirrorsGrammar)
+  let programId := mkIdent (specName ++ `searchProgram)
+  let programLoweredId := mkIdent (specName ++ `searchProgram_lowered)
+  let directDecodeId := mkIdent (specName ++ `directDecode)
+  let directDecodeEqId := mkIdent (specName ++ `directDecode_eq_searchProgram)
+  let decodeId := mkIdent (specName ++ `decodeCaptures)
+  let decodePlanEqId := mkIdent (specName ++ `decodeCaptures_eq_parsePlan)
+  let decodeEqId := mkIdent (specName ++ `decodeCaptures_eq_scan)
+  let directViewId := mkIdent (specName ++ `directView)
+  let directViewEqId := mkIdent (specName ++ `directView_eq_decodeView)
+  let viewId := mkIdent (specName ++ `View)
+  let viewOfMapId := mkIdent (specName ++ `View ++ `ofMap)
+  let decodeViewId := mkIdent (specName ++ `decodeView)
+  let planTerm ← searchPlanTerm plan
+  let planMirrorsTerm ← searchMirrorsGrammarTerm grammarId grammar plan
+  let programTerm ← searchProgramTerm program
+  let programLoweredRw ←
+    `(Lean.Parser.Tactic.rwRule| $programLoweredId:ident)
+  let captures := mkIdent `captures
+  let remaining := mkIdent `remaining
+  let rootContinuation ←
+    `(fun ($captures : CaptureMap) ($remaining : List Char) =>
+      if ($remaining).isEmpty then
+        some $captures
+      else
+        none)
+  let (root, nodeState) ← (emitSearchNodes specName program.code).run {}
+  let planDef ← `(private abbrev $planId : SearchPlan := $planTerm)
+  let parsePlanDef ←
+    `(private abbrev $parsePlanId : ParsePlan := ParsePlan.search $planId)
+  let planMirrors ←
+    `(private theorem $planMirrorsId :
+        SearchPlan.MirrorsGrammar $planId $grammarId :=
+      $planMirrorsTerm)
+  let programDef ← `(private abbrev $programId : SearchProgram := $programTerm)
+  let programLowered ←
+    `(private theorem $programLoweredId :
+        lowerSearchPlan $planId = $programId := by
+      decide)
+  let directDecodeDef ←
+    `(private def $directDecodeId (source : String) : Option CaptureMap :=
+        $(root.node) source.toList $rootContinuation)
+  let directDecodeEq ←
+    `(private theorem $directDecodeEqId (source : String) :
+        $directDecodeId source = SearchProgram.decode $programId source := by
+      have hcode : $(root.code) = ($programId).code := rfl
+      unfold $directDecodeId SearchProgram.decode
+      rw [$(root.eq):ident, hcode])
+  let decodeDef ←
+    `(private def $decodeId (source : String) : Option CaptureMap :=
+        $directDecodeId source)
+  let decodePlanEq ←
+    `(private theorem $decodePlanEqId (source : String) :
+        $decodeId source = ParsePlan.decode $parsePlanId $grammarId source := by
+      calc
+        $decodeId source = SearchProgram.decode $programId source := by
+          exact $directDecodeEqId source
+        _ = SearchProgram.decode (lowerSearchPlan $planId) source := by
+          rw [$programLoweredRw]
+        _ = ParsePlan.decode $parsePlanId $grammarId source := by
+          rfl)
+  let decodeEq ←
+    `(private theorem $decodeEqId (source : String) :
+        $decodeId source = scan $grammarId source := by
+      calc
+        $decodeId source = ParsePlan.decode $parsePlanId $grammarId source :=
+          $decodePlanEqId source
+        _ = scan $grammarId source :=
+          ParsePlan.decode_eq_scan
+            (ParsePlan.CertifiedFor.search $planMirrorsId) source)
+  let directViewDef ←
+    `(private def $directViewId (source : String) : Option $viewId :=
+        ($directDecodeId source).map ($viewOfMapId source))
+  let directViewEq ←
+    `(private theorem $directViewEqId (source : String) :
+        $directViewId source = $decodeViewId source := by
+      unfold $directViewId $decodeViewId
+      rw [show $directDecodeId source = scan $grammarId source by
+        exact $decodeEqId source])
+  let rootIndex :=
+    (nodeState.assigned.findIdx? fun (_, names) => names.node == root.node).getD 0
+  let nodeCommands ← searchNodeCommands nodeState rootIndex
+  return #[planDef, parsePlanDef, planMirrors, programDef, programLowered] ++
+    nodeCommands ++
+    #[directDecodeDef, directDecodeEq, decodeDef, decodePlanEq, decodeEq, directViewDef,
+      directViewEq]
+
+/-- Emit the Lean implementation selected by the shared parser plan. Valid Triptych grammars are
+    acyclic and therefore compile to either the cursor or ordered-search tier. Reaching the
+    scanner case is an internal compilation failure, not a runtime implementation choice. -/
+def leanParserPlanCommands (specName : Name) (grammar : Grammar) (plan : ParsePlan) :
+    CommandElabM (Array (TSyntax `command)) :=
+  match plan with
+  | .cursor scan => directLeanParserCommands specName grammar scan
+  | .search searchPlan => directSearchParserCommands specName grammar searchPlan
+  | .scanner reason =>
+      throwError
+        "Triptych: grammar could not be lowered to a specialized parser: {reason}"
 
 /-- Emit the generated correct-by-construction single-scan parser and its DISCHARGED contracts:
     `<Name>.computeValue_isSome` (readable validity ⟹ value present, via the generated
@@ -1525,10 +2420,12 @@ def serializerDomainBinder (toStrId : TSyntax `term) : CommandElabM (TSyntax `te
     external-parser obligations). `isDsl` selects the analyzable `ValExpr` path or the
     capture-map escape path.
 
-    With `ofSpec? = some ofSpec`, the parser returns the domain type `δ`:
-    `parse := scannerParse ... ofSpec : String → Option δ`, with contracts stated through
+    With `ofSpec? = some ofSpec`, the parser returns the domain type `δ`. Eligible grammars use
+    the emitted direct capture decoder; other grammars use `scannerParse`. Both definitions are
+    proved equal to the generic scanner, with contracts stated through
     `(computeValue s).map ofSpec`. Without `ofSpec`, `parse` uses `id` and returns `β`. -/
 def parserContractsProof (specName : Name) (isDsl : Bool) (ofSpec? : Option (TSyntax `term))
+    (useDirect hasWfConstraints hasValueConstraints : Bool)
     : CommandElabM (Array (TSyntax `command)) := do
   let isSomeId := mkIdent (specName ++ `computeValue_isSome)
   let parseId  := mkIdent (specName ++ `parse)
@@ -1547,9 +2444,38 @@ def parserContractsProof (specName : Name) (isDsl : Bool) (ofSpec? : Option (TSy
   let grammarId := mkIdent (specName ++ `grammar)
   let constraintsId := mkIdent (specName ++ `constraints)
   let valueId := mkIdent (specName ++ if isDsl then `valueExpr else `valueFn)
+  let directViewId := mkIdent (specName ++ `directView)
+  let directViewEqId := mkIdent (specName ++ `directView_eq_decodeView)
+  let decodeViewId := mkIdent (specName ++ `decodeView)
+  let viewId := mkIdent (specName ++ `View)
+  let viewValidId := mkIdent (specName ++ `View ++ `Valid)
+  let viewDenotationId := mkIdent (specName ++ `View ++ `denotation)
+  let cachedConstraintsId := mkIdent (specName ++ `View ++ `ConstraintsWithValue)
+  let cachedConstraintsEqId :=
+    mkIdent (specName ++ `View ++ `ConstraintsWithValue_denotation)
+  let fastAcceptId := mkIdent (specName ++ `fastAccept)
+  let fastAcceptDenotationId := mkIdent (specName ++ `fastAccept_denotation)
+  let validViewId := mkIdent (specName ++ `IsValid_view)
+  let computeValueViewId := mkIdent (specName ++ `computeValue_view)
+  let decidableViewValidId := mkIdent (specName ++ `instDecidableViewValid)
+  let viewWfId := mkIdent (specName ++ `View ++ `WfConstraints)
+  let viewConstraintsId := mkIdent (specName ++ `View ++ `Constraints)
+  let wfId := mkIdent (specName ++ `WfConstraints)
+  let constraintsRelationId := mkIdent (specName ++ `Constraints)
+  let parseEqScannerId := mkIdent (specName ++ `parse_eq_scanner)
+  let useCached := useDirect && isDsl && hasValueConstraints
+  let parseEqScannerRw ←
+    `(Lean.Parser.Tactic.rwRule| $parseEqScannerId:ident)
   let cvEntry := mkIdent
     (if isDsl then `Triptych.scannerComputeValue else `Triptych.scannerComputeValueMap)
   let parserEntry := mkIdent
+    (if useDirect then
+      `Triptych.decodedViewParse
+    else if isDsl then
+      `Triptych.scannerParse
+    else
+      `Triptych.scannerParseMap)
+  let scannerEntry := mkIdent
     (if isDsl then `Triptych.scannerParse else `Triptych.scannerParseMap)
   let profileEntry := mkIdent
     (if isDsl then `Triptych.scannerParseProfile else `Triptych.scannerParseMapProfile)
@@ -1558,6 +2484,8 @@ def parserContractsProof (specName : Name) (isDsl : Bool) (ofSpec? : Option (TSy
       `Triptych.scannerParseProfile_result
     else
       `Triptych.scannerParseMapProfile_result)
+  let profileResultRw ←
+    `(Lean.Parser.Tactic.rwRule| $profileResultTheorem:ident)
   let costTheorem := mkIdent
     (if isDsl then
       `Triptych.scannerParse_candidateChecks_le
@@ -1578,6 +2506,50 @@ def parserContractsProof (specName : Name) (isDsl : Bool) (ofSpec? : Option (TSy
       `Triptych.scannerParse_eq_surfaceGatedParseOfSpec
     else
       `Triptych.scannerParseMap_eq_surfaceGatedParseOfSpec)
+  let decidableViewValid? ← if useDirect then
+    let command ←
+      if hasWfConstraints && hasValueConstraints then
+        `(private instance $decidableViewValidId:ident : DecidablePred $viewValidId := fun view => by
+          unfold $viewValidId $viewWfId $viewConstraintsId $wfId $constraintsRelationId
+          infer_instance)
+      else if hasWfConstraints then
+        `(private instance $decidableViewValidId:ident : DecidablePred $viewValidId := fun view => by
+          unfold $viewValidId $viewWfId $wfId
+          infer_instance)
+      else if hasValueConstraints then
+        `(private instance $decidableViewValidId:ident : DecidablePred $viewValidId := fun view => by
+          unfold $viewValidId $viewConstraintsId $constraintsRelationId
+          infer_instance)
+      else
+        `(private instance $decidableViewValidId:ident : DecidablePred $viewValidId := fun _ => by
+          unfold $viewValidId
+          infer_instance)
+    pure #[command]
+  else
+    pure #[]
+  let fastAcceptCommands ← if useCached then
+    let fastAcceptSimp ←
+      `(Lean.Parser.Tactic.simpLemma| $fastAcceptId:ident)
+    let cachedConstraintsEqSimp ←
+      `(Lean.Parser.Tactic.simpLemma| $cachedConstraintsEqId:ident)
+    let fastAcceptDef ←
+      if hasWfConstraints then
+        `(private def $fastAcceptId (view : $viewId) (computed : Int) : Bool :=
+            @decide ($viewWfId view ∧ $cachedConstraintsId view computed) (by
+              unfold $viewWfId $wfId $cachedConstraintsId
+              infer_instance))
+      else
+        `(private def $fastAcceptId (view : $viewId) (computed : Int) : Bool :=
+            @decide ($cachedConstraintsId view computed) (by
+              unfold $cachedConstraintsId
+              infer_instance))
+    let fastAcceptTheorem ←
+      `(private theorem $fastAcceptDenotationId (view : $viewId) :
+          $fastAcceptId view ($viewDenotationId view) = true ↔ $viewValidId view := by
+        simp only [$fastAcceptSimp, decide_eq_true_eq, $cachedConstraintsEqSimp])
+    pure #[fastAcceptDef, fastAcceptTheorem]
+  else
+    pure #[]
   let isSomeThm ← `(theorem $isSomeId (s : String) : $validSurf s → ($cvId s).isSome := by
       intro h
       have hengine := ($validEquivId s).mp h
@@ -1588,22 +2560,71 @@ def parserContractsProof (specName : Name) (isDsl : Bool) (ofSpec? : Option (TSy
   match ofSpec? with
   | some ofSpecT =>
     -- Domain-valued parser: return `δ` via `ofSpec`.
-    let parseDef ←
+    let parseDef ← if useCached then
+      `(def $parseId (s : String) :=
+          Triptych.decodedViewParseCached
+            $directViewId $fastAcceptId $viewDenotationId $ofSpecT s)
+    else if useDirect then
+      `(def $parseId (s : String) :=
+          $parserEntry $directViewId $viewValidId $viewDenotationId $ofSpecT s)
+    else
       `(def $parseId (s : String) :=
           $parserEntry $grammarId $constraintsId $valueId $ofSpecT s)
+    let parseEqScannerThm ← if useCached then
+      `(theorem $parseEqScannerId (s : String) :
+          $parseId s =
+            $scannerEntry $grammarId $constraintsId $valueId $ofSpecT s := by
+        calc
+          $parseId s =
+              Triptych.decodedViewParse
+                $directViewId $viewValidId $viewDenotationId $ofSpecT s := by
+                unfold $parseId
+                exact Triptych.decodedViewParseCached_eq_decodedViewParse
+                  $directViewId $fastAcceptId $viewValidId $viewDenotationId $ofSpecT
+                  $fastAcceptDenotationId s
+          _ = Triptych.gatedParseOfSpec $validSurf $cvId $ofSpecT s := by
+                exact Triptych.decodedViewParse_eq_gatedParseOfSpec
+                  $directViewId $decodeViewId $viewValidId $viewDenotationId $ofSpecT
+                  $validSurf $cvId $directViewEqId $validViewId $computeValueViewId s
+          _ = $scannerEntry $grammarId $constraintsId $valueId $ofSpecT s := by
+                symm
+                unfold $cvId
+                exact $surfaceGatedOfSpecTheorem
+                  $grammarId $constraintsId $valueId $ofSpecT $validSurf $validEquivId s)
+    else if useDirect then
+      `(theorem $parseEqScannerId (s : String) :
+          $parseId s =
+            $scannerEntry $grammarId $constraintsId $valueId $ofSpecT s := by
+        calc
+          $parseId s =
+              Triptych.gatedParseOfSpec $validSurf $cvId $ofSpecT s := by
+                unfold $parseId
+                exact Triptych.decodedViewParse_eq_gatedParseOfSpec
+                  $directViewId $decodeViewId $viewValidId $viewDenotationId $ofSpecT
+                  $validSurf $cvId $directViewEqId $validViewId $computeValueViewId s
+          _ = $scannerEntry $grammarId $constraintsId $valueId $ofSpecT s := by
+                symm
+                unfold $cvId
+                exact $surfaceGatedOfSpecTheorem
+                  $grammarId $constraintsId $valueId $ofSpecT $validSurf $validEquivId s)
+    else
+      `(theorem $parseEqScannerId (s : String) :
+          $parseId s =
+            $scannerEntry $grammarId $constraintsId $valueId $ofSpecT s := by
+        rfl)
     let parseEqGatedThm ←
       `(theorem $parseEqGatedId (s : String) :
           $parseId s = Triptych.gatedParseOfSpec $validSurf $cvId $ofSpecT s := by
-        unfold $parseId $cvId
+        rw [$parseEqScannerRw]
+        unfold $cvId
         exact $surfaceGatedOfSpecTheorem
           $grammarId $constraintsId $valueId $ofSpecT $validSurf $validEquivId s)
     let profileResultThm ←
       `(theorem $profileResultId (s : String) :
           ($profileEntry $grammarId $constraintsId $valueId $ofSpecT s).result =
             $parseId s := by
-        unfold $parseId
-        exact $profileResultTheorem
-          $grammarId $constraintsId $valueId $ofSpecT s)
+        rw [$profileResultRw]
+        exact ($parseEqScannerId s).symm)
     let costThm ←
       `(theorem $costId (s : String) :
           ($profileEntry $grammarId $constraintsId $valueId $ofSpecT s).candidateChecks ≤
@@ -1634,26 +2655,80 @@ def parserContractsProof (specName : Name) (isDsl : Bool) (ofSpec? : Option (TSy
           by
             rw [$parseEqGatedRw]
             exact Triptych.gatedParseOfSpec_reject _ _ _ $isSomeId s)
-    return #[isSomeThm, parseDef, parseEqGatedThm, profileResultThm, costThm, fastCostThm,
-      soundThm, compThm, rejThm]
+    return decidableViewValid? ++ fastAcceptCommands ++
+      #[isSomeThm, parseDef, parseEqScannerThm, parseEqGatedThm, profileResultThm, costThm,
+        fastCostThm, soundThm, compThm, rejThm]
   | none =>
     -- Parser without `ofSpec`: return the spec value type `β`.
-    let parseDef ←
+    let parseDef ← if useCached then
+      `(def $parseId (s : String) :=
+          Triptych.decodedViewParseCached
+            $directViewId $fastAcceptId $viewDenotationId id s)
+    else if useDirect then
+      `(def $parseId (s : String) :=
+          $parserEntry $directViewId $viewValidId $viewDenotationId id s)
+    else
       `(def $parseId (s : String) :=
           $parserEntry $grammarId $constraintsId $valueId id s)
+    let parseEqScannerThm ← if useCached then
+      `(theorem $parseEqScannerId (s : String) :
+          $parseId s =
+            $scannerEntry $grammarId $constraintsId $valueId id s := by
+        calc
+          $parseId s =
+              Triptych.decodedViewParse
+                $directViewId $viewValidId $viewDenotationId id s := by
+                unfold $parseId
+                exact Triptych.decodedViewParseCached_eq_decodedViewParse
+                  $directViewId $fastAcceptId $viewValidId $viewDenotationId id
+                  $fastAcceptDenotationId s
+          _ = Triptych.gatedParseOfSpec $validSurf $cvId id s := by
+                exact Triptych.decodedViewParse_eq_gatedParseOfSpec
+                  $directViewId $decodeViewId $viewValidId $viewDenotationId id
+                  $validSurf $cvId $directViewEqId $validViewId $computeValueViewId s
+          _ = Triptych.gatedParse $validSurf $cvId s := by
+                simp [Triptych.gatedParseOfSpec]
+          _ = $scannerEntry $grammarId $constraintsId $valueId id s := by
+            symm
+            unfold $cvId
+            exact $surfaceGatedTheorem
+              $grammarId $constraintsId $valueId $validSurf $validEquivId s)
+    else if useDirect then
+      `(theorem $parseEqScannerId (s : String) :
+          $parseId s =
+            $scannerEntry $grammarId $constraintsId $valueId id s := by
+        calc
+          $parseId s =
+              Triptych.gatedParseOfSpec $validSurf $cvId id s := by
+                unfold $parseId
+                exact Triptych.decodedViewParse_eq_gatedParseOfSpec
+                  $directViewId $decodeViewId $viewValidId $viewDenotationId id
+                  $validSurf $cvId $directViewEqId $validViewId $computeValueViewId s
+          _ = Triptych.gatedParse $validSurf $cvId s := by
+                simp [Triptych.gatedParseOfSpec]
+          _ = $scannerEntry $grammarId $constraintsId $valueId id s := by
+            symm
+            unfold $cvId
+            exact $surfaceGatedTheorem
+              $grammarId $constraintsId $valueId $validSurf $validEquivId s)
+    else
+      `(theorem $parseEqScannerId (s : String) :
+          $parseId s =
+            $scannerEntry $grammarId $constraintsId $valueId id s := by
+        rfl)
     let parseEqGatedThm ←
       `(theorem $parseEqGatedId (s : String) :
           $parseId s = Triptych.gatedParse $validSurf $cvId s := by
-        unfold $parseId $cvId
+        rw [$parseEqScannerRw]
+        unfold $cvId
         exact $surfaceGatedTheorem
           $grammarId $constraintsId $valueId $validSurf $validEquivId s)
     let profileResultThm ←
       `(theorem $profileResultId (s : String) :
           ($profileEntry $grammarId $constraintsId $valueId id s).result =
             $parseId s := by
-        unfold $parseId
-        exact $profileResultTheorem
-          $grammarId $constraintsId $valueId id s)
+        rw [$profileResultRw]
+        exact ($parseEqScannerId s).symm)
     let costThm ←
       `(theorem $costId (s : String) :
           ($profileEntry $grammarId $constraintsId $valueId id s).candidateChecks ≤
@@ -1688,8 +2763,9 @@ def parserContractsProof (specName : Name) (isDsl : Bool) (ofSpec? : Option (TSy
         $parseId s = none ↔ ¬ $validSurf s := by
           rw [$parseEqGatedRw]
           exact Triptych.gatedParse_reject _ _ $isSomeId s)
-    return #[isSomeThm, parseDef, parseEqGatedThm, profileResultThm, costThm, fastCostThm,
-      soundThm, compThm, rejThm]
+    return decidableViewValid? ++ fastAcceptCommands ++
+      #[isSomeThm, parseDef, parseEqScannerThm, parseEqGatedThm, profileResultThm, costThm,
+        fastCostThm, soundThm, compThm, rejThm]
 
 /-- Emit the typed-view normal form of the generated parser. This is the single executable
     equation an external-parser bridge can target; the generated parser's soundness,

@@ -16,7 +16,7 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
 
 ## Build / environment
 
-- `lake build Triptych` — Cedar-free core build (~37 jobs). Lean **v4.31.0**,
+- `lake build Triptych` — Cedar-free core build. Lean **v4.34.0** (see `lean-toolchain`),
   **batteries only, NO Mathlib** (deliberate, for now).
 - `cd other-examples && lake build` — Cedar-free Graph example package.
 - `cd cedar-examples && lake build` — optional Cedar bridges, soundness
@@ -59,7 +59,15 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
   axiom-clean `checkedExtParse` fallback and its soundness/view theorems whenever the spec value
   has `DecidableEq`; these introduce no additional obligation.
 - Verify axiom-cleanliness with a temp `#print axioms <name>` file, then delete it.
-- `simp` config syntax (v4.31): `simp (config := { maxSteps := N }) only [...]` — config
+- Emitted per-instance certificates must be kernel-checked: quote explicit witness terms
+  (`mirrorsGrammarTerm`, `searchMirrorsGrammarTerm`) instead of running a `partial` validator in
+  a proof, and keep functions that generated proofs `decide` (e.g. `SearchCode.merge`/`reduce`)
+  structurally recursive. Well-founded definitions such as `scan`/`decode` do not reduce in the
+  kernel; test concrete inputs with `#guard`, not `native_decide`.
+- `include_str` templates (`Triptych/Backend/Verus/*.rs.in`) are not tracked by Lake. After editing
+  one, delete `.lake/build/lib/lean/Triptych/Backend/Verus.*` (touching the file is not enough:
+  Lake rebuilds on content hash).
+- `simp` config syntax: `simp (config := { maxSteps := N }) only [...]` — config
   BEFORE `only`. `grind` is available; `tauto` is NOT (no Mathlib).
 - Use `git ci` (commit --signoff), not `git commit`.
 
@@ -76,10 +84,17 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
 - `Constraint.lean` — `Constraint`/`ConstraintEntry` AST, explicit
   `.wellFormed`/`.value` phase classification, `card`/`presentCount`, and the `opaque`
   internal node used by the surface `constraints'` escape (`opaqueEnvClosure`).
-- `Archive/ReferenceDecoder.lean` — archived executable reference semantics:
+- `Reference/Decoder.lean` — executable reference semantics (the target of every parser theorem):
   `decode`/`matchSym`/`matchStar`/`matchRep`, plus the reference `computeValue` functions.
 - `Scanner.lean` — runtime continuation scanner, deterministic fast path, and proof-only
   candidate-cost profile. `CaptureMap`/`Env`.
+- `ParsePlan.lean` — the one backend-neutral strategy decision: `.cursor ScanPlan` (deterministic,
+  lowered to `CursorProgram` and unrolled via `LeanSpanCursor`), `.search SearchPlan` (lowered to
+  continuation-fused `SearchProgram`; Verus further lowers to `SearchMachine` states), or
+  `.scanner reason` (a compile-time diagnostic, never a runtime fallback). Plan compilers are
+  untrusted `partial` code; `MirrorsGrammar` witnesses plus the generic lowering theorems in
+  `Theorems/{ScanPlan,SearchPlan,SearchProgram,SearchMachine,ParsePlan}.lean` connect every
+  emitted parser to `scan`, and `scan_eq_decode` connects `scan` to the reference decoder.
 - `Roundtrip.lean` — `decodeSome_iff_IsWf` (decode ↔ IsWf), `rep_iter`/`matchStar_iter`,
   `decIsWf` (conditional `DecidablePred (IsWf g)`, needs `g.repOk = true`).
 - `Coherence.lean` — value is grammar-determined, not decoder-selected: `fullParses`
@@ -165,8 +180,10 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
 
 - Grammar: concatenation, alternation (`|`), optional `[x]`, terminals `digit`/`hexDigit`/`bit`
   with length `{n}`/`{lo,hi}`/`+`, the `sign` terminal (optional leading `-`, only as a
-  production's sole rhs — see sign captures below), and separated group repetition
-  `rep <item> sepBy "<sep>" <len>`. `Terminal{f X ...}` supports one exact-width final
+  production's sole rhs — see sign captures below), character sets `oneOf "…"`/`noneOf "…"`,
+  separated group repetition `rep <item> sepBy "<sep>" <len>`, and separator-free repetition
+  `rep <item> <len>` (item must always consume input: `Sym.consumes`, `consumes_sound`;
+  `Grammar.repOk` uses `Sym.repOkIn`, while Verus keeps the strict `Grammar.repSeparated`). `Terminal{f X ...}` supports one exact-width final
   payload after a literal delimiter; `f` reads earlier capture strings. General internal or
   delimiter-free dependent boundaries use the architecture-level `scanDependent` API. Strict
   subclass of regular at the lexical grammar tier; NO recursion (not context-free).
@@ -174,7 +191,8 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
   expressions explicitly mentioning final `value` enter `valPart`. Includes cardinality
   `card` and arbitrary-decidable capture escapes `constraints' f X Y` (so `IsWf` can be
   non-regular, e.g. "length is triangular").
-- Values: `value <arith>` (scalar Int DSL) OR `value' f X Y` escape returning ANY type
+- Values: `value <arith>` (scalar Int DSL), `value [P ↦ body]` list comprehensions (nested,
+  generated readable `List.map`s over groups), OR `value' f X Y` escape returning ANY type
   (structured output — graphs, records). Escape value type flows through `computeValueF`.
   Value readers: `nat X`/`int X`/`len X` (magnitude/length of capture `X`), and a BARE capture
   name `X` = its ±1 SIGN (there is NO `sign` keyword — it was removed). A bare name is valid ONLY
@@ -221,6 +239,11 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
   General analyzable `sum X`/`forall X` reductions still require collection-aware AST semantics.
   Both `value'` and `constraints'` accept `[X]`; the latter supports mixed scalar/list predicates,
   evaluates against the full `CaptureMap`, and exposes list arguments in generated views.
+  Both also accept nested groups `[P ⟨a, …⟩]` (one tuple per occurrence of `P`, fields read
+  inside it via `CaptureMap.groups`); argument shapes are `ArgShape` (`Constraint.lean`), and the
+  readable side reads groups with `componentWith`. Give distinct productions to distinct roles
+  (e.g. `RupHint` vs `RatHint`): a group field collects every capture of that production inside
+  the occurrence, including nested ones. Example: `other-examples/Inputs/Lrat.lean`.
 
 ## Open next steps
 
@@ -262,5 +285,6 @@ The Cedar-free package contains two related points in the design space:
 - `Graph` uses the public `bit{upperTriangleSize Order}` surface;
 - `Graph6` exercises the more general architecture-level `scanDependent` API.
 
-DIMACS clauses are the *solver input* (distinct from the graph *assignment*) and still need
-whitespace/comment tokens, zero-terminated clauses, and dependent collection counts.
+DIMACS clauses are the *solver input* (distinct from the graph *assignment*);
+`other-examples/Inputs/Dimacs.lean` specifies them without escapes, and
+`Proofs/Dimacs/Roundtrip.lean` round-trips `Std.Sat.CNF.dimacs` output.

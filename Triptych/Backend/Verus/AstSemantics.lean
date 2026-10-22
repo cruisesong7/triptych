@@ -1,0 +1,1138 @@
+/-
+ Copyright Cedar Contributors
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+      https://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+-/
+
+import Triptych.Backend.Verus.Lowering
+
+/-!
+# Semantics of the generated Verus AST
+
+This module interprets the first-order `Verus.Ast` fragment used by generated helper functions.
+Text values are lists of Unicode code points, matching the emitted Verus `Seq<char>`. Calls are
+interpreted by a canonical environment whose definitions are connected to Triptych's audited Lean
+readers.
+
+The helper-realization theorems evaluate the bodies returned by `helperDeclaration`; they do not
+merely restate the intended meaning of the higher-level IR.
+-/
+
+namespace Triptych.Backend.Verus.Ast
+
+inductive Value where
+  | bool (data : Bool)
+  | int (data : Int)
+  | byte (data : Nat)
+  | text (data : List Nat)
+  deriving Repr, DecidableEq
+
+abbrev EvalEnv := String → Option Value
+abbrev CallEnv := String → List Value → Option Value
+
+@[simp]
+def Value.asBool : Value → Option Bool
+  | .bool data => some data
+  | _ => none
+
+@[simp]
+def Value.asInt : Value → Option Int
+  | .int data => some data
+  | _ => none
+
+@[simp]
+def Value.asByte : Value → Option Nat
+  | .byte data => some data
+  | _ => none
+
+@[simp]
+def Value.asText : Value → Option (List Nat)
+  | .text data => some data
+  | _ => none
+
+def encodeString (source : String) : List Nat :=
+  source.toList.map Char.toNat
+
+@[simp]
+def nonnegativeNat? (data : Int) : Option Nat :=
+  if 0 ≤ data then some data.toNat else none
+
+@[simp]
+theorem nonnegativeNat_ofNat (data : Nat) :
+    nonnegativeNat? (Int.ofNat data) = some data := by
+  simp [nonnegativeNat?]
+
+@[simp]
+theorem nonnegativeNat_ofNat_add_one (data : Nat) :
+    nonnegativeNat? (Int.ofNat data + 1) = some (data + 1) := by
+  simp [nonnegativeNat?]
+  omega
+
+@[simp]
+theorem optionBind_if {α β : Type} (proposition : Prop) [Decidable proposition]
+    (thenBranch elseBranch : Option α) (continuation : α → Option β) :
+    (if proposition then thenBranch else elseBranch).bind continuation =
+      if proposition then thenBranch.bind continuation else elseBranch.bind continuation := by
+  by_cases proposition <;> simp_all
+
+@[simp]
+theorem someBool_and (left right : Bool) :
+    (if left then some (Value.bool right) else some (Value.bool false)) =
+      some (Value.bool (left && right)) := by
+  cases left <;> rfl
+
+@[simp]
+theorem someBool_or (left right : Bool) :
+    (if left then some (Value.bool true) else some (Value.bool right)) =
+      some (Value.bool (left || right)) := by
+  cases left <;> rfl
+
+@[simp]
+theorem ifProp_someBool_and (proposition : Prop) [Decidable proposition] (right : Bool) :
+    (if proposition then some (Value.bool right) else some (Value.bool false)) =
+      some (Value.bool (decide proposition && right)) := by
+  by_cases proposition <;> simp_all
+
+@[simp]
+theorem ifProp_someBool_or (proposition : Prop) [Decidable proposition] (right : Bool) :
+    (if proposition then some (Value.bool true) else some (Value.bool right)) =
+      some (Value.bool (decide proposition || right)) := by
+  by_cases proposition <;> simp_all
+
+def Expr.evaluate (calls : CallEnv) (env : EvalEnv) : Ast.Expr → Option Value
+  | .var name => env name
+  | .boolLit literal => some (.bool literal)
+  | .intLit literal => some (.int literal)
+  | .byteLit literal => some (.byte literal)
+  | .textLit literal => some (.text (encodeString literal))
+  | .optionNone | .optionSome _ | .field _ _ => none
+  | .call name args => do
+      let values ← args.mapM (Expr.evaluate calls env)
+      calls name values
+  | .textConcat left right => do
+      let left ← (← left.evaluate calls env).asText
+      let right ← (← right.evaluate calls env).asText
+      pure (.text (left ++ right))
+  | .intAdd left right => do
+      let left ← (← left.evaluate calls env).asInt
+      let right ← (← right.evaluate calls env).asInt
+      pure (.int (left + right))
+  | .intSub left right => do
+      let left ← (← left.evaluate calls env).asInt
+      let right ← (← right.evaluate calls env).asInt
+      pure (.int (left - right))
+  | .intMul left right => do
+      let left ← (← left.evaluate calls env).asInt
+      let right ← (← right.evaluate calls env).asInt
+      pure (.int (left * right))
+  | .intTDiv left right => do
+      let left ← (← left.evaluate calls env).asInt
+      let right ← (← right.evaluate calls env).asInt
+      pure (.int (left.tdiv right))
+  | .intMod left right => do
+      let left ← (← left.evaluate calls env).asInt
+      let right ← (← right.evaluate calls env).asInt
+      pure (.int (left.tmod right))
+  | .intNeg expression => do
+      let data ← (← expression.evaluate calls env).asInt
+      pure (.int (-data))
+  | .textLen expression => do
+      let data ← (← expression.evaluate calls env).asText
+      pure (.int (Int.ofNat data.length))
+  | .textIndex expression index => do
+      let data ← (← expression.evaluate calls env).asText
+      let index ← (← index.evaluate calls env).asInt
+      let index ← nonnegativeNat? index
+      pure (.byte (← data[index]?))
+  | .textSubrange expression start stop => do
+      let data ← (← expression.evaluate calls env).asText
+      let start ← (← start.evaluate calls env).asInt
+      let stop ← (← stop.evaluate calls env).asInt
+      let start ← nonnegativeNat? start
+      let stop ← nonnegativeNat? stop
+      if start ≤ stop ∧ stop ≤ data.length then
+        pure (.text ((data.drop start).take (stop - start)))
+      else
+        none
+  | .byteToInt expression => do
+      let data ← (← expression.evaluate calls env).asByte
+      pure (.int (Int.ofNat data))
+  | .boolNot expression => do
+      let data ← (← expression.evaluate calls env).asBool
+      pure (.bool (!data))
+  | .boolAnd left right => do
+      let left ← (← left.evaluate calls env).asBool
+      if left then
+        let right ← (← right.evaluate calls env).asBool
+        pure (.bool right)
+      else
+        pure (.bool false)
+  | .boolOr left right => do
+      let left ← (← left.evaluate calls env).asBool
+      if left then
+        pure (.bool true)
+      else
+        let right ← (← right.evaluate calls env).asBool
+        pure (.bool right)
+  | .boolImplies left right => do
+      let left ← (← left.evaluate calls env).asBool
+      if left then
+        let right ← (← right.evaluate calls env).asBool
+        pure (.bool right)
+      else
+        pure (.bool true)
+  | .intEq left right => do
+      let left ← (← left.evaluate calls env).asInt
+      let right ← (← right.evaluate calls env).asInt
+      pure (.bool (decide (left = right)))
+  | .intNe left right => do
+      let left ← (← left.evaluate calls env).asInt
+      let right ← (← right.evaluate calls env).asInt
+      pure (.bool (decide (left ≠ right)))
+  | .intLt left right => do
+      let left ← (← left.evaluate calls env).asInt
+      let right ← (← right.evaluate calls env).asInt
+      pure (.bool (decide (left < right)))
+  | .intLe left right => do
+      let left ← (← left.evaluate calls env).asInt
+      let right ← (← right.evaluate calls env).asInt
+      pure (.bool (decide (left ≤ right)))
+  | .intGt left right => do
+      let left ← (← left.evaluate calls env).asInt
+      let right ← (← right.evaluate calls env).asInt
+      pure (.bool (decide (left > right)))
+  | .intGe left right => do
+      let left ← (← left.evaluate calls env).asInt
+      let right ← (← right.evaluate calls env).asInt
+      pure (.bool (decide (left ≥ right)))
+  | .byteEq left right => do
+      let left ← (← left.evaluate calls env).asByte
+      let right ← (← right.evaluate calls env).asByte
+      pure (.bool (decide (left = right)))
+  | .byteNe left right => do
+      let left ← (← left.evaluate calls env).asByte
+      let right ← (← right.evaluate calls env).asByte
+      pure (.bool (decide (left ≠ right)))
+  | .textEq left right => do
+      let left ← (← left.evaluate calls env).asText
+      let right ← (← right.evaluate calls env).asText
+      pure (.bool (decide (left = right)))
+  | .textNe left right => do
+      let left ← (← left.evaluate calls env).asText
+      let right ← (← right.evaluate calls env).asText
+      pure (.bool (decide (left ≠ right)))
+  | .ifThenElse condition thenBranch elseBranch => do
+      let condition ← (← condition.evaluate calls env).asBool
+      if condition then thenBranch.evaluate calls env else elseBranch.evaluate calls env
+  | .forallE _ _ _ | .existsE _ _ | .choose _ _ | .matchOption _ _ _ _ => none
+
+end Triptych.Backend.Verus.Ast
+
+namespace Triptych.Backend.Verus
+
+open Ast
+
+def digitValue (byte : Nat) : Int :=
+  if Int.ofNat byte < 48 then 0 else Int.ofNat byte - 48
+
+theorem digitValue_eq_ofNatSub (byte : Nat) :
+    digitValue byte = Int.ofNat (byte - 48) := by
+  unfold digitValue
+  split
+  · rename_i hbyte
+    have hnat : byte < 48 := Int.ofNat_lt.mp hbyte
+    have hzero : byte - 48 = 0 := Nat.sub_eq_zero_of_le (Nat.le_of_lt hnat)
+    simp [hzero]
+  · rename_i hbyte
+    have hleInt : (48 : Int) ≤ Int.ofNat byte := Int.not_lt.mp hbyte
+    have hle : 48 ≤ byte := Int.ofNat_le.mp hleInt
+    exact (Int.ofNat_sub hle).symm
+
+def foldDigitBytes (bytes : List Nat) (accumulator : Int) : Int :=
+  bytes.foldl (fun acc byte => acc * 10 + digitValue byte) accumulator
+
+def natOfBytesFrom (bytes : List Nat) (index : Nat) (accumulator : Int) : Int :=
+  foldDigitBytes (bytes.drop index) accumulator
+
+def natOfBytes (bytes : List Nat) : Int :=
+  natOfBytesFrom bytes 0 0
+
+def countOfBytes (bytes : List Nat) : Int :=
+  natOfBytes bytes
+
+def intOfBytes : List Nat → Int
+  | 45 :: rest => -natOfBytes rest
+  | bytes => natOfBytes bytes
+
+def hexDigitValueByte (byte : Nat) : Int :=
+  if (48 : Int) ≤ (byte : Int) ∧ (byte : Int) ≤ 57 then (byte : Int) - 48
+  else if (97 : Int) ≤ (byte : Int) ∧ (byte : Int) ≤ 102 then
+    (byte : Int) - 97 + 10
+  else if (65 : Int) ≤ (byte : Int) ∧ (byte : Int) ≤ 70 then
+    (byte : Int) - 65 + 10
+  else 0
+
+def foldHexBytes (bytes : List Nat) (accumulator : Int) : Int :=
+  bytes.foldl (fun acc byte => acc * 16 + hexDigitValueByte byte) accumulator
+
+def hexOfBytesFrom (bytes : List Nat) (index : Nat) (accumulator : Int) : Int :=
+  foldHexBytes (bytes.drop index) accumulator
+
+def hexOfBytes (bytes : List Nat) : Int :=
+  hexOfBytesFrom bytes 0 0
+
+def foldHexSequenceBytes : List Nat → Int → Int → Int
+  | [], accumulator, current => accumulator * 65536 + current
+  | byte :: rest, accumulator, current =>
+      if byte = 58 then
+        foldHexSequenceBytes rest (accumulator * 65536 + current) 0
+      else
+        foldHexSequenceBytes rest accumulator (current * 16 + hexDigitValueByte byte)
+
+def hexSequenceBytesFrom (bytes : List Nat) (index : Nat)
+    (accumulator current : Int) : Int :=
+  foldHexSequenceBytes (bytes.drop index) accumulator current
+
+def hexSequenceBytes (bytes : List Nat) : Int :=
+  hexSequenceBytesFrom bytes 0 0 0
+
+def foldSegmentBytes (bytes : List Nat) (countValue : Int) : Int :=
+  bytes.foldl
+    (fun current byte => if byte = 58 then current + 1 else current) countValue
+
+def segmentsBytesFrom (bytes : List Nat) (index : Nat) (countValue : Int) : Int :=
+  foldSegmentBytes (bytes.drop index) countValue
+
+def segmentsBytes (bytes : List Nat) : Int :=
+  if bytes.isEmpty then 0 else segmentsBytesFrom bytes 0 1
+
+def signOfBytes : List Nat → Int
+  | 45 :: _ => -1
+  | _ => 1
+
+def intPowModel (base exponent : Int) : Int :=
+  base ^ exponent.toNat
+
+def isDigitByte (byte : Nat) : Bool :=
+  decide ((48 : Int) ≤ Int.ofNat byte) && decide (Int.ofNat byte ≤ 57)
+
+def isHexDigitByte (byte : Nat) : Bool :=
+  isDigitByte byte ||
+    ((decide ((65 : Int) ≤ Int.ofNat byte) && decide (Int.ofNat byte ≤ 70)) ||
+     (decide ((97 : Int) ≤ Int.ofNat byte) && decide (Int.ofNat byte ≤ 102)))
+
+def isBitByte (byte : Nat) : Bool :=
+  decide (byte = 48) || decide (byte = 49)
+
+def canonicalCalls : Ast.CallEnv
+  | "triptych_is_digit", [.byte byte] =>
+      some (.bool (isDigitByte byte))
+  | "triptych_is_hex_digit", [.byte byte] =>
+      some (.bool (isHexDigitByte byte))
+  | "triptych_is_bit", [.byte byte] =>
+      some (.bool (isBitByte byte))
+  | "triptych_nat_of_from", [.text bytes, .int index, .int accumulator] =>
+      if 0 ≤ index then
+        some (.int (natOfBytesFrom bytes index.toNat accumulator))
+      else
+        none
+  | "triptych_nat_of", [.text bytes] =>
+      some (.int (natOfBytes bytes))
+  | "triptych_count_of", [.text bytes] =>
+      some (.int (countOfBytes bytes))
+  | "triptych_int_of", [.text bytes] =>
+      some (.int (intOfBytes bytes))
+  | "triptych_hex_digit_value", [.byte byte] =>
+      some (.int (hexDigitValueByte byte))
+  | "triptych_hex_of_from", [.text bytes, .int index, .int accumulator] =>
+      if 0 ≤ index then
+        some (.int (hexOfBytesFrom bytes index.toNat accumulator))
+      else
+        none
+  | "triptych_hex_of", [.text bytes] =>
+      some (.int (hexOfBytes bytes))
+  | "triptych_hex_seq_from", [.text bytes, .int index, .int accumulator, .int current] =>
+      if 0 ≤ index then
+        some (.int (hexSequenceBytesFrom bytes index.toNat accumulator current))
+      else
+        none
+  | "triptych_hex_seq_of", [.text bytes] =>
+      some (.int (hexSequenceBytes bytes))
+  | "triptych_segments_from", [.text bytes, .int index, .int countValue] =>
+      if 0 ≤ index then
+        some (.int (segmentsBytesFrom bytes index.toNat countValue))
+      else
+        none
+  | "triptych_segments_of", [.text bytes] =>
+      some (.int (segmentsBytes bytes))
+  | "triptych_sign_of", [.text bytes] =>
+      some (.int (signOfBytes bytes))
+  | "triptych_int_pow", [.int base, .int exponent] =>
+      some (.int (intPowModel base exponent))
+  | _, _ => none
+
+@[simp]
+theorem canonicalCalls_isDigit (byte : Nat) :
+    canonicalCalls "triptych_is_digit" [.byte byte] = some (.bool (isDigitByte byte)) := by
+  rfl
+
+@[simp]
+theorem canonicalCalls_isHexDigit (byte : Nat) :
+    canonicalCalls "triptych_is_hex_digit" [.byte byte] =
+      some (.bool (isHexDigitByte byte)) := by
+  rfl
+
+@[simp]
+theorem canonicalCalls_isBit (byte : Nat) :
+    canonicalCalls "triptych_is_bit" [.byte byte] = some (.bool (isBitByte byte)) := by
+  rfl
+
+@[simp]
+theorem canonicalCalls_natOfFrom (bytes : List Nat) (index : Nat) (accumulator : Int) :
+    canonicalCalls "triptych_nat_of_from"
+      [.text bytes, .int (Int.ofNat index), .int accumulator] =
+        some (.int (natOfBytesFrom bytes index accumulator)) := by
+  simp [canonicalCalls]
+
+@[simp]
+theorem canonicalCalls_natOfFrom_zero (bytes : List Nat) (accumulator : Int) :
+    canonicalCalls "triptych_nat_of_from"
+      [.text bytes, .int 0, .int accumulator] =
+        some (.int (natOfBytesFrom bytes 0 accumulator)) := by
+  simp [canonicalCalls]
+
+@[simp]
+theorem canonicalCalls_natOfFrom_addOne (bytes : List Nat) (index : Nat)
+    (accumulator : Int) :
+    canonicalCalls "triptych_nat_of_from"
+      [.text bytes, .int (Int.ofNat index + 1), .int accumulator] =
+        some (.int (natOfBytesFrom bytes (index + 1) accumulator)) := by
+  simp [canonicalCalls]
+  omega
+
+@[simp]
+theorem canonicalCalls_natOf (bytes : List Nat) :
+    canonicalCalls "triptych_nat_of" [.text bytes] = some (.int (natOfBytes bytes)) := by
+  rfl
+
+@[simp]
+theorem canonicalCalls_countOf (bytes : List Nat) :
+    canonicalCalls "triptych_count_of" [.text bytes] = some (.int (countOfBytes bytes)) := by
+  rfl
+
+@[simp]
+theorem canonicalCalls_intOf (bytes : List Nat) :
+    canonicalCalls "triptych_int_of" [.text bytes] = some (.int (intOfBytes bytes)) := by
+  rfl
+
+@[simp]
+theorem canonicalCalls_hexDigitValue (byte : Nat) :
+    canonicalCalls "triptych_hex_digit_value" [.byte byte] =
+      some (.int (hexDigitValueByte byte)) := by
+  rfl
+
+@[simp]
+theorem canonicalCalls_hexOfFrom (bytes : List Nat) (index : Nat) (accumulator : Int) :
+    canonicalCalls "triptych_hex_of_from"
+      [.text bytes, .int (Int.ofNat index), .int accumulator] =
+        some (.int (hexOfBytesFrom bytes index accumulator)) := by
+  simp [canonicalCalls]
+
+@[simp]
+theorem canonicalCalls_hexOfFrom_zero (bytes : List Nat) (accumulator : Int) :
+    canonicalCalls "triptych_hex_of_from"
+      [.text bytes, .int 0, .int accumulator] =
+        some (.int (hexOfBytesFrom bytes 0 accumulator)) := by
+  simp [canonicalCalls]
+
+@[simp]
+theorem canonicalCalls_hexOfFrom_addOne (bytes : List Nat) (index : Nat)
+    (accumulator : Int) :
+    canonicalCalls "triptych_hex_of_from"
+      [.text bytes, .int (Int.ofNat index + 1), .int accumulator] =
+        some (.int (hexOfBytesFrom bytes (index + 1) accumulator)) := by
+  simp [canonicalCalls]
+  omega
+
+@[simp]
+theorem canonicalCalls_hexOf (bytes : List Nat) :
+    canonicalCalls "triptych_hex_of" [.text bytes] = some (.int (hexOfBytes bytes)) := by
+  rfl
+
+@[simp]
+theorem canonicalCalls_hexSequenceFrom (bytes : List Nat) (index : Nat)
+    (accumulator current : Int) :
+    canonicalCalls "triptych_hex_seq_from"
+      [.text bytes, .int (Int.ofNat index), .int accumulator, .int current] =
+        some (.int (hexSequenceBytesFrom bytes index accumulator current)) := by
+  simp [canonicalCalls]
+
+@[simp]
+theorem canonicalCalls_hexSequenceFrom_zero (bytes : List Nat)
+    (accumulator current : Int) :
+    canonicalCalls "triptych_hex_seq_from"
+      [.text bytes, .int 0, .int accumulator, .int current] =
+        some (.int (hexSequenceBytesFrom bytes 0 accumulator current)) := by
+  simp [canonicalCalls]
+
+@[simp]
+theorem canonicalCalls_hexSequenceFrom_addOne (bytes : List Nat) (index : Nat)
+    (accumulator current : Int) :
+    canonicalCalls "triptych_hex_seq_from"
+      [.text bytes, .int (Int.ofNat index + 1), .int accumulator, .int current] =
+        some (.int (hexSequenceBytesFrom bytes (index + 1) accumulator current)) := by
+  simp [canonicalCalls]
+  omega
+
+@[simp]
+theorem canonicalCalls_hexSequence (bytes : List Nat) :
+    canonicalCalls "triptych_hex_seq_of" [.text bytes] =
+      some (.int (hexSequenceBytes bytes)) := by
+  rfl
+
+@[simp]
+theorem canonicalCalls_segmentsFrom (bytes : List Nat) (index : Nat) (countValue : Int) :
+    canonicalCalls "triptych_segments_from"
+      [.text bytes, .int (Int.ofNat index), .int countValue] =
+        some (.int (segmentsBytesFrom bytes index countValue)) := by
+  simp [canonicalCalls]
+
+@[simp]
+theorem canonicalCalls_segmentsFrom_zero (bytes : List Nat) (countValue : Int) :
+    canonicalCalls "triptych_segments_from"
+      [.text bytes, .int 0, .int countValue] =
+        some (.int (segmentsBytesFrom bytes 0 countValue)) := by
+  simp [canonicalCalls]
+
+@[simp]
+theorem canonicalCalls_segmentsFrom_addOne (bytes : List Nat) (index : Nat)
+    (countValue : Int) :
+    canonicalCalls "triptych_segments_from"
+      [.text bytes, .int (Int.ofNat index + 1), .int countValue] =
+        some (.int (segmentsBytesFrom bytes (index + 1) countValue)) := by
+  simp [canonicalCalls]
+  omega
+
+@[simp]
+theorem canonicalCalls_segments (bytes : List Nat) :
+    canonicalCalls "triptych_segments_of" [.text bytes] =
+      some (.int (segmentsBytes bytes)) := by
+  rfl
+
+@[simp]
+theorem canonicalCalls_signOf (bytes : List Nat) :
+    canonicalCalls "triptych_sign_of" [.text bytes] = some (.int (signOfBytes bytes)) := by
+  rfl
+
+@[simp]
+theorem canonicalCalls_intPow (base exponent : Int) :
+    canonicalCalls "triptych_int_pow" [.int base, .int exponent] =
+      some (.int (intPowModel base exponent)) := by
+  rfl
+
+private def bindingEnv (bindings : List (String × Ast.Value)) : Ast.EvalEnv :=
+  fun name => (bindings.find? (·.1 == name)).map (·.2)
+
+private def bindParams : List Ast.Param → List Ast.Value →
+    Option (List (String × Ast.Value))
+  | [], [] => some []
+  | param :: params, argument :: arguments => do
+      pure ((param.name, argument) :: (← bindParams params arguments))
+  | _, _ => none
+
+private def helperConstants : List (String × Ast.Value) :=
+  [("TRIPTYCH_MINUS", .byte 45), ("TRIPTYCH_ZERO", .byte 48)]
+
+def evaluateHelper (helper : Helper) (arguments : List Ast.Value) : Option Ast.Value :=
+  match helperDeclaration helper with
+  | .function function => do
+      let bindings ← bindParams function.params arguments
+      function.body.evaluate canonicalCalls (bindingEnv (bindings ++ helperConstants))
+  | .constant constant =>
+      if arguments.isEmpty then
+        constant.initializer.evaluate canonicalCalls (bindingEnv helperConstants)
+      else
+        none
+  | .structure _ | .trait _ => none
+
+@[simp]
+theorem natOfBytesFrom_step (bytes : List Nat) (index : Nat) (accumulator : Int)
+    (hindex : index < bytes.length) :
+    natOfBytesFrom bytes index accumulator =
+      natOfBytesFrom bytes (index + 1)
+        (accumulator * 10 + digitValue bytes[index]) := by
+  simp only [natOfBytesFrom, foldDigitBytes]
+  rw [List.drop_eq_getElem_cons hindex]
+  rfl
+
+@[simp]
+theorem natOfBytesFrom_end (bytes : List Nat) (index : Nat) (accumulator : Int)
+    (hindex : bytes.length ≤ index) :
+    natOfBytesFrom bytes index accumulator = accumulator := by
+  simp [natOfBytesFrom, foldDigitBytes, List.drop_eq_nil_of_le hindex]
+
+private theorem foldDigitBytes_ofNat (bytes : List Nat) (accumulator : Nat) :
+    foldDigitBytes bytes (Int.ofNat accumulator) =
+      Int.ofNat
+        (bytes.foldl (fun acc byte => acc * 10 + (byte - 48)) accumulator) := by
+  induction bytes generalizing accumulator with
+  | nil => rfl
+  | cons byte bytes ih =>
+      simp only [foldDigitBytes, List.foldl_cons]
+      rw [show Int.ofNat accumulator * 10 + digitValue byte =
+          Int.ofNat (accumulator * 10 + (byte - 48)) by
+        simp [digitValue_eq_ofNatSub]]
+      exact ih (accumulator * 10 + (byte - 48))
+
+@[simp]
+theorem natOfBytes_map_toNat (characters : List Char) :
+    natOfBytes (characters.map Char.toNat) = Int.ofNat (Triptych.readNatChars characters) := by
+  change foldDigitBytes (characters.map Char.toNat) (Int.ofNat 0) =
+    Int.ofNat (Triptych.readNatChars characters)
+  rw [foldDigitBytes_ofNat]
+  simp [Triptych.readNatChars, List.foldl_map]
+
+@[simp]
+theorem natOfBytes_encodeString (source : String) :
+    natOfBytes (Ast.encodeString source) = Triptych.natOf source := by
+  simp [Ast.encodeString, Triptych.natOf, Triptych.readNat_eq_readNatChars]
+
+@[simp]
+theorem countOfBytes_encodeString (source : String) :
+    countOfBytes (Ast.encodeString source) = Triptych.countOf source := by
+  simp [countOfBytes, Triptych.countOf, Triptych.natOf,
+    natOfBytes_encodeString source]
+
+@[simp]
+theorem hexDigitValueByte_toInt (character : Char) :
+    hexDigitValueByte character.toNat = Triptych.hexDigitValueInt character := by
+  rfl
+
+private theorem foldHexBytes_ofInt (characters : List Char) (accumulator : Int) :
+    foldHexBytes (characters.map Char.toNat) accumulator =
+      Triptych.hexOfChars characters accumulator := by
+  induction characters generalizing accumulator with
+  | nil => rfl
+  | cons character rest ih =>
+      simp only [foldHexBytes, Triptych.hexOfChars, List.map_cons, List.foldl_cons]
+      rw [hexDigitValueByte_toInt]
+      exact ih (accumulator * 16 + Triptych.hexDigitValueInt character)
+
+@[simp]
+theorem hexOfBytes_encodeString (source : String) :
+    hexOfBytes (Ast.encodeString source) = Triptych.hexOf source := by
+  change foldHexBytes (source.toList.map Char.toNat) 0 =
+    Triptych.hexOfChars source.toList
+  rw [foldHexBytes_ofInt]
+
+private theorem foldHexSequenceBytes_ofInt (characters : List Char)
+    (accumulator current : Int) :
+    foldHexSequenceBytes (characters.map Char.toNat)
+        accumulator current =
+      Triptych.hexSeqOfChars characters accumulator current := by
+  induction characters generalizing accumulator current with
+  | nil => rfl
+  | cons character rest ih =>
+      by_cases hcolon : character = ':'
+      · subst character
+        simp [foldHexSequenceBytes, Triptych.hexSeqOfChars, ih]
+      · have hcode : character.toNat ≠ 58 := by
+          intro h
+          exact hcolon (Char.toNat_inj.mp h)
+        simp [foldHexSequenceBytes, Triptych.hexSeqOfChars, hcolon, hcode,
+          hexDigitValueByte_toInt, ih]
+
+@[simp]
+theorem hexSequenceBytes_encodeString (source : String) :
+    hexSequenceBytes (Ast.encodeString source) = Triptych.hexSeqOf source := by
+  change foldHexSequenceBytes (source.toList.map Char.toNat) 0 0 =
+    Triptych.hexSeqOfChars source.toList 0 0
+  rw [foldHexSequenceBytes_ofInt]
+
+private theorem foldSegmentBytes_ofInt (characters : List Char) (countValue : Int) :
+    foldSegmentBytes (characters.map Char.toNat) countValue =
+      characters.foldl
+        (fun current character => if character = ':' then current + 1 else current)
+        countValue := by
+  induction characters generalizing countValue with
+  | nil => rfl
+  | cons character rest ih =>
+      by_cases hcolon : character = ':'
+      · subst character
+        simp only [foldSegmentBytes, List.map_cons, List.foldl_cons, Char.toNat]
+        exact ih (countValue + 1)
+      · have hcode : character.toNat ≠ 58 := by
+          intro h
+          exact hcolon (Char.toNat_inj.mp h)
+        simp only [foldSegmentBytes, List.map_cons, List.foldl_cons, hcode, ↓reduceIte,
+          hcolon]
+        exact ih countValue
+
+@[simp]
+theorem segmentsBytes_encodeString (source : String) :
+    segmentsBytes (Ast.encodeString source) = Triptych.segmentsOf source := by
+  unfold segmentsBytes Triptych.segmentsOf segmentsBytesFrom Ast.encodeString
+  by_cases hempty : source.toList.isEmpty
+  · simp [hempty]
+  · simp [hempty, foldSegmentBytes_ofInt]
+
+@[simp]
+theorem encodeString_empty : Ast.encodeString "" = [] := by
+  rfl
+
+private theorem map_toNat_inj :
+    ∀ {xs ys : List Char}, xs.map Char.toNat = ys.map Char.toNat → xs = ys
+  | [], [], _ => rfl
+  | x :: xs, y :: ys, h => by
+      simp only [List.map_cons, List.cons.injEq] at h
+      rw [Char.toNat_inj.mp h.1, map_toNat_inj h.2]
+
+@[simp]
+theorem encodeString_inj_iff (a b : String) :
+    Ast.encodeString a = Ast.encodeString b ↔ a = b := by
+  constructor
+  · intro h
+    have hlists : a.toList = b.toList := map_toNat_inj h
+    exact String.ext (by simpa using hlists)
+  · intro h
+    rw [h]
+
+@[simp]
+theorem encodeString_length (source : String) :
+    (Ast.encodeString source).length = source.length := by
+  simp [Ast.encodeString, String.length_toList]
+
+@[simp]
+theorem encodeString_eq_nil_iff (source : String) :
+    Ast.encodeString source = [] ↔ source = "" := by
+  rw [show ([] : List Nat) = Ast.encodeString "" from rfl, encodeString_inj_iff]
+
+@[simp]
+theorem intOfBytes_encodeString (source : String) :
+    intOfBytes (Ast.encodeString source) = Triptych.intOf source := by
+  cases hsource : source.toList with
+  | nil =>
+      have hempty : source = "" := by
+        apply String.ext
+        simp [hsource]
+      subst source
+      simp [intOfBytes, Triptych.intOf, natOfBytes, natOfBytesFrom,
+        foldDigitBytes]
+  | cons character rest =>
+      have hnonempty : source ≠ "" := by
+        intro heq
+        subst source
+        simp at hsource
+      by_cases hminus : character = '-'
+      · subst character
+        calc
+          intOfBytes (Ast.encodeString source) =
+              -natOfBytes (rest.map Char.toNat) := by
+            simp [Ast.encodeString, hsource, intOfBytes]
+          _ = -Int.ofNat (Triptych.readNatChars rest) := by
+            rw [natOfBytes_map_toNat]
+          _ = Triptych.intOf source := by
+            simp [Triptych.intOf, hnonempty, Triptych.readInt, hsource,
+              String.startsWith_string_iff, Triptych.readNat_eq_readNatChars]
+      · have hcode : character.toNat ≠ 45 := by
+          intro h
+          apply hminus
+          exact Char.toNat_inj.mp h
+        have hminus' : '-' ≠ character := Ne.symm hminus
+        calc
+          intOfBytes (Ast.encodeString source) =
+              natOfBytes ((character :: rest).map Char.toNat) := by
+            simp [Ast.encodeString, hsource, intOfBytes, hcode]
+          _ = Int.ofNat (Triptych.readNatChars (character :: rest)) :=
+            natOfBytes_map_toNat (character :: rest)
+          _ = Triptych.intOf source := by
+            simp [Triptych.intOf, hnonempty, Triptych.readInt, hsource,
+              hminus', String.startsWith_string_iff, Triptych.readNat_eq_readNatChars]
+
+@[simp]
+theorem signOfBytes_encodeString (source : String) :
+    signOfBytes (Ast.encodeString source) = Triptych.signOf source := by
+  simp only [Ast.encodeString, Triptych.signOf]
+  cases hsource : source.toList with
+  | nil => simp [signOfBytes, String.startsWith_string_iff, hsource]
+  | cons character rest =>
+      by_cases hminus : character = '-'
+      · subst character
+        simp [signOfBytes, String.startsWith_string_iff, hsource]
+      · have hcode : character.toNat ≠ 45 := by
+          intro h
+          apply hminus
+          exact Char.toNat_inj.mp h
+        have hminus' : '-' ≠ character := Ne.symm hminus
+        simp [hminus', hcode, signOfBytes, String.startsWith_string_iff, hsource]
+
+@[simp]
+theorem evaluateHelper_minusConstant :
+    evaluateHelper .minusConstant [] = some (.byte 45) := by
+  simp [evaluateHelper, helperDeclaration, helperConstants, Ast.Expr.evaluate]
+
+@[simp]
+theorem evaluateHelper_zeroConstant :
+    evaluateHelper .zeroConstant [] = some (.byte 48) := by
+  simp [evaluateHelper, helperDeclaration, helperConstants, Ast.Expr.evaluate]
+
+@[simp]
+theorem evaluateHelper_isDigit (byte : Nat) :
+    evaluateHelper .isDigit [.byte byte] =
+      some (.bool (isDigitByte byte)) := by
+  simp [evaluateHelper, helperDeclaration, Ast.Expr.evaluate, bindingEnv, bindParams,
+    helperConstants, helperBoolFunction, isDigitByte]
+
+@[simp]
+theorem evaluateHelper_isHexDigit (byte : Nat) :
+    evaluateHelper .isHexDigit [.byte byte] =
+      some (.bool (isHexDigitByte byte)) := by
+  simp [evaluateHelper, helperDeclaration, Ast.Expr.evaluate, bindingEnv, bindParams,
+    helperConstants, helperBoolFunction, isHexDigitByte, isDigitByte]
+
+@[simp]
+theorem evaluateHelper_isBit (byte : Nat) :
+    evaluateHelper .isBit [.byte byte] =
+      some (.bool (isBitByte byte)) := by
+  simp [evaluateHelper, helperDeclaration, Ast.Expr.evaluate, bindingEnv, bindParams,
+    helperConstants, helperBoolFunction, isBitByte]
+
+@[simp]
+theorem evaluateHelper_natOfFrom (bytes : List Nat) (index : Nat) (accumulator : Int)
+    (hindex : index ≤ bytes.length) :
+    evaluateHelper .natOfFrom [.text bytes, .int (Int.ofNat index), .int accumulator] =
+      some (.int (natOfBytesFrom bytes index accumulator)) := by
+  by_cases hlt : index < bytes.length
+  · rw [natOfBytesFrom_step bytes index accumulator hlt]
+    by_cases hbyte : (bytes[index] : Int) < 48
+    · simp [evaluateHelper, helperDeclaration, Ast.Expr.evaluate, bindingEnv, bindParams,
+        helperConstants, Ast.nonnegativeNat?, digitValue, hlt, hbyte]
+      simp [canonicalCalls]
+      omega
+    · simp [evaluateHelper, helperDeclaration, Ast.Expr.evaluate, bindingEnv, bindParams,
+        helperConstants, Ast.nonnegativeNat?, digitValue, hlt, hbyte]
+      simp [canonicalCalls]
+      omega
+  · have heq : index = bytes.length := by omega
+    subst index
+    simp [evaluateHelper, helperDeclaration, Ast.Expr.evaluate, bindingEnv, bindParams,
+      helperConstants, Ast.nonnegativeNat?, natOfBytesFrom_end]
+
+@[simp]
+theorem evaluateHelper_natOf (bytes : List Nat) :
+    evaluateHelper .natOf [.text bytes] = some (.int (natOfBytes bytes)) := by
+  simp [evaluateHelper, helperDeclaration, helperIntFunction, Ast.Expr.evaluate, bindParams,
+    bindingEnv, helperConstants, natOfBytes]
+
+@[simp]
+theorem evaluateHelper_countOf (bytes : List Nat) :
+    evaluateHelper .countOf [.text bytes] = some (.int (countOfBytes bytes)) := by
+  simp [evaluateHelper, helperDeclaration, helperIntFunction, Ast.Expr.evaluate, bindParams,
+    bindingEnv, helperConstants, countOfBytes]
+
+@[simp]
+theorem evaluateHelper_intOf (bytes : List Nat) :
+    evaluateHelper .intOf [.text bytes] = some (.int (intOfBytes bytes)) := by
+  cases bytes with
+  | nil =>
+      simp [evaluateHelper, helperDeclaration, Ast.Expr.evaluate, bindingEnv, bindParams,
+        helperConstants, helperIntFunction, intOfBytes, natOfBytes,
+        natOfBytesFrom, foldDigitBytes]
+  | cons byte rest =>
+      by_cases hminus : byte = 45
+      · subst byte
+        simp [evaluateHelper, helperDeclaration, Ast.Expr.evaluate, bindingEnv, bindParams,
+          helperConstants, helperIntFunction, intOfBytes, List.take_length] <;>
+          omega
+      · simp [evaluateHelper, helperDeclaration, Ast.Expr.evaluate, bindingEnv, bindParams,
+          helperConstants, helperIntFunction, intOfBytes, hminus]
+
+@[simp]
+theorem hexOfBytesFrom_step (bytes : List Nat) (index : Nat) (accumulator : Int)
+    (hindex : index < bytes.length) :
+    hexOfBytesFrom bytes index accumulator =
+      hexOfBytesFrom bytes (index + 1)
+        (accumulator * 16 + hexDigitValueByte bytes[index]) := by
+  simp only [hexOfBytesFrom, foldHexBytes]
+  rw [List.drop_eq_getElem_cons hindex]
+  rfl
+
+@[simp]
+theorem hexOfBytesFrom_end (bytes : List Nat) (index : Nat) (accumulator : Int)
+    (hindex : bytes.length ≤ index) :
+    hexOfBytesFrom bytes index accumulator = accumulator := by
+  simp [hexOfBytesFrom, foldHexBytes, List.drop_eq_nil_of_le hindex]
+
+@[simp]
+theorem hexSequenceBytesFrom_step (bytes : List Nat) (index : Nat)
+    (accumulator current : Int) (hindex : index < bytes.length) :
+    hexSequenceBytesFrom bytes index accumulator current =
+      if bytes[index] = 58 then
+        hexSequenceBytesFrom bytes (index + 1) (accumulator * 65536 + current) 0
+      else
+        hexSequenceBytesFrom bytes (index + 1) accumulator
+          (current * 16 + hexDigitValueByte bytes[index]) := by
+  simp only [hexSequenceBytesFrom]
+  rw [List.drop_eq_getElem_cons hindex]
+  by_cases hcolon : bytes[index] = 58 <;>
+    simp [foldHexSequenceBytes, hcolon]
+
+@[simp]
+theorem hexSequenceBytesFrom_end (bytes : List Nat) (index : Nat)
+    (accumulator current : Int) (hindex : bytes.length ≤ index) :
+    hexSequenceBytesFrom bytes index accumulator current = accumulator * 65536 + current := by
+  simp [hexSequenceBytesFrom, List.drop_eq_nil_of_le hindex, foldHexSequenceBytes]
+
+@[simp]
+theorem segmentsBytesFrom_step (bytes : List Nat) (index : Nat) (countValue : Int)
+    (hindex : index < bytes.length) :
+    segmentsBytesFrom bytes index countValue =
+      segmentsBytesFrom bytes (index + 1)
+        (if bytes[index] = 58 then countValue + 1 else countValue) := by
+  simp only [segmentsBytesFrom, foldSegmentBytes]
+  rw [List.drop_eq_getElem_cons hindex]
+  rfl
+
+@[simp]
+theorem segmentsBytesFrom_end (bytes : List Nat) (index : Nat) (countValue : Int)
+    (hindex : bytes.length ≤ index) :
+    segmentsBytesFrom bytes index countValue = countValue := by
+  simp [segmentsBytesFrom, foldSegmentBytes, List.drop_eq_nil_of_le hindex]
+
+@[simp]
+theorem evaluateHelper_hexDigitValue (byte : Nat) :
+    evaluateHelper .hexDigitValue [.byte byte] =
+      some (.int (hexDigitValueByte byte)) := by
+  by_cases hdigit : (48 : Int) ≤ (byte : Int) ∧ (byte : Int) ≤ 57
+  · simp [evaluateHelper, helperDeclaration, helperIntFunction, Ast.Expr.evaluate,
+      bindingEnv, bindParams, helperConstants, hexDigitValueByte, hdigit]
+  · by_cases hlower : (97 : Int) ≤ (byte : Int) ∧ (byte : Int) ≤ 102
+    ·
+      simp [evaluateHelper, helperDeclaration, helperIntFunction, Ast.Expr.evaluate,
+        bindingEnv, bindParams, helperConstants, hexDigitValueByte, hdigit, hlower,
+        Int.ofNat_eq_natCast]
+    · by_cases hupper : (65 : Int) ≤ (byte : Int) ∧ (byte : Int) ≤ 70
+      ·
+        simp [evaluateHelper, helperDeclaration, helperIntFunction, Ast.Expr.evaluate,
+          bindingEnv, bindParams, helperConstants, hexDigitValueByte, hdigit, hlower, hupper,
+          Int.ofNat_eq_natCast]
+      ·
+        simp [evaluateHelper, helperDeclaration, helperIntFunction, Ast.Expr.evaluate,
+          bindingEnv, bindParams, helperConstants, hexDigitValueByte, hdigit, hlower, hupper,
+          Int.ofNat_eq_natCast]
+
+@[simp]
+theorem evaluateHelper_hexOfFrom (bytes : List Nat) (index : Nat) (accumulator : Int)
+    (hindex : index ≤ bytes.length) :
+    evaluateHelper .hexOfFrom [.text bytes, .int (Int.ofNat index), .int accumulator] =
+      some (.int (hexOfBytesFrom bytes index accumulator)) := by
+  by_cases hlt : index < bytes.length
+  · rw [hexOfBytesFrom_step bytes index accumulator hlt]
+    simp [evaluateHelper, helperDeclaration, Ast.Expr.evaluate, bindingEnv, bindParams,
+      helperConstants, Ast.nonnegativeNat?, hlt]
+    exact canonicalCalls_hexOfFrom_addOne bytes index
+      (accumulator * 16 + hexDigitValueByte bytes[index])
+  · have heq : index = bytes.length := by omega
+    subst index
+    simp [evaluateHelper, helperDeclaration, Ast.Expr.evaluate, bindingEnv, bindParams,
+      helperConstants, Ast.nonnegativeNat?, hexOfBytesFrom_end]
+
+@[simp]
+theorem evaluateHelper_hexOf (bytes : List Nat) :
+    evaluateHelper .hexOf [.text bytes] = some (.int (hexOfBytes bytes)) := by
+  simp [evaluateHelper, helperDeclaration, helperIntFunction, Ast.Expr.evaluate, bindParams,
+    bindingEnv, helperConstants, hexOfBytes]
+
+@[simp]
+theorem evaluateHelper_hexSequenceFrom (bytes : List Nat) (index : Nat)
+    (accumulator current : Int) (hindex : index ≤ bytes.length) :
+    evaluateHelper .hexSeqFrom
+        [.text bytes, .int (Int.ofNat index), .int accumulator, .int current] =
+      some (.int (hexSequenceBytesFrom bytes index accumulator current)) := by
+  by_cases hlt : index < bytes.length
+  · rw [hexSequenceBytesFrom_step bytes index accumulator current hlt]
+    by_cases hcolon : bytes[index] = 58
+    · simp [evaluateHelper, helperDeclaration, Ast.Expr.evaluate, bindingEnv, bindParams,
+        helperConstants, Ast.nonnegativeNat?, hlt, hcolon,
+        ]
+      exact canonicalCalls_hexSequenceFrom_addOne bytes index
+        (accumulator * 65536 + current) 0
+    · simp [evaluateHelper, helperDeclaration, Ast.Expr.evaluate, bindingEnv, bindParams,
+        helperConstants, Ast.nonnegativeNat?, hlt, hcolon,
+        ]
+      exact canonicalCalls_hexSequenceFrom_addOne bytes index accumulator
+        (current * 16 + hexDigitValueByte bytes[index])
+  · have heq : index = bytes.length := by omega
+    subst index
+    simp [evaluateHelper, helperDeclaration, Ast.Expr.evaluate, bindingEnv, bindParams,
+      helperConstants, Ast.nonnegativeNat?, hexSequenceBytesFrom_end]
+
+@[simp]
+theorem evaluateHelper_hexSequence (bytes : List Nat) :
+    evaluateHelper .hexSeqOf [.text bytes] = some (.int (hexSequenceBytes bytes)) := by
+  simp [evaluateHelper, helperDeclaration, helperIntFunction, Ast.Expr.evaluate, bindParams,
+    bindingEnv, helperConstants, hexSequenceBytes]
+
+@[simp]
+theorem evaluateHelper_segmentsFrom (bytes : List Nat) (index : Nat) (countValue : Int)
+    (hindex : index ≤ bytes.length) :
+    evaluateHelper .segmentsFrom
+        [.text bytes, .int (Int.ofNat index), .int countValue] =
+      some (.int (segmentsBytesFrom bytes index countValue)) := by
+  by_cases hlt : index < bytes.length
+  · rw [segmentsBytesFrom_step bytes index countValue hlt]
+    by_cases hcolon : bytes[index] = 58
+    · simp [evaluateHelper, helperDeclaration, Ast.Expr.evaluate, bindingEnv, bindParams,
+        helperConstants, Ast.nonnegativeNat?, hlt, hcolon,
+        ]
+      exact canonicalCalls_segmentsFrom_addOne bytes index (countValue + 1)
+    · simp [evaluateHelper, helperDeclaration, Ast.Expr.evaluate, bindingEnv, bindParams,
+        helperConstants, Ast.nonnegativeNat?, hlt, hcolon,
+        ]
+      exact canonicalCalls_segmentsFrom_addOne bytes index countValue
+  · have heq : index = bytes.length := by omega
+    subst index
+    simp [evaluateHelper, helperDeclaration, Ast.Expr.evaluate, bindingEnv, bindParams,
+      helperConstants, Ast.nonnegativeNat?, segmentsBytesFrom_end]
+
+@[simp]
+theorem evaluateHelper_segments (bytes : List Nat) :
+    evaluateHelper .segmentsOf [.text bytes] = some (.int (segmentsBytes bytes)) := by
+  cases bytes with
+  | nil =>
+      simp [evaluateHelper, helperDeclaration, helperIntFunction, Ast.Expr.evaluate, bindParams,
+        bindingEnv, helperConstants, segmentsBytes]
+  | cons byte rest =>
+      by_cases hcolon : byte = 58
+      · simp [evaluateHelper, helperDeclaration, helperIntFunction, Ast.Expr.evaluate, bindParams,
+          bindingEnv, helperConstants, segmentsBytes, segmentsBytesFrom_step, hcolon] <;>
+          omega
+      · simp [evaluateHelper, helperDeclaration, helperIntFunction, Ast.Expr.evaluate, bindParams,
+          bindingEnv, helperConstants, segmentsBytes, segmentsBytesFrom_step, hcolon] <;>
+          omega
+
+@[simp]
+theorem evaluateHelper_signOf (bytes : List Nat) :
+    evaluateHelper .signOf [.text bytes] = some (.int (signOfBytes bytes)) := by
+  cases bytes with
+  | nil =>
+      simp [evaluateHelper, helperDeclaration, Ast.Expr.evaluate, bindingEnv, bindParams,
+        helperConstants, helperIntFunction, signOfBytes]
+  | cons byte rest =>
+      by_cases hminus : byte = 45
+      · subst byte
+        simp [evaluateHelper, helperDeclaration, Ast.Expr.evaluate, bindingEnv, bindParams,
+          helperConstants, helperIntFunction, signOfBytes]
+      · simp [evaluateHelper, helperDeclaration, Ast.Expr.evaluate, bindingEnv, bindParams,
+          helperConstants, helperIntFunction, signOfBytes, hminus]
+
+private theorem intPowModel_step (base exponent : Int) (hpositive : 0 < exponent) :
+    base * intPowModel base (exponent - 1) = intPowModel base exponent := by
+  cases exponent with
+  | ofNat exponent =>
+      cases exponent with
+      | zero => simp at hpositive
+      | succ exponent =>
+          simp [intPowModel, Int.pow_succ, Int.mul_comm]
+  | negSucc exponent => simp at hpositive
+
+@[simp]
+theorem evaluateHelper_intPow (base exponent : Int) :
+    evaluateHelper .intPow [.int base, .int exponent] =
+      some (.int (intPowModel base exponent)) := by
+  by_cases hpositive : 0 < exponent
+  · simp [evaluateHelper, helperDeclaration, Ast.Expr.evaluate, bindingEnv, bindParams,
+      helperConstants, hpositive,
+      intPowModel_step base exponent hpositive]
+  · have hnonpositive : exponent ≤ 0 := by omega
+    simp [evaluateHelper, helperDeclaration, Ast.Expr.evaluate, bindingEnv, bindParams,
+      helperConstants, hpositive, intPowModel,
+      Int.toNat_of_nonpos hnonpositive]
+
+def Helper.Realizes : Helper → Prop
+  | .minusConstant => evaluateHelper .minusConstant [] = some (.byte 45)
+  | .zeroConstant => evaluateHelper .zeroConstant [] = some (.byte 48)
+  | .isDigit =>
+      ∀ byte, evaluateHelper .isDigit [.byte byte] =
+        some (.bool (isDigitByte byte))
+  | .isHexDigit =>
+      ∀ byte, evaluateHelper .isHexDigit [.byte byte] =
+        some (.bool (isHexDigitByte byte))
+  | .isBit =>
+      ∀ byte, evaluateHelper .isBit [.byte byte] =
+        some (.bool (isBitByte byte))
+  | .natOfFrom =>
+      ∀ (bytes : List Nat) (index : Nat) (accumulator : Int), index ≤ bytes.length →
+        evaluateHelper .natOfFrom
+          [.text bytes, .int (Int.ofNat index), .int accumulator] =
+            some (.int (natOfBytesFrom bytes index accumulator))
+  | .natOf =>
+      ∀ bytes, evaluateHelper .natOf [.text bytes] = some (.int (natOfBytes bytes))
+  | .countOf =>
+      ∀ bytes, evaluateHelper .countOf [.text bytes] = some (.int (countOfBytes bytes))
+  | .intOf =>
+      ∀ bytes, evaluateHelper .intOf [.text bytes] = some (.int (intOfBytes bytes))
+  | .hexDigitValue =>
+      ∀ byte, evaluateHelper .hexDigitValue [.byte byte] =
+        some (.int (hexDigitValueByte byte))
+  | .hexOfFrom =>
+      ∀ (bytes : List Nat) (index : Nat) (accumulator : Int), index ≤ bytes.length →
+        evaluateHelper .hexOfFrom
+          [.text bytes, .int (Int.ofNat index), .int accumulator] =
+            some (.int (hexOfBytesFrom bytes index accumulator))
+  | .hexOf =>
+      ∀ bytes, evaluateHelper .hexOf [.text bytes] = some (.int (hexOfBytes bytes))
+  | .hexSeqFrom =>
+      ∀ (bytes : List Nat) (index : Nat) (accumulator current : Int),
+        index ≤ bytes.length →
+        evaluateHelper .hexSeqFrom
+          [.text bytes, .int (Int.ofNat index), .int accumulator, .int current] =
+            some (.int (hexSequenceBytesFrom bytes index accumulator current))
+  | .hexSeqOf =>
+      ∀ bytes, evaluateHelper .hexSeqOf [.text bytes] =
+        some (.int (hexSequenceBytes bytes))
+  | .segmentsFrom =>
+      ∀ (bytes : List Nat) (index : Nat) (countValue : Int), index ≤ bytes.length →
+        evaluateHelper .segmentsFrom
+          [.text bytes, .int (Int.ofNat index), .int countValue] =
+            some (.int (segmentsBytesFrom bytes index countValue))
+  | .segmentsOf =>
+      ∀ bytes, evaluateHelper .segmentsOf [.text bytes] = some (.int (segmentsBytes bytes))
+  | .signOf =>
+      ∀ bytes, evaluateHelper .signOf [.text bytes] = some (.int (signOfBytes bytes))
+  | .intPow =>
+      ∀ base exponent, evaluateHelper .intPow [.int base, .int exponent] =
+        some (.int (intPowModel base exponent))
+
+theorem helperDeclaration_realizes (helper : Helper) : helper.Realizes := by
+  cases helper with
+  | minusConstant => exact evaluateHelper_minusConstant
+  | zeroConstant => exact evaluateHelper_zeroConstant
+  | isDigit => exact evaluateHelper_isDigit
+  | isHexDigit => exact evaluateHelper_isHexDigit
+  | isBit => exact evaluateHelper_isBit
+  | natOfFrom => exact evaluateHelper_natOfFrom
+  | natOf => exact evaluateHelper_natOf
+  | countOf => exact evaluateHelper_countOf
+  | intOf => exact evaluateHelper_intOf
+  | hexDigitValue => exact evaluateHelper_hexDigitValue
+  | hexOfFrom => exact evaluateHelper_hexOfFrom
+  | hexOf => exact evaluateHelper_hexOf
+  | hexSeqFrom => exact evaluateHelper_hexSequenceFrom
+  | hexSeqOf => exact evaluateHelper_hexSequence
+  | segmentsFrom => exact evaluateHelper_segmentsFrom
+  | segmentsOf => exact evaluateHelper_segments
+  | signOf => exact evaluateHelper_signOf
+  | intPow => exact evaluateHelper_intPow
+
+end Triptych.Backend.Verus

@@ -114,17 +114,19 @@ for the user, with routine parser plumbing discharged automatically.
 - complete: prove recognition equivalence and a finite combined header/tail candidate bound;
 - complete: exercise one-, four-, and eight-character Graph6 headers, exact payload widths,
   semantic padding validation, and structured graph decoding;
-- complete: add `Terminal{f Header...}` for one delimiter-bounded final payload and
+- complete: add `Terminal{f Header...}` for delimiter-bounded dependent fields and
   generate its readable `IsWf`, typed `View`, structural `Derivation`, parser contracts, and
   search-cost theorem;
-- lower delimiter-free and internal capture-dependent fields from the `triptych` command into
-  `scanDependent`;
+- complete: support several dependent fields and internal fields terminated by immediate
+  literal delimiters;
+- lower delimiter-free capture-dependent fields from the `triptych` command into `scanDependent`;
 - generate combined readable `IsWf`, typed `View`, and structural `Derivation` artifacts for the
   general staged form;
 - extend the cost model from completed candidates to character inspections and establish a
   linear bound for deterministic exact-width dependent payloads;
-- add DIMACS CNF after the grammar can express whitespace-separated, zero-terminated clauses and
-  connect the declared clause count to the parsed collection.
+- complete: DIMACS CNF in the analyzable DSL (character sets, separator-free repetition, list
+  comprehensions, `count`/`forall` constraints), round-tripped against `Std.Sat.CNF.dimacs`;
+  comment lines precede the problem line, as the DIMACS specification requires.
 
 ### Standalone specialized parsers and foreign consumers
 
@@ -146,6 +148,24 @@ individual executable artifact in stages:
 6. build a direct Verus parser backend only if Vest cannot preserve the required textual
    behavior, API, or performance.
 
+### Link search-path Rust parsers to the readable specification
+
+Cursor-path Rust parsers (Decimal) are proved against `spec.rs`. Search-path parsers (Duration,
+Datetime, IPv4, IPv6) are proved only against a spec-function copy of their own generated state
+machine, so a backend-only rewrite can change behavior without any proof failing. The ordered
+choice regression in `verus-experiments/search-order/` was such a case. Close the gap in Lean
+rather than with per-format Verus proofs:
+
+1. move the Verus-only machine passes into Lean with semantic-preservation theorems: dead-capture
+   erasure (`lowerLiveSearchCode`, preserved modulo live-key projection), bounded repetition
+   unrolling and direct repetition (`compileVerusSearchCode`), captured-token fusion,
+   literal-guided dispatch, and deterministic merging;
+2. give the emitted state graph and the emitted `spec.rs` predicates a Lean semantics and prove
+   that the rendered machine agrees with `SearchMachine` and that `*_is_wf_*` agrees with `IsWf`,
+   extending the existing value-expression `Preservation` theorems;
+3. compose these with `SearchMachine = scan = decode ↔ IsWf`, leaving only the pretty-printer and
+   Verus's reading of the rendered AST as trusted components.
+
 ## 4. Maintain the Cedar baseline
 
 - complete: discharge Datetime's three external-parser obligations;
@@ -165,7 +185,9 @@ analyzable value and constraint tiers with operations such as:
 - per-element predicates such as `forall X`;
 - list arguments for `constraints'` (complete, including mixed scalar/list predicates and typed
   generated views);
-- richer access to repeated values beyond the completed generated count reader.
+- nested collection values: grouped `[P ⟨…⟩]` arguments for `value'` and `constraints'`
+  (complete; exercised by the LRAT text-proof example against `Std`'s parser);
+- complete: LRAT comment lines; remaining: a binary-format mode for binary LRAT.
 
 ## 6. Broader capture-functionality certificates
 
@@ -189,7 +211,7 @@ counterexamples.
 After the higher-leverage automation, diagnostics, and execution work:
 
 1. **UUIDv4**, followed by **UUIDv7**;
-2. **DIMACS CNF**;
+2. ~~DIMACS CNF~~ (complete: `other-examples/Inputs/Dimacs.lean`);
 3. SemVer, cron expressions, DNS names, or HTTP Structured Fields based on the next concrete
    language feature that needs pressure-testing.
 

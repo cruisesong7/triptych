@@ -8,7 +8,10 @@ import Triptych.Architecture.Constraint
 import Triptych.Architecture.Assemble
 import Triptych.Theorems.Reconcile
 import Triptych.Theorems.Value
-import Triptych.Archive.DecodeLemmas
+import Triptych.Theorems.ParsePlan
+import Triptych.Theorems.ScanPlan
+import Triptych.Theorems.SearchPlan
+import Triptych.Reference.DecodeLemmas
 import Triptych.Theorems.Derivation
 import Triptych.Theorems.Scanner
 import Outputs.Duration.spec
@@ -23,7 +26,7 @@ set_option linter.unnecessarySeqFocus false
 
 /- ══════════════════════════════ engine ══════════════════════════════
 The executable counterpart of the spec. A verified scanner extracts captured
-components and stops at the first complete parse. The archived reference `decode`
+components and stops at the first complete parse. The reference `decode`
 is used only in the agreement proof, not as a runtime fallback. `computeValue`
 evaluates the value function on those captures. Generated `DecidablePred` instances
 make the readable `IsWf` and `IsValid` predicates directly executable.
@@ -185,6 +188,23 @@ def Duration.View.ofMap (input : String) (m : Triptych.CaptureMap) : Duration.Vi
     (Triptych.CaptureMap.toEnv m "DHours") (Triptych.CaptureMap.toEnv m "DMinutes")
     (Triptych.CaptureMap.toEnv m "DSeconds") (Triptych.CaptureMap.toEnv m "DMillis")
     ((Triptych.CaptureMap.toEnv m "Components").getD "")
+
+private def Duration.View.ofSpans (input : String) (chars : List Char) (spans : Triptych.LeanSpanCursor.SpanMap) :
+    Duration.View :=
+  Duration.View.mk input ((Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "Sign").getD "")
+    (Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "DDays")
+    (Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "DHours")
+    (Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "DMinutes")
+    (Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "DSeconds")
+    (Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "DMillis")
+    ((Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "Components").getD "")
+
+private theorem Duration.View.ofSpans_eq_ofMap (input : String) (chars : List Char)
+    (spans : Triptych.LeanSpanCursor.SpanMap) :
+    Duration.View.ofSpans input chars spans = Duration.View.ofMap input (spans.materialize chars) :=
+  by
+  unfold Duration.View.ofSpans Duration.View.ofMap
+  simp only [Triptych.LeanSpanCursor.SpanMap.captureMap_toEnv, Triptych.LeanSpanCursor.SpanMap.captureMap_toEnvList]
 
 def Duration.decodeView (s : String) : Option Duration.View :=
   (scan Duration.grammar s).map (Duration.View.ofMap s)
@@ -701,9 +721,9 @@ theorem Duration.Internal.matchesRef.Sign (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold Duration.IsWf.Sign
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym]
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem Duration.Internal.matchesRef.DDays (fuel : Nat) (s : String) :
@@ -718,10 +738,10 @@ theorem Duration.Internal.matchesRef.DDays (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold Duration.IsWf.DDays
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem Duration.Internal.matchesRef.Days (fuel : Nat) (s : String) :
@@ -736,10 +756,10 @@ theorem Duration.Internal.matchesRef.Days (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold Duration.IsWf.Days
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     Duration.Internal.matchesRef.DDays]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem Duration.Internal.matchesRef.DHours (fuel : Nat) (s : String) :
@@ -754,10 +774,10 @@ theorem Duration.Internal.matchesRef.DHours (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold Duration.IsWf.DHours
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem Duration.Internal.matchesRef.Hours (fuel : Nat) (s : String) :
@@ -772,10 +792,10 @@ theorem Duration.Internal.matchesRef.Hours (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold Duration.IsWf.Hours
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     Duration.Internal.matchesRef.DHours]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem Duration.Internal.matchesRef.DMinutes (fuel : Nat) (s : String) :
@@ -790,10 +810,10 @@ theorem Duration.Internal.matchesRef.DMinutes (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold Duration.IsWf.DMinutes
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem Duration.Internal.matchesRef.Minutes (fuel : Nat) (s : String) :
@@ -808,10 +828,10 @@ theorem Duration.Internal.matchesRef.Minutes (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold Duration.IsWf.Minutes
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     Duration.Internal.matchesRef.DMinutes]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem Duration.Internal.matchesRef.DSeconds (fuel : Nat) (s : String) :
@@ -826,10 +846,10 @@ theorem Duration.Internal.matchesRef.DSeconds (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold Duration.IsWf.DSeconds
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem Duration.Internal.matchesRef.Seconds (fuel : Nat) (s : String) :
@@ -844,10 +864,10 @@ theorem Duration.Internal.matchesRef.Seconds (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold Duration.IsWf.Seconds
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     Duration.Internal.matchesRef.DSeconds]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem Duration.Internal.matchesRef.DMillis (fuel : Nat) (s : String) :
@@ -862,10 +882,10 @@ theorem Duration.Internal.matchesRef.DMillis (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold Duration.IsWf.DMillis
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem Duration.Internal.matchesRef.Millis (fuel : Nat) (s : String) :
@@ -880,10 +900,10 @@ theorem Duration.Internal.matchesRef.Millis (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold Duration.IsWf.Millis
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     Duration.Internal.matchesRef.DMillis]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem Duration.Internal.matchesRef.Components (fuel : Nat) (s : String) :
@@ -901,15 +921,15 @@ theorem Duration.Internal.matchesRef.Components (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold Duration.IsWf.Components
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq_opt_cons, Triptych.matchesSeq.eq_1,
-    Triptych.matchesSeq.eq_2, exists_eq_left, if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc,
+    Triptych.matchesSeq.eq_2, exists_eq_left, ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc,
     Triptych.matchesSym, Duration.Internal.matchesRef.Days, Duration.Internal.matchesRef.Hours,
     Duration.Internal.matchesRef.Minutes, Duration.Internal.matchesRef.Seconds, Duration.Internal.matchesRef.Millis]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem Duration.Internal.matchesRef.Duration (fuel : Nat) (s : String) :
-    matchesSym Duration.grammar (fuel + 4) (Sym.ref "Duration") s ↔ Duration.IsWf.Duration s :=
+    matchesSym Duration.grammar (fuel + 4) (Sym.ref "Duration") s ↔ Duration.Production s :=
   by
   rw [matchesSym,
     show
@@ -918,15 +938,15 @@ theorem Duration.Internal.matchesRef.Duration (fuel : Nat) (s : String) :
       from rfl]
   dsimp only
   rw [matchesProd_single]
-  unfold Duration.IsWf.Duration
+  unfold Duration.Production
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     Duration.Internal.matchesRef.Sign, Duration.Internal.matchesRef.Components]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
-theorem Duration.IsWfGrammar_equiv (s : String) : Triptych.IsWf Duration.grammar s ↔ Duration.IsWf.Duration s :=
+theorem Duration.IsWfGrammar_equiv (s : String) : Triptych.IsWf Duration.grammar s ↔ Duration.Production s :=
   by
   rw [isWf_eq_isWfProd_start, IsWfProd,
     show
@@ -958,10 +978,11 @@ theorem Duration.IsWf_equiv (s : String) : Duration.IsWf s ↔ Triptych.isWf Dur
   rw [Triptych.scan_eq_decode]
   rw [← Duration.IsWfGrammar_equiv, ← decodeSome_iff_IsWf Duration.grammar (by decide)]
   unfold Duration.SatisfiesWfConstraints Duration.WfConstraints Duration.constraints
-  simp only [Triptych.component, Triptych.componentList, Triptych.envOf, Triptych.captureMapOf, Triptych.scan_eq_decode,
-    List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const, ConstraintEntry.wfPart,
-    Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD,
-    Env.countVal, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
+  simp only [Triptych.component, Triptych.componentList, Triptych.componentWith, Triptych.envOf, Triptych.captureMapOf,
+    Triptych.scan_eq_decode, List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const,
+    ConstraintEntry.wfPart, Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD,
+    countOf_getD, signOf_getD, hexOf_getD, hexSeqOf_getD, segmentsOf_getD, Env.countVal, and_true, true_and,
+    false_implies, implies_true, Bool.false_eq_true]
   try grind
 
 theorem Duration.SatisfiesConstraints_equiv (s : String) :
@@ -971,8 +992,8 @@ theorem Duration.SatisfiesConstraints_equiv (s : String) :
   unfold Duration.SatisfiesConstraints Duration.Constraints Duration.constraints Duration.value Duration.valueExpr
   simp only [Triptych.component, Triptych.envOf, Triptych.captureMapOf, Triptych.scan_eq_decode, List.forall_mem_cons,
     List.forall_mem_singleton, List.not_mem_nil, forall_const, ConstraintEntry.valPart, Constraint.eval, ValExpr.eval,
-    presentCount, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, Env.countVal, and_true, true_and,
-    false_implies, implies_true, Bool.false_eq_true]
+    presentCount, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, hexOf_getD, hexSeqOf_getD,
+    segmentsOf_getD, Env.countVal, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
   try grind
 
 theorem Duration.IsValid_equiv (s : String) :
@@ -1046,11 +1067,14 @@ theorem Duration.computeValue_eq (s : String) :
             (Triptych.component Duration.grammar s "DSeconds") (Triptych.component Duration.grammar s "DMillis")) :=
   by
   unfold Duration.computeValue Triptych.scannerComputeValue Triptych.component Triptych.envOf Triptych.captureMapOf
-    Duration.value Duration.valueExpr
+    Duration.valueExpr Duration.value
   rw [Triptych.scan_eq_decode]
   cases h : decode Duration.grammar s with
   | none => simp [h]
-  | some m => simp [h, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, Env.countVal, ValExpr.eval]
+  | some m =>
+    simp [h, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, hexOf_getD, hexSeqOf_getD, segmentsOf_getD,
+        Env.countVal, ValExpr.eval] <;>
+      ac_rfl
 
 theorem Duration.computeValue_of_decode {s : String} {m : Triptych.CaptureMap}
     (h : decode Duration.grammar s = some m) :
@@ -1083,16 +1107,823 @@ theorem Duration.computeValue_view (s : String) :
     rfl
 
 /- ═══════════════════════════════ parser ══════════════════════════════
-The generated correct-by-construction parser `parse` scans once, checks constraints
-on that capture map, and computes the result from the same captures. `parse_eq_gated`
-proves equality with the readable validity-gated presentation. Its correctness and
-search-cost guarantees — `parse_sound`, `parse_complete`, `parse_reject`,
+The generated correct-by-construction parser `parse` uses a certified staged cursor
+program when the grammar supports one, projects its captures once into the typed
+`View`, checks `View.Valid`, and computes `View.denotation`. Certified cursor rejection
+is final; grammar
+shapes outside that fragment use the complete scanner. `parse_eq_scanner` and
+`parse_eq_gated` prove equality with the generic
+scanner and readable validity-gated presentation. Its correctness and search-cost
+guarantees — `parse_sound`, `parse_complete`, `parse_reject`,
 `parse_profile_result`, `parse_candidateChecks_le`, `parse_view`, and typed
 `parse_eq_some_iff_view` / `parse_eq_none_iff_view` normal forms — are all
 AUTO-DISCHARGED here.
 When an external parser is declared, `checkedExtParse` additionally validates each
 external result against this parser and ships an AUTO-DISCHARGED soundness theorem.
 A verified parser, no `sorry`. -/
+
+private abbrev Duration.searchPlan : SearchPlan :=
+  ({ start := "Duration",
+      alternatives :=
+        [[SearchPattern.capture "Sign" ["Sign"] [[SearchPattern.optional (SearchPattern.literal "-")]],
+            SearchPattern.capture "Components" ["Components"]
+              [[SearchPattern.optional
+                    (SearchPattern.capture "Days" ["Days", "Components.Days"]
+                      [[SearchPattern.capture "DDays" ["DDays", "Days.DDays"]
+                            [[SearchPattern.tokenRun TokClass.digit LenSpec.atLeastOne]],
+                          SearchPattern.literal "d"]]),
+                  SearchPattern.optional
+                    (SearchPattern.capture "Hours" ["Hours", "Components.Hours"]
+                      [[SearchPattern.capture "DHours" ["DHours", "Hours.DHours"]
+                            [[SearchPattern.tokenRun TokClass.digit LenSpec.atLeastOne]],
+                          SearchPattern.literal "h"]]),
+                  SearchPattern.optional
+                    (SearchPattern.capture "Minutes" ["Minutes", "Components.Minutes"]
+                      [[SearchPattern.capture "DMinutes" ["DMinutes", "Minutes.DMinutes"]
+                            [[SearchPattern.tokenRun TokClass.digit LenSpec.atLeastOne]],
+                          SearchPattern.literal "m"]]),
+                  SearchPattern.optional
+                    (SearchPattern.capture "Seconds" ["Seconds", "Components.Seconds"]
+                      [[SearchPattern.capture "DSeconds" ["DSeconds", "Seconds.DSeconds"]
+                            [[SearchPattern.tokenRun TokClass.digit LenSpec.atLeastOne]],
+                          SearchPattern.literal "s"]]),
+                  SearchPattern.optional
+                    (SearchPattern.capture "Millis" ["Millis", "Components.Millis"]
+                      [[SearchPattern.capture "DMillis" ["DMillis", "Millis.DMillis"]
+                            [[SearchPattern.tokenRun TokClass.digit LenSpec.atLeastOne]],
+                          SearchPattern.literal "ms"]])]]]] } :
+    SearchPlan)
+
+private abbrev Duration.parsePlan : ParsePlan :=
+  ParsePlan.search Duration.searchPlan
+
+private theorem Duration.searchPlan_mirrorsGrammar : SearchPlan.MirrorsGrammar Duration.searchPlan Duration.grammar :=
+  SearchPlan.MirrorsGrammar.intro (by rfl)
+    (Production.mk "Duration" [[SymItem.mk (Sym.ref "Sign") false, SymItem.mk (Sym.ref "Components") false]]) (by rfl)
+    (SearchPattern.MirrorsAlternatives.cons
+      (SearchPattern.MirrorsSequence.required
+        (SearchPattern.MirrorsSymbol.capture («grammar» := Duration.grammar) (fuel := 12) (production :=
+          Production.mk "Sign" [[SymItem.mk (Sym.lit "-") true]]) (by rfl) (by rfl)
+          (SearchPattern.MirrorsAlternatives.cons
+            (SearchPattern.MirrorsSequence.optional SearchPattern.MirrorsSymbol.literal
+              SearchPattern.MirrorsSequence.empty)
+            SearchPattern.MirrorsAlternatives.empty))
+        (SearchPattern.MirrorsSequence.required
+          (SearchPattern.MirrorsSymbol.capture («grammar» := Duration.grammar) (fuel := 12) (production :=
+            Production.mk "Components"
+              [[SymItem.mk (Sym.ref "Days") true, SymItem.mk (Sym.ref "Hours") true,
+                  SymItem.mk (Sym.ref "Minutes") true, SymItem.mk (Sym.ref "Seconds") true,
+                  SymItem.mk (Sym.ref "Millis") true]])
+            (by rfl) (by rfl)
+            (SearchPattern.MirrorsAlternatives.cons
+              (SearchPattern.MirrorsSequence.optional
+                (SearchPattern.MirrorsSymbol.capture («grammar» := Duration.grammar) (fuel := 11) (production :=
+                  Production.mk "Days" [[SymItem.mk (Sym.ref "DDays") false, SymItem.mk (Sym.lit "d") false]]) (by rfl)
+                  (by rfl)
+                  (SearchPattern.MirrorsAlternatives.cons
+                    (SearchPattern.MirrorsSequence.required
+                      (SearchPattern.MirrorsSymbol.capture («grammar» := Duration.grammar) (fuel := 10) (production :=
+                        Production.mk "DDays" [[SymItem.mk (Sym.term TokClass.digit LenSpec.atLeastOne) false]])
+                        (by rfl) (by rfl)
+                        (SearchPattern.MirrorsAlternatives.cons
+                          (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                            SearchPattern.MirrorsSequence.empty)
+                          SearchPattern.MirrorsAlternatives.empty))
+                      (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                        SearchPattern.MirrorsSequence.empty))
+                    SearchPattern.MirrorsAlternatives.empty))
+                (SearchPattern.MirrorsSequence.optional
+                  (SearchPattern.MirrorsSymbol.capture («grammar» := Duration.grammar) (fuel := 11) (production :=
+                    Production.mk "Hours" [[SymItem.mk (Sym.ref "DHours") false, SymItem.mk (Sym.lit "h") false]])
+                    (by rfl) (by rfl)
+                    (SearchPattern.MirrorsAlternatives.cons
+                      (SearchPattern.MirrorsSequence.required
+                        (SearchPattern.MirrorsSymbol.capture («grammar» := Duration.grammar) (fuel := 10) (production :=
+                          Production.mk "DHours" [[SymItem.mk (Sym.term TokClass.digit LenSpec.atLeastOne) false]])
+                          (by rfl) (by rfl)
+                          (SearchPattern.MirrorsAlternatives.cons
+                            (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                              SearchPattern.MirrorsSequence.empty)
+                            SearchPattern.MirrorsAlternatives.empty))
+                        (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                          SearchPattern.MirrorsSequence.empty))
+                      SearchPattern.MirrorsAlternatives.empty))
+                  (SearchPattern.MirrorsSequence.optional
+                    (SearchPattern.MirrorsSymbol.capture («grammar» := Duration.grammar) (fuel := 11) (production :=
+                      Production.mk "Minutes" [[SymItem.mk (Sym.ref "DMinutes") false, SymItem.mk (Sym.lit "m") false]])
+                      (by rfl) (by rfl)
+                      (SearchPattern.MirrorsAlternatives.cons
+                        (SearchPattern.MirrorsSequence.required
+                          (SearchPattern.MirrorsSymbol.capture («grammar» := Duration.grammar) (fuel := 10)
+                            (production :=
+                            Production.mk "DMinutes" [[SymItem.mk (Sym.term TokClass.digit LenSpec.atLeastOne) false]])
+                            (by rfl) (by rfl)
+                            (SearchPattern.MirrorsAlternatives.cons
+                              (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                SearchPattern.MirrorsSequence.empty)
+                              SearchPattern.MirrorsAlternatives.empty))
+                          (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                            SearchPattern.MirrorsSequence.empty))
+                        SearchPattern.MirrorsAlternatives.empty))
+                    (SearchPattern.MirrorsSequence.optional
+                      (SearchPattern.MirrorsSymbol.capture («grammar» := Duration.grammar) (fuel := 11) (production :=
+                        Production.mk "Seconds"
+                          [[SymItem.mk (Sym.ref "DSeconds") false, SymItem.mk (Sym.lit "s") false]])
+                        (by rfl) (by rfl)
+                        (SearchPattern.MirrorsAlternatives.cons
+                          (SearchPattern.MirrorsSequence.required
+                            (SearchPattern.MirrorsSymbol.capture («grammar» := Duration.grammar) (fuel := 10)
+                              (production :=
+                              Production.mk "DSeconds"
+                                [[SymItem.mk (Sym.term TokClass.digit LenSpec.atLeastOne) false]])
+                              (by rfl) (by rfl)
+                              (SearchPattern.MirrorsAlternatives.cons
+                                (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                  SearchPattern.MirrorsSequence.empty)
+                                SearchPattern.MirrorsAlternatives.empty))
+                            (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                              SearchPattern.MirrorsSequence.empty))
+                          SearchPattern.MirrorsAlternatives.empty))
+                      (SearchPattern.MirrorsSequence.optional
+                        (SearchPattern.MirrorsSymbol.capture («grammar» := Duration.grammar) (fuel := 11) (production :=
+                          Production.mk "Millis"
+                            [[SymItem.mk (Sym.ref "DMillis") false, SymItem.mk (Sym.lit "ms") false]])
+                          (by rfl) (by rfl)
+                          (SearchPattern.MirrorsAlternatives.cons
+                            (SearchPattern.MirrorsSequence.required
+                              (SearchPattern.MirrorsSymbol.capture («grammar» := Duration.grammar) (fuel := 10)
+                                (production :=
+                                Production.mk "DMillis"
+                                  [[SymItem.mk (Sym.term TokClass.digit LenSpec.atLeastOne) false]])
+                                (by rfl) (by rfl)
+                                (SearchPattern.MirrorsAlternatives.cons
+                                  (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                    SearchPattern.MirrorsSequence.empty)
+                                  SearchPattern.MirrorsAlternatives.empty))
+                              (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                                SearchPattern.MirrorsSequence.empty))
+                            SearchPattern.MirrorsAlternatives.empty))
+                        SearchPattern.MirrorsSequence.empty)))))
+              SearchPattern.MirrorsAlternatives.empty))
+          SearchPattern.MirrorsSequence.empty))
+      SearchPattern.MirrorsAlternatives.empty)
+
+private abbrev Duration.searchProgram : SearchProgram :=
+  ({ start := "Duration",
+      code :=
+        SearchCode.capture ["Sign"] (SearchCode.choice (SearchCode.literal "-" SearchCode.accept) SearchCode.accept)
+          (SearchCode.capture ["Components"]
+            (SearchCode.choice
+              (SearchCode.capture ["Days", "Components.Days"]
+                (SearchCode.capture ["DDays", "Days.DDays"]
+                  (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                  (SearchCode.literal "d" SearchCode.accept))
+                (SearchCode.choice
+                  (SearchCode.capture ["Hours", "Components.Hours"]
+                    (SearchCode.capture ["DHours", "Hours.DHours"]
+                      (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                      (SearchCode.literal "h" SearchCode.accept))
+                    (SearchCode.choice
+                      (SearchCode.capture ["Minutes", "Components.Minutes"]
+                        (SearchCode.capture ["DMinutes", "Minutes.DMinutes"]
+                          (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                          (SearchCode.literal "m" SearchCode.accept))
+                        (SearchCode.choice
+                          (SearchCode.capture ["Seconds", "Components.Seconds"]
+                            (SearchCode.capture ["DSeconds", "Seconds.DSeconds"]
+                              (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                              (SearchCode.literal "s" SearchCode.accept))
+                            (SearchCode.choice
+                              (SearchCode.capture ["Millis", "Components.Millis"]
+                                (SearchCode.capture ["DMillis", "Millis.DMillis"]
+                                  (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                                  (SearchCode.literal "ms" SearchCode.accept))
+                                SearchCode.accept)
+                              SearchCode.accept))
+                          (SearchCode.choice
+                            (SearchCode.capture ["Millis", "Components.Millis"]
+                              (SearchCode.capture ["DMillis", "Millis.DMillis"]
+                                (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                                (SearchCode.literal "ms" SearchCode.accept))
+                              SearchCode.accept)
+                            SearchCode.accept)))
+                      (SearchCode.choice
+                        (SearchCode.capture ["Seconds", "Components.Seconds"]
+                          (SearchCode.capture ["DSeconds", "Seconds.DSeconds"]
+                            (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                            (SearchCode.literal "s" SearchCode.accept))
+                          (SearchCode.choice
+                            (SearchCode.capture ["Millis", "Components.Millis"]
+                              (SearchCode.capture ["DMillis", "Millis.DMillis"]
+                                (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                                (SearchCode.literal "ms" SearchCode.accept))
+                              SearchCode.accept)
+                            SearchCode.accept))
+                        (SearchCode.choice
+                          (SearchCode.capture ["Millis", "Components.Millis"]
+                            (SearchCode.capture ["DMillis", "Millis.DMillis"]
+                              (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                              (SearchCode.literal "ms" SearchCode.accept))
+                            SearchCode.accept)
+                          SearchCode.accept))))
+                  (SearchCode.choice
+                    (SearchCode.capture ["Minutes", "Components.Minutes"]
+                      (SearchCode.capture ["DMinutes", "Minutes.DMinutes"]
+                        (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                        (SearchCode.literal "m" SearchCode.accept))
+                      (SearchCode.choice
+                        (SearchCode.capture ["Seconds", "Components.Seconds"]
+                          (SearchCode.capture ["DSeconds", "Seconds.DSeconds"]
+                            (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                            (SearchCode.literal "s" SearchCode.accept))
+                          (SearchCode.choice
+                            (SearchCode.capture ["Millis", "Components.Millis"]
+                              (SearchCode.capture ["DMillis", "Millis.DMillis"]
+                                (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                                (SearchCode.literal "ms" SearchCode.accept))
+                              SearchCode.accept)
+                            SearchCode.accept))
+                        (SearchCode.choice
+                          (SearchCode.capture ["Millis", "Components.Millis"]
+                            (SearchCode.capture ["DMillis", "Millis.DMillis"]
+                              (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                              (SearchCode.literal "ms" SearchCode.accept))
+                            SearchCode.accept)
+                          SearchCode.accept)))
+                    (SearchCode.choice
+                      (SearchCode.capture ["Seconds", "Components.Seconds"]
+                        (SearchCode.capture ["DSeconds", "Seconds.DSeconds"]
+                          (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                          (SearchCode.literal "s" SearchCode.accept))
+                        (SearchCode.choice
+                          (SearchCode.capture ["Millis", "Components.Millis"]
+                            (SearchCode.capture ["DMillis", "Millis.DMillis"]
+                              (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                              (SearchCode.literal "ms" SearchCode.accept))
+                            SearchCode.accept)
+                          SearchCode.accept))
+                      (SearchCode.choice
+                        (SearchCode.capture ["Millis", "Components.Millis"]
+                          (SearchCode.capture ["DMillis", "Millis.DMillis"]
+                            (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                            (SearchCode.literal "ms" SearchCode.accept))
+                          SearchCode.accept)
+                        SearchCode.accept)))))
+              (SearchCode.choice
+                (SearchCode.capture ["Hours", "Components.Hours"]
+                  (SearchCode.capture ["DHours", "Hours.DHours"]
+                    (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                    (SearchCode.literal "h" SearchCode.accept))
+                  (SearchCode.choice
+                    (SearchCode.capture ["Minutes", "Components.Minutes"]
+                      (SearchCode.capture ["DMinutes", "Minutes.DMinutes"]
+                        (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                        (SearchCode.literal "m" SearchCode.accept))
+                      (SearchCode.choice
+                        (SearchCode.capture ["Seconds", "Components.Seconds"]
+                          (SearchCode.capture ["DSeconds", "Seconds.DSeconds"]
+                            (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                            (SearchCode.literal "s" SearchCode.accept))
+                          (SearchCode.choice
+                            (SearchCode.capture ["Millis", "Components.Millis"]
+                              (SearchCode.capture ["DMillis", "Millis.DMillis"]
+                                (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                                (SearchCode.literal "ms" SearchCode.accept))
+                              SearchCode.accept)
+                            SearchCode.accept))
+                        (SearchCode.choice
+                          (SearchCode.capture ["Millis", "Components.Millis"]
+                            (SearchCode.capture ["DMillis", "Millis.DMillis"]
+                              (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                              (SearchCode.literal "ms" SearchCode.accept))
+                            SearchCode.accept)
+                          SearchCode.accept)))
+                    (SearchCode.choice
+                      (SearchCode.capture ["Seconds", "Components.Seconds"]
+                        (SearchCode.capture ["DSeconds", "Seconds.DSeconds"]
+                          (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                          (SearchCode.literal "s" SearchCode.accept))
+                        (SearchCode.choice
+                          (SearchCode.capture ["Millis", "Components.Millis"]
+                            (SearchCode.capture ["DMillis", "Millis.DMillis"]
+                              (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                              (SearchCode.literal "ms" SearchCode.accept))
+                            SearchCode.accept)
+                          SearchCode.accept))
+                      (SearchCode.choice
+                        (SearchCode.capture ["Millis", "Components.Millis"]
+                          (SearchCode.capture ["DMillis", "Millis.DMillis"]
+                            (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                            (SearchCode.literal "ms" SearchCode.accept))
+                          SearchCode.accept)
+                        SearchCode.accept))))
+                (SearchCode.choice
+                  (SearchCode.capture ["Minutes", "Components.Minutes"]
+                    (SearchCode.capture ["DMinutes", "Minutes.DMinutes"]
+                      (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                      (SearchCode.literal "m" SearchCode.accept))
+                    (SearchCode.choice
+                      (SearchCode.capture ["Seconds", "Components.Seconds"]
+                        (SearchCode.capture ["DSeconds", "Seconds.DSeconds"]
+                          (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                          (SearchCode.literal "s" SearchCode.accept))
+                        (SearchCode.choice
+                          (SearchCode.capture ["Millis", "Components.Millis"]
+                            (SearchCode.capture ["DMillis", "Millis.DMillis"]
+                              (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                              (SearchCode.literal "ms" SearchCode.accept))
+                            SearchCode.accept)
+                          SearchCode.accept))
+                      (SearchCode.choice
+                        (SearchCode.capture ["Millis", "Components.Millis"]
+                          (SearchCode.capture ["DMillis", "Millis.DMillis"]
+                            (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                            (SearchCode.literal "ms" SearchCode.accept))
+                          SearchCode.accept)
+                        SearchCode.accept)))
+                  (SearchCode.choice
+                    (SearchCode.capture ["Seconds", "Components.Seconds"]
+                      (SearchCode.capture ["DSeconds", "Seconds.DSeconds"]
+                        (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                        (SearchCode.literal "s" SearchCode.accept))
+                      (SearchCode.choice
+                        (SearchCode.capture ["Millis", "Components.Millis"]
+                          (SearchCode.capture ["DMillis", "Millis.DMillis"]
+                            (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                            (SearchCode.literal "ms" SearchCode.accept))
+                          SearchCode.accept)
+                        SearchCode.accept))
+                    (SearchCode.choice
+                      (SearchCode.capture ["Millis", "Components.Millis"]
+                        (SearchCode.capture ["DMillis", "Millis.DMillis"]
+                          (SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne SearchCode.accept)
+                          (SearchCode.literal "ms" SearchCode.accept))
+                        SearchCode.accept)
+                      SearchCode.accept)))))
+            SearchCode.accept) } :
+    SearchProgram)
+
+private theorem Duration.searchProgram_lowered : lowerSearchPlan Duration.searchPlan = Duration.searchProgram := by
+  decide
+
+private def Duration.searchCode_0 : SearchCode :=
+  SearchCode.accept
+
+@[inline]
+private def Duration.searchNode_0 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  k [] input
+
+private theorem Duration.searchNode_0_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Duration.searchNode_0 input k = SearchCode.runK Duration.searchCode_0 input k :=
+  by
+  unfold Duration.searchNode_0 Duration.searchCode_0
+  simp only [SearchCode.runK]
+
+private def Duration.searchCode_1 : SearchCode :=
+  SearchCode.literal "-" Duration.searchCode_0
+
+@[inline]
+private def Duration.searchNode_1 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  let characters := ("-").toList
+  if characters.isPrefixOf input then Duration.searchNode_0 ((input).drop characters.length) k else none
+
+private theorem Duration.searchNode_1_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Duration.searchNode_1 input k = SearchCode.runK Duration.searchCode_1 input k :=
+  by
+  unfold Duration.searchNode_1 Duration.searchCode_1
+  simp only [SearchCode.runK, Duration.searchNode_0_eq]
+
+private def Duration.searchCode_2 : SearchCode :=
+  SearchCode.choice Duration.searchCode_1 Duration.searchCode_0
+
+@[inline]
+private def Duration.searchNode_2 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  scanOrElse (Duration.searchNode_1 input k) fun _ => Duration.searchNode_0 input k
+
+private theorem Duration.searchNode_2_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Duration.searchNode_2 input k = SearchCode.runK Duration.searchCode_2 input k :=
+  by
+  unfold Duration.searchNode_2 Duration.searchCode_2
+  simp only [SearchCode.runK, Duration.searchNode_1_eq, Duration.searchNode_0_eq]
+
+private def Duration.searchCode_3 : SearchCode :=
+  SearchCode.tokenRun TokClass.digit LenSpec.atLeastOne Duration.searchCode_0
+
+@[inline]
+private def Duration.searchNode_3 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  (List.range ((input).length + 1)).findSome? fun width =>
+    if termPrefixOk TokClass.digit LenSpec.atLeastOne input width then Duration.searchNode_0 ((input).drop width) k
+    else none
+
+private theorem Duration.searchNode_3_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Duration.searchNode_3 input k = SearchCode.runK Duration.searchCode_3 input k :=
+  by
+  unfold Duration.searchNode_3 Duration.searchCode_3
+  simp only [SearchCode.runK, Duration.searchNode_0_eq]
+
+private def Duration.searchCode_4 : SearchCode :=
+  SearchCode.literal "d" Duration.searchCode_0
+
+@[inline]
+private def Duration.searchNode_4 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  let characters := ("d").toList
+  if characters.isPrefixOf input then Duration.searchNode_0 ((input).drop characters.length) k else none
+
+private theorem Duration.searchNode_4_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Duration.searchNode_4 input k = SearchCode.runK Duration.searchCode_4 input k :=
+  by
+  unfold Duration.searchNode_4 Duration.searchCode_4
+  simp only [SearchCode.runK, Duration.searchNode_0_eq]
+
+private def Duration.searchCode_5 : SearchCode :=
+  SearchCode.capture ["DDays", "Days.DDays"] Duration.searchCode_3 Duration.searchCode_4
+
+@[inline]
+private def Duration.searchNode_5 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  Duration.searchNode_3 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Duration.searchNode_4 remaining fun tailCaptures suffix =>
+      k ((["DDays", "Days.DDays"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem Duration.searchNode_5_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Duration.searchNode_5 input k = SearchCode.runK Duration.searchCode_5 input k :=
+  by
+  unfold Duration.searchNode_5 Duration.searchCode_5
+  simp only [SearchCode.runK, Duration.searchNode_3_eq, Duration.searchNode_4_eq]
+
+private def Duration.searchCode_6 : SearchCode :=
+  SearchCode.literal "h" Duration.searchCode_0
+
+@[inline]
+private def Duration.searchNode_6 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  let characters := ("h").toList
+  if characters.isPrefixOf input then Duration.searchNode_0 ((input).drop characters.length) k else none
+
+private theorem Duration.searchNode_6_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Duration.searchNode_6 input k = SearchCode.runK Duration.searchCode_6 input k :=
+  by
+  unfold Duration.searchNode_6 Duration.searchCode_6
+  simp only [SearchCode.runK, Duration.searchNode_0_eq]
+
+private def Duration.searchCode_7 : SearchCode :=
+  SearchCode.capture ["DHours", "Hours.DHours"] Duration.searchCode_3 Duration.searchCode_6
+
+@[inline]
+private def Duration.searchNode_7 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  Duration.searchNode_3 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Duration.searchNode_6 remaining fun tailCaptures suffix =>
+      k ((["DHours", "Hours.DHours"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem Duration.searchNode_7_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Duration.searchNode_7 input k = SearchCode.runK Duration.searchCode_7 input k :=
+  by
+  unfold Duration.searchNode_7 Duration.searchCode_7
+  simp only [SearchCode.runK, Duration.searchNode_3_eq, Duration.searchNode_6_eq]
+
+private def Duration.searchCode_8 : SearchCode :=
+  SearchCode.literal "m" Duration.searchCode_0
+
+@[inline]
+private def Duration.searchNode_8 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  let characters := ("m").toList
+  if characters.isPrefixOf input then Duration.searchNode_0 ((input).drop characters.length) k else none
+
+private theorem Duration.searchNode_8_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Duration.searchNode_8 input k = SearchCode.runK Duration.searchCode_8 input k :=
+  by
+  unfold Duration.searchNode_8 Duration.searchCode_8
+  simp only [SearchCode.runK, Duration.searchNode_0_eq]
+
+private def Duration.searchCode_9 : SearchCode :=
+  SearchCode.capture ["DMinutes", "Minutes.DMinutes"] Duration.searchCode_3 Duration.searchCode_8
+
+@[inline]
+private def Duration.searchNode_9 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  Duration.searchNode_3 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Duration.searchNode_8 remaining fun tailCaptures suffix =>
+      k ((["DMinutes", "Minutes.DMinutes"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem Duration.searchNode_9_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Duration.searchNode_9 input k = SearchCode.runK Duration.searchCode_9 input k :=
+  by
+  unfold Duration.searchNode_9 Duration.searchCode_9
+  simp only [SearchCode.runK, Duration.searchNode_3_eq, Duration.searchNode_8_eq]
+
+private def Duration.searchCode_10 : SearchCode :=
+  SearchCode.literal "s" Duration.searchCode_0
+
+@[inline]
+private def Duration.searchNode_10 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  let characters := ("s").toList
+  if characters.isPrefixOf input then Duration.searchNode_0 ((input).drop characters.length) k else none
+
+private theorem Duration.searchNode_10_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Duration.searchNode_10 input k = SearchCode.runK Duration.searchCode_10 input k :=
+  by
+  unfold Duration.searchNode_10 Duration.searchCode_10
+  simp only [SearchCode.runK, Duration.searchNode_0_eq]
+
+private def Duration.searchCode_11 : SearchCode :=
+  SearchCode.capture ["DSeconds", "Seconds.DSeconds"] Duration.searchCode_3 Duration.searchCode_10
+
+@[inline]
+private def Duration.searchNode_11 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  Duration.searchNode_3 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Duration.searchNode_10 remaining fun tailCaptures suffix =>
+      k ((["DSeconds", "Seconds.DSeconds"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem Duration.searchNode_11_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Duration.searchNode_11 input k = SearchCode.runK Duration.searchCode_11 input k :=
+  by
+  unfold Duration.searchNode_11 Duration.searchCode_11
+  simp only [SearchCode.runK, Duration.searchNode_3_eq, Duration.searchNode_10_eq]
+
+private def Duration.searchCode_12 : SearchCode :=
+  SearchCode.literal "ms" Duration.searchCode_0
+
+@[inline]
+private def Duration.searchNode_12 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  let characters := ("ms").toList
+  if characters.isPrefixOf input then Duration.searchNode_0 ((input).drop characters.length) k else none
+
+private theorem Duration.searchNode_12_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Duration.searchNode_12 input k = SearchCode.runK Duration.searchCode_12 input k :=
+  by
+  unfold Duration.searchNode_12 Duration.searchCode_12
+  simp only [SearchCode.runK, Duration.searchNode_0_eq]
+
+private def Duration.searchCode_13 : SearchCode :=
+  SearchCode.capture ["DMillis", "Millis.DMillis"] Duration.searchCode_3 Duration.searchCode_12
+
+@[inline]
+private def Duration.searchNode_13 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  Duration.searchNode_3 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Duration.searchNode_12 remaining fun tailCaptures suffix =>
+      k ((["DMillis", "Millis.DMillis"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem Duration.searchNode_13_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Duration.searchNode_13 input k = SearchCode.runK Duration.searchCode_13 input k :=
+  by
+  unfold Duration.searchNode_13 Duration.searchCode_13
+  simp only [SearchCode.runK, Duration.searchNode_3_eq, Duration.searchNode_12_eq]
+
+private def Duration.searchCode_14 : SearchCode :=
+  SearchCode.capture ["Millis", "Components.Millis"] Duration.searchCode_13 Duration.searchCode_0
+
+@[inline]
+private def Duration.searchNode_14 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  Duration.searchNode_13 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Duration.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["Millis", "Components.Millis"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem Duration.searchNode_14_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Duration.searchNode_14 input k = SearchCode.runK Duration.searchCode_14 input k :=
+  by
+  unfold Duration.searchNode_14 Duration.searchCode_14
+  simp only [SearchCode.runK, Duration.searchNode_13_eq, Duration.searchNode_0_eq]
+
+private def Duration.searchCode_15 : SearchCode :=
+  SearchCode.choice Duration.searchCode_14 Duration.searchCode_0
+
+private def Duration.searchNode_15 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  scanOrElse (Duration.searchNode_14 input k) fun _ => Duration.searchNode_0 input k
+
+private theorem Duration.searchNode_15_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Duration.searchNode_15 input k = SearchCode.runK Duration.searchCode_15 input k :=
+  by
+  unfold Duration.searchNode_15 Duration.searchCode_15
+  simp only [SearchCode.runK, Duration.searchNode_14_eq, Duration.searchNode_0_eq]
+
+private def Duration.searchCode_16 : SearchCode :=
+  SearchCode.capture ["Seconds", "Components.Seconds"] Duration.searchCode_11 Duration.searchCode_15
+
+@[inline]
+private def Duration.searchNode_16 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  Duration.searchNode_11 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Duration.searchNode_15 remaining fun tailCaptures suffix =>
+      k ((["Seconds", "Components.Seconds"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem Duration.searchNode_16_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Duration.searchNode_16 input k = SearchCode.runK Duration.searchCode_16 input k :=
+  by
+  unfold Duration.searchNode_16 Duration.searchCode_16
+  simp only [SearchCode.runK, Duration.searchNode_11_eq, Duration.searchNode_15_eq]
+
+private def Duration.searchCode_17 : SearchCode :=
+  SearchCode.choice Duration.searchCode_16 Duration.searchCode_15
+
+private def Duration.searchNode_17 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  scanOrElse (Duration.searchNode_16 input k) fun _ => Duration.searchNode_15 input k
+
+private theorem Duration.searchNode_17_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Duration.searchNode_17 input k = SearchCode.runK Duration.searchCode_17 input k :=
+  by
+  unfold Duration.searchNode_17 Duration.searchCode_17
+  simp only [SearchCode.runK, Duration.searchNode_16_eq, Duration.searchNode_15_eq]
+
+private def Duration.searchCode_18 : SearchCode :=
+  SearchCode.capture ["Minutes", "Components.Minutes"] Duration.searchCode_9 Duration.searchCode_17
+
+@[inline]
+private def Duration.searchNode_18 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  Duration.searchNode_9 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Duration.searchNode_17 remaining fun tailCaptures suffix =>
+      k ((["Minutes", "Components.Minutes"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem Duration.searchNode_18_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Duration.searchNode_18 input k = SearchCode.runK Duration.searchCode_18 input k :=
+  by
+  unfold Duration.searchNode_18 Duration.searchCode_18
+  simp only [SearchCode.runK, Duration.searchNode_9_eq, Duration.searchNode_17_eq]
+
+private def Duration.searchCode_19 : SearchCode :=
+  SearchCode.choice Duration.searchCode_18 Duration.searchCode_17
+
+private def Duration.searchNode_19 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  scanOrElse (Duration.searchNode_18 input k) fun _ => Duration.searchNode_17 input k
+
+private theorem Duration.searchNode_19_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Duration.searchNode_19 input k = SearchCode.runK Duration.searchCode_19 input k :=
+  by
+  unfold Duration.searchNode_19 Duration.searchCode_19
+  simp only [SearchCode.runK, Duration.searchNode_18_eq, Duration.searchNode_17_eq]
+
+private def Duration.searchCode_20 : SearchCode :=
+  SearchCode.capture ["Hours", "Components.Hours"] Duration.searchCode_7 Duration.searchCode_19
+
+@[inline]
+private def Duration.searchNode_20 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  Duration.searchNode_7 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Duration.searchNode_19 remaining fun tailCaptures suffix =>
+      k ((["Hours", "Components.Hours"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem Duration.searchNode_20_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Duration.searchNode_20 input k = SearchCode.runK Duration.searchCode_20 input k :=
+  by
+  unfold Duration.searchNode_20 Duration.searchCode_20
+  simp only [SearchCode.runK, Duration.searchNode_7_eq, Duration.searchNode_19_eq]
+
+private def Duration.searchCode_21 : SearchCode :=
+  SearchCode.choice Duration.searchCode_20 Duration.searchCode_19
+
+private def Duration.searchNode_21 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  scanOrElse (Duration.searchNode_20 input k) fun _ => Duration.searchNode_19 input k
+
+private theorem Duration.searchNode_21_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Duration.searchNode_21 input k = SearchCode.runK Duration.searchCode_21 input k :=
+  by
+  unfold Duration.searchNode_21 Duration.searchCode_21
+  simp only [SearchCode.runK, Duration.searchNode_20_eq, Duration.searchNode_19_eq]
+
+private def Duration.searchCode_22 : SearchCode :=
+  SearchCode.capture ["Days", "Components.Days"] Duration.searchCode_5 Duration.searchCode_21
+
+@[inline]
+private def Duration.searchNode_22 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  Duration.searchNode_5 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Duration.searchNode_21 remaining fun tailCaptures suffix =>
+      k ((["Days", "Components.Days"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem Duration.searchNode_22_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Duration.searchNode_22 input k = SearchCode.runK Duration.searchCode_22 input k :=
+  by
+  unfold Duration.searchNode_22 Duration.searchCode_22
+  simp only [SearchCode.runK, Duration.searchNode_5_eq, Duration.searchNode_21_eq]
+
+private def Duration.searchCode_23 : SearchCode :=
+  SearchCode.choice Duration.searchCode_22 Duration.searchCode_21
+
+@[inline]
+private def Duration.searchNode_23 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  scanOrElse (Duration.searchNode_22 input k) fun _ => Duration.searchNode_21 input k
+
+private theorem Duration.searchNode_23_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Duration.searchNode_23 input k = SearchCode.runK Duration.searchCode_23 input k :=
+  by
+  unfold Duration.searchNode_23 Duration.searchCode_23
+  simp only [SearchCode.runK, Duration.searchNode_22_eq, Duration.searchNode_21_eq]
+
+private def Duration.searchCode_24 : SearchCode :=
+  SearchCode.capture ["Components"] Duration.searchCode_23 Duration.searchCode_0
+
+@[inline]
+private def Duration.searchNode_24 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  Duration.searchNode_23 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Duration.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["Components"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem Duration.searchNode_24_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Duration.searchNode_24 input k = SearchCode.runK Duration.searchCode_24 input k :=
+  by
+  unfold Duration.searchNode_24 Duration.searchCode_24
+  simp only [SearchCode.runK, Duration.searchNode_23_eq, Duration.searchNode_0_eq]
+
+private def Duration.searchCode_25 : SearchCode :=
+  SearchCode.capture ["Sign"] Duration.searchCode_2 Duration.searchCode_24
+
+@[inline]
+private def Duration.searchNode_25 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  Duration.searchNode_2 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Duration.searchNode_24 remaining fun tailCaptures suffix =>
+      k ((["Sign"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem Duration.searchNode_25_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Duration.searchNode_25 input k = SearchCode.runK Duration.searchCode_25 input k :=
+  by
+  unfold Duration.searchNode_25 Duration.searchCode_25
+  simp only [SearchCode.runK, Duration.searchNode_2_eq, Duration.searchNode_24_eq]
+
+private def Duration.directDecode (source : String) : Option CaptureMap :=
+  Duration.searchNode_25 source.toList fun (captures : CaptureMap) (remaining : List Char) =>
+    if (remaining).isEmpty then some captures else none
+
+private theorem Duration.directDecode_eq_searchProgram (source : String) :
+    Duration.directDecode source = SearchProgram.decode Duration.searchProgram source :=
+  by
+  have hcode : Duration.searchCode_25 = (Duration.searchProgram).code := rfl
+  unfold Duration.directDecode SearchProgram.decode
+  rw [Duration.searchNode_25_eq, hcode]
+
+private def Duration.decodeCaptures (source : String) : Option CaptureMap :=
+  Duration.directDecode source
+
+private theorem Duration.decodeCaptures_eq_parsePlan (source : String) :
+    Duration.decodeCaptures source = ParsePlan.decode Duration.parsePlan Duration.grammar source := by
+  calc
+    Duration.decodeCaptures source = SearchProgram.decode Duration.searchProgram source := by
+      exact Duration.directDecode_eq_searchProgram source
+    _ = SearchProgram.decode (lowerSearchPlan Duration.searchPlan) source := by rw [Duration.searchProgram_lowered]
+    _ = ParsePlan.decode Duration.parsePlan Duration.grammar source := by rfl
+
+private theorem Duration.decodeCaptures_eq_scan (source : String) :
+    Duration.decodeCaptures source = scan Duration.grammar source := by
+  calc
+    Duration.decodeCaptures source = ParsePlan.decode Duration.parsePlan Duration.grammar source :=
+      Duration.decodeCaptures_eq_parsePlan source
+    _ = scan Duration.grammar source :=
+      ParsePlan.decode_eq_scan (ParsePlan.CertifiedFor.search Duration.searchPlan_mirrorsGrammar) source
+
+private def Duration.directView (source : String) : Option Duration.View :=
+  (Duration.directDecode source).map (Duration.View.ofMap source)
+
+private theorem Duration.directView_eq_decodeView (source : String) :
+    Duration.directView source = Duration.decodeView source :=
+  by
+  unfold Duration.directView Duration.decodeView
+  rw [show Duration.directDecode source = scan Duration.grammar source by exact Duration.decodeCaptures_eq_scan source]
+
+private instance Duration.instDecidableViewValid : DecidablePred Duration.View.Valid := fun view =>
+  by
+  unfold Duration.View.Valid Duration.View.WfConstraints Duration.View.Constraints Duration.WfConstraints
+    Duration.Constraints
+  infer_instance
+
+private def Duration.fastAccept (view : Duration.View) (computed : Int) : Bool :=
+  @decide (Duration.View.WfConstraints view ∧ Duration.View.ConstraintsWithValue view computed)
+    (by
+      unfold Duration.View.WfConstraints Duration.WfConstraints Duration.View.ConstraintsWithValue
+      infer_instance)
+
+private theorem Duration.fastAccept_denotation (view : Duration.View) :
+    Duration.fastAccept view (Duration.View.denotation view) = true ↔ Duration.View.Valid view := by
+  simp only [Duration.fastAccept, decide_eq_true_eq, Duration.View.ConstraintsWithValue_denotation]
 
 theorem Duration.computeValue_isSome (s : String) : Duration.IsValid s → (Duration.computeValue s).isSome :=
   by
@@ -1104,12 +1935,38 @@ theorem Duration.computeValue_isSome (s : String) : Duration.IsValid s → (Dura
   exact hengine.1.1
 
 def Duration.parse (s : String) :=
-  Triptych.scannerParse Duration.grammar Duration.constraints Duration.valueExpr millisToDuration s
+  Triptych.decodedViewParseCached Duration.directView Duration.fastAccept Duration.View.denotation millisToDuration s
+
+theorem Duration.parse_eq_scanner (s : String) :
+    Duration.parse s =
+      Triptych.scannerParse Duration.grammar Duration.constraints Duration.valueExpr millisToDuration s :=
+  by
+  calc
+    Duration.parse s =
+        Triptych.decodedViewParse Duration.directView Duration.View.Valid Duration.View.denotation millisToDuration s :=
+      by
+      unfold Duration.parse
+      exact
+        Triptych.decodedViewParseCached_eq_decodedViewParse Duration.directView Duration.fastAccept Duration.View.Valid
+          Duration.View.denotation millisToDuration Duration.fastAccept_denotation s
+    _ = Triptych.gatedParseOfSpec Duration.IsValid Duration.computeValue millisToDuration s := by
+      exact
+        Triptych.decodedViewParse_eq_gatedParseOfSpec Duration.directView Duration.decodeView Duration.View.Valid
+          Duration.View.denotation millisToDuration Duration.IsValid Duration.computeValue
+          Duration.directView_eq_decodeView Duration.IsValid_view Duration.computeValue_view s
+    _ = Triptych.scannerParse Duration.grammar Duration.constraints Duration.valueExpr millisToDuration s :=
+      by
+      symm
+      unfold Duration.computeValue
+      exact
+        Triptych.scannerParse_eq_surfaceGatedParseOfSpec Duration.grammar Duration.constraints Duration.valueExpr
+          millisToDuration Duration.IsValid Duration.IsValid_equiv s
 
 theorem Duration.parse_eq_gated (s : String) :
     Duration.parse s = Triptych.gatedParseOfSpec Duration.IsValid Duration.computeValue millisToDuration s :=
   by
-  unfold Duration.parse Duration.computeValue
+  rw [Duration.parse_eq_scanner]
+  unfold Duration.computeValue
   exact
     Triptych.scannerParse_eq_surfaceGatedParseOfSpec Duration.grammar Duration.constraints Duration.valueExpr
       millisToDuration Duration.IsValid Duration.IsValid_equiv s
@@ -1118,8 +1975,8 @@ theorem Duration.parse_profile_result (s : String) :
     (Triptych.scannerParseProfile Duration.grammar Duration.constraints Duration.valueExpr millisToDuration s).result =
       Duration.parse s :=
   by
-  unfold Duration.parse
-  exact Triptych.scannerParseProfile_result Duration.grammar Duration.constraints Duration.valueExpr millisToDuration s
+  rw [Triptych.scannerParseProfile_result]
+  exact (Duration.parse_eq_scanner s).symm
 
 theorem Duration.parse_candidateChecks_le (s : String) :
     (Triptych.scannerParseProfile Duration.grammar Duration.constraints Duration.valueExpr millisToDuration

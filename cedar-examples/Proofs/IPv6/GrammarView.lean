@@ -1,7 +1,7 @@
 import Outputs.IPv6.parser
 import CedarSupport.String
 import CedarSupport.StringInternals
-import Triptych.Archive.DecodeRepLemmas
+import Triptych.Reference.DecodeRepLemmas
 import Triptych.Theorems.String
 
 /-!
@@ -567,6 +567,13 @@ def denotation (v : View) : CedarExamples.IPv6.IPv6Net :=
       CedarExamples.IPv6.toIPv6Net parts [] [] (v.«prefix».getD "")
   | .compressed left right =>
       CedarExamples.IPv6.toIPv6Net [] left right (v.«prefix».getD "")
+
+def encodedDenotation (v : View) : Int :=
+  match v.addr with
+  | .full parts =>
+      IPv6.value (renderGroups parts) "" "" (v.«prefix».getD "")
+  | .compressed left right =>
+      IPv6.value "" (renderGroups left) (renderGroups right) (v.«prefix».getD "")
 
 end View
 
@@ -1232,6 +1239,60 @@ private theorem optionMap_or {α β : Type} (f : α → β)
               optionalSideCaptures, sideCaptures, repeatedCaptures, prefixCaptures,
               hextetCaptures, Triptych.Env.natVal]
 
+@[simp] theorem captures_full (v : View) :
+    (v.captures.toEnv "Full").getD "" =
+      match v.addr with
+      | .full parts => renderGroups parts
+      | .compressed _ _ => "" := by
+  cases v with
+  | mk addr pre =>
+      cases addr with
+      | full parts =>
+          cases pre <;>
+            simp [View.captures, netCaptures, addrCaptures, fullCaptures,
+              repeatedCaptures, prefixCaptures, hextetCaptures]
+      | compressed left right =>
+          cases left <;> cases right <;> cases pre <;>
+            simp [View.captures, netCaptures, addrCaptures, compressedCaptures,
+              optionalSideCaptures, sideCaptures, repeatedCaptures, prefixCaptures,
+              hextetCaptures, renderGroups]
+
+@[simp] theorem captures_left (v : View) :
+    (v.captures.toEnv "Left").getD "" =
+      match v.addr with
+      | .full _ => ""
+      | .compressed left _ => renderGroups left := by
+  cases v with
+  | mk addr pre =>
+      cases addr with
+      | full parts =>
+          cases pre <;>
+            simp [View.captures, netCaptures, addrCaptures, fullCaptures,
+              repeatedCaptures, prefixCaptures, hextetCaptures]
+      | compressed left right =>
+          cases left <;> cases right <;> cases pre <;>
+            simp [View.captures, netCaptures, addrCaptures, compressedCaptures,
+              optionalSideCaptures, sideCaptures, repeatedCaptures, prefixCaptures,
+              hextetCaptures, renderGroups]
+
+@[simp] theorem captures_right (v : View) :
+    (v.captures.toEnv "Right").getD "" =
+      match v.addr with
+      | .full _ => ""
+      | .compressed _ right => renderGroups right := by
+  cases v with
+  | mk addr pre =>
+      cases addr with
+      | full parts =>
+          cases pre <;>
+            simp [View.captures, netCaptures, addrCaptures, fullCaptures,
+              repeatedCaptures, prefixCaptures, hextetCaptures]
+      | compressed left right =>
+          cases left <;> cases right <;> cases pre <;>
+            simp [View.captures, netCaptures, addrCaptures, compressedCaptures,
+              optionalSideCaptures, sideCaptures, repeatedCaptures, prefixCaptures,
+              hextetCaptures, renderGroups]
+
 @[simp] theorem captures_prefix (v : View) :
     (v.captures.toEnv "Prefix").getD "" = v.«prefix».getD "" := by
   cases v with
@@ -1301,17 +1362,115 @@ private theorem optionMap_or {α β : Type} (f : α → β)
               optionalSideCaptures, sideCaptures, repeatedCaptures, prefixCaptures,
               hextetCaptures]
 
+private def segmentStep (accumulator : Int) (c : Char) : Int :=
+  if c = ':' then accumulator + 1 else accumulator
+
+private theorem segmentFold_no_colon (characters : List Char)
+    (h : ∀ c ∈ characters, c ≠ ':') (accumulator : Int) :
+    characters.foldl segmentStep accumulator = accumulator := by
+  induction characters generalizing accumulator with
+  | nil => rfl
+  | cons character rest ih =>
+      simp only [List.foldl_cons, segmentStep, if_neg (h character (by simp))]
+      apply ih
+      intro c hc
+      exact h c (by simp [hc])
+
+private theorem hexValid_no_colon {s : String} (h : HexValid s) :
+    ∀ c ∈ s.toList, c ≠ ':' := by
+  intro c hc heq
+  subst c
+  have := h.1 ':' hc
+  simp [TokClass.mem] at this
+
+private theorem segmentFold_renderGroups (parts : List String) (hne : parts ≠ [])
+    (h : ∀ part ∈ parts, HexValid part) (accumulator : Int) :
+    (renderGroups parts).toList.foldl segmentStep accumulator =
+      accumulator + parts.length - 1 := by
+  induction parts generalizing accumulator with
+  | nil => contradiction
+  | cons part rest ih =>
+      cases rest with
+      | nil =>
+          simp only [renderGroups, String.intercalate_singleton, List.length_cons,
+            List.length_nil]
+          rw [segmentFold_no_colon part.toList
+            (hexValid_no_colon (h part (by simp))) accumulator]
+          omega
+      | cons next tail =>
+          rw [show renderGroups (part :: next :: tail) =
+              part ++ ":" ++ renderGroups (next :: tail) by
+            unfold renderGroups
+            rw [String.intercalate_cons_cons]]
+          rw [String.toList_append, String.toList_append, List.foldl_append,
+            List.foldl_append]
+          rw [segmentFold_no_colon part.toList
+            (hexValid_no_colon (h part (by simp))) accumulator]
+          have hcolon : ":".toList = [':'] := by decide
+          rw [hcolon]
+          simp only [List.foldl_cons, List.foldl_nil, segmentStep, ↓reduceIte]
+          rw [ih (by simp) (by
+            intro candidate hc
+            exact h candidate (by simp [hc]))]
+          simp only [List.length_cons]
+          omega
+
+private theorem segments_renderGroups (parts : List String) (hne : parts ≠ [])
+    (h : ∀ part ∈ parts, HexValid part) :
+    segmentsOf (renderGroups parts) = parts.length := by
+  obtain ⟨part, rest, rfl⟩ := List.exists_cons_of_ne_nil hne
+  have hpartNonempty : part ≠ "" := by
+    intro hempty
+    have hlen := (h part (by simp)).2.1
+    simp [hempty] at hlen
+  have hrenderNonempty : renderGroups (part :: rest) ≠ "" := by
+    cases rest with
+    | nil => simpa [renderGroups] using hpartNonempty
+    | cons next tail =>
+        intro heq
+        unfold renderGroups at heq
+        rw [String.intercalate_cons_cons] at heq
+        have hfirst : part ++ ":" = "" := (String.append_eq_empty_iff.mp heq).1
+        exact hpartNonempty (String.append_eq_empty_iff.mp hfirst).1
+  unfold segmentsOf
+  have hlist : (renderGroups (part :: rest)).toList.isEmpty = false := by
+    simpa using hrenderNonempty
+  rw [hlist]
+  change
+    (renderGroups (part :: rest)).toList.foldl segmentStep 1 =
+      ((part :: rest).length : Int)
+  rw [segmentFold_renderGroups (part :: rest) (by simp) h 1]
+  omega
+
+theorem segments_renderGroups_all (parts : List String)
+    (h : ∀ part ∈ parts, HexValid part) :
+    segmentsOf (renderGroups parts) = parts.length := by
+  cases parts with
+  | nil => rfl
+  | cons part rest =>
+      exact segments_renderGroups (part :: rest) (by simp) h
+
 theorem constraints_of_decode (v : View)
+    (hsyntax : v.SyntaxValid)
     (h : decode IPv6.grammar v.render = some v.captures) :
     IPv6.SatisfiesWfConstraints v.render ↔ v.Constraints := by
   rw [IPv6.SatisfiesWfConstraints_of_decode h]
   cases v with
   | mk addr pre =>
-      cases addr <;> cases pre <;>
-        simp [IPv6.WfConstraints, View.Constraints, Addr.Constraints,
-          OptionalPrefixConstraints, PrefixConstraints, natOf, Triptych.readNat,
-          and_assoc] <;>
-        omega
+      cases addr with
+      | full parts =>
+          cases pre <;>
+            simp [IPv6.WfConstraints, View.Constraints, Addr.Constraints,
+              OptionalPrefixConstraints, PrefixConstraints, natOf, Triptych.readNat,
+              segmentsOf, and_assoc]
+      | compressed left right =>
+          have hleftSegments := segments_renderGroups_all left hsyntax.1.2.2.1
+          have hrightSegments := segments_renderGroups_all right hsyntax.1.2.2.2
+          cases pre <;>
+            simp [IPv6.WfConstraints, View.Constraints, Addr.Constraints,
+              OptionalPrefixConstraints, PrefixConstraints, natOf, Triptych.readNat,
+              hleftSegments, hrightSegments, and_assoc] <;>
+            omega
 
 /-- Accepted strings in the proof-facing IPv6 component normal form. -/
 theorem isValid_iff_view (s : String) :
@@ -1328,21 +1487,23 @@ theorem isValid_iff_view (s : String) :
       rw [← hrenders, ← hcaptures]
       exact hm
     have hviewConstraints : v.Constraints :=
-      (constraints_of_decode v hdecode).mp (by simpa [hrenders] using hconstraints)
+      (constraints_of_decode v hsyntax hdecode).mp
+        (by simpa [hrenders] using hconstraints)
     exact ⟨v, hrenders.symm, hsyntax, hviewConstraints⟩
   · rintro ⟨v, hrender, hsyntax, hconstraints⟩
     have hdecode := decode_eq_of_view v hsyntax
     refine ⟨?_, ?_⟩
     · simpa [hrender] using surface_wf_of_view v hsyntax
-    · have hsurface := (constraints_of_decode v hdecode).mpr hconstraints
+    · have hsurface := (constraints_of_decode v hsyntax hdecode).mpr hconstraints
       simpa [hrender] using hsurface
 
 /-- The generated value is the denotation of every syntax-valid IPv6 view. -/
 theorem computeValue_eq_of_view (v : View) (h : v.SyntaxValid) :
-    IPv6.computeValue v.render = some v.denotation := by
+    IPv6.computeValue v.render = some v.encodedDenotation := by
   rw [IPv6.computeValue_of_decode (decode_eq_of_view v h)]
   cases v with
   | mk addr pre =>
-      cases addr <;> simp [IPv6.value, View.denotation]
+      cases addr <;>
+        simp [IPv6.value, View.encodedDenotation]
 
 end IPv6.GrammarView

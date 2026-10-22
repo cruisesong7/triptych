@@ -20,6 +20,19 @@ import Triptych.Architecture.Denote
 import Triptych.Architecture.Value
 import Triptych.Architecture.Constraint
 import Triptych.Architecture.Scanner
+import Triptych.Architecture.ScanPlan
+import Triptych.Architecture.CursorProgram
+import Triptych.Architecture.SearchPlan
+import Triptych.Architecture.SearchProgram
+import Triptych.Architecture.SearchMachine
+import Triptych.Architecture.LeanCursor
+import Triptych.Architecture.LeanSpanCursor
+import Triptych.Architecture.ParsePlan
+import Triptych.Theorems.ScanPlan
+import Triptych.Theorems.SearchPlan
+import Triptych.Theorems.SearchProgram
+import Triptych.Theorems.SearchMachine
+import Triptych.Theorems.ParsePlan
 import Triptych.Architecture.Derivation
 import Triptych.Architecture.Dependent
 import Triptych.Architecture.Unambiguity
@@ -32,7 +45,7 @@ import Triptych.Theorems.Dependent
 import Triptych.Theorems.RelationalParser
 import Triptych.Theorems.Unambiguity
 import Triptych.Theorems.Reconcile
-import Triptych.Archive.DecodeLemmas
+import Triptych.Reference.DecodeLemmas
 import Triptych.Theorems.String
 import Triptych.Theorems.Value
 import Triptych.Automation.ExternalParser
@@ -54,7 +67,7 @@ See `Docs/DESIGN.md` for the full design.
 Module layout:
 * `Triptych.Architecture.*` — grammar, classifier, denotation, scanner, value/constraint
                                 DSLs, assembly, emission, and `triptych` syntax
-* `Triptych.Archive.*`      — executable reference semantics retained for proofs and comparison
+* `Triptych.Reference.*`    — executable reference semantics that all parser theorems target
 * `Triptych.Theorems.*`     — reusable scanner, roundtrip, coherence, unambiguity, and
                                 reconciliation theorems
 * `Triptych.Automation.*`   — extensible static external-parser proof rules and tactics

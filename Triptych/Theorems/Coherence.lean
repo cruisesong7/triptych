@@ -14,13 +14,13 @@
  limitations under the License.
 -/
 
-import Triptych.Archive.ReferenceDecoder
+import Triptych.Reference.Decoder
 import Triptych.Theorems.Roundtrip
 
 /-!
 # Value coherence: the computed value is grammar-determined, not decoder-selected
 
-`decode` (`Triptych.Archive.ReferenceDecoder`) enumerates *every* full-consumption parse of the
+`decode` (`Triptych.Reference.Decoder`) enumerates *every* full-consumption parse of the
 start production and returns the FIRST one (`List.head?`); `computeValueF`/`computeValue` then
 read the value off that one capture map. Recognition (`IsWf`) forgets captures entirely
 (`decodeSome_iff_IsWf` quantifies the capture map away), so nothing in the roundtrip forces an
@@ -375,9 +375,9 @@ theorem decodeGatedMap_eq_some_iff_denotes {α : Type} (g : Grammar)
     | some m =>
       simp only [hd] at h
       by_cases ha : accept m
-      · rw [if_pos ha] at h
+      · rw [ite_eq_left ha] at h
         exact ⟨m, decode_mem_fullParses g s hd, ha, Option.some.inj h⟩
-      · rw [if_neg ha] at h
+      · rw [ite_eq_right ha] at h
         simp at h
   · rintro ⟨m, hm, ha, hval⟩
     have hne : fullParses g s ≠ [] := List.ne_nil_of_mem hm

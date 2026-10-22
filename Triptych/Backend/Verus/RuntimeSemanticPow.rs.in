@@ -1,0 +1,341 @@
+fn semantic_nat_pow_positive(
+    base: &SemanticNat,
+    exponent: u128,
+) -> (result: SemanticNat)
+    ensures
+        result@ as int == triptych_int_pow(base@ as int, exponent as int),
+    decreases exponent,
+{
+    if exponent == 0 {
+        proof {
+            reveal_with_fuel(triptych_int_pow, 1);
+        }
+        SemanticNat::new(1)
+    } else {
+        let rest = semantic_nat_pow_positive(base, exponent - 1);
+        let result = base.mul(&rest);
+        proof {
+            reveal_with_fuel(triptych_int_pow, 1);
+            assert(exponent as int - 1 == (exponent - 1) as int);
+        }
+        result
+    }
+}
+
+pub fn semantic_nat_pow(
+    base: &SemanticNat,
+    exponent: &SemanticNat,
+) -> (result: Option<SemanticNat>)
+    ensures
+        match result {
+            Some(value) =>
+                value@ as int == triptych_int_pow(base@ as int, exponent@ as int),
+            None => !exponent.available(),
+        },
+{
+    proof {
+        use_type_invariant(base);
+        use_type_invariant(exponent);
+    }
+    match exponent.runtime {
+        Some(value) => {
+            proof {
+                assert(exponent@ == value);
+                assert(exponent@ as int == value as int);
+            }
+            let result = semantic_nat_pow_positive(base, value);
+            proof {
+                assert(result@ as int
+                    == triptych_int_pow(base@ as int, value as int));
+                assert(result@ as int
+                    == triptych_int_pow(base@ as int, exponent@ as int));
+            }
+            Some(result)
+        },
+        None => None,
+    }
+}
+
+fn semantic_nat_mul_pow_positive(
+    factor: &SemanticNat,
+    base: &SemanticNat,
+    exponent: u128,
+) -> (result: SemanticNat)
+    ensures
+        result@ as int
+            == factor@ as int * triptych_int_pow(base@ as int, exponent as int),
+{
+    let mut result = *factor;
+    let mut remaining = exponent;
+    while remaining > 0
+        invariant
+            remaining <= exponent,
+            result@ as int
+                * triptych_int_pow(base@ as int, remaining as int)
+                == factor@ as int
+                    * triptych_int_pow(base@ as int, exponent as int),
+        decreases remaining,
+    {
+        let next_remaining = remaining - 1;
+        let next = result.mul(base);
+        proof {
+            reveal_with_fuel(triptych_int_pow, 1);
+            assert(remaining as int - 1 == next_remaining as int);
+            assert(triptych_int_pow(base@ as int, remaining as int)
+                == base@ as int
+                    * triptych_int_pow(base@ as int, next_remaining as int));
+            assert(next@ as int == result@ as int * base@ as int);
+            assert(
+                next@ as int
+                    * triptych_int_pow(base@ as int, next_remaining as int)
+                == (result@ as int * base@ as int)
+                    * triptych_int_pow(base@ as int, next_remaining as int)
+            ) by {
+                assert(next@ as int == result@ as int * base@ as int);
+            }
+            vstd::arithmetic::mul::lemma_mul_is_associative(
+                result@ as int,
+                base@ as int,
+                triptych_int_pow(base@ as int, next_remaining as int),
+            );
+            assert(
+                (result@ as int * base@ as int)
+                    * triptych_int_pow(base@ as int, next_remaining as int)
+                == result@ as int
+                    * (base@ as int
+                        * triptych_int_pow(base@ as int, next_remaining as int))
+            );
+            assert(
+                result@ as int
+                    * (base@ as int
+                        * triptych_int_pow(base@ as int, next_remaining as int))
+                == result@ as int
+                    * triptych_int_pow(base@ as int, remaining as int)
+            );
+        }
+        result = next;
+        remaining = next_remaining;
+    }
+    proof {
+        reveal_with_fuel(triptych_int_pow, 1);
+    }
+    result
+}
+
+pub fn semantic_nat_mul_pow(
+    factor: &SemanticNat,
+    base: &SemanticNat,
+    exponent: &SemanticNat,
+) -> (result: Option<SemanticNat>)
+    ensures
+        match result {
+            Some(value) =>
+                value@ as int
+                    == factor@ as int
+                        * triptych_int_pow(base@ as int, exponent@ as int),
+            None => !exponent.available(),
+        },
+{
+    proof {
+        use_type_invariant(exponent);
+    }
+    match exponent.runtime {
+        Some(value) => {
+            proof {
+                assert(exponent@ == value);
+                assert(exponent@ as int == value as int);
+            }
+            Some(semantic_nat_mul_pow_positive(factor, base, value))
+        },
+        None => None,
+    }
+}
+
+proof fn triptych_int_pow_65536_table(exponent: u128)
+    requires
+        exponent <= 7,
+    ensures
+        triptych_int_pow(65536, exponent as int) == if exponent == 0 {
+            1int
+        } else if exponent == 1 {
+            65536int
+        } else if exponent == 2 {
+            4294967296int
+        } else if exponent == 3 {
+            281474976710656int
+        } else if exponent == 4 {
+            18446744073709551616int
+        } else if exponent == 5 {
+            1208925819614629174706176int
+        } else if exponent == 6 {
+            79228162514264337593543950336int
+        } else {
+            5192296858534827628530496329220096int
+        },
+{
+    reveal_with_fuel(triptych_int_pow, 8);
+}
+
+/// Constant-radix fast path used by IPv6-style base-65536 reconstruction.
+#[inline(always)]
+pub fn semantic_nat_mul_pow_65536_fast(
+    factor: &SemanticNat,
+    exponent: &SemanticNat,
+) -> (result: Option<SemanticNat>)
+    ensures
+        match result {
+            Some(value) =>
+                value@ as int
+                    == factor@ as int
+                        * triptych_int_pow(65536, exponent@ as int),
+            None => !exponent.available(),
+        },
+{
+    proof {
+        use_type_invariant(factor);
+        use_type_invariant(exponent);
+    }
+    let exponent_value = match exponent.runtime {
+        Some(value) => value,
+        None => return None,
+    };
+    let factor_value = match factor.runtime {
+        Some(value) => value,
+        None => {
+            return semantic_nat_mul_pow(
+                factor,
+                &SemanticNat::new(65536),
+                exponent,
+            );
+        },
+    };
+    proof {
+        assert(factor@ == factor_value);
+        assert(exponent@ == exponent_value);
+    }
+    if factor_value == 0 {
+        return Some(SemanticNat::new(0));
+    }
+    if exponent_value > 7 {
+        return semantic_nat_mul_pow(
+            factor,
+            &SemanticNat::new(65536),
+            exponent,
+        );
+    }
+    let multiplier = if exponent_value == 0 {
+        1u128
+    } else if exponent_value == 1 {
+        65536u128
+    } else if exponent_value == 2 {
+        4294967296u128
+    } else if exponent_value == 3 {
+        281474976710656u128
+    } else if exponent_value == 4 {
+        18446744073709551616u128
+    } else if exponent_value == 5 {
+        1208925819614629174706176u128
+    } else if exponent_value == 6 {
+        79228162514264337593543950336u128
+    } else {
+        5192296858534827628530496329220096u128
+    };
+    proof {
+        triptych_int_pow_65536_table(exponent_value);
+        assert(multiplier as int
+            == triptych_int_pow(65536, exponent_value as int));
+    }
+    let value = match factor_value.checked_mul(multiplier) {
+        Some(value) => value,
+        None => {
+            return semantic_nat_mul_pow(
+                factor,
+                &SemanticNat::new(65536),
+                exponent,
+            );
+        },
+    };
+    let result = SemanticNat::new(value);
+    proof {
+        assert(value as int == factor_value as int * multiplier as int);
+    }
+    Some(result)
+}
+
+/// Primitive fast path for `factor * base ^ exponent`. If an intermediate exceeds `u128`, the
+/// exact `SemanticNat` implementation takes over and retains the same unbounded specification.
+#[inline(always)]
+pub fn semantic_nat_mul_pow_fast(
+    factor: &SemanticNat,
+    base: &SemanticNat,
+    exponent: &SemanticNat,
+) -> (result: Option<SemanticNat>)
+    ensures
+        match result {
+            Some(value) =>
+                value@ as int
+                    == factor@ as int
+                        * triptych_int_pow(base@ as int, exponent@ as int),
+            None => !exponent.available(),
+        },
+{
+    proof {
+        use_type_invariant(factor);
+        use_type_invariant(base);
+        use_type_invariant(exponent);
+    }
+    let exponent_value = match exponent.runtime {
+        Some(value) => value,
+        None => return None,
+    };
+    let factor_value = match factor.runtime {
+        Some(value) => value,
+        None => return semantic_nat_mul_pow(factor, base, exponent),
+    };
+    let base_value = match base.runtime {
+        Some(value) => value,
+        None => return semantic_nat_mul_pow(factor, base, exponent),
+    };
+    proof {
+        assert(factor@ == factor_value);
+        assert(base@ == base_value);
+        assert(exponent@ == exponent_value);
+    }
+    let mut value = factor_value;
+    let mut remaining = exponent_value;
+    while remaining > 0
+        invariant
+            remaining <= exponent_value,
+            value as int
+                * triptych_int_pow(base_value as int, remaining as int)
+                == factor_value as int
+                    * triptych_int_pow(base_value as int, exponent_value as int),
+        decreases remaining,
+    {
+        let next_remaining = remaining - 1;
+        let next = match value.checked_mul(base_value) {
+            Some(next) => next,
+            None => return semantic_nat_mul_pow(factor, base, exponent),
+        };
+        proof {
+            reveal_with_fuel(triptych_int_pow, 1);
+            assert(remaining as int - 1 == next_remaining as int);
+            assert(next as int == value as int * base_value as int);
+            assert(triptych_int_pow(base_value as int, remaining as int)
+                == base_value as int
+                    * triptych_int_pow(base_value as int, next_remaining as int));
+            vstd::arithmetic::mul::lemma_mul_is_associative(
+                value as int,
+                base_value as int,
+                triptych_int_pow(base_value as int, next_remaining as int),
+            );
+        }
+        value = next;
+        remaining = next_remaining;
+    }
+    let result = SemanticNat::new(value);
+    proof {
+        reveal_with_fuel(triptych_int_pow, 1);
+    }
+    Some(result)
+}

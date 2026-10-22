@@ -8,7 +8,10 @@ import Triptych.Architecture.Constraint
 import Triptych.Architecture.Assemble
 import Triptych.Theorems.Reconcile
 import Triptych.Theorems.Value
-import Triptych.Archive.DecodeLemmas
+import Triptych.Theorems.ParsePlan
+import Triptych.Theorems.ScanPlan
+import Triptych.Theorems.SearchPlan
+import Triptych.Reference.DecodeLemmas
 import Triptych.Theorems.Derivation
 import Triptych.Theorems.Scanner
 import Outputs.SMT.BitVector.spec
@@ -23,7 +26,7 @@ set_option linter.unnecessarySeqFocus false
 
 /- ══════════════════════════════ engine ══════════════════════════════
 The executable counterpart of the spec. A verified scanner extracts captured
-components and stops at the first complete parse. The archived reference `decode`
+components and stops at the first complete parse. The reference `decode`
 is used only in the agreement proof, not as a runtime fallback. `computeValue`
 evaluates the value function on those captures. Generated `DecidablePred` instances
 make the readable `IsWf` and `IsValid` predicates directly executable.
@@ -101,6 +104,18 @@ def BitVector.computeValue (s : String) :=
 
 def BitVector.View.ofMap (input : String) (m : Triptych.CaptureMap) : BitVector.View :=
   BitVector.View.mk input (Triptych.CaptureMap.toEnv m "BinaryDigits") (Triptych.CaptureMap.toEnv m "HexDigits")
+
+private def BitVector.View.ofSpans (input : String) (chars : List Char) (spans : Triptych.LeanSpanCursor.SpanMap) :
+    BitVector.View :=
+  BitVector.View.mk input (Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "BinaryDigits")
+    (Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "HexDigits")
+
+private theorem BitVector.View.ofSpans_eq_ofMap (input : String) (chars : List Char)
+    (spans : Triptych.LeanSpanCursor.SpanMap) :
+    BitVector.View.ofSpans input chars spans = BitVector.View.ofMap input (spans.materialize chars) :=
+  by
+  unfold BitVector.View.ofSpans BitVector.View.ofMap
+  simp only [Triptych.LeanSpanCursor.SpanMap.captureMap_toEnv, Triptych.LeanSpanCursor.SpanMap.captureMap_toEnvList]
 
 def BitVector.decodeView (s : String) : Option BitVector.View :=
   (scan BitVector.grammar s).map (BitVector.View.ofMap s)
@@ -360,10 +375,10 @@ theorem BitVector.Internal.matchesRef.BinaryDigits (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold BitVector.IsWf.BinaryDigits
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsBits_matchesTerm,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsBits_matchesTerm,
     IsFixedBits_matchesTerm, IsBitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem BitVector.Internal.matchesRef.Binary (fuel : Nat) (s : String) :
@@ -378,10 +393,10 @@ theorem BitVector.Internal.matchesRef.Binary (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold BitVector.IsWf.Binary
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     BitVector.Internal.matchesRef.BinaryDigits]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem BitVector.Internal.matchesRef.HexDigits (fuel : Nat) (s : String) :
@@ -396,10 +411,10 @@ theorem BitVector.Internal.matchesRef.HexDigits (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold BitVector.IsWf.HexDigits
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsHexDigits_matchesTerm,
-    IsFixedHexDigits_matchesTerm, IsHexDigitsBetween_matchesTerm]
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    IsHexDigits_matchesTerm, IsFixedHexDigits_matchesTerm, IsHexDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem BitVector.Internal.matchesRef.Hexadecimal (fuel : Nat) (s : String) :
@@ -414,10 +429,10 @@ theorem BitVector.Internal.matchesRef.Hexadecimal (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold BitVector.IsWf.Hexadecimal
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     BitVector.Internal.matchesRef.HexDigits]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem BitVector.Internal.matchesRef.Payload (fuel : Nat) (s : String) :
@@ -432,18 +447,19 @@ theorem BitVector.Internal.matchesRef.Payload (fuel : Nat) (s : String) :
   dsimp only
   unfold matchesProd BitVector.IsWf.Payload
   simp (config := { maxSteps := 1000000 }) only [List.mem_cons, List.mem_singleton, List.not_mem_nil,
-    Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_or_imp, exists_eq_left, exists_eq_left, if_true,
-    if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_or_imp, exists_eq_left, exists_eq_left, ite_true,
+    ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     BitVector.Internal.matchesRef.Binary, BitVector.Internal.matchesRef.Hexadecimal]
   repeat'
     first
     | apply or_congr
     | ( simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left,
-          ← and_assoc, exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+          ← and_assoc, exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left,
+          Option.some.injEq, forall_eq']
         try grind [String.append_assoc, String.append_empty])
 
 theorem BitVector.Internal.matchesRef.BitVector (fuel : Nat) (s : String) :
-    matchesSym BitVector.grammar (fuel + 4) (Sym.ref "BitVector") s ↔ BitVector.IsWf.BitVector s :=
+    matchesSym BitVector.grammar (fuel + 4) (Sym.ref "BitVector") s ↔ BitVector.Production s :=
   by
   rw [matchesSym,
     show
@@ -452,15 +468,15 @@ theorem BitVector.Internal.matchesRef.BitVector (fuel : Nat) (s : String) :
       from rfl]
   dsimp only
   rw [matchesProd_single]
-  unfold BitVector.IsWf.BitVector
+  unfold BitVector.Production
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     BitVector.Internal.matchesRef.Payload]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
-theorem BitVector.IsWfGrammar_equiv (s : String) : Triptych.IsWf BitVector.grammar s ↔ BitVector.IsWf.BitVector s :=
+theorem BitVector.IsWfGrammar_equiv (s : String) : Triptych.IsWf BitVector.grammar s ↔ BitVector.Production s :=
   by
   rw [isWf_eq_isWfProd_start, IsWfProd,
     show
@@ -493,10 +509,11 @@ theorem BitVector.IsWf_equiv (s : String) :
   rw [Triptych.scan_eq_decode]
   rw [← BitVector.IsWfGrammar_equiv, ← decodeSome_iff_IsWf BitVector.grammar (by decide)]
   unfold BitVector.constraints
-  simp only [Triptych.component, Triptych.componentList, Triptych.envOf, Triptych.captureMapOf, Triptych.scan_eq_decode,
-    List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const, ConstraintEntry.wfPart,
-    Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD,
-    Env.countVal, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
+  simp only [Triptych.component, Triptych.componentList, Triptych.componentWith, Triptych.envOf, Triptych.captureMapOf,
+    Triptych.scan_eq_decode, List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const,
+    ConstraintEntry.wfPart, Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD,
+    countOf_getD, signOf_getD, hexOf_getD, hexSeqOf_getD, segmentsOf_getD, Env.countVal, and_true, true_and,
+    false_implies, implies_true, Bool.false_eq_true]
   try grind
 
 theorem BitVector.IsValid_equiv (s : String) :
@@ -554,11 +571,14 @@ theorem BitVector.computeValue_eq (s : String) :
             (Triptych.component BitVector.grammar s "HexDigits")) :=
   by
   unfold BitVector.computeValue Triptych.scannerComputeValueMap Triptych.component Triptych.envOf Triptych.captureMapOf
-    BitVector.value BitVector.valueFn
+    BitVector.valueFn BitVector.value
   rw [Triptych.scan_eq_decode]
   cases h : decode BitVector.grammar s with
   | none => simp [h]
-  | some m => simp [h, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, Env.countVal, ValExpr.eval]
+  | some m =>
+    simp [h, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, hexOf_getD, hexSeqOf_getD, segmentsOf_getD,
+        Env.countVal, ValExpr.eval] <;>
+      ac_rfl
 
 theorem BitVector.computeValue_of_decode {s : String} {m : Triptych.CaptureMap}
     (h : decode BitVector.grammar s = some m) :
@@ -589,16 +609,348 @@ theorem BitVector.computeValue_view (s : String) :
     rfl
 
 /- ═══════════════════════════════ parser ══════════════════════════════
-The generated correct-by-construction parser `parse` scans once, checks constraints
-on that capture map, and computes the result from the same captures. `parse_eq_gated`
-proves equality with the readable validity-gated presentation. Its correctness and
-search-cost guarantees — `parse_sound`, `parse_complete`, `parse_reject`,
+The generated correct-by-construction parser `parse` uses a certified staged cursor
+program when the grammar supports one, projects its captures once into the typed
+`View`, checks `View.Valid`, and computes `View.denotation`. Certified cursor rejection
+is final; grammar
+shapes outside that fragment use the complete scanner. `parse_eq_scanner` and
+`parse_eq_gated` prove equality with the generic
+scanner and readable validity-gated presentation. Its correctness and search-cost
+guarantees — `parse_sound`, `parse_complete`, `parse_reject`,
 `parse_profile_result`, `parse_candidateChecks_le`, `parse_view`, and typed
 `parse_eq_some_iff_view` / `parse_eq_none_iff_view` normal forms — are all
 AUTO-DISCHARGED here.
 When an external parser is declared, `checkedExtParse` additionally validates each
 external result against this parser and ships an AUTO-DISCHARGED soundness theorem.
 A verified parser, no `sorry`. -/
+
+private abbrev BitVector.searchPlan : SearchPlan :=
+  ({ start := "BitVector",
+      alternatives :=
+        [[SearchPattern.literal "#",
+            SearchPattern.capture "Payload" ["Payload"]
+              [[SearchPattern.capture "Binary" ["Binary", "Payload.Binary"]
+                    [[SearchPattern.literal "b",
+                        SearchPattern.capture "BinaryDigits" ["BinaryDigits", "Binary.BinaryDigits"]
+                          [[SearchPattern.tokenRun TokClass.bit LenSpec.atLeastOne]]]]],
+                [SearchPattern.capture "Hexadecimal" ["Hexadecimal", "Payload.Hexadecimal"]
+                    [[SearchPattern.literal "x",
+                        SearchPattern.capture "HexDigits" ["HexDigits", "Hexadecimal.HexDigits"]
+                          [[SearchPattern.tokenRun TokClass.hexDigit LenSpec.atLeastOne]]]]]]]] } :
+    SearchPlan)
+
+private abbrev BitVector.parsePlan : ParsePlan :=
+  ParsePlan.search BitVector.searchPlan
+
+private theorem BitVector.searchPlan_mirrorsGrammar :
+    SearchPlan.MirrorsGrammar BitVector.searchPlan BitVector.grammar :=
+  SearchPlan.MirrorsGrammar.intro (by rfl)
+    (Production.mk "BitVector" [[SymItem.mk (Sym.lit "#") false, SymItem.mk (Sym.ref "Payload") false]]) (by rfl)
+    (SearchPattern.MirrorsAlternatives.cons
+      (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+        (SearchPattern.MirrorsSequence.required
+          (SearchPattern.MirrorsSymbol.capture («grammar» := BitVector.grammar) (fuel := 5) (production :=
+            Production.mk "Payload" [[SymItem.mk (Sym.ref "Binary") false], [SymItem.mk (Sym.ref "Hexadecimal") false]])
+            (by rfl) (by rfl)
+            (SearchPattern.MirrorsAlternatives.cons
+              (SearchPattern.MirrorsSequence.required
+                (SearchPattern.MirrorsSymbol.capture («grammar» := BitVector.grammar) (fuel := 4) (production :=
+                  Production.mk "Binary" [[SymItem.mk (Sym.lit "b") false, SymItem.mk (Sym.ref "BinaryDigits") false]])
+                  (by rfl) (by rfl)
+                  (SearchPattern.MirrorsAlternatives.cons
+                    (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                      (SearchPattern.MirrorsSequence.required
+                        (SearchPattern.MirrorsSymbol.capture («grammar» := BitVector.grammar) (fuel := 3) (production :=
+                          Production.mk "BinaryDigits" [[SymItem.mk (Sym.term TokClass.bit LenSpec.atLeastOne) false]])
+                          (by rfl) (by rfl)
+                          (SearchPattern.MirrorsAlternatives.cons
+                            (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                              SearchPattern.MirrorsSequence.empty)
+                            SearchPattern.MirrorsAlternatives.empty))
+                        SearchPattern.MirrorsSequence.empty))
+                    SearchPattern.MirrorsAlternatives.empty))
+                SearchPattern.MirrorsSequence.empty)
+              (SearchPattern.MirrorsAlternatives.cons
+                (SearchPattern.MirrorsSequence.required
+                  (SearchPattern.MirrorsSymbol.capture («grammar» := BitVector.grammar) (fuel := 4) (production :=
+                    Production.mk "Hexadecimal"
+                      [[SymItem.mk (Sym.lit "x") false, SymItem.mk (Sym.ref "HexDigits") false]])
+                    (by rfl) (by rfl)
+                    (SearchPattern.MirrorsAlternatives.cons
+                      (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                        (SearchPattern.MirrorsSequence.required
+                          (SearchPattern.MirrorsSymbol.capture («grammar» := BitVector.grammar) (fuel := 3)
+                            (production :=
+                            Production.mk "HexDigits"
+                              [[SymItem.mk (Sym.term TokClass.hexDigit LenSpec.atLeastOne) false]])
+                            (by rfl) (by rfl)
+                            (SearchPattern.MirrorsAlternatives.cons
+                              (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                SearchPattern.MirrorsSequence.empty)
+                              SearchPattern.MirrorsAlternatives.empty))
+                          SearchPattern.MirrorsSequence.empty))
+                      SearchPattern.MirrorsAlternatives.empty))
+                  SearchPattern.MirrorsSequence.empty)
+                SearchPattern.MirrorsAlternatives.empty)))
+          SearchPattern.MirrorsSequence.empty))
+      SearchPattern.MirrorsAlternatives.empty)
+
+private abbrev BitVector.searchProgram : SearchProgram :=
+  ({ start := "BitVector",
+      code :=
+        SearchCode.literal "#"
+          (SearchCode.capture ["Payload"]
+            (SearchCode.choice
+              (SearchCode.capture ["Binary", "Payload.Binary"]
+                (SearchCode.literal "b"
+                  (SearchCode.capture ["BinaryDigits", "Binary.BinaryDigits"]
+                    (SearchCode.tokenRun TokClass.bit LenSpec.atLeastOne SearchCode.accept) SearchCode.accept))
+                SearchCode.accept)
+              (SearchCode.capture ["Hexadecimal", "Payload.Hexadecimal"]
+                (SearchCode.literal "x"
+                  (SearchCode.capture ["HexDigits", "Hexadecimal.HexDigits"]
+                    (SearchCode.tokenRun TokClass.hexDigit LenSpec.atLeastOne SearchCode.accept) SearchCode.accept))
+                SearchCode.accept))
+            SearchCode.accept) } :
+    SearchProgram)
+
+private theorem BitVector.searchProgram_lowered : lowerSearchPlan BitVector.searchPlan = BitVector.searchProgram := by
+  decide
+
+private def BitVector.searchCode_0 : SearchCode :=
+  SearchCode.accept
+
+@[inline]
+private def BitVector.searchNode_0 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  k [] input
+
+private theorem BitVector.searchNode_0_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    BitVector.searchNode_0 input k = SearchCode.runK BitVector.searchCode_0 input k :=
+  by
+  unfold BitVector.searchNode_0 BitVector.searchCode_0
+  simp only [SearchCode.runK]
+
+private def BitVector.searchCode_1 : SearchCode :=
+  SearchCode.tokenRun TokClass.bit LenSpec.atLeastOne BitVector.searchCode_0
+
+@[inline]
+private def BitVector.searchNode_1 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  (List.range ((input).length + 1)).findSome? fun width =>
+    if termPrefixOk TokClass.bit LenSpec.atLeastOne input width then BitVector.searchNode_0 ((input).drop width) k
+    else none
+
+private theorem BitVector.searchNode_1_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    BitVector.searchNode_1 input k = SearchCode.runK BitVector.searchCode_1 input k :=
+  by
+  unfold BitVector.searchNode_1 BitVector.searchCode_1
+  simp only [SearchCode.runK, BitVector.searchNode_0_eq]
+
+private def BitVector.searchCode_2 : SearchCode :=
+  SearchCode.capture ["BinaryDigits", "Binary.BinaryDigits"] BitVector.searchCode_1 BitVector.searchCode_0
+
+@[inline]
+private def BitVector.searchNode_2 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  BitVector.searchNode_1 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    BitVector.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["BinaryDigits", "Binary.BinaryDigits"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem BitVector.searchNode_2_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    BitVector.searchNode_2 input k = SearchCode.runK BitVector.searchCode_2 input k :=
+  by
+  unfold BitVector.searchNode_2 BitVector.searchCode_2
+  simp only [SearchCode.runK, BitVector.searchNode_1_eq, BitVector.searchNode_0_eq]
+
+private def BitVector.searchCode_3 : SearchCode :=
+  SearchCode.literal "b" BitVector.searchCode_2
+
+@[inline]
+private def BitVector.searchNode_3 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  let characters := ("b").toList
+  if characters.isPrefixOf input then BitVector.searchNode_2 ((input).drop characters.length) k else none
+
+private theorem BitVector.searchNode_3_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    BitVector.searchNode_3 input k = SearchCode.runK BitVector.searchCode_3 input k :=
+  by
+  unfold BitVector.searchNode_3 BitVector.searchCode_3
+  simp only [SearchCode.runK, BitVector.searchNode_2_eq]
+
+private def BitVector.searchCode_4 : SearchCode :=
+  SearchCode.capture ["Binary", "Payload.Binary"] BitVector.searchCode_3 BitVector.searchCode_0
+
+@[inline]
+private def BitVector.searchNode_4 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  BitVector.searchNode_3 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    BitVector.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["Binary", "Payload.Binary"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem BitVector.searchNode_4_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    BitVector.searchNode_4 input k = SearchCode.runK BitVector.searchCode_4 input k :=
+  by
+  unfold BitVector.searchNode_4 BitVector.searchCode_4
+  simp only [SearchCode.runK, BitVector.searchNode_3_eq, BitVector.searchNode_0_eq]
+
+private def BitVector.searchCode_5 : SearchCode :=
+  SearchCode.tokenRun TokClass.hexDigit LenSpec.atLeastOne BitVector.searchCode_0
+
+@[inline]
+private def BitVector.searchNode_5 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  (List.range ((input).length + 1)).findSome? fun width =>
+    if termPrefixOk TokClass.hexDigit LenSpec.atLeastOne input width then BitVector.searchNode_0 ((input).drop width) k
+    else none
+
+private theorem BitVector.searchNode_5_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    BitVector.searchNode_5 input k = SearchCode.runK BitVector.searchCode_5 input k :=
+  by
+  unfold BitVector.searchNode_5 BitVector.searchCode_5
+  simp only [SearchCode.runK, BitVector.searchNode_0_eq]
+
+private def BitVector.searchCode_6 : SearchCode :=
+  SearchCode.capture ["HexDigits", "Hexadecimal.HexDigits"] BitVector.searchCode_5 BitVector.searchCode_0
+
+@[inline]
+private def BitVector.searchNode_6 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  BitVector.searchNode_5 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    BitVector.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["HexDigits", "Hexadecimal.HexDigits"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem BitVector.searchNode_6_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    BitVector.searchNode_6 input k = SearchCode.runK BitVector.searchCode_6 input k :=
+  by
+  unfold BitVector.searchNode_6 BitVector.searchCode_6
+  simp only [SearchCode.runK, BitVector.searchNode_5_eq, BitVector.searchNode_0_eq]
+
+private def BitVector.searchCode_7 : SearchCode :=
+  SearchCode.literal "x" BitVector.searchCode_6
+
+@[inline]
+private def BitVector.searchNode_7 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  let characters := ("x").toList
+  if characters.isPrefixOf input then BitVector.searchNode_6 ((input).drop characters.length) k else none
+
+private theorem BitVector.searchNode_7_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    BitVector.searchNode_7 input k = SearchCode.runK BitVector.searchCode_7 input k :=
+  by
+  unfold BitVector.searchNode_7 BitVector.searchCode_7
+  simp only [SearchCode.runK, BitVector.searchNode_6_eq]
+
+private def BitVector.searchCode_8 : SearchCode :=
+  SearchCode.capture ["Hexadecimal", "Payload.Hexadecimal"] BitVector.searchCode_7 BitVector.searchCode_0
+
+@[inline]
+private def BitVector.searchNode_8 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  BitVector.searchNode_7 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    BitVector.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["Hexadecimal", "Payload.Hexadecimal"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem BitVector.searchNode_8_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    BitVector.searchNode_8 input k = SearchCode.runK BitVector.searchCode_8 input k :=
+  by
+  unfold BitVector.searchNode_8 BitVector.searchCode_8
+  simp only [SearchCode.runK, BitVector.searchNode_7_eq, BitVector.searchNode_0_eq]
+
+private def BitVector.searchCode_9 : SearchCode :=
+  SearchCode.choice BitVector.searchCode_4 BitVector.searchCode_8
+
+@[inline]
+private def BitVector.searchNode_9 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  scanOrElse (BitVector.searchNode_4 input k) fun _ => BitVector.searchNode_8 input k
+
+private theorem BitVector.searchNode_9_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    BitVector.searchNode_9 input k = SearchCode.runK BitVector.searchCode_9 input k :=
+  by
+  unfold BitVector.searchNode_9 BitVector.searchCode_9
+  simp only [SearchCode.runK, BitVector.searchNode_4_eq, BitVector.searchNode_8_eq]
+
+private def BitVector.searchCode_10 : SearchCode :=
+  SearchCode.capture ["Payload"] BitVector.searchCode_9 BitVector.searchCode_0
+
+@[inline]
+private def BitVector.searchNode_10 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  BitVector.searchNode_9 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    BitVector.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["Payload"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem BitVector.searchNode_10_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    BitVector.searchNode_10 input k = SearchCode.runK BitVector.searchCode_10 input k :=
+  by
+  unfold BitVector.searchNode_10 BitVector.searchCode_10
+  simp only [SearchCode.runK, BitVector.searchNode_9_eq, BitVector.searchNode_0_eq]
+
+private def BitVector.searchCode_11 : SearchCode :=
+  SearchCode.literal "#" BitVector.searchCode_10
+
+@[inline]
+private def BitVector.searchNode_11 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  let characters := ("#").toList
+  if characters.isPrefixOf input then BitVector.searchNode_10 ((input).drop characters.length) k else none
+
+private theorem BitVector.searchNode_11_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    BitVector.searchNode_11 input k = SearchCode.runK BitVector.searchCode_11 input k :=
+  by
+  unfold BitVector.searchNode_11 BitVector.searchCode_11
+  simp only [SearchCode.runK, BitVector.searchNode_10_eq]
+
+private def BitVector.directDecode (source : String) : Option CaptureMap :=
+  BitVector.searchNode_11 source.toList fun (captures : CaptureMap) (remaining : List Char) =>
+    if (remaining).isEmpty then some captures else none
+
+private theorem BitVector.directDecode_eq_searchProgram (source : String) :
+    BitVector.directDecode source = SearchProgram.decode BitVector.searchProgram source :=
+  by
+  have hcode : BitVector.searchCode_11 = (BitVector.searchProgram).code := rfl
+  unfold BitVector.directDecode SearchProgram.decode
+  rw [BitVector.searchNode_11_eq, hcode]
+
+private def BitVector.decodeCaptures (source : String) : Option CaptureMap :=
+  BitVector.directDecode source
+
+private theorem BitVector.decodeCaptures_eq_parsePlan (source : String) :
+    BitVector.decodeCaptures source = ParsePlan.decode BitVector.parsePlan BitVector.grammar source := by
+  calc
+    BitVector.decodeCaptures source = SearchProgram.decode BitVector.searchProgram source := by
+      exact BitVector.directDecode_eq_searchProgram source
+    _ = SearchProgram.decode (lowerSearchPlan BitVector.searchPlan) source := by rw [BitVector.searchProgram_lowered]
+    _ = ParsePlan.decode BitVector.parsePlan BitVector.grammar source := by rfl
+
+private theorem BitVector.decodeCaptures_eq_scan (source : String) :
+    BitVector.decodeCaptures source = scan BitVector.grammar source := by
+  calc
+    BitVector.decodeCaptures source = ParsePlan.decode BitVector.parsePlan BitVector.grammar source :=
+      BitVector.decodeCaptures_eq_parsePlan source
+    _ = scan BitVector.grammar source :=
+      ParsePlan.decode_eq_scan (ParsePlan.CertifiedFor.search BitVector.searchPlan_mirrorsGrammar) source
+
+private def BitVector.directView (source : String) : Option BitVector.View :=
+  (BitVector.directDecode source).map (BitVector.View.ofMap source)
+
+private theorem BitVector.directView_eq_decodeView (source : String) :
+    BitVector.directView source = BitVector.decodeView source :=
+  by
+  unfold BitVector.directView BitVector.decodeView
+  rw [show BitVector.directDecode source = scan BitVector.grammar source by
+      exact BitVector.decodeCaptures_eq_scan source]
+
+private instance BitVector.instDecidableViewValid : DecidablePred BitVector.View.Valid := fun _ =>
+  by
+  unfold BitVector.View.Valid
+  infer_instance
 
 theorem BitVector.computeValue_isSome (s : String) : BitVector.IsValid s → (BitVector.computeValue s).isSome :=
   by
@@ -610,12 +962,32 @@ theorem BitVector.computeValue_isSome (s : String) : BitVector.IsValid s → (Bi
   exact hengine.1.1
 
 def BitVector.parse (s : String) :=
-  Triptych.scannerParseMap BitVector.grammar BitVector.constraints BitVector.valueFn id s
+  Triptych.decodedViewParse BitVector.directView BitVector.View.Valid BitVector.View.denotation id s
+
+theorem BitVector.parse_eq_scanner (s : String) :
+    BitVector.parse s = Triptych.scannerParseMap BitVector.grammar BitVector.constraints BitVector.valueFn id s := by
+  calc
+    BitVector.parse s = Triptych.gatedParseOfSpec BitVector.IsValid BitVector.computeValue id s :=
+      by
+      unfold BitVector.parse
+      exact
+        Triptych.decodedViewParse_eq_gatedParseOfSpec BitVector.directView BitVector.decodeView BitVector.View.Valid
+          BitVector.View.denotation id BitVector.IsValid BitVector.computeValue BitVector.directView_eq_decodeView
+          BitVector.IsValid_view BitVector.computeValue_view s
+    _ = Triptych.gatedParse BitVector.IsValid BitVector.computeValue s := by simp [Triptych.gatedParseOfSpec]
+    _ = Triptych.scannerParseMap BitVector.grammar BitVector.constraints BitVector.valueFn id s :=
+      by
+      symm
+      unfold BitVector.computeValue
+      exact
+        Triptych.scannerParseMap_eq_surfaceGated BitVector.grammar BitVector.constraints BitVector.valueFn
+          BitVector.IsValid BitVector.IsValid_equiv s
 
 theorem BitVector.parse_eq_gated (s : String) :
     BitVector.parse s = Triptych.gatedParse BitVector.IsValid BitVector.computeValue s :=
   by
-  unfold BitVector.parse BitVector.computeValue
+  rw [BitVector.parse_eq_scanner]
+  unfold BitVector.computeValue
   exact
     Triptych.scannerParseMap_eq_surfaceGated BitVector.grammar BitVector.constraints BitVector.valueFn BitVector.IsValid
       BitVector.IsValid_equiv s
@@ -624,8 +996,8 @@ theorem BitVector.parse_profile_result (s : String) :
     (Triptych.scannerParseMapProfile BitVector.grammar BitVector.constraints BitVector.valueFn id s).result =
       BitVector.parse s :=
   by
-  unfold BitVector.parse
-  exact Triptych.scannerParseMapProfile_result BitVector.grammar BitVector.constraints BitVector.valueFn id s
+  rw [Triptych.scannerParseMapProfile_result]
+  exact (BitVector.parse_eq_scanner s).symm
 
 theorem BitVector.parse_candidateChecks_le (s : String) :
     (Triptych.scannerParseMapProfile BitVector.grammar BitVector.constraints BitVector.valueFn id s).candidateChecks ≤
@@ -640,13 +1012,13 @@ theorem BitVector.parse_candidateChecks_eq_zero_of_fastScan (s : String)
   Triptych.scannerParseMap_candidateChecks_eq_zero_of_fastScan BitVector.grammar BitVector.constraints BitVector.valueFn
     id s hunique hscan
 
-theorem BitVector.parse_sound (s : String) (v : Value) :
+theorem BitVector.parse_sound (s : String) (v : StrataExamples.SMT.BitVector.Value) :
     BitVector.parse s = some v → BitVector.IsValid s ∧ BitVector.computeValue s = some v :=
   by
   rw [BitVector.parse_eq_gated]
   exact Triptych.gatedParse_sound _ _ s v
 
-theorem BitVector.parse_complete (s : String) (v : Value) :
+theorem BitVector.parse_complete (s : String) (v : StrataExamples.SMT.BitVector.Value) :
     BitVector.IsValid s → BitVector.computeValue s = some v → BitVector.parse s = some v :=
   by
   rw [BitVector.parse_eq_gated]
@@ -665,7 +1037,7 @@ theorem BitVector.parse_view (s : String) :
   unfold Triptych.gatedParse
   rw [BitVector.computeValue_view]
 
-theorem BitVector.parse_eq_some_iff_view (s : String) (v : Value) :
+theorem BitVector.parse_eq_some_iff_view (s : String) (v : StrataExamples.SMT.BitVector.Value) :
     BitVector.parse s = some v ↔
       ∃ decodedView : BitVector.View,
         BitVector.decodeView s = some decodedView ∧

@@ -109,12 +109,30 @@ triptych SignedInteger where
 #guard SignedInteger.toString 42 = "42"
 #guard SignedInteger.toString (-42) = "-42"
 #guard SignedInteger.parse (SignedInteger.toString (-42)) = some (-42)
+#guard decide (SignedInteger.Production "-42")
 -- ANCHOR_END: printerAutoUse
+
+example (s : String) :
+    SignedInteger.IsWf.Root s ↔ SignedInteger.Production s :=
+  Iff.rfl
+
+#guard decide (SignedInteger.IsValid "-42" ∧
+  -42 = SignedInteger.value (component SignedInteger.grammar "-42" "Sign")
+    (component SignedInteger.grammar "-42" "Digits"))
+#guard !decide (SignedInteger.IsValid "--42" ∧
+  -42 = SignedInteger.value (component SignedInteger.grammar "--42" "Sign")
+    (component SignedInteger.grammar "--42" "Digits"))
 
 example (s : String) :
     SignedInteger.parse s =
       Triptych.gatedParse SignedInteger.IsValid SignedInteger.computeValue s := by
   exact SignedInteger.parse_eq_gated s
+
+example (s : String) :
+    SignedInteger.parse s =
+      Triptych.scannerParse SignedInteger.grammar SignedInteger.constraints
+        SignedInteger.valueExpr id s := by
+  exact SignedInteger.parse_eq_scanner s
 
 /--
 error: Unknown identifier `SignedInteger.isValid`
@@ -172,6 +190,7 @@ end AutoPrinterExample
 namespace OfSpecParserExample
 
 private def asDomainInt (i : Int) : Int := i
+private def fromDomainInt (i : Int) : Int := i
 
 triptych BoundedInteger where
   grammar
@@ -186,6 +205,57 @@ triptych BoundedInteger where
 
 #guard BoundedInteger.parse "42" = some 42
 #guard BoundedInteger.parse "101" = none
+
+triptych AutoInverseInteger where
+  grammar
+    Root   ::= Digits
+    Digits ::= digit+
+  value
+    nat Digits
+    ofSpec asDomainInt
+    toSpec fromDomainInt
+  constraints
+    value ∈ [0, 100]
+
+example (i : Int) : asDomainInt (fromDomainInt i) = i :=
+  AutoInverseInteger.ofSpec_toSpec i
+
+private def shiftedToDomain (i : Int) : Int := i + 1
+private def shiftedFromDomain (i : Int) : Int := i - 1
+
+private theorem shiftedToDomain_shiftedFromDomain (i : Int) :
+    shiftedToDomain (shiftedFromDomain i) = i := by
+  simp [shiftedToDomain, shiftedFromDomain]
+
+triptych ExplicitInverseInteger where
+  grammar
+    Root   ::= Digits
+    Digits ::= digit+
+  value
+    nat Digits
+    ofSpec shiftedToDomain
+    toSpec shiftedFromDomain
+    ofSpec_toSpec shiftedToDomain_shiftedFromDomain
+  constraints
+    value ∈ [0, 100]
+
+example (i : Int) : shiftedToDomain (shiftedFromDomain i) = i :=
+  ExplicitInverseInteger.ofSpec_toSpec i
+
+private def nonInverseToDomain (i : Int) : Int := i + 1
+
+/--
+error: Triptych could not synthesize `ofSpec_toSpec`. Add `ofSpec_toSpec <proof>` after `toSpec`; the proof must establish `∀ d, ofSpec (toSpec d) = d`.
+-/
+#guard_msgs in
+triptych MissingInverseInteger where
+  grammar
+    Root   ::= Digits
+    Digits ::= digit+
+  value
+    nat Digits
+    ofSpec nonInverseToDomain
+    toSpec fromDomainInt
 
 end OfSpecParserExample
 
@@ -205,6 +275,9 @@ triptych ValueResult where
     toValue Digits
 
 #guard ValueResult.parse "42" = some { digits := "42" }
+
+#guard decide (ValueResult.IsValid "42" ∧
+  { digits := "42" } = ValueResult.value (component ValueResult.grammar "42" "Digits"))
 
 end ValueResultBinderExample
 
@@ -318,7 +391,7 @@ example (s : String) :
   SizedGraph.parse_reject s
 
 /--
-error: dependent width currently requires a nonempty literal delimiter before the final payload
+error: dependent width requires a nonempty literal delimiter before its field
 -/
 #guard_msgs in
 triptych UndelimitedSized where
@@ -327,15 +400,36 @@ triptych UndelimitedSized where
     Order ::= digit+
     Cells ::= bit{upperTriangleSize Order}
 
+private def rowWidth (width : String) : Nat :=
+  readNat width
+
+private def sizedRowsValue (width first second : String) : Nat × String × String :=
+  (readNat width, first, second)
+
+triptych SizedRows where
+  grammar
+    Rows   ::= Width ":" First "/" Second
+    Width  ::= digit{1,2}
+    First  ::= bit{rowWidth Width}
+    Second ::= hexDigit{rowWidth Width}
+  value'
+    sizedRowsValue Width First Second
+
+#guard SizedRows.parse "3:101/a0F" = some (3, "101", "a0F")
+#guard SizedRows.parse "0:/" = some (0, "", "")
+#guard SizedRows.parse "3:10/a0F" = none
+#guard SizedRows.parse "3:101/a0" = none
+
 /--
-error: `Cells` must be the final field of the start production when it has a dependent width
+error: internal dependent-width field `Cells` requires an immediate nonempty literal delimiter after it
 -/
 #guard_msgs in
-triptych NonfinalSized where
+triptych UnseparatedInternalSized where
   grammar
-    Root ::= Order ":" Cells "!"
+    Root ::= Order ":" Cells Tail
     Order ::= digit+
     Cells ::= bit{upperTriangleSize Order}
+    Tail ::= digit+
 
 end SizedTerminalExample
 
@@ -441,5 +535,81 @@ theorem BitFormat.parse_toString_roundtrip (b : Bool) :
 #guard BitFormat.parse (BitFormat.toString true) = some true
 
 end DefaultPrinterExample
+
+
+namespace NestedSearchScalingExample
+
+/-! Regression for search-path emission at realistic size. This is the LRAT text grammar used by
+    `Std.Tactic.BVDecide.LRAT.Parser`: nested captures, repetitions, and several optionals in one
+    production. Inlining continuations as syntax once produced a 209 MB `directDecode`, and the
+    readable-spec equivalence proof failed on a literal following an optional item. -/
+
+private def lineCount (ids : List String) : Nat := ids.length
+
+triptych LratText where
+  grammar
+    Proof    ::= rep Line sepBy "\n" + "\n"
+    Line     ::= Id " " Body Cr
+    Cr       ::= ["\r"]
+    Body     ::= Delete | Add
+    Delete   ::= "d " [DelIds] "0"
+    DelIds   ::= rep DelId sepBy " " + " "
+    DelId    ::= Pos
+    Add      ::= [Lits] "0 " [Hints] [Rats] "0"
+    Lits     ::= rep Lit sepBy " " + " "
+    Lit      ::= Neg | Pos
+    Hints    ::= rep Hint sepBy " " + " "
+    Hint     ::= Pos
+    Rats     ::= rep Rat sepBy " " + " "
+    Rat      ::= Neg " " [Hints]
+    Neg      ::= "-" Pos
+    Pos      ::= digit+
+    Id       ::= Pos
+  value'
+    lineCount [Id]
+
+#guard LratText.parse "5 1 -2 0 3 4 0\n6 d 1 2 0\n" = some 2
+#guard LratText.parse "7 0 5 6 0\n" = some 1
+#guard LratText.parse "7 0 5 6 0" = none
+
+end NestedSearchScalingExample
+
+
+namespace GroupedValueExample
+
+/-! Grouped `value'` arguments: one tuple per occurrence of a repeated production, with nested
+    groups read inside each occurrence. -/
+
+private def rowShape (rows : List (String × List String)) : List (String × Nat) :=
+  rows.map fun (label, cells) => (label, cells.length)
+
+triptych Rows where
+  grammar
+    Table ::= rep Row sepBy ";" +
+    Row   ::= Label ":" Cells
+    Label ::= ascii[97,122]+
+    Cells ::= rep Cell sepBy "," +
+    Cell  ::= digit+
+  value'
+    rowShape [Row ⟨Label, [Cell]⟩]
+
+#guard Rows.parse "a:1,2;bc:3" = some [("a", 2), ("bc", 1)]
+#guard Rows.parse "a:1,2,3" = some [("a", 3)]
+#guard Rows.parse "a:" = none
+
+/--
+error: group field `Table` is not a production inside `Row`; a group reads only captures recorded within each `Row` occurrence
+-/
+#guard_msgs in
+triptych RowsBadField where
+  grammar
+    Table ::= rep Row sepBy ";" +
+    Row   ::= Cell
+    Cell  ::= digit+
+  value'
+    List.length [Row ⟨Table⟩]
+
+end GroupedValueExample
+
 
 end Triptych.Tests

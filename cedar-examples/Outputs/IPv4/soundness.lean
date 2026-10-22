@@ -19,20 +19,19 @@ theorem IPv4.encode_view (i : IPv4Net) :
     ∃ v : IPv4.View,
       IPv4.decodeView (ipNetToStr i) = some v ∧
       IPv4.View.Valid v ∧
-      IPv4.View.denotation v = i := by
+      ipv4CodeToNet (IPv4.View.denotation v) = i := by
   triptych_encode [IPv4.RuleRegistrySoundness.parser_ipNetToStr,
     IPv4.RuleRegistrySoundness.parser_agrees, IPv4.IsValid_view,
-    IPv4.computeValue_view]
+    IPv4.computeValue_view, IPv4.RuleRegistrySoundness.ipv4CodeToNet_netToCode i]
 
 theorem IPv4.encode_accepted (i : IPv4Net) : IPv4.IsValid (ipNetToStr i) := by
   obtain ⟨v, hview, hvalidView, _⟩ := IPv4.encode_view i
   exact (IPv4.IsValid_view (ipNetToStr i)).mpr ⟨v, hview, hvalidView⟩
 
 theorem IPv4.encode_value (i : IPv4Net) :
-    IPv4.computeValue (ipNetToStr i) = some i := by
-  obtain ⟨v, hview, _, hresult⟩ := IPv4.encode_view i
-  rw [IPv4.computeValue_view, hview]
-  exact congrArg some hresult
+    IPv4.computeValue (ipNetToStr i) = some (ipv4NetToCode i) := by
+  exact ((IPv4.RuleRegistrySoundness.parser_agrees (ipNetToStr i) i).mp
+    (IPv4.RuleRegistrySoundness.parser_ipNetToStr i)).2
 
 theorem IPv4.parse_toString_roundtrip (i : IPv4Net) : IPv4.parse (ipNetToStr i) = some i :=
   Triptych.parse_toString_roundtrip_of_encodeView
@@ -64,11 +63,12 @@ theorem IPv4.extparse_eq_none_iff_view (s : String) :
   simp only [IPv4.extparse_reject, IPv4.IsValid_view]
 
 theorem IPv4.extparse_sound (s : String) (i : IPv4Net) :
-    ipv4Only s = some i → IPv4.IsValid s ∧ IPv4.computeValue s = some (id i) := by
-  simpa only [id] using (IPv4.RuleRegistrySoundness.parser_agrees s i).mp
+    ipv4Only s = some i →
+      IPv4.IsValid s ∧ IPv4.computeValue s = some (ipv4NetToCode i) := by
+  exact (IPv4.RuleRegistrySoundness.parser_agrees s i).mp
 
 theorem IPv4.extparse_complete (s : String) (i : IPv4Net) :
-    IPv4.IsValid s → IPv4.computeValue s = some (id i) → ipv4Only s = some i := by
+    IPv4.IsValid s → IPv4.computeValue s = some (ipv4NetToCode i) → ipv4Only s = some i := by
   intro hvalid hvalue
   exact (IPv4.RuleRegistrySoundness.parser_agrees s i).mpr ⟨hvalid, hvalue⟩
 
@@ -76,17 +76,19 @@ theorem IPv4.parse_eq_extparse (s : String) :
     IPv4.parse s = ipv4Only s :=
   by
   rw [IPv4.parse_eq_gated]
-  exact Triptych.gatedParse_eq_external
-    IPv4.IsValid IPv4.computeValue ipv4Only IPv4.extparse_sound IPv4.extparse_reject s
+  exact Triptych.gatedParseOfSpec_eq_external
+    IPv4.IsValid IPv4.computeValue ipv4CodeToNet ipv4NetToCode ipv4Only
+      IPv4.extparse_sound IPv4.extparse_reject
+      IPv4.RuleRegistrySoundness.ipv4CodeToNet_netToCode s
 
 theorem IPv4.extparse_eq_some_iff_view (s : String) (i : IPv4Net) :
     ipv4Only s = some i ↔
       ∃ v : IPv4.View,
         IPv4.decodeView s = some v ∧
         IPv4.View.Valid v ∧
-        IPv4.View.denotation v = id i := by
+        IPv4.View.denotation v = ipv4NetToCode i := by
   simp only [IPv4.RuleRegistrySoundness.parser_agrees, IPv4.IsValid_view,
-    IPv4.computeValue_view, Triptych.Automation.exists_valid_and_map_eq_some_iff, id]
+    IPv4.computeValue_view, Triptych.Automation.exists_valid_and_map_eq_some_iff]
 
 theorem IPv4.extparse_toString_roundtrip (i : IPv4Net) : ipv4Only (ipNetToStr i) = some i :=
   Triptych.parse_toString_roundtrip IPv4.extparse_complete IPv4.encode_accepted

@@ -68,14 +68,16 @@ triptych Decimal where
     value ∈ [Int64.MIN, Int64.MAX]
   parser Cedar.Spec.Ext.Decimal.parse
   printer decimalToStr
+  verus "../verus-experiments/cedar-ext/decimal/src/spec.rs"
   to "Outputs/Decimal"
 ```
 
 The source lives in {lit}`cedar-examples/Inputs/Decimal.lean`. Its output is split by role:
 
 1. *{lit}`spec.lean` -- what a reviewer reads.* It contains the grammar value, per-production
-   {lit}`IsWf` predicates, value and constraint functions, the overall {lit}`IsValid`
-   predicate, a typed {lit}`View`, and typed {lit}`Derivation` trees. It contains no proofs.
+   {lit}`IsWf` predicates, the root {lit}`Production`, value and constraint functions,
+   {lit}`IsValid` and {lit}`Denotes`, a typed {lit}`View`, and typed {lit}`Derivation` trees.
+   It contains no proofs.
 2. *{lit}`parser.lean` -- what an application runs and the kernel checks.* It contains the
    generic engine instance, {lit}`decodeView`, {lit}`computeValue`, the specialized
    {lit}`parse`, and all compiler-discharged reconciliation and parser-contract theorems.
@@ -106,9 +108,9 @@ checked without {name}`sorryAx`.
 
 Triptych is not a general parser generator. Its grammar tier has concatenation, finite
 alternation, optional items, three built-in token classes, inclusive ASCII ranges, and separated
-repetition. A delimiter-bounded final payload may compute its exact width
-from earlier captures with syntax such as {lit}`bit{upperTriangleSize Order}`, but recursive
-productions and general capture-dependent boundaries remain
+repetition. Literal-delimited fields may compute their exact widths from earlier captures with
+syntax such as {lit}`bit{upperTriangleSize Order}`; several such fields may occur in one format.
+Recursive productions and delimiter-free capture-dependent boundaries remain
 outside the generated surface. The scanner architecture can compose a parsed header with a
 generated tail grammar for those broader cases, while automatic artifacts for that composition
 remain in progress. General Base64 is not yet expressible because the grammar has no arbitrary

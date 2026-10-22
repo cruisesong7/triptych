@@ -59,7 +59,7 @@ theorem matchesSeq_opt_cons (g : Grammar) (fuel : Nat) (item : SymItem) (rest : 
     (hopt : item.optional = true) :
     matchesSeq g fuel (item :: rest) s ↔
     ∃ p r, s = p ++ r ∧ (p = "" ∨ matchesSym g fuel item.sym p) ∧ matchesSeq g fuel rest r := by
-  rw [matchesSeq.eq_2]; simp only [hopt, if_true]
+  rw [matchesSeq.eq_2]; simp only [hopt, ite_true]
   constructor
   · rintro (⟨s1, s2, hs, hP, hQ⟩ | hQ)
     · exact ⟨s1, s2, hs, Or.inr hP, hQ⟩
@@ -143,5 +143,33 @@ theorem readInt_empty : readInt "" = 0 := by unfold readInt; simp [readNat]
   cases env key <;> simp [readNat]
 @[simp] theorem signOf_getD (env : Env) (f : String) : signOf ((env f).getD "") = env.signVal f := by
   unfold signOf Env.signVal; cases env f <;> simp
+@[simp] theorem hexOf_getD (env : Env) (f : String) : hexOf ((env f).getD "") = env.hexVal f := by
+  unfold Env.hexVal
+  cases h : env f with
+  | none => simp [hexOf, hexOfChars]
+  | some text => simp []
+@[simp] theorem hexSeqOf_getD (env : Env) (f : String) :
+    hexSeqOf ((env f).getD "") = env.hexSeqVal f := by
+  unfold Env.hexSeqVal
+  cases h : env f with
+  | none => simp [hexSeqOf, hexSeqOfChars]
+  | some text => simp []
+@[simp] theorem segmentsOf_getD (env : Env) (f : String) :
+    segmentsOf ((env f).getD "") = env.segmentVal f := by
+  unfold Env.segmentVal
+  cases h : env f with
+  | none => simp [segmentsOf]
+  | some text => simp []
+
+/-- Eliminate the split for a literal that follows earlier items in a sequence. The interpreter
+    denotes a literal item as an existential split whose left part equals the literal; the
+    readable specification substitutes the literal directly. -/
+theorem exists_append_lit_left (t lit : String) (P : String → Prop) :
+    (∃ s1 s2, (t = s1 ++ s2 ∧ s1 = lit) ∧ P s2) ↔ ∃ s2, t = lit ++ s2 ∧ P s2 := by
+  constructor
+  · rintro ⟨s1, s2, ⟨ht, rfl⟩, hp⟩
+    exact ⟨s2, ht, hp⟩
+  · rintro ⟨s2, ht, hp⟩
+    exact ⟨lit, s2, ⟨ht, rfl⟩, hp⟩
 
 end Triptych

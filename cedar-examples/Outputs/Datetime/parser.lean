@@ -8,7 +8,10 @@ import Triptych.Architecture.Constraint
 import Triptych.Architecture.Assemble
 import Triptych.Theorems.Reconcile
 import Triptych.Theorems.Value
-import Triptych.Archive.DecodeLemmas
+import Triptych.Theorems.ParsePlan
+import Triptych.Theorems.ScanPlan
+import Triptych.Theorems.SearchPlan
+import Triptych.Reference.DecodeLemmas
 import Triptych.Theorems.Derivation
 import Triptych.Theorems.Scanner
 import Outputs.Datetime.spec
@@ -23,7 +26,7 @@ set_option linter.unnecessarySeqFocus false
 
 /- ══════════════════════════════ engine ══════════════════════════════
 The executable counterpart of the spec. A verified scanner extracts captured
-components and stops at the first complete parse. The archived reference `decode`
+components and stops at the first complete parse. The reference `decode`
 is used only in the agreement proof, not as a runtime fallback. `computeValue`
 evaluates the value function on those captures. Generated `DecidablePred` instances
 make the readable `IsWf` and `IsValid` predicates directly executable.
@@ -171,12 +174,116 @@ def Datetime.Derivation.Datetime.capturesWith (qual : String) : Datetime.Derivat
                   Datetime.Derivation.Offset.capturesWith "Offset" part5 ++
                 []))))))
 
-def Datetime.valueFn := fun m : Triptych.CaptureMap =>
-  epochMillis ((Triptych.CaptureMap.toEnv m "YYYY").getD "") ((Triptych.CaptureMap.toEnv m "MM").getD "")
-    ((Triptych.CaptureMap.toEnv m "DD").getD "") ((Triptych.CaptureMap.toEnv m "Time.hh").getD "")
-    ((Triptych.CaptureMap.toEnv m "Time.mm").getD "") ((Triptych.CaptureMap.toEnv m "ss").getD "")
-    ((Triptych.CaptureMap.toEnv m "SSS").getD "") ((Triptych.CaptureMap.toEnv m "Offset.hh").getD "")
-    ((Triptych.CaptureMap.toEnv m "Offset.mm").getD "") ((Triptych.CaptureMap.toEnv m "Offset").getD "")
+def Datetime.valueExpr : ValExpr :=
+  ValExpr.sub
+    (ValExpr.add
+      (ValExpr.mul
+        (ValExpr.add
+          (ValExpr.add
+            (ValExpr.add
+              (ValExpr.mul
+                (ValExpr.sub
+                  (ValExpr.add
+                    (ValExpr.mul
+                      (ValExpr.iteLe (ValExpr.lit 0)
+                        (ValExpr.iteLt (ValExpr.lit 2) (ValExpr.nat "MM") (ValExpr.nat "YYYY")
+                          (ValExpr.sub (ValExpr.nat "YYYY") (ValExpr.lit 1)))
+                        (ValExpr.tdiv
+                          (ValExpr.iteLt (ValExpr.lit 2) (ValExpr.nat "MM") (ValExpr.nat "YYYY")
+                            (ValExpr.sub (ValExpr.nat "YYYY") (ValExpr.lit 1)))
+                          (ValExpr.lit 400))
+                        (ValExpr.tdiv
+                          (ValExpr.sub
+                            (ValExpr.iteLt (ValExpr.lit 2) (ValExpr.nat "MM") (ValExpr.nat "YYYY")
+                              (ValExpr.sub (ValExpr.nat "YYYY") (ValExpr.lit 1)))
+                            (ValExpr.lit 399))
+                          (ValExpr.lit 400)))
+                      (ValExpr.lit 146097))
+                    (ValExpr.add
+                      (ValExpr.sub
+                        (ValExpr.add
+                          (ValExpr.mul
+                            (ValExpr.sub
+                              (ValExpr.iteLt (ValExpr.lit 2) (ValExpr.nat "MM") (ValExpr.nat "YYYY")
+                                (ValExpr.sub (ValExpr.nat "YYYY") (ValExpr.lit 1)))
+                              (ValExpr.mul
+                                (ValExpr.iteLe (ValExpr.lit 0)
+                                  (ValExpr.iteLt (ValExpr.lit 2) (ValExpr.nat "MM") (ValExpr.nat "YYYY")
+                                    (ValExpr.sub (ValExpr.nat "YYYY") (ValExpr.lit 1)))
+                                  (ValExpr.tdiv
+                                    (ValExpr.iteLt (ValExpr.lit 2) (ValExpr.nat "MM") (ValExpr.nat "YYYY")
+                                      (ValExpr.sub (ValExpr.nat "YYYY") (ValExpr.lit 1)))
+                                    (ValExpr.lit 400))
+                                  (ValExpr.tdiv
+                                    (ValExpr.sub
+                                      (ValExpr.iteLt (ValExpr.lit 2) (ValExpr.nat "MM") (ValExpr.nat "YYYY")
+                                        (ValExpr.sub (ValExpr.nat "YYYY") (ValExpr.lit 1)))
+                                      (ValExpr.lit 399))
+                                    (ValExpr.lit 400)))
+                                (ValExpr.lit 400)))
+                            (ValExpr.lit 365))
+                          (ValExpr.tdiv
+                            (ValExpr.sub
+                              (ValExpr.iteLt (ValExpr.lit 2) (ValExpr.nat "MM") (ValExpr.nat "YYYY")
+                                (ValExpr.sub (ValExpr.nat "YYYY") (ValExpr.lit 1)))
+                              (ValExpr.mul
+                                (ValExpr.iteLe (ValExpr.lit 0)
+                                  (ValExpr.iteLt (ValExpr.lit 2) (ValExpr.nat "MM") (ValExpr.nat "YYYY")
+                                    (ValExpr.sub (ValExpr.nat "YYYY") (ValExpr.lit 1)))
+                                  (ValExpr.tdiv
+                                    (ValExpr.iteLt (ValExpr.lit 2) (ValExpr.nat "MM") (ValExpr.nat "YYYY")
+                                      (ValExpr.sub (ValExpr.nat "YYYY") (ValExpr.lit 1)))
+                                    (ValExpr.lit 400))
+                                  (ValExpr.tdiv
+                                    (ValExpr.sub
+                                      (ValExpr.iteLt (ValExpr.lit 2) (ValExpr.nat "MM") (ValExpr.nat "YYYY")
+                                        (ValExpr.sub (ValExpr.nat "YYYY") (ValExpr.lit 1)))
+                                      (ValExpr.lit 399))
+                                    (ValExpr.lit 400)))
+                                (ValExpr.lit 400)))
+                            (ValExpr.lit 4)))
+                        (ValExpr.tdiv
+                          (ValExpr.sub
+                            (ValExpr.iteLt (ValExpr.lit 2) (ValExpr.nat "MM") (ValExpr.nat "YYYY")
+                              (ValExpr.sub (ValExpr.nat "YYYY") (ValExpr.lit 1)))
+                            (ValExpr.mul
+                              (ValExpr.iteLe (ValExpr.lit 0)
+                                (ValExpr.iteLt (ValExpr.lit 2) (ValExpr.nat "MM") (ValExpr.nat "YYYY")
+                                  (ValExpr.sub (ValExpr.nat "YYYY") (ValExpr.lit 1)))
+                                (ValExpr.tdiv
+                                  (ValExpr.iteLt (ValExpr.lit 2) (ValExpr.nat "MM") (ValExpr.nat "YYYY")
+                                    (ValExpr.sub (ValExpr.nat "YYYY") (ValExpr.lit 1)))
+                                  (ValExpr.lit 400))
+                                (ValExpr.tdiv
+                                  (ValExpr.sub
+                                    (ValExpr.iteLt (ValExpr.lit 2) (ValExpr.nat "MM") (ValExpr.nat "YYYY")
+                                      (ValExpr.sub (ValExpr.nat "YYYY") (ValExpr.lit 1)))
+                                    (ValExpr.lit 399))
+                                  (ValExpr.lit 400)))
+                              (ValExpr.lit 400)))
+                          (ValExpr.lit 100)))
+                      (ValExpr.add
+                        (ValExpr.tdiv
+                          (ValExpr.add
+                            (ValExpr.mul (ValExpr.lit 153)
+                              (ValExpr.add (ValExpr.nat "MM")
+                                (ValExpr.iteLt (ValExpr.lit 2) (ValExpr.nat "MM") (ValExpr.lit (-3)) (ValExpr.lit 9))))
+                            (ValExpr.lit 2))
+                          (ValExpr.lit 5))
+                        (ValExpr.sub (ValExpr.nat "DD") (ValExpr.lit 1)))))
+                  (ValExpr.lit 719468))
+                (ValExpr.lit 86400))
+              (ValExpr.mul (ValExpr.nat "Time.hh") (ValExpr.lit 3600)))
+            (ValExpr.mul (ValExpr.nat "Time.mm") (ValExpr.lit 60)))
+          (ValExpr.nat "ss"))
+        (ValExpr.lit 1000))
+      (ValExpr.nat "SSS"))
+    (ValExpr.mul (ValExpr.prefixSign "Offset")
+      (ValExpr.add (ValExpr.mul (ValExpr.nat "Offset.hh") (ValExpr.lit 3600000))
+        (ValExpr.mul (ValExpr.nat "Offset.mm") (ValExpr.lit 60000))))
+
+def Datetime.valueFn : Env → Int :=
+  (Datetime.valueExpr).eval
 
 def Datetime.constraints : List ConstraintEntry :=
   [ConstraintEntry.dsl ConstraintPhase.wellFormed
@@ -197,19 +304,55 @@ def Datetime.constraints : List ConstraintEntry :=
     ConstraintEntry.dsl ConstraintPhase.wellFormed
       (Constraint.and (Constraint.le (ValExpr.lit 0) (ValExpr.nat "Offset.mm"))
         (Constraint.le (ValExpr.nat "Offset.mm") (ValExpr.lit 59))),
-    ConstraintEntry.opaqueMap ConstraintPhase.wellFormed fun m : Triptych.CaptureMap =>
-      dayBound ((Triptych.CaptureMap.toEnv m "YYYY").getD "") ((Triptych.CaptureMap.toEnv m "MM").getD "")
-        ((Triptych.CaptureMap.toEnv m "DD").getD "")]
+    ConstraintEntry.dsl ConstraintPhase.wellFormed
+      (Constraint.and (Constraint.le (ValExpr.lit 1) (ValExpr.nat "DD"))
+        (Constraint.le (ValExpr.nat "DD")
+          (ValExpr.iteEq (ValExpr.nat "MM") (ValExpr.lit 4) (ValExpr.lit 30)
+            (ValExpr.iteEq (ValExpr.nat "MM") (ValExpr.lit 6) (ValExpr.lit 30)
+              (ValExpr.iteEq (ValExpr.nat "MM") (ValExpr.lit 9) (ValExpr.lit 30)
+                (ValExpr.iteEq (ValExpr.nat "MM") (ValExpr.lit 11) (ValExpr.lit 30)
+                  (ValExpr.iteEq (ValExpr.nat "MM") (ValExpr.lit 2)
+                    (ValExpr.iteEq
+                      (ValExpr.iteEq (ValExpr.mod (ValExpr.nat "YYYY") (ValExpr.lit 4)) (ValExpr.lit 0)
+                        (ValExpr.iteEq (ValExpr.mod (ValExpr.nat "YYYY") (ValExpr.lit 100)) (ValExpr.lit 0)
+                          (ValExpr.iteEq (ValExpr.mod (ValExpr.nat "YYYY") (ValExpr.lit 400)) (ValExpr.lit 0)
+                            (ValExpr.lit 1) (ValExpr.lit 0))
+                          (ValExpr.lit 1))
+                        (ValExpr.lit 0))
+                      (ValExpr.lit 1) (ValExpr.lit 29) (ValExpr.lit 28))
+                    (ValExpr.lit 31)))))))),
+    ConstraintEntry.dsl ConstraintPhase.value
+      (Constraint.and (Constraint.le (ValExpr.lit (-9223372036854775808)) Datetime.valueExpr)
+        (Constraint.le Datetime.valueExpr (ValExpr.lit 9223372036854775807)))]
 
-def Datetime.computeValue (s : String) :=
-  Triptych.scannerComputeValueMap Datetime.grammar Datetime.valueFn s
+def Datetime.computeValue (s : String) : Option Int :=
+  Triptych.scannerComputeValue Datetime.grammar Datetime.valueExpr s
 
 def Datetime.View.ofMap (input : String) (m : Triptych.CaptureMap) : Datetime.View :=
-  Datetime.View.mk input ((Triptych.CaptureMap.toEnv m "YYYY").getD "") ((Triptych.CaptureMap.toEnv m "MM").getD "")
+  Datetime.View.mk input ((Triptych.CaptureMap.toEnv m "MM").getD "") ((Triptych.CaptureMap.toEnv m "YYYY").getD "")
     ((Triptych.CaptureMap.toEnv m "DD").getD "") (Triptych.CaptureMap.toEnv m "Time.hh")
     (Triptych.CaptureMap.toEnv m "Time.mm") (Triptych.CaptureMap.toEnv m "ss") (Triptych.CaptureMap.toEnv m "SSS")
-    (Triptych.CaptureMap.toEnv m "Offset.hh") (Triptych.CaptureMap.toEnv m "Offset.mm")
-    (Triptych.CaptureMap.toEnv m "Offset")
+    (Triptych.CaptureMap.toEnv m "Offset") (Triptych.CaptureMap.toEnv m "Offset.hh")
+    (Triptych.CaptureMap.toEnv m "Offset.mm")
+
+private def Datetime.View.ofSpans (input : String) (chars : List Char) (spans : Triptych.LeanSpanCursor.SpanMap) :
+    Datetime.View :=
+  Datetime.View.mk input ((Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "MM").getD "")
+    ((Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "YYYY").getD "")
+    ((Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "DD").getD "")
+    (Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "Time.hh")
+    (Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "Time.mm")
+    (Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "ss") (Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "SSS")
+    (Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "Offset")
+    (Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "Offset.hh")
+    (Triptych.LeanSpanCursor.SpanMap.toEnv chars spans "Offset.mm")
+
+private theorem Datetime.View.ofSpans_eq_ofMap (input : String) (chars : List Char)
+    (spans : Triptych.LeanSpanCursor.SpanMap) :
+    Datetime.View.ofSpans input chars spans = Datetime.View.ofMap input (spans.materialize chars) :=
+  by
+  unfold Datetime.View.ofSpans Datetime.View.ofMap
+  simp only [Triptych.LeanSpanCursor.SpanMap.captureMap_toEnv, Triptych.LeanSpanCursor.SpanMap.captureMap_toEnvList]
 
 def Datetime.decodeView (s : String) : Option Datetime.View :=
   (scan Datetime.grammar s).map (Datetime.View.ofMap s)
@@ -970,14 +1113,30 @@ theorem Datetime.SatisfiesWfConstraints_of_decode {s : String} {m : Triptych.Cap
       Datetime.WfConstraints ((Triptych.CaptureMap.toEnv m "MM").getD "")
         ((Triptych.CaptureMap.toEnv m "Time.hh").getD "") ((Triptych.CaptureMap.toEnv m "Time.mm").getD "")
         ((Triptych.CaptureMap.toEnv m "ss").getD "") ((Triptych.CaptureMap.toEnv m "Offset.hh").getD "")
-        ((Triptych.CaptureMap.toEnv m "Offset.mm").getD "") ((Triptych.CaptureMap.toEnv m "YYYY").getD "")
-        ((Triptych.CaptureMap.toEnv m "DD").getD "") :=
+        ((Triptych.CaptureMap.toEnv m "Offset.mm").getD "") ((Triptych.CaptureMap.toEnv m "DD").getD "")
+        ((Triptych.CaptureMap.toEnv m "YYYY").getD "") :=
   by
   unfold Datetime.SatisfiesWfConstraints
   simp only [Triptych.component_eq_of_decode h "MM", Triptych.component_eq_of_decode h "Time.hh",
     Triptych.component_eq_of_decode h "Time.mm", Triptych.component_eq_of_decode h "ss",
     Triptych.component_eq_of_decode h "Offset.hh", Triptych.component_eq_of_decode h "Offset.mm",
-    Triptych.component_eq_of_decode h "YYYY", Triptych.component_eq_of_decode h "DD"]
+    Triptych.component_eq_of_decode h "DD", Triptych.component_eq_of_decode h "YYYY"]
+
+theorem Datetime.SatisfiesConstraints_of_decode {s : String} {m : Triptych.CaptureMap}
+    (h : decode Datetime.grammar s = some m) :
+    Datetime.SatisfiesConstraints s ↔
+      Datetime.Constraints ((Triptych.CaptureMap.toEnv m "MM").getD "") ((Triptych.CaptureMap.toEnv m "YYYY").getD "")
+        ((Triptych.CaptureMap.toEnv m "DD").getD "") ((Triptych.CaptureMap.toEnv m "Time.hh").getD "")
+        ((Triptych.CaptureMap.toEnv m "Time.mm").getD "") ((Triptych.CaptureMap.toEnv m "ss").getD "")
+        ((Triptych.CaptureMap.toEnv m "SSS").getD "") ((Triptych.CaptureMap.toEnv m "Offset").getD "")
+        ((Triptych.CaptureMap.toEnv m "Offset.hh").getD "") ((Triptych.CaptureMap.toEnv m "Offset.mm").getD "") :=
+  by
+  unfold Datetime.SatisfiesConstraints
+  simp only [Triptych.component_eq_of_decode h "MM", Triptych.component_eq_of_decode h "YYYY",
+    Triptych.component_eq_of_decode h "DD", Triptych.component_eq_of_decode h "Time.hh",
+    Triptych.component_eq_of_decode h "Time.mm", Triptych.component_eq_of_decode h "ss",
+    Triptych.component_eq_of_decode h "SSS", Triptych.component_eq_of_decode h "Offset",
+    Triptych.component_eq_of_decode h "Offset.hh", Triptych.component_eq_of_decode h "Offset.mm"]
 
 theorem Datetime.Internal.matchesRef.YYYY (fuel : Nat) (s : String) :
     matchesSym Datetime.grammar (fuel + 1) (Sym.ref "YYYY") s ↔ Datetime.IsWf.YYYY s :=
@@ -991,10 +1150,10 @@ theorem Datetime.Internal.matchesRef.YYYY (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold Datetime.IsWf.YYYY
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem Datetime.Internal.matchesRef.MM (fuel : Nat) (s : String) :
@@ -1009,10 +1168,10 @@ theorem Datetime.Internal.matchesRef.MM (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold Datetime.IsWf.MM
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem Datetime.Internal.matchesRef.DD (fuel : Nat) (s : String) :
@@ -1027,10 +1186,10 @@ theorem Datetime.Internal.matchesRef.DD (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold Datetime.IsWf.DD
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem Datetime.Internal.matchesRef.Date (fuel : Nat) (s : String) :
@@ -1048,10 +1207,10 @@ theorem Datetime.Internal.matchesRef.Date (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold Datetime.IsWf.Date
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     Datetime.Internal.matchesRef.YYYY, Datetime.Internal.matchesRef.MM, Datetime.Internal.matchesRef.DD]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem Datetime.Internal.matchesRef.hh (fuel : Nat) (s : String) :
@@ -1066,10 +1225,10 @@ theorem Datetime.Internal.matchesRef.hh (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold Datetime.IsWf.hh
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem Datetime.Internal.matchesRef.mm (fuel : Nat) (s : String) :
@@ -1084,10 +1243,10 @@ theorem Datetime.Internal.matchesRef.mm (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold Datetime.IsWf.mm
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem Datetime.Internal.matchesRef.ss (fuel : Nat) (s : String) :
@@ -1102,10 +1261,10 @@ theorem Datetime.Internal.matchesRef.ss (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold Datetime.IsWf.ss
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem Datetime.Internal.matchesRef.Time (fuel : Nat) (s : String) :
@@ -1123,10 +1282,10 @@ theorem Datetime.Internal.matchesRef.Time (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold Datetime.IsWf.Time
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
     Datetime.Internal.matchesRef.hh, Datetime.Internal.matchesRef.mm, Datetime.Internal.matchesRef.ss]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem Datetime.Internal.matchesRef.SSS (fuel : Nat) (s : String) :
@@ -1141,10 +1300,10 @@ theorem Datetime.Internal.matchesRef.SSS (fuel : Nat) (s : String) :
   rw [matchesProd_single]
   unfold Datetime.IsWf.SSS
   simp (config := { maxSteps := 1000000 }) only [Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_left,
-    if_true, if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
+    ite_true, ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, IsDigits_matchesTerm,
     IsFixedDigits_matchesTerm, IsDigitsBetween_matchesTerm]
   simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left, ← and_assoc,
-    exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+    exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left, Option.some.injEq, forall_eq']
   try grind [String.append_assoc, String.append_empty]
 
 theorem Datetime.Internal.matchesRef.Offset (fuel : Nat) (s : String) :
@@ -1161,18 +1320,19 @@ theorem Datetime.Internal.matchesRef.Offset (fuel : Nat) (s : String) :
   dsimp only
   unfold matchesProd Datetime.IsWf.Offset
   simp (config := { maxSteps := 1000000 }) only [List.mem_cons, List.mem_singleton, List.not_mem_nil,
-    Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_or_imp, exists_eq_left, exists_eq_left, if_true,
-    if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, Datetime.Internal.matchesRef.hh,
+    Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_or_imp, exists_eq_left, exists_eq_left, ite_true,
+    ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, Datetime.Internal.matchesRef.hh,
     Datetime.Internal.matchesRef.mm]
   repeat'
     first
     | apply or_congr
     | ( simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left,
-          ← and_assoc, exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+          ← and_assoc, exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left,
+          Option.some.injEq, forall_eq']
         try grind [String.append_assoc, String.append_empty])
 
 theorem Datetime.Internal.matchesRef.Datetime (fuel : Nat) (s : String) :
-    matchesSym Datetime.grammar (fuel + 3) (Sym.ref "Datetime") s ↔ Datetime.IsWf.Datetime s :=
+    matchesSym Datetime.grammar (fuel + 3) (Sym.ref "Datetime") s ↔ Datetime.Production s :=
   by
   rw [matchesSym,
     show
@@ -1190,19 +1350,21 @@ theorem Datetime.Internal.matchesRef.Datetime (fuel : Nat) (s : String) :
                 SymItem.mk (Sym.lit ".") false, SymItem.mk (Sym.ref "SSS") false, SymItem.mk (Sym.ref "Offset") false]])
       from rfl]
   dsimp only
-  unfold matchesProd Datetime.IsWf.Datetime
+  unfold matchesProd Datetime.Production
   simp (config := { maxSteps := 1000000 }) only [List.mem_cons, List.mem_singleton, List.not_mem_nil,
-    Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_or_imp, exists_eq_left, exists_eq_left, if_true,
-    if_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym, Datetime.Internal.matchesRef.Date,
-    Datetime.Internal.matchesRef.Time, Datetime.Internal.matchesRef.SSS, Datetime.Internal.matchesRef.Offset]
+    Triptych.matchesSeq.eq_1, Triptych.matchesSeq.eq_2, exists_eq_or_imp, exists_eq_left, exists_eq_left, ite_true,
+    ite_false, Bool.false_eq_true, false_and, or_false, or_assoc, Triptych.matchesSym,
+    Datetime.Internal.matchesRef.Date, Datetime.Internal.matchesRef.Time, Datetime.Internal.matchesRef.SSS,
+    Datetime.Internal.matchesRef.Offset]
   repeat'
     first
     | apply or_congr
     | ( simp (config := { maxSteps := 1000000 }) only [String.append_assoc, String.append_empty, exists_and_left,
-          ← and_assoc, exists_eq_left, exists_eq_left', exists_eq_right, and_true, Option.some.injEq, forall_eq']
+          ← and_assoc, exists_eq_left, exists_eq_left', exists_eq_right, and_true, exists_append_lit_left,
+          Option.some.injEq, forall_eq']
         try grind [String.append_assoc, String.append_empty])
 
-theorem Datetime.IsWfGrammar_equiv (s : String) : Triptych.IsWf Datetime.grammar s ↔ Datetime.IsWf.Datetime s :=
+theorem Datetime.IsWfGrammar_equiv (s : String) : Triptych.IsWf Datetime.grammar s ↔ Datetime.Production s :=
   by
   rw [isWf_eq_isWfProd_start, IsWfProd,
     show
@@ -1275,10 +1437,22 @@ theorem Datetime.IsWf_equiv (s : String) : Datetime.IsWf s ↔ Triptych.isWf Dat
   rw [Triptych.scan_eq_decode]
   rw [← Datetime.IsWfGrammar_equiv, ← decodeSome_iff_IsWf Datetime.grammar (by decide)]
   unfold Datetime.SatisfiesWfConstraints Datetime.WfConstraints Datetime.constraints
-  simp only [Triptych.component, Triptych.componentList, Triptych.envOf, Triptych.captureMapOf, Triptych.scan_eq_decode,
-    List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const, ConstraintEntry.wfPart,
-    Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD,
-    Env.countVal, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
+  simp only [Triptych.component, Triptych.componentList, Triptych.componentWith, Triptych.envOf, Triptych.captureMapOf,
+    Triptych.scan_eq_decode, List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, forall_const,
+    ConstraintEntry.wfPart, Constraint.eval, ValExpr.eval, presentCount, natOf_getD, intOf_getD, lenOf_getD,
+    countOf_getD, signOf_getD, hexOf_getD, hexSeqOf_getD, segmentsOf_getD, Env.countVal, and_true, true_and,
+    false_implies, implies_true, Bool.false_eq_true]
+  try grind
+
+theorem Datetime.SatisfiesConstraints_equiv (s : String) :
+    Datetime.SatisfiesConstraints s ↔ Triptych.satisfiesConstraints Datetime.grammar Datetime.constraints s :=
+  by
+  unfold Triptych.satisfiesConstraints
+  unfold Datetime.SatisfiesConstraints Datetime.Constraints Datetime.constraints Datetime.value Datetime.valueExpr
+  simp only [Triptych.component, Triptych.envOf, Triptych.captureMapOf, Triptych.scan_eq_decode, List.forall_mem_cons,
+    List.forall_mem_singleton, List.not_mem_nil, forall_const, ConstraintEntry.valPart, Constraint.eval, ValExpr.eval,
+    presentCount, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, hexOf_getD, hexSeqOf_getD,
+    segmentsOf_getD, Env.countVal, and_true, true_and, false_implies, implies_true, Bool.false_eq_true]
   try grind
 
 theorem Datetime.IsValid_equiv (s : String) :
@@ -1287,20 +1461,16 @@ theorem Datetime.IsValid_equiv (s : String) :
         Triptych.satisfiesConstraints Datetime.grammar Datetime.constraints s :=
   by
   unfold Datetime.IsValid
-  rw [(Datetime.IsWf_equiv s)]
-  unfold Triptych.satisfiesConstraints Triptych.captureMapOf Datetime.constraints
-  simp only [List.forall_mem_cons, List.forall_mem_singleton, List.not_mem_nil, ConstraintEntry.valPart, false_implies,
-    true_and, and_true]
-  constructor
-  · intro h
-    exact ⟨h, fun _ => True.intro⟩
-  · exact And.left
+  rw [(Datetime.IsWf_equiv s), (Datetime.SatisfiesConstraints_equiv s)]
 
 instance Datetime.instDecidableGrammar : DecidablePred Datetime.IsWf.Datetime := fun s =>
   @decidable_of_iff _ _ (Datetime.IsWfGrammar_equiv s) (Triptych.decIsWfScanner Datetime.grammar (by decide) s)
 
 instance Datetime.instDecidableIsWf : DecidablePred Datetime.IsWf := fun s =>
   @decidable_of_iff _ _ (Datetime.IsWf_equiv s).symm inferInstance
+
+instance Datetime.instDecidableSatisfiesConstraints : DecidablePred Datetime.SatisfiesConstraints := fun s =>
+  @decidable_of_iff _ _ (Datetime.SatisfiesConstraints_equiv s).symm inferInstance
 
 instance Datetime.instDecidableIsValid : DecidablePred Datetime.IsValid := fun s => inferInstance
 
@@ -1309,6 +1479,13 @@ theorem Datetime.View.wfConstraints_of_decode {s : String} {m : Triptych.Capture
     Datetime.SatisfiesWfConstraints s ↔ Datetime.View.WfConstraints (Datetime.View.ofMap s m) :=
   by
   rw [Datetime.SatisfiesWfConstraints_of_decode h]
+  rfl
+
+theorem Datetime.View.constraints_of_decode {s : String} {m : Triptych.CaptureMap}
+    (h : decode Datetime.grammar s = some m) :
+    Datetime.SatisfiesConstraints s ↔ Datetime.View.Constraints (Datetime.View.ofMap s m) :=
+  by
+  rw [Datetime.SatisfiesConstraints_of_decode h]
   rfl
 
 theorem Datetime.IsValid_view (s : String) :
@@ -1323,7 +1500,10 @@ theorem Datetime.IsValid_view (s : String) :
     refine ⟨Datetime.View.ofMap s m, ?_, ?_⟩
     · unfold Datetime.decodeView
       simp [Triptych.scan_eq_decode, hmDecode]
-    · exact (Datetime.View.wfConstraints_of_decode hmDecode).mp hvalid.2
+    ·
+      exact
+        ⟨(Datetime.View.wfConstraints_of_decode hmDecode).mp hvalid.1.2,
+          (Datetime.View.constraints_of_decode hmDecode).mp hvalid.2⟩
   · rintro ⟨v, hview, hvalid⟩
     unfold Datetime.decodeView at hview
     rw [Option.map_eq_some_iff] at hview
@@ -1333,41 +1513,46 @@ theorem Datetime.IsValid_view (s : String) :
     have hdecoded : (decode Datetime.grammar s).isSome = true := by simp [hmDecode]
     have hgrammar :=
       (Datetime.IsWfGrammar_equiv s).mp ((decodeSome_iff_IsWf Datetime.grammar (by decide) s).mp hdecoded)
-    exact ⟨hgrammar, (Datetime.View.wfConstraints_of_decode hmDecode).mpr hvalid⟩
+    exact
+      ⟨⟨hgrammar, (Datetime.View.wfConstraints_of_decode hmDecode).mpr hvalid.1⟩,
+        (Datetime.View.constraints_of_decode hmDecode).mpr hvalid.2⟩
 
 theorem Datetime.computeValue_eq (s : String) :
     Datetime.computeValue s =
       (decode Datetime.grammar s).map
         (fun _ =>
-          Datetime.value (Triptych.component Datetime.grammar s "YYYY") (Triptych.component Datetime.grammar s "MM")
+          Datetime.value (Triptych.component Datetime.grammar s "MM") (Triptych.component Datetime.grammar s "YYYY")
             (Triptych.component Datetime.grammar s "DD") (Triptych.component Datetime.grammar s "Time.hh")
             (Triptych.component Datetime.grammar s "Time.mm") (Triptych.component Datetime.grammar s "ss")
-            (Triptych.component Datetime.grammar s "SSS") (Triptych.component Datetime.grammar s "Offset.hh")
-            (Triptych.component Datetime.grammar s "Offset.mm") (Triptych.component Datetime.grammar s "Offset")) :=
+            (Triptych.component Datetime.grammar s "SSS") (Triptych.component Datetime.grammar s "Offset")
+            (Triptych.component Datetime.grammar s "Offset.hh") (Triptych.component Datetime.grammar s "Offset.mm")) :=
   by
-  unfold Datetime.computeValue Triptych.scannerComputeValueMap Triptych.component Triptych.envOf Triptych.captureMapOf
-    Datetime.value Datetime.valueFn
+  unfold Datetime.computeValue Triptych.scannerComputeValue Triptych.component Triptych.envOf Triptych.captureMapOf
+    Datetime.valueExpr Datetime.value
   rw [Triptych.scan_eq_decode]
   cases h : decode Datetime.grammar s with
   | none => simp [h]
-  | some m => simp [h, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, Env.countVal, ValExpr.eval]
+  | some m =>
+    simp [h, natOf_getD, intOf_getD, lenOf_getD, countOf_getD, signOf_getD, hexOf_getD, hexSeqOf_getD, segmentsOf_getD,
+        Env.countVal, ValExpr.eval] <;>
+      ac_rfl
 
 theorem Datetime.computeValue_of_decode {s : String} {m : Triptych.CaptureMap}
     (h : decode Datetime.grammar s = some m) :
     Datetime.computeValue s =
       some
-        (Datetime.value ((Triptych.CaptureMap.toEnv m "YYYY").getD "") ((Triptych.CaptureMap.toEnv m "MM").getD "")
+        (Datetime.value ((Triptych.CaptureMap.toEnv m "MM").getD "") ((Triptych.CaptureMap.toEnv m "YYYY").getD "")
           ((Triptych.CaptureMap.toEnv m "DD").getD "") ((Triptych.CaptureMap.toEnv m "Time.hh").getD "")
           ((Triptych.CaptureMap.toEnv m "Time.mm").getD "") ((Triptych.CaptureMap.toEnv m "ss").getD "")
-          ((Triptych.CaptureMap.toEnv m "SSS").getD "") ((Triptych.CaptureMap.toEnv m "Offset.hh").getD "")
-          ((Triptych.CaptureMap.toEnv m "Offset.mm").getD "") ((Triptych.CaptureMap.toEnv m "Offset").getD "")) :=
+          ((Triptych.CaptureMap.toEnv m "SSS").getD "") ((Triptych.CaptureMap.toEnv m "Offset").getD "")
+          ((Triptych.CaptureMap.toEnv m "Offset.hh").getD "") ((Triptych.CaptureMap.toEnv m "Offset.mm").getD "")) :=
   by
   rw [Datetime.computeValue_eq, h]
-  simp only [Option.map_some, Triptych.component_eq_of_decode h "YYYY", Triptych.component_eq_of_decode h "MM",
+  simp only [Option.map_some, Triptych.component_eq_of_decode h "MM", Triptych.component_eq_of_decode h "YYYY",
     Triptych.component_eq_of_decode h "DD", Triptych.component_eq_of_decode h "Time.hh",
     Triptych.component_eq_of_decode h "Time.mm", Triptych.component_eq_of_decode h "ss",
-    Triptych.component_eq_of_decode h "SSS", Triptych.component_eq_of_decode h "Offset.hh",
-    Triptych.component_eq_of_decode h "Offset.mm", Triptych.component_eq_of_decode h "Offset"]
+    Triptych.component_eq_of_decode h "SSS", Triptych.component_eq_of_decode h "Offset",
+    Triptych.component_eq_of_decode h "Offset.hh", Triptych.component_eq_of_decode h "Offset.mm"]
 
 theorem Datetime.computeValue_view (s : String) :
     Datetime.computeValue s = (Datetime.decodeView s).map Datetime.View.denotation :=
@@ -1386,11 +1571,18 @@ theorem Datetime.computeValue_view (s : String) :
     simp only [Option.map_some]
     rfl
 
+theorem Datetime.ofSpec_toSpec : ∀ d : Cedar.Spec.Ext.Datetime, millisToDatetime (datetimeMillis d) = d := by
+  simp [millisToDatetime, datetimeMillis]
+
 /- ═══════════════════════════════ parser ══════════════════════════════
-The generated correct-by-construction parser `parse` scans once, checks constraints
-on that capture map, and computes the result from the same captures. `parse_eq_gated`
-proves equality with the readable validity-gated presentation. Its correctness and
-search-cost guarantees — `parse_sound`, `parse_complete`, `parse_reject`,
+The generated correct-by-construction parser `parse` uses a certified staged cursor
+program when the grammar supports one, projects its captures once into the typed
+`View`, checks `View.Valid`, and computes `View.denotation`. Certified cursor rejection
+is final; grammar
+shapes outside that fragment use the complete scanner. `parse_eq_scanner` and
+`parse_eq_gated` prove equality with the generic
+scanner and readable validity-gated presentation. Its correctness and search-cost
+guarantees — `parse_sound`, `parse_complete`, `parse_reject`,
 `parse_profile_result`, `parse_candidateChecks_le`, `parse_view`, and typed
 `parse_eq_some_iff_view` / `parse_eq_none_iff_view` normal forms — are all
 AUTO-DISCHARGED here.
@@ -1398,46 +1590,1305 @@ When an external parser is declared, `checkedExtParse` additionally validates ea
 external result against this parser and ships an AUTO-DISCHARGED soundness theorem.
 A verified parser, no `sorry`. -/
 
+private abbrev Datetime.searchPlan : SearchPlan :=
+  ({ start := "Datetime",
+      alternatives :=
+        [[SearchPattern.capture "Date" ["Date"]
+              [[SearchPattern.capture "YYYY" ["YYYY", "Date.YYYY"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.exactly 4)]],
+                  SearchPattern.literal "-",
+                  SearchPattern.capture "MM" ["MM", "Date.MM"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.exactly 2)]],
+                  SearchPattern.literal "-",
+                  SearchPattern.capture "DD" ["DD", "Date.DD"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.exactly 2)]]]]],
+          [SearchPattern.capture "Date" ["Date"]
+              [[SearchPattern.capture "YYYY" ["YYYY", "Date.YYYY"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.exactly 4)]],
+                  SearchPattern.literal "-",
+                  SearchPattern.capture "MM" ["MM", "Date.MM"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.exactly 2)]],
+                  SearchPattern.literal "-",
+                  SearchPattern.capture "DD" ["DD", "Date.DD"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.exactly 2)]]]],
+            SearchPattern.literal "T",
+            SearchPattern.capture "Time" ["Time"]
+              [[SearchPattern.capture "hh" ["hh", "Time.hh"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.exactly 2)]],
+                  SearchPattern.literal ":",
+                  SearchPattern.capture "mm" ["mm", "Time.mm"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.exactly 2)]],
+                  SearchPattern.literal ":",
+                  SearchPattern.capture "ss" ["ss", "Time.ss"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.exactly 2)]]]],
+            SearchPattern.literal "Z"],
+          [SearchPattern.capture "Date" ["Date"]
+              [[SearchPattern.capture "YYYY" ["YYYY", "Date.YYYY"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.exactly 4)]],
+                  SearchPattern.literal "-",
+                  SearchPattern.capture "MM" ["MM", "Date.MM"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.exactly 2)]],
+                  SearchPattern.literal "-",
+                  SearchPattern.capture "DD" ["DD", "Date.DD"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.exactly 2)]]]],
+            SearchPattern.literal "T",
+            SearchPattern.capture "Time" ["Time"]
+              [[SearchPattern.capture "hh" ["hh", "Time.hh"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.exactly 2)]],
+                  SearchPattern.literal ":",
+                  SearchPattern.capture "mm" ["mm", "Time.mm"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.exactly 2)]],
+                  SearchPattern.literal ":",
+                  SearchPattern.capture "ss" ["ss", "Time.ss"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.exactly 2)]]]],
+            SearchPattern.literal ".",
+            SearchPattern.capture "SSS" ["SSS"] [[SearchPattern.tokenRun TokClass.digit (LenSpec.exactly 3)]],
+            SearchPattern.literal "Z"],
+          [SearchPattern.capture "Date" ["Date"]
+              [[SearchPattern.capture "YYYY" ["YYYY", "Date.YYYY"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.exactly 4)]],
+                  SearchPattern.literal "-",
+                  SearchPattern.capture "MM" ["MM", "Date.MM"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.exactly 2)]],
+                  SearchPattern.literal "-",
+                  SearchPattern.capture "DD" ["DD", "Date.DD"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.exactly 2)]]]],
+            SearchPattern.literal "T",
+            SearchPattern.capture "Time" ["Time"]
+              [[SearchPattern.capture "hh" ["hh", "Time.hh"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.exactly 2)]],
+                  SearchPattern.literal ":",
+                  SearchPattern.capture "mm" ["mm", "Time.mm"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.exactly 2)]],
+                  SearchPattern.literal ":",
+                  SearchPattern.capture "ss" ["ss", "Time.ss"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.exactly 2)]]]],
+            SearchPattern.capture "Offset" ["Offset"]
+              [[SearchPattern.literal "+",
+                  SearchPattern.capture "hh" ["hh", "Offset.hh"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.exactly 2)]],
+                  SearchPattern.capture "mm" ["mm", "Offset.mm"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.exactly 2)]]],
+                [SearchPattern.literal "-",
+                  SearchPattern.capture "hh" ["hh", "Offset.hh"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.exactly 2)]],
+                  SearchPattern.capture "mm" ["mm", "Offset.mm"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.exactly 2)]]]]],
+          [SearchPattern.capture "Date" ["Date"]
+              [[SearchPattern.capture "YYYY" ["YYYY", "Date.YYYY"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.exactly 4)]],
+                  SearchPattern.literal "-",
+                  SearchPattern.capture "MM" ["MM", "Date.MM"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.exactly 2)]],
+                  SearchPattern.literal "-",
+                  SearchPattern.capture "DD" ["DD", "Date.DD"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.exactly 2)]]]],
+            SearchPattern.literal "T",
+            SearchPattern.capture "Time" ["Time"]
+              [[SearchPattern.capture "hh" ["hh", "Time.hh"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.exactly 2)]],
+                  SearchPattern.literal ":",
+                  SearchPattern.capture "mm" ["mm", "Time.mm"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.exactly 2)]],
+                  SearchPattern.literal ":",
+                  SearchPattern.capture "ss" ["ss", "Time.ss"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.exactly 2)]]]],
+            SearchPattern.literal ".",
+            SearchPattern.capture "SSS" ["SSS"] [[SearchPattern.tokenRun TokClass.digit (LenSpec.exactly 3)]],
+            SearchPattern.capture "Offset" ["Offset"]
+              [[SearchPattern.literal "+",
+                  SearchPattern.capture "hh" ["hh", "Offset.hh"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.exactly 2)]],
+                  SearchPattern.capture "mm" ["mm", "Offset.mm"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.exactly 2)]]],
+                [SearchPattern.literal "-",
+                  SearchPattern.capture "hh" ["hh", "Offset.hh"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.exactly 2)]],
+                  SearchPattern.capture "mm" ["mm", "Offset.mm"]
+                    [[SearchPattern.tokenRun TokClass.digit (LenSpec.exactly 2)]]]]]] } :
+    SearchPlan)
+
+private abbrev Datetime.parsePlan : ParsePlan :=
+  ParsePlan.search Datetime.searchPlan
+
+private theorem Datetime.searchPlan_mirrorsGrammar : SearchPlan.MirrorsGrammar Datetime.searchPlan Datetime.grammar :=
+  SearchPlan.MirrorsGrammar.intro (by rfl)
+    (Production.mk "Datetime"
+      [[SymItem.mk (Sym.ref "Date") false],
+        [SymItem.mk (Sym.ref "Date") false, SymItem.mk (Sym.lit "T") false, SymItem.mk (Sym.ref "Time") false,
+          SymItem.mk (Sym.lit "Z") false],
+        [SymItem.mk (Sym.ref "Date") false, SymItem.mk (Sym.lit "T") false, SymItem.mk (Sym.ref "Time") false,
+          SymItem.mk (Sym.lit ".") false, SymItem.mk (Sym.ref "SSS") false, SymItem.mk (Sym.lit "Z") false],
+        [SymItem.mk (Sym.ref "Date") false, SymItem.mk (Sym.lit "T") false, SymItem.mk (Sym.ref "Time") false,
+          SymItem.mk (Sym.ref "Offset") false],
+        [SymItem.mk (Sym.ref "Date") false, SymItem.mk (Sym.lit "T") false, SymItem.mk (Sym.ref "Time") false,
+          SymItem.mk (Sym.lit ".") false, SymItem.mk (Sym.ref "SSS") false, SymItem.mk (Sym.ref "Offset") false]])
+    (by rfl)
+    (SearchPattern.MirrorsAlternatives.cons
+      (SearchPattern.MirrorsSequence.required
+        (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 10) (production :=
+          Production.mk "Date"
+            [[SymItem.mk (Sym.ref "YYYY") false, SymItem.mk (Sym.lit "-") false, SymItem.mk (Sym.ref "MM") false,
+                SymItem.mk (Sym.lit "-") false, SymItem.mk (Sym.ref "DD") false]])
+          (by rfl) (by rfl)
+          (SearchPattern.MirrorsAlternatives.cons
+            (SearchPattern.MirrorsSequence.required
+              (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9) (production :=
+                Production.mk "YYYY" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 4)) false]]) (by rfl)
+                (by rfl)
+                (SearchPattern.MirrorsAlternatives.cons
+                  (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                    SearchPattern.MirrorsSequence.empty)
+                  SearchPattern.MirrorsAlternatives.empty))
+              (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                (SearchPattern.MirrorsSequence.required
+                  (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9) (production :=
+                    Production.mk "MM" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]]) (by rfl)
+                    (by rfl)
+                    (SearchPattern.MirrorsAlternatives.cons
+                      (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                        SearchPattern.MirrorsSequence.empty)
+                      SearchPattern.MirrorsAlternatives.empty))
+                  (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                    (SearchPattern.MirrorsSequence.required
+                      (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9) (production :=
+                        Production.mk "DD" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]]) (by rfl)
+                        (by rfl)
+                        (SearchPattern.MirrorsAlternatives.cons
+                          (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                            SearchPattern.MirrorsSequence.empty)
+                          SearchPattern.MirrorsAlternatives.empty))
+                      SearchPattern.MirrorsSequence.empty)))))
+            SearchPattern.MirrorsAlternatives.empty))
+        SearchPattern.MirrorsSequence.empty)
+      (SearchPattern.MirrorsAlternatives.cons
+        (SearchPattern.MirrorsSequence.required
+          (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 10) (production :=
+            Production.mk "Date"
+              [[SymItem.mk (Sym.ref "YYYY") false, SymItem.mk (Sym.lit "-") false, SymItem.mk (Sym.ref "MM") false,
+                  SymItem.mk (Sym.lit "-") false, SymItem.mk (Sym.ref "DD") false]])
+            (by rfl) (by rfl)
+            (SearchPattern.MirrorsAlternatives.cons
+              (SearchPattern.MirrorsSequence.required
+                (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9) (production :=
+                  Production.mk "YYYY" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 4)) false]]) (by rfl)
+                  (by rfl)
+                  (SearchPattern.MirrorsAlternatives.cons
+                    (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                      SearchPattern.MirrorsSequence.empty)
+                    SearchPattern.MirrorsAlternatives.empty))
+                (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                  (SearchPattern.MirrorsSequence.required
+                    (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9) (production :=
+                      Production.mk "MM" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]]) (by rfl)
+                      (by rfl)
+                      (SearchPattern.MirrorsAlternatives.cons
+                        (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                          SearchPattern.MirrorsSequence.empty)
+                        SearchPattern.MirrorsAlternatives.empty))
+                    (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                      (SearchPattern.MirrorsSequence.required
+                        (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9) (production :=
+                          Production.mk "DD" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]])
+                          (by rfl) (by rfl)
+                          (SearchPattern.MirrorsAlternatives.cons
+                            (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                              SearchPattern.MirrorsSequence.empty)
+                            SearchPattern.MirrorsAlternatives.empty))
+                        SearchPattern.MirrorsSequence.empty)))))
+              SearchPattern.MirrorsAlternatives.empty))
+          (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+            (SearchPattern.MirrorsSequence.required
+              (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 10) (production :=
+                Production.mk "Time"
+                  [[SymItem.mk (Sym.ref "hh") false, SymItem.mk (Sym.lit ":") false, SymItem.mk (Sym.ref "mm") false,
+                      SymItem.mk (Sym.lit ":") false, SymItem.mk (Sym.ref "ss") false]])
+                (by rfl) (by rfl)
+                (SearchPattern.MirrorsAlternatives.cons
+                  (SearchPattern.MirrorsSequence.required
+                    (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9) (production :=
+                      Production.mk "hh" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]]) (by rfl)
+                      (by rfl)
+                      (SearchPattern.MirrorsAlternatives.cons
+                        (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                          SearchPattern.MirrorsSequence.empty)
+                        SearchPattern.MirrorsAlternatives.empty))
+                    (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                      (SearchPattern.MirrorsSequence.required
+                        (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9) (production :=
+                          Production.mk "mm" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]])
+                          (by rfl) (by rfl)
+                          (SearchPattern.MirrorsAlternatives.cons
+                            (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                              SearchPattern.MirrorsSequence.empty)
+                            SearchPattern.MirrorsAlternatives.empty))
+                        (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                          (SearchPattern.MirrorsSequence.required
+                            (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9)
+                              (production :=
+                              Production.mk "ss" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]])
+                              (by rfl) (by rfl)
+                              (SearchPattern.MirrorsAlternatives.cons
+                                (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                  SearchPattern.MirrorsSequence.empty)
+                                SearchPattern.MirrorsAlternatives.empty))
+                            SearchPattern.MirrorsSequence.empty)))))
+                  SearchPattern.MirrorsAlternatives.empty))
+              (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                SearchPattern.MirrorsSequence.empty))))
+        (SearchPattern.MirrorsAlternatives.cons
+          (SearchPattern.MirrorsSequence.required
+            (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 10) (production :=
+              Production.mk "Date"
+                [[SymItem.mk (Sym.ref "YYYY") false, SymItem.mk (Sym.lit "-") false, SymItem.mk (Sym.ref "MM") false,
+                    SymItem.mk (Sym.lit "-") false, SymItem.mk (Sym.ref "DD") false]])
+              (by rfl) (by rfl)
+              (SearchPattern.MirrorsAlternatives.cons
+                (SearchPattern.MirrorsSequence.required
+                  (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9) (production :=
+                    Production.mk "YYYY" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 4)) false]]) (by rfl)
+                    (by rfl)
+                    (SearchPattern.MirrorsAlternatives.cons
+                      (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                        SearchPattern.MirrorsSequence.empty)
+                      SearchPattern.MirrorsAlternatives.empty))
+                  (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                    (SearchPattern.MirrorsSequence.required
+                      (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9) (production :=
+                        Production.mk "MM" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]]) (by rfl)
+                        (by rfl)
+                        (SearchPattern.MirrorsAlternatives.cons
+                          (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                            SearchPattern.MirrorsSequence.empty)
+                          SearchPattern.MirrorsAlternatives.empty))
+                      (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                        (SearchPattern.MirrorsSequence.required
+                          (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9)
+                            (production :=
+                            Production.mk "DD" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]])
+                            (by rfl) (by rfl)
+                            (SearchPattern.MirrorsAlternatives.cons
+                              (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                SearchPattern.MirrorsSequence.empty)
+                              SearchPattern.MirrorsAlternatives.empty))
+                          SearchPattern.MirrorsSequence.empty)))))
+                SearchPattern.MirrorsAlternatives.empty))
+            (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+              (SearchPattern.MirrorsSequence.required
+                (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 10) (production :=
+                  Production.mk "Time"
+                    [[SymItem.mk (Sym.ref "hh") false, SymItem.mk (Sym.lit ":") false, SymItem.mk (Sym.ref "mm") false,
+                        SymItem.mk (Sym.lit ":") false, SymItem.mk (Sym.ref "ss") false]])
+                  (by rfl) (by rfl)
+                  (SearchPattern.MirrorsAlternatives.cons
+                    (SearchPattern.MirrorsSequence.required
+                      (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9) (production :=
+                        Production.mk "hh" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]]) (by rfl)
+                        (by rfl)
+                        (SearchPattern.MirrorsAlternatives.cons
+                          (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                            SearchPattern.MirrorsSequence.empty)
+                          SearchPattern.MirrorsAlternatives.empty))
+                      (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                        (SearchPattern.MirrorsSequence.required
+                          (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9)
+                            (production :=
+                            Production.mk "mm" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]])
+                            (by rfl) (by rfl)
+                            (SearchPattern.MirrorsAlternatives.cons
+                              (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                SearchPattern.MirrorsSequence.empty)
+                              SearchPattern.MirrorsAlternatives.empty))
+                          (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                            (SearchPattern.MirrorsSequence.required
+                              (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9)
+                                (production :=
+                                Production.mk "ss" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]])
+                                (by rfl) (by rfl)
+                                (SearchPattern.MirrorsAlternatives.cons
+                                  (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                    SearchPattern.MirrorsSequence.empty)
+                                  SearchPattern.MirrorsAlternatives.empty))
+                              SearchPattern.MirrorsSequence.empty)))))
+                    SearchPattern.MirrorsAlternatives.empty))
+                (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                  (SearchPattern.MirrorsSequence.required
+                    (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 10) (production :=
+                      Production.mk "SSS" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 3)) false]]) (by rfl)
+                      (by rfl)
+                      (SearchPattern.MirrorsAlternatives.cons
+                        (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                          SearchPattern.MirrorsSequence.empty)
+                        SearchPattern.MirrorsAlternatives.empty))
+                    (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                      SearchPattern.MirrorsSequence.empty))))))
+          (SearchPattern.MirrorsAlternatives.cons
+            (SearchPattern.MirrorsSequence.required
+              (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 10) (production :=
+                Production.mk "Date"
+                  [[SymItem.mk (Sym.ref "YYYY") false, SymItem.mk (Sym.lit "-") false, SymItem.mk (Sym.ref "MM") false,
+                      SymItem.mk (Sym.lit "-") false, SymItem.mk (Sym.ref "DD") false]])
+                (by rfl) (by rfl)
+                (SearchPattern.MirrorsAlternatives.cons
+                  (SearchPattern.MirrorsSequence.required
+                    (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9) (production :=
+                      Production.mk "YYYY" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 4)) false]]) (by rfl)
+                      (by rfl)
+                      (SearchPattern.MirrorsAlternatives.cons
+                        (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                          SearchPattern.MirrorsSequence.empty)
+                        SearchPattern.MirrorsAlternatives.empty))
+                    (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                      (SearchPattern.MirrorsSequence.required
+                        (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9) (production :=
+                          Production.mk "MM" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]])
+                          (by rfl) (by rfl)
+                          (SearchPattern.MirrorsAlternatives.cons
+                            (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                              SearchPattern.MirrorsSequence.empty)
+                            SearchPattern.MirrorsAlternatives.empty))
+                        (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                          (SearchPattern.MirrorsSequence.required
+                            (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9)
+                              (production :=
+                              Production.mk "DD" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]])
+                              (by rfl) (by rfl)
+                              (SearchPattern.MirrorsAlternatives.cons
+                                (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                  SearchPattern.MirrorsSequence.empty)
+                                SearchPattern.MirrorsAlternatives.empty))
+                            SearchPattern.MirrorsSequence.empty)))))
+                  SearchPattern.MirrorsAlternatives.empty))
+              (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                (SearchPattern.MirrorsSequence.required
+                  (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 10) (production :=
+                    Production.mk "Time"
+                      [[SymItem.mk (Sym.ref "hh") false, SymItem.mk (Sym.lit ":") false,
+                          SymItem.mk (Sym.ref "mm") false, SymItem.mk (Sym.lit ":") false,
+                          SymItem.mk (Sym.ref "ss") false]])
+                    (by rfl) (by rfl)
+                    (SearchPattern.MirrorsAlternatives.cons
+                      (SearchPattern.MirrorsSequence.required
+                        (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9) (production :=
+                          Production.mk "hh" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]])
+                          (by rfl) (by rfl)
+                          (SearchPattern.MirrorsAlternatives.cons
+                            (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                              SearchPattern.MirrorsSequence.empty)
+                            SearchPattern.MirrorsAlternatives.empty))
+                        (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                          (SearchPattern.MirrorsSequence.required
+                            (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9)
+                              (production :=
+                              Production.mk "mm" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]])
+                              (by rfl) (by rfl)
+                              (SearchPattern.MirrorsAlternatives.cons
+                                (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                  SearchPattern.MirrorsSequence.empty)
+                                SearchPattern.MirrorsAlternatives.empty))
+                            (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                              (SearchPattern.MirrorsSequence.required
+                                (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9)
+                                  (production :=
+                                  Production.mk "ss" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]])
+                                  (by rfl) (by rfl)
+                                  (SearchPattern.MirrorsAlternatives.cons
+                                    (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                      SearchPattern.MirrorsSequence.empty)
+                                    SearchPattern.MirrorsAlternatives.empty))
+                                SearchPattern.MirrorsSequence.empty)))))
+                      SearchPattern.MirrorsAlternatives.empty))
+                  (SearchPattern.MirrorsSequence.required
+                    (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 10) (production :=
+                      Production.mk "Offset"
+                        [[SymItem.mk (Sym.lit "+") false, SymItem.mk (Sym.ref "hh") false,
+                            SymItem.mk (Sym.ref "mm") false],
+                          [SymItem.mk (Sym.lit "-") false, SymItem.mk (Sym.ref "hh") false,
+                            SymItem.mk (Sym.ref "mm") false]])
+                      (by rfl) (by rfl)
+                      (SearchPattern.MirrorsAlternatives.cons
+                        (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                          (SearchPattern.MirrorsSequence.required
+                            (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9)
+                              (production :=
+                              Production.mk "hh" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]])
+                              (by rfl) (by rfl)
+                              (SearchPattern.MirrorsAlternatives.cons
+                                (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                  SearchPattern.MirrorsSequence.empty)
+                                SearchPattern.MirrorsAlternatives.empty))
+                            (SearchPattern.MirrorsSequence.required
+                              (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9)
+                                (production :=
+                                Production.mk "mm" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]])
+                                (by rfl) (by rfl)
+                                (SearchPattern.MirrorsAlternatives.cons
+                                  (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                    SearchPattern.MirrorsSequence.empty)
+                                  SearchPattern.MirrorsAlternatives.empty))
+                              SearchPattern.MirrorsSequence.empty)))
+                        (SearchPattern.MirrorsAlternatives.cons
+                          (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                            (SearchPattern.MirrorsSequence.required
+                              (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9)
+                                (production :=
+                                Production.mk "hh" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]])
+                                (by rfl) (by rfl)
+                                (SearchPattern.MirrorsAlternatives.cons
+                                  (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                    SearchPattern.MirrorsSequence.empty)
+                                  SearchPattern.MirrorsAlternatives.empty))
+                              (SearchPattern.MirrorsSequence.required
+                                (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9)
+                                  (production :=
+                                  Production.mk "mm" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]])
+                                  (by rfl) (by rfl)
+                                  (SearchPattern.MirrorsAlternatives.cons
+                                    (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                      SearchPattern.MirrorsSequence.empty)
+                                    SearchPattern.MirrorsAlternatives.empty))
+                                SearchPattern.MirrorsSequence.empty)))
+                          SearchPattern.MirrorsAlternatives.empty)))
+                    SearchPattern.MirrorsSequence.empty))))
+            (SearchPattern.MirrorsAlternatives.cons
+              (SearchPattern.MirrorsSequence.required
+                (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 10) (production :=
+                  Production.mk "Date"
+                    [[SymItem.mk (Sym.ref "YYYY") false, SymItem.mk (Sym.lit "-") false,
+                        SymItem.mk (Sym.ref "MM") false, SymItem.mk (Sym.lit "-") false,
+                        SymItem.mk (Sym.ref "DD") false]])
+                  (by rfl) (by rfl)
+                  (SearchPattern.MirrorsAlternatives.cons
+                    (SearchPattern.MirrorsSequence.required
+                      (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9) (production :=
+                        Production.mk "YYYY" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 4)) false]])
+                        (by rfl) (by rfl)
+                        (SearchPattern.MirrorsAlternatives.cons
+                          (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                            SearchPattern.MirrorsSequence.empty)
+                          SearchPattern.MirrorsAlternatives.empty))
+                      (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                        (SearchPattern.MirrorsSequence.required
+                          (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9)
+                            (production :=
+                            Production.mk "MM" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]])
+                            (by rfl) (by rfl)
+                            (SearchPattern.MirrorsAlternatives.cons
+                              (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                SearchPattern.MirrorsSequence.empty)
+                              SearchPattern.MirrorsAlternatives.empty))
+                          (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                            (SearchPattern.MirrorsSequence.required
+                              (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9)
+                                (production :=
+                                Production.mk "DD" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]])
+                                (by rfl) (by rfl)
+                                (SearchPattern.MirrorsAlternatives.cons
+                                  (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                    SearchPattern.MirrorsSequence.empty)
+                                  SearchPattern.MirrorsAlternatives.empty))
+                              SearchPattern.MirrorsSequence.empty)))))
+                    SearchPattern.MirrorsAlternatives.empty))
+                (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                  (SearchPattern.MirrorsSequence.required
+                    (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 10) (production :=
+                      Production.mk "Time"
+                        [[SymItem.mk (Sym.ref "hh") false, SymItem.mk (Sym.lit ":") false,
+                            SymItem.mk (Sym.ref "mm") false, SymItem.mk (Sym.lit ":") false,
+                            SymItem.mk (Sym.ref "ss") false]])
+                      (by rfl) (by rfl)
+                      (SearchPattern.MirrorsAlternatives.cons
+                        (SearchPattern.MirrorsSequence.required
+                          (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9)
+                            (production :=
+                            Production.mk "hh" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]])
+                            (by rfl) (by rfl)
+                            (SearchPattern.MirrorsAlternatives.cons
+                              (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                SearchPattern.MirrorsSequence.empty)
+                              SearchPattern.MirrorsAlternatives.empty))
+                          (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                            (SearchPattern.MirrorsSequence.required
+                              (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9)
+                                (production :=
+                                Production.mk "mm" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]])
+                                (by rfl) (by rfl)
+                                (SearchPattern.MirrorsAlternatives.cons
+                                  (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                    SearchPattern.MirrorsSequence.empty)
+                                  SearchPattern.MirrorsAlternatives.empty))
+                              (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                                (SearchPattern.MirrorsSequence.required
+                                  (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9)
+                                    (production :=
+                                    Production.mk "ss"
+                                      [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]])
+                                    (by rfl) (by rfl)
+                                    (SearchPattern.MirrorsAlternatives.cons
+                                      (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                        SearchPattern.MirrorsSequence.empty)
+                                      SearchPattern.MirrorsAlternatives.empty))
+                                  SearchPattern.MirrorsSequence.empty)))))
+                        SearchPattern.MirrorsAlternatives.empty))
+                    (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                      (SearchPattern.MirrorsSequence.required
+                        (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 10) (production :=
+                          Production.mk "SSS" [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 3)) false]])
+                          (by rfl) (by rfl)
+                          (SearchPattern.MirrorsAlternatives.cons
+                            (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                              SearchPattern.MirrorsSequence.empty)
+                            SearchPattern.MirrorsAlternatives.empty))
+                        (SearchPattern.MirrorsSequence.required
+                          (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 10)
+                            (production :=
+                            Production.mk "Offset"
+                              [[SymItem.mk (Sym.lit "+") false, SymItem.mk (Sym.ref "hh") false,
+                                  SymItem.mk (Sym.ref "mm") false],
+                                [SymItem.mk (Sym.lit "-") false, SymItem.mk (Sym.ref "hh") false,
+                                  SymItem.mk (Sym.ref "mm") false]])
+                            (by rfl) (by rfl)
+                            (SearchPattern.MirrorsAlternatives.cons
+                              (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                                (SearchPattern.MirrorsSequence.required
+                                  (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9)
+                                    (production :=
+                                    Production.mk "hh"
+                                      [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]])
+                                    (by rfl) (by rfl)
+                                    (SearchPattern.MirrorsAlternatives.cons
+                                      (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                        SearchPattern.MirrorsSequence.empty)
+                                      SearchPattern.MirrorsAlternatives.empty))
+                                  (SearchPattern.MirrorsSequence.required
+                                    (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9)
+                                      (production :=
+                                      Production.mk "mm"
+                                        [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]])
+                                      (by rfl) (by rfl)
+                                      (SearchPattern.MirrorsAlternatives.cons
+                                        (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                          SearchPattern.MirrorsSequence.empty)
+                                        SearchPattern.MirrorsAlternatives.empty))
+                                    SearchPattern.MirrorsSequence.empty)))
+                              (SearchPattern.MirrorsAlternatives.cons
+                                (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.literal
+                                  (SearchPattern.MirrorsSequence.required
+                                    (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9)
+                                      (production :=
+                                      Production.mk "hh"
+                                        [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]])
+                                      (by rfl) (by rfl)
+                                      (SearchPattern.MirrorsAlternatives.cons
+                                        (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                          SearchPattern.MirrorsSequence.empty)
+                                        SearchPattern.MirrorsAlternatives.empty))
+                                    (SearchPattern.MirrorsSequence.required
+                                      (SearchPattern.MirrorsSymbol.capture («grammar» := Datetime.grammar) (fuel := 9)
+                                        (production :=
+                                        Production.mk "mm"
+                                          [[SymItem.mk (Sym.term TokClass.digit (LenSpec.exactly 2)) false]])
+                                        (by rfl) (by rfl)
+                                        (SearchPattern.MirrorsAlternatives.cons
+                                          (SearchPattern.MirrorsSequence.required SearchPattern.MirrorsSymbol.tokenRun
+                                            SearchPattern.MirrorsSequence.empty)
+                                          SearchPattern.MirrorsAlternatives.empty))
+                                      SearchPattern.MirrorsSequence.empty)))
+                                SearchPattern.MirrorsAlternatives.empty)))
+                          SearchPattern.MirrorsSequence.empty))))))
+              SearchPattern.MirrorsAlternatives.empty)))))
+
+private abbrev Datetime.searchProgram : SearchProgram :=
+  ({ start := "Datetime",
+      code :=
+        SearchCode.capture ["Date"]
+          (SearchCode.capture ["YYYY", "Date.YYYY"]
+            (SearchCode.tokenRun TokClass.digit (LenSpec.exactly 4) SearchCode.accept)
+            (SearchCode.literal "-"
+              (SearchCode.capture ["MM", "Date.MM"]
+                (SearchCode.tokenRun TokClass.digit (LenSpec.exactly 2) SearchCode.accept)
+                (SearchCode.literal "-"
+                  (SearchCode.capture ["DD", "Date.DD"]
+                    (SearchCode.tokenRun TokClass.digit (LenSpec.exactly 2) SearchCode.accept) SearchCode.accept)))))
+          (SearchCode.choice SearchCode.accept
+            (SearchCode.literal "T"
+              (SearchCode.capture ["Time"]
+                (SearchCode.capture ["hh", "Time.hh"]
+                  (SearchCode.tokenRun TokClass.digit (LenSpec.exactly 2) SearchCode.accept)
+                  (SearchCode.literal ":"
+                    (SearchCode.capture ["mm", "Time.mm"]
+                      (SearchCode.tokenRun TokClass.digit (LenSpec.exactly 2) SearchCode.accept)
+                      (SearchCode.literal ":"
+                        (SearchCode.capture ["ss", "Time.ss"]
+                          (SearchCode.tokenRun TokClass.digit (LenSpec.exactly 2) SearchCode.accept)
+                          SearchCode.accept)))))
+                (SearchCode.choice (SearchCode.literal "Z" SearchCode.accept)
+                  (SearchCode.choice
+                    (SearchCode.literal "."
+                      (SearchCode.capture ["SSS"]
+                        (SearchCode.tokenRun TokClass.digit (LenSpec.exactly 3) SearchCode.accept)
+                        (SearchCode.literal "Z" SearchCode.accept)))
+                    (SearchCode.choice
+                      (SearchCode.capture ["Offset"]
+                        (SearchCode.choice
+                          (SearchCode.literal "+"
+                            (SearchCode.capture ["hh", "Offset.hh"]
+                              (SearchCode.tokenRun TokClass.digit (LenSpec.exactly 2) SearchCode.accept)
+                              (SearchCode.capture ["mm", "Offset.mm"]
+                                (SearchCode.tokenRun TokClass.digit (LenSpec.exactly 2) SearchCode.accept)
+                                SearchCode.accept)))
+                          (SearchCode.literal "-"
+                            (SearchCode.capture ["hh", "Offset.hh"]
+                              (SearchCode.tokenRun TokClass.digit (LenSpec.exactly 2) SearchCode.accept)
+                              (SearchCode.capture ["mm", "Offset.mm"]
+                                (SearchCode.tokenRun TokClass.digit (LenSpec.exactly 2) SearchCode.accept)
+                                SearchCode.accept))))
+                        SearchCode.accept)
+                      (SearchCode.literal "."
+                        (SearchCode.capture ["SSS"]
+                          (SearchCode.tokenRun TokClass.digit (LenSpec.exactly 3) SearchCode.accept)
+                          (SearchCode.capture ["Offset"]
+                            (SearchCode.choice
+                              (SearchCode.literal "+"
+                                (SearchCode.capture ["hh", "Offset.hh"]
+                                  (SearchCode.tokenRun TokClass.digit (LenSpec.exactly 2) SearchCode.accept)
+                                  (SearchCode.capture ["mm", "Offset.mm"]
+                                    (SearchCode.tokenRun TokClass.digit (LenSpec.exactly 2) SearchCode.accept)
+                                    SearchCode.accept)))
+                              (SearchCode.literal "-"
+                                (SearchCode.capture ["hh", "Offset.hh"]
+                                  (SearchCode.tokenRun TokClass.digit (LenSpec.exactly 2) SearchCode.accept)
+                                  (SearchCode.capture ["mm", "Offset.mm"]
+                                    (SearchCode.tokenRun TokClass.digit (LenSpec.exactly 2) SearchCode.accept)
+                                    SearchCode.accept))))
+                            SearchCode.accept))))))))) } :
+    SearchProgram)
+
+private theorem Datetime.searchProgram_lowered : lowerSearchPlan Datetime.searchPlan = Datetime.searchProgram := by
+  decide
+
+private def Datetime.searchCode_0 : SearchCode :=
+  SearchCode.accept
+
+@[inline]
+private def Datetime.searchNode_0 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  k [] input
+
+private theorem Datetime.searchNode_0_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_0 input k = SearchCode.runK Datetime.searchCode_0 input k :=
+  by
+  unfold Datetime.searchNode_0 Datetime.searchCode_0
+  simp only [SearchCode.runK]
+
+private def Datetime.searchCode_1 : SearchCode :=
+  SearchCode.tokenRun TokClass.digit (LenSpec.exactly 4) Datetime.searchCode_0
+
+@[inline]
+private def Datetime.searchNode_1 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  (List.range ((input).length + 1)).findSome? fun width =>
+    if termPrefixOk TokClass.digit (LenSpec.exactly 4) input width then Datetime.searchNode_0 ((input).drop width) k
+    else none
+
+private theorem Datetime.searchNode_1_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_1 input k = SearchCode.runK Datetime.searchCode_1 input k :=
+  by
+  unfold Datetime.searchNode_1 Datetime.searchCode_1
+  simp only [SearchCode.runK, Datetime.searchNode_0_eq]
+
+private def Datetime.searchCode_2 : SearchCode :=
+  SearchCode.tokenRun TokClass.digit (LenSpec.exactly 2) Datetime.searchCode_0
+
+@[inline]
+private def Datetime.searchNode_2 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  (List.range ((input).length + 1)).findSome? fun width =>
+    if termPrefixOk TokClass.digit (LenSpec.exactly 2) input width then Datetime.searchNode_0 ((input).drop width) k
+    else none
+
+private theorem Datetime.searchNode_2_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_2 input k = SearchCode.runK Datetime.searchCode_2 input k :=
+  by
+  unfold Datetime.searchNode_2 Datetime.searchCode_2
+  simp only [SearchCode.runK, Datetime.searchNode_0_eq]
+
+private def Datetime.searchCode_3 : SearchCode :=
+  SearchCode.capture ["DD", "Date.DD"] Datetime.searchCode_2 Datetime.searchCode_0
+
+@[inline]
+private def Datetime.searchNode_3 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  Datetime.searchNode_2 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Datetime.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["DD", "Date.DD"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem Datetime.searchNode_3_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_3 input k = SearchCode.runK Datetime.searchCode_3 input k :=
+  by
+  unfold Datetime.searchNode_3 Datetime.searchCode_3
+  simp only [SearchCode.runK, Datetime.searchNode_2_eq, Datetime.searchNode_0_eq]
+
+private def Datetime.searchCode_4 : SearchCode :=
+  SearchCode.literal "-" Datetime.searchCode_3
+
+@[inline]
+private def Datetime.searchNode_4 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  let characters := ("-").toList
+  if characters.isPrefixOf input then Datetime.searchNode_3 ((input).drop characters.length) k else none
+
+private theorem Datetime.searchNode_4_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_4 input k = SearchCode.runK Datetime.searchCode_4 input k :=
+  by
+  unfold Datetime.searchNode_4 Datetime.searchCode_4
+  simp only [SearchCode.runK, Datetime.searchNode_3_eq]
+
+private def Datetime.searchCode_5 : SearchCode :=
+  SearchCode.capture ["MM", "Date.MM"] Datetime.searchCode_2 Datetime.searchCode_4
+
+@[inline]
+private def Datetime.searchNode_5 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  Datetime.searchNode_2 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Datetime.searchNode_4 remaining fun tailCaptures suffix =>
+      k ((["MM", "Date.MM"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem Datetime.searchNode_5_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_5 input k = SearchCode.runK Datetime.searchCode_5 input k :=
+  by
+  unfold Datetime.searchNode_5 Datetime.searchCode_5
+  simp only [SearchCode.runK, Datetime.searchNode_2_eq, Datetime.searchNode_4_eq]
+
+private def Datetime.searchCode_6 : SearchCode :=
+  SearchCode.literal "-" Datetime.searchCode_5
+
+@[inline]
+private def Datetime.searchNode_6 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  let characters := ("-").toList
+  if characters.isPrefixOf input then Datetime.searchNode_5 ((input).drop characters.length) k else none
+
+private theorem Datetime.searchNode_6_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_6 input k = SearchCode.runK Datetime.searchCode_6 input k :=
+  by
+  unfold Datetime.searchNode_6 Datetime.searchCode_6
+  simp only [SearchCode.runK, Datetime.searchNode_5_eq]
+
+private def Datetime.searchCode_7 : SearchCode :=
+  SearchCode.capture ["YYYY", "Date.YYYY"] Datetime.searchCode_1 Datetime.searchCode_6
+
+@[inline]
+private def Datetime.searchNode_7 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  Datetime.searchNode_1 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Datetime.searchNode_6 remaining fun tailCaptures suffix =>
+      k ((["YYYY", "Date.YYYY"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem Datetime.searchNode_7_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_7 input k = SearchCode.runK Datetime.searchCode_7 input k :=
+  by
+  unfold Datetime.searchNode_7 Datetime.searchCode_7
+  simp only [SearchCode.runK, Datetime.searchNode_1_eq, Datetime.searchNode_6_eq]
+
+private def Datetime.searchCode_8 : SearchCode :=
+  SearchCode.capture ["ss", "Time.ss"] Datetime.searchCode_2 Datetime.searchCode_0
+
+@[inline]
+private def Datetime.searchNode_8 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  Datetime.searchNode_2 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Datetime.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["ss", "Time.ss"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem Datetime.searchNode_8_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_8 input k = SearchCode.runK Datetime.searchCode_8 input k :=
+  by
+  unfold Datetime.searchNode_8 Datetime.searchCode_8
+  simp only [SearchCode.runK, Datetime.searchNode_2_eq, Datetime.searchNode_0_eq]
+
+private def Datetime.searchCode_9 : SearchCode :=
+  SearchCode.literal ":" Datetime.searchCode_8
+
+@[inline]
+private def Datetime.searchNode_9 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  let characters := (":").toList
+  if characters.isPrefixOf input then Datetime.searchNode_8 ((input).drop characters.length) k else none
+
+private theorem Datetime.searchNode_9_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_9 input k = SearchCode.runK Datetime.searchCode_9 input k :=
+  by
+  unfold Datetime.searchNode_9 Datetime.searchCode_9
+  simp only [SearchCode.runK, Datetime.searchNode_8_eq]
+
+private def Datetime.searchCode_10 : SearchCode :=
+  SearchCode.capture ["mm", "Time.mm"] Datetime.searchCode_2 Datetime.searchCode_9
+
+@[inline]
+private def Datetime.searchNode_10 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  Datetime.searchNode_2 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Datetime.searchNode_9 remaining fun tailCaptures suffix =>
+      k ((["mm", "Time.mm"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem Datetime.searchNode_10_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_10 input k = SearchCode.runK Datetime.searchCode_10 input k :=
+  by
+  unfold Datetime.searchNode_10 Datetime.searchCode_10
+  simp only [SearchCode.runK, Datetime.searchNode_2_eq, Datetime.searchNode_9_eq]
+
+private def Datetime.searchCode_11 : SearchCode :=
+  SearchCode.literal ":" Datetime.searchCode_10
+
+@[inline]
+private def Datetime.searchNode_11 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  let characters := (":").toList
+  if characters.isPrefixOf input then Datetime.searchNode_10 ((input).drop characters.length) k else none
+
+private theorem Datetime.searchNode_11_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_11 input k = SearchCode.runK Datetime.searchCode_11 input k :=
+  by
+  unfold Datetime.searchNode_11 Datetime.searchCode_11
+  simp only [SearchCode.runK, Datetime.searchNode_10_eq]
+
+private def Datetime.searchCode_12 : SearchCode :=
+  SearchCode.capture ["hh", "Time.hh"] Datetime.searchCode_2 Datetime.searchCode_11
+
+@[inline]
+private def Datetime.searchNode_12 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  Datetime.searchNode_2 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Datetime.searchNode_11 remaining fun tailCaptures suffix =>
+      k ((["hh", "Time.hh"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem Datetime.searchNode_12_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_12 input k = SearchCode.runK Datetime.searchCode_12 input k :=
+  by
+  unfold Datetime.searchNode_12 Datetime.searchCode_12
+  simp only [SearchCode.runK, Datetime.searchNode_2_eq, Datetime.searchNode_11_eq]
+
+private def Datetime.searchCode_13 : SearchCode :=
+  SearchCode.literal "Z" Datetime.searchCode_0
+
+@[inline]
+private def Datetime.searchNode_13 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  let characters := ("Z").toList
+  if characters.isPrefixOf input then Datetime.searchNode_0 ((input).drop characters.length) k else none
+
+private theorem Datetime.searchNode_13_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_13 input k = SearchCode.runK Datetime.searchCode_13 input k :=
+  by
+  unfold Datetime.searchNode_13 Datetime.searchCode_13
+  simp only [SearchCode.runK, Datetime.searchNode_0_eq]
+
+private def Datetime.searchCode_14 : SearchCode :=
+  SearchCode.tokenRun TokClass.digit (LenSpec.exactly 3) Datetime.searchCode_0
+
+@[inline]
+private def Datetime.searchNode_14 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  (List.range ((input).length + 1)).findSome? fun width =>
+    if termPrefixOk TokClass.digit (LenSpec.exactly 3) input width then Datetime.searchNode_0 ((input).drop width) k
+    else none
+
+private theorem Datetime.searchNode_14_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_14 input k = SearchCode.runK Datetime.searchCode_14 input k :=
+  by
+  unfold Datetime.searchNode_14 Datetime.searchCode_14
+  simp only [SearchCode.runK, Datetime.searchNode_0_eq]
+
+private def Datetime.searchCode_15 : SearchCode :=
+  SearchCode.capture ["SSS"] Datetime.searchCode_14 Datetime.searchCode_13
+
+@[inline]
+private def Datetime.searchNode_15 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  Datetime.searchNode_14 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Datetime.searchNode_13 remaining fun tailCaptures suffix =>
+      k ((["SSS"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem Datetime.searchNode_15_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_15 input k = SearchCode.runK Datetime.searchCode_15 input k :=
+  by
+  unfold Datetime.searchNode_15 Datetime.searchCode_15
+  simp only [SearchCode.runK, Datetime.searchNode_14_eq, Datetime.searchNode_13_eq]
+
+private def Datetime.searchCode_16 : SearchCode :=
+  SearchCode.literal "." Datetime.searchCode_15
+
+@[inline]
+private def Datetime.searchNode_16 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  let characters := (".").toList
+  if characters.isPrefixOf input then Datetime.searchNode_15 ((input).drop characters.length) k else none
+
+private theorem Datetime.searchNode_16_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_16 input k = SearchCode.runK Datetime.searchCode_16 input k :=
+  by
+  unfold Datetime.searchNode_16 Datetime.searchCode_16
+  simp only [SearchCode.runK, Datetime.searchNode_15_eq]
+
+private def Datetime.searchCode_17 : SearchCode :=
+  SearchCode.capture ["mm", "Offset.mm"] Datetime.searchCode_2 Datetime.searchCode_0
+
+@[inline]
+private def Datetime.searchNode_17 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  Datetime.searchNode_2 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Datetime.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["mm", "Offset.mm"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem Datetime.searchNode_17_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_17 input k = SearchCode.runK Datetime.searchCode_17 input k :=
+  by
+  unfold Datetime.searchNode_17 Datetime.searchCode_17
+  simp only [SearchCode.runK, Datetime.searchNode_2_eq, Datetime.searchNode_0_eq]
+
+private def Datetime.searchCode_18 : SearchCode :=
+  SearchCode.capture ["hh", "Offset.hh"] Datetime.searchCode_2 Datetime.searchCode_17
+
+private def Datetime.searchNode_18 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  Datetime.searchNode_2 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Datetime.searchNode_17 remaining fun tailCaptures suffix =>
+      k ((["hh", "Offset.hh"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem Datetime.searchNode_18_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_18 input k = SearchCode.runK Datetime.searchCode_18 input k :=
+  by
+  unfold Datetime.searchNode_18 Datetime.searchCode_18
+  simp only [SearchCode.runK, Datetime.searchNode_2_eq, Datetime.searchNode_17_eq]
+
+private def Datetime.searchCode_19 : SearchCode :=
+  SearchCode.literal "+" Datetime.searchCode_18
+
+@[inline]
+private def Datetime.searchNode_19 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  let characters := ("+").toList
+  if characters.isPrefixOf input then Datetime.searchNode_18 ((input).drop characters.length) k else none
+
+private theorem Datetime.searchNode_19_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_19 input k = SearchCode.runK Datetime.searchCode_19 input k :=
+  by
+  unfold Datetime.searchNode_19 Datetime.searchCode_19
+  simp only [SearchCode.runK, Datetime.searchNode_18_eq]
+
+private def Datetime.searchCode_20 : SearchCode :=
+  SearchCode.literal "-" Datetime.searchCode_18
+
+@[inline]
+private def Datetime.searchNode_20 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  let characters := ("-").toList
+  if characters.isPrefixOf input then Datetime.searchNode_18 ((input).drop characters.length) k else none
+
+private theorem Datetime.searchNode_20_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_20 input k = SearchCode.runK Datetime.searchCode_20 input k :=
+  by
+  unfold Datetime.searchNode_20 Datetime.searchCode_20
+  simp only [SearchCode.runK, Datetime.searchNode_18_eq]
+
+private def Datetime.searchCode_21 : SearchCode :=
+  SearchCode.choice Datetime.searchCode_19 Datetime.searchCode_20
+
+@[inline]
+private def Datetime.searchNode_21 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  scanOrElse (Datetime.searchNode_19 input k) fun _ => Datetime.searchNode_20 input k
+
+private theorem Datetime.searchNode_21_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_21 input k = SearchCode.runK Datetime.searchCode_21 input k :=
+  by
+  unfold Datetime.searchNode_21 Datetime.searchCode_21
+  simp only [SearchCode.runK, Datetime.searchNode_19_eq, Datetime.searchNode_20_eq]
+
+private def Datetime.searchCode_22 : SearchCode :=
+  SearchCode.capture ["Offset"] Datetime.searchCode_21 Datetime.searchCode_0
+
+private def Datetime.searchNode_22 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  Datetime.searchNode_21 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Datetime.searchNode_0 remaining fun tailCaptures suffix =>
+      k ((["Offset"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem Datetime.searchNode_22_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_22 input k = SearchCode.runK Datetime.searchCode_22 input k :=
+  by
+  unfold Datetime.searchNode_22 Datetime.searchCode_22
+  simp only [SearchCode.runK, Datetime.searchNode_21_eq, Datetime.searchNode_0_eq]
+
+private def Datetime.searchCode_23 : SearchCode :=
+  SearchCode.capture ["SSS"] Datetime.searchCode_14 Datetime.searchCode_22
+
+@[inline]
+private def Datetime.searchNode_23 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  Datetime.searchNode_14 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Datetime.searchNode_22 remaining fun tailCaptures suffix =>
+      k ((["SSS"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem Datetime.searchNode_23_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_23 input k = SearchCode.runK Datetime.searchCode_23 input k :=
+  by
+  unfold Datetime.searchNode_23 Datetime.searchCode_23
+  simp only [SearchCode.runK, Datetime.searchNode_14_eq, Datetime.searchNode_22_eq]
+
+private def Datetime.searchCode_24 : SearchCode :=
+  SearchCode.literal "." Datetime.searchCode_23
+
+@[inline]
+private def Datetime.searchNode_24 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  let characters := (".").toList
+  if characters.isPrefixOf input then Datetime.searchNode_23 ((input).drop characters.length) k else none
+
+private theorem Datetime.searchNode_24_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_24 input k = SearchCode.runK Datetime.searchCode_24 input k :=
+  by
+  unfold Datetime.searchNode_24 Datetime.searchCode_24
+  simp only [SearchCode.runK, Datetime.searchNode_23_eq]
+
+private def Datetime.searchCode_25 : SearchCode :=
+  SearchCode.choice Datetime.searchCode_22 Datetime.searchCode_24
+
+@[inline]
+private def Datetime.searchNode_25 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  scanOrElse (Datetime.searchNode_22 input k) fun _ => Datetime.searchNode_24 input k
+
+private theorem Datetime.searchNode_25_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_25 input k = SearchCode.runK Datetime.searchCode_25 input k :=
+  by
+  unfold Datetime.searchNode_25 Datetime.searchCode_25
+  simp only [SearchCode.runK, Datetime.searchNode_22_eq, Datetime.searchNode_24_eq]
+
+private def Datetime.searchCode_26 : SearchCode :=
+  SearchCode.choice Datetime.searchCode_16 Datetime.searchCode_25
+
+@[inline]
+private def Datetime.searchNode_26 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  scanOrElse (Datetime.searchNode_16 input k) fun _ => Datetime.searchNode_25 input k
+
+private theorem Datetime.searchNode_26_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_26 input k = SearchCode.runK Datetime.searchCode_26 input k :=
+  by
+  unfold Datetime.searchNode_26 Datetime.searchCode_26
+  simp only [SearchCode.runK, Datetime.searchNode_16_eq, Datetime.searchNode_25_eq]
+
+private def Datetime.searchCode_27 : SearchCode :=
+  SearchCode.choice Datetime.searchCode_13 Datetime.searchCode_26
+
+@[inline]
+private def Datetime.searchNode_27 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  scanOrElse (Datetime.searchNode_13 input k) fun _ => Datetime.searchNode_26 input k
+
+private theorem Datetime.searchNode_27_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_27 input k = SearchCode.runK Datetime.searchCode_27 input k :=
+  by
+  unfold Datetime.searchNode_27 Datetime.searchCode_27
+  simp only [SearchCode.runK, Datetime.searchNode_13_eq, Datetime.searchNode_26_eq]
+
+private def Datetime.searchCode_28 : SearchCode :=
+  SearchCode.capture ["Time"] Datetime.searchCode_12 Datetime.searchCode_27
+
+@[inline]
+private def Datetime.searchNode_28 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  Datetime.searchNode_12 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Datetime.searchNode_27 remaining fun tailCaptures suffix =>
+      k ((["Time"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem Datetime.searchNode_28_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_28 input k = SearchCode.runK Datetime.searchCode_28 input k :=
+  by
+  unfold Datetime.searchNode_28 Datetime.searchCode_28
+  simp only [SearchCode.runK, Datetime.searchNode_12_eq, Datetime.searchNode_27_eq]
+
+private def Datetime.searchCode_29 : SearchCode :=
+  SearchCode.literal "T" Datetime.searchCode_28
+
+@[inline]
+private def Datetime.searchNode_29 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  let characters := ("T").toList
+  if characters.isPrefixOf input then Datetime.searchNode_28 ((input).drop characters.length) k else none
+
+private theorem Datetime.searchNode_29_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_29 input k = SearchCode.runK Datetime.searchCode_29 input k :=
+  by
+  unfold Datetime.searchNode_29 Datetime.searchCode_29
+  simp only [SearchCode.runK, Datetime.searchNode_28_eq]
+
+private def Datetime.searchCode_30 : SearchCode :=
+  SearchCode.choice Datetime.searchCode_0 Datetime.searchCode_29
+
+@[inline]
+private def Datetime.searchNode_30 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  scanOrElse (Datetime.searchNode_0 input k) fun _ => Datetime.searchNode_29 input k
+
+private theorem Datetime.searchNode_30_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_30 input k = SearchCode.runK Datetime.searchCode_30 input k :=
+  by
+  unfold Datetime.searchNode_30 Datetime.searchCode_30
+  simp only [SearchCode.runK, Datetime.searchNode_0_eq, Datetime.searchNode_29_eq]
+
+private def Datetime.searchCode_31 : SearchCode :=
+  SearchCode.capture ["Date"] Datetime.searchCode_7 Datetime.searchCode_30
+
+@[inline]
+private def Datetime.searchNode_31 (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Option CaptureMap :=
+  Datetime.searchNode_7 input fun bodyCaptures remaining =>
+    let consumed := String.ofList ((input).take ((input).length - remaining.length))
+    Datetime.searchNode_30 remaining fun tailCaptures suffix =>
+      k ((["Date"]).map (·, consumed) ++ bodyCaptures ++ tailCaptures) suffix
+
+private theorem Datetime.searchNode_31_eq (input : List Char) (k : CaptureMap → List Char → Option CaptureMap) :
+    Datetime.searchNode_31 input k = SearchCode.runK Datetime.searchCode_31 input k :=
+  by
+  unfold Datetime.searchNode_31 Datetime.searchCode_31
+  simp only [SearchCode.runK, Datetime.searchNode_7_eq, Datetime.searchNode_30_eq]
+
+private def Datetime.directDecode (source : String) : Option CaptureMap :=
+  Datetime.searchNode_31 source.toList fun (captures : CaptureMap) (remaining : List Char) =>
+    if (remaining).isEmpty then some captures else none
+
+private theorem Datetime.directDecode_eq_searchProgram (source : String) :
+    Datetime.directDecode source = SearchProgram.decode Datetime.searchProgram source :=
+  by
+  have hcode : Datetime.searchCode_31 = (Datetime.searchProgram).code := rfl
+  unfold Datetime.directDecode SearchProgram.decode
+  rw [Datetime.searchNode_31_eq, hcode]
+
+private def Datetime.decodeCaptures (source : String) : Option CaptureMap :=
+  Datetime.directDecode source
+
+private theorem Datetime.decodeCaptures_eq_parsePlan (source : String) :
+    Datetime.decodeCaptures source = ParsePlan.decode Datetime.parsePlan Datetime.grammar source := by
+  calc
+    Datetime.decodeCaptures source = SearchProgram.decode Datetime.searchProgram source := by
+      exact Datetime.directDecode_eq_searchProgram source
+    _ = SearchProgram.decode (lowerSearchPlan Datetime.searchPlan) source := by rw [Datetime.searchProgram_lowered]
+    _ = ParsePlan.decode Datetime.parsePlan Datetime.grammar source := by rfl
+
+private theorem Datetime.decodeCaptures_eq_scan (source : String) :
+    Datetime.decodeCaptures source = scan Datetime.grammar source := by
+  calc
+    Datetime.decodeCaptures source = ParsePlan.decode Datetime.parsePlan Datetime.grammar source :=
+      Datetime.decodeCaptures_eq_parsePlan source
+    _ = scan Datetime.grammar source :=
+      ParsePlan.decode_eq_scan (ParsePlan.CertifiedFor.search Datetime.searchPlan_mirrorsGrammar) source
+
+private def Datetime.directView (source : String) : Option Datetime.View :=
+  (Datetime.directDecode source).map (Datetime.View.ofMap source)
+
+private theorem Datetime.directView_eq_decodeView (source : String) :
+    Datetime.directView source = Datetime.decodeView source :=
+  by
+  unfold Datetime.directView Datetime.decodeView
+  rw [show Datetime.directDecode source = scan Datetime.grammar source by exact Datetime.decodeCaptures_eq_scan source]
+
+private instance Datetime.instDecidableViewValid : DecidablePred Datetime.View.Valid := fun view =>
+  by
+  unfold Datetime.View.Valid Datetime.View.WfConstraints Datetime.View.Constraints Datetime.WfConstraints
+    Datetime.Constraints
+  infer_instance
+
+private def Datetime.fastAccept (view : Datetime.View) (computed : Int) : Bool :=
+  @decide (Datetime.View.WfConstraints view ∧ Datetime.View.ConstraintsWithValue view computed)
+    (by
+      unfold Datetime.View.WfConstraints Datetime.WfConstraints Datetime.View.ConstraintsWithValue
+      infer_instance)
+
+private theorem Datetime.fastAccept_denotation (view : Datetime.View) :
+    Datetime.fastAccept view (Datetime.View.denotation view) = true ↔ Datetime.View.Valid view := by
+  simp only [Datetime.fastAccept, decide_eq_true_eq, Datetime.View.ConstraintsWithValue_denotation]
+
 theorem Datetime.computeValue_isSome (s : String) : Datetime.IsValid s → (Datetime.computeValue s).isSome :=
   by
   intro h
   have hengine := (Datetime.IsValid_equiv s).mp h
   unfold Triptych.isWf at hengine
-  unfold Datetime.computeValue Triptych.scannerComputeValueMap
+  unfold Datetime.computeValue Triptych.scannerComputeValue
   rw [Option.isSome_map]
   exact hengine.1.1
 
 def Datetime.parse (s : String) :=
-  Triptych.scannerParseMap Datetime.grammar Datetime.constraints Datetime.valueFn millisToDatetime s
+  Triptych.decodedViewParseCached Datetime.directView Datetime.fastAccept Datetime.View.denotation millisToDatetime s
+
+theorem Datetime.parse_eq_scanner (s : String) :
+    Datetime.parse s =
+      Triptych.scannerParse Datetime.grammar Datetime.constraints Datetime.valueExpr millisToDatetime s :=
+  by
+  calc
+    Datetime.parse s =
+        Triptych.decodedViewParse Datetime.directView Datetime.View.Valid Datetime.View.denotation millisToDatetime s :=
+      by
+      unfold Datetime.parse
+      exact
+        Triptych.decodedViewParseCached_eq_decodedViewParse Datetime.directView Datetime.fastAccept Datetime.View.Valid
+          Datetime.View.denotation millisToDatetime Datetime.fastAccept_denotation s
+    _ = Triptych.gatedParseOfSpec Datetime.IsValid Datetime.computeValue millisToDatetime s := by
+      exact
+        Triptych.decodedViewParse_eq_gatedParseOfSpec Datetime.directView Datetime.decodeView Datetime.View.Valid
+          Datetime.View.denotation millisToDatetime Datetime.IsValid Datetime.computeValue
+          Datetime.directView_eq_decodeView Datetime.IsValid_view Datetime.computeValue_view s
+    _ = Triptych.scannerParse Datetime.grammar Datetime.constraints Datetime.valueExpr millisToDatetime s :=
+      by
+      symm
+      unfold Datetime.computeValue
+      exact
+        Triptych.scannerParse_eq_surfaceGatedParseOfSpec Datetime.grammar Datetime.constraints Datetime.valueExpr
+          millisToDatetime Datetime.IsValid Datetime.IsValid_equiv s
 
 theorem Datetime.parse_eq_gated (s : String) :
     Datetime.parse s = Triptych.gatedParseOfSpec Datetime.IsValid Datetime.computeValue millisToDatetime s :=
   by
-  unfold Datetime.parse Datetime.computeValue
+  rw [Datetime.parse_eq_scanner]
+  unfold Datetime.computeValue
   exact
-    Triptych.scannerParseMap_eq_surfaceGatedParseOfSpec Datetime.grammar Datetime.constraints Datetime.valueFn
+    Triptych.scannerParse_eq_surfaceGatedParseOfSpec Datetime.grammar Datetime.constraints Datetime.valueExpr
       millisToDatetime Datetime.IsValid Datetime.IsValid_equiv s
 
 theorem Datetime.parse_profile_result (s : String) :
-    (Triptych.scannerParseMapProfile Datetime.grammar Datetime.constraints Datetime.valueFn millisToDatetime s).result =
+    (Triptych.scannerParseProfile Datetime.grammar Datetime.constraints Datetime.valueExpr millisToDatetime s).result =
       Datetime.parse s :=
   by
-  unfold Datetime.parse
-  exact Triptych.scannerParseMapProfile_result Datetime.grammar Datetime.constraints Datetime.valueFn millisToDatetime s
+  rw [Triptych.scannerParseProfile_result]
+  exact (Datetime.parse_eq_scanner s).symm
 
 theorem Datetime.parse_candidateChecks_le (s : String) :
-    (Triptych.scannerParseMapProfile Datetime.grammar Datetime.constraints Datetime.valueFn millisToDatetime
+    (Triptych.scannerParseProfile Datetime.grammar Datetime.constraints Datetime.valueExpr millisToDatetime
           s).candidateChecks ≤
       Triptych.scannerCandidateBudget Datetime.grammar s :=
-  Triptych.scannerParseMap_candidateChecks_le Datetime.grammar Datetime.constraints Datetime.valueFn millisToDatetime s
+  Triptych.scannerParse_candidateChecks_le Datetime.grammar Datetime.constraints Datetime.valueExpr millisToDatetime s
 
 theorem Datetime.parse_candidateChecks_eq_zero_of_fastScan (s : String)
     (hunique : (Datetime.grammar).staticUnique = true) {captures : Triptych.CaptureMap}
     (hscan : Triptych.fastScan Datetime.grammar s = some captures) :
-    (Triptych.scannerParseMapProfile Datetime.grammar Datetime.constraints Datetime.valueFn millisToDatetime
+    (Triptych.scannerParseProfile Datetime.grammar Datetime.constraints Datetime.valueExpr millisToDatetime
           s).candidateChecks =
       0 :=
-  Triptych.scannerParseMap_candidateChecks_eq_zero_of_fastScan Datetime.grammar Datetime.constraints Datetime.valueFn
+  Triptych.scannerParse_candidateChecks_eq_zero_of_fastScan Datetime.grammar Datetime.constraints Datetime.valueExpr
     millisToDatetime s hunique hscan
 
 theorem Datetime.parse_sound (s : String) (d : Cedar.Spec.Ext.Datetime) :

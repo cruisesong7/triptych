@@ -72,7 +72,7 @@ private theorem fullMatches_term (g : Grammar) (q : String) (fuel : Nat)
     rw [List.mem_range] at hk
     by_cases hok : termPrefixOk tok ls cs k = true
     · rw [hok] at hval
-      simp only [if_true, Option.some.injEq] at hval
+      simp only [ite_true, Option.some.injEq] at hval
       subst x
       intro hempty
       change (cs.drop k).isEmpty = true at hempty
@@ -104,7 +104,7 @@ private theorem fullMatches_ref (g : Grammar) (q name prodName : String)
     (hinner : (fullMatches (matchSym g name fuel item.sym cs)).length ≤ 1) :
     (fullMatches (matchSym g q (fuel + 1) (.ref name) cs)).length ≤ 1 := by
   unfold fullMatches at hinner ⊢
-  simp only [matchSym, hprod, matchProd, matchSeq, hopt, Bool.false_eq_true, if_false,
+  simp only [matchSym, hprod, matchProd, matchSeq, hopt, Bool.false_eq_true, ite_false,
     List.flatMap_singleton, List.map_singleton, List.append_nil]
   simpa [List.filter_map, Function.comp_def] using hinner
 
@@ -164,7 +164,7 @@ private theorem decodeUnique_of_start_unary (g : Grammar) (prodName : String)
   unfold DecodeUnique fullParses
   rw [hstart]
   unfold fullMatches at hinner
-  simp only [matchProd, matchSeq, hopt, Bool.false_eq_true, if_false,
+  simp only [matchProd, matchSeq, hopt, Bool.false_eq_true, ite_false,
     List.flatMap_singleton, List.map_singleton, List.append_nil]
   simpa [List.filter_map, Function.comp_def] using hinner
 
@@ -226,7 +226,8 @@ private theorem length_filterMap_le_one_of_unique {α β : Type} {f : α → Opt
                 exact (hnodup.1 hb).elim
           simp [hfa, htail]
 
-private theorem termPrefixOk_index_unique (tok : TokClass) (ls : LenSpec)
+/-- A fixed-width terminal can match at most one candidate width. -/
+theorem termPrefixOk_index_unique (tok : TokClass) (ls : LenSpec)
     (cs : List Char) (hls : (match ls with
       | .exactly _ => true
       | .between lo hi => lo == hi
@@ -271,7 +272,7 @@ private theorem prefixMatches_term (g : Grammar) (q : String) (fuel : Nat)
   intro k hk j hj x y hx hy
   by_cases hkok : termPrefixOk tok ls cs k = true
   · rw [hkok] at hx
-    simp only [if_true, Option.some.injEq] at hx
+    simp only [ite_true, Option.some.injEq] at hx
     by_cases hjok : termPrefixOk tok ls cs j = true
     · exact termPrefixOk_index_unique tok ls cs hls hkok hjok
     · rw [Bool.not_eq_true] at hjok
@@ -419,11 +420,11 @@ private theorem termThenLiteral_matches (g : Grammar) (q : String) (fuel : Nat)
   · intro k hk j hj x y u v hx hu hy hv
     by_cases hkok : termPrefixOk tok ls cs k = true
     · rw [hkok] at hx
-      simp only [if_true, Option.some.injEq] at hx
+      simp only [ite_true, Option.some.injEq] at hx
       subst x
       by_cases hjok : termPrefixOk tok ls cs j = true
       · rw [hjok] at hy
-        simp only [if_true, Option.some.injEq] at hy
+        simp only [ite_true, Option.some.injEq] at hy
         subst y
         by_cases hkd : (d :: ds).isPrefixOf (cs.drop k) = true
         · by_cases hjd : (d :: ds).isPrefixOf (cs.drop j) = true
@@ -510,7 +511,7 @@ private theorem delimiterUniqueFrom_matches (g : Grammar) :
                                   have hinner := ih inner delimiter h name cs
                                   simp only [matchSym] at hinner
                                   simp only [matchSym, hp, matchProd, matchSeq,
-                                    Bool.false_eq_true, if_false, List.flatMap_singleton]
+                                    Bool.false_eq_true, ite_false, List.flatMap_singleton]
                                   simpa [List.flatMap_map, List.map_map, Function.comp_def]
                                     using hinner
 
@@ -542,7 +543,7 @@ private theorem headExcludes_term_match_zero (g : Grammar) (q : String)
   obtain ⟨k, hk, hval⟩ := hout
   by_cases hok : termPrefixOk tok ls cs k = true
   · rw [hok] at hval
-    simp only [if_true, Option.some.injEq] at hval
+    simp only [ite_true, Option.some.injEq] at hval
     subst out
     unfold termPrefixOk at hok
     rw [Bool.and_eq_true] at hok
@@ -637,7 +638,7 @@ private theorem headExcludesFrom_match (g : Grammar) :
                               | false =>
                                   simp only [Grammar.headExcludesFrom, hp] at h
                                   simp only [matchSym, hp, matchProd, matchSeq,
-                                    Bool.false_eq_true, if_false, List.flatMap_singleton] at hout
+                                    Bool.false_eq_true, ite_false, List.flatMap_singleton] at hout
                                   simp at hout
                                   obtain ⟨m, r, hinner, rfl⟩ := hout
                                   exact ih inner c h name cs (m, r) hinner
@@ -663,7 +664,7 @@ private theorem prefixUniqueSeq_matches (g : Grammar) (fuel : Nat)
       | false =>
           simp only [Bool.not_false, Bool.true_and] at hitem
           intro q cs
-          simp only [matchSeq, Bool.false_eq_true, if_false]
+          simp only [matchSeq, Bool.false_eq_true, ite_false]
           apply length_flatMap_le_one (hsym sym hitem q cs)
           intro x hx
           rcases x with ⟨m, r⟩
@@ -749,7 +750,7 @@ private theorem sequenceUniqueSeq_fullMatches (g : Grammar) (fuel : Nat) :
                     prefixUniqueFrom_matches g fuel sym hprefix q cs
                 · exact unaryUniqueFrom_fullMatches g fuel sym hunary q cs
               unfold fullMatches at hsym ⊢
-              simp only [matchSeq, Bool.false_eq_true, if_false]
+              simp only [matchSeq, Bool.false_eq_true, ite_false]
               simpa [List.filter_map, Function.comp_def] using hsym
       | cons next tail =>
           rcases item with ⟨sym, optional⟩
@@ -761,7 +762,7 @@ private theorem sequenceUniqueSeq_fullMatches (g : Grammar) (fuel : Nat) :
               rcases Bool.or_eq_true_iff.mp h with hprefix | hdelimited
               · rw [Bool.and_eq_true] at hprefix
                 unfold fullMatches
-                simp only [matchSeq, Bool.false_eq_true, if_false]
+                simp only [matchSeq, Bool.false_eq_true, ite_false]
                 rw [List.filter_flatMap]
                 apply length_flatMap_le_one
                   (prefixUniqueFrom_matches g fuel sym hprefix.1 q cs)
@@ -1127,7 +1128,7 @@ theorem GrammarDecodeUnique.of_optionalHeadUnique (g : Grammar)
                                           ({ sym := nextSym, optional := false } :: tail)
                                           h.1 "" input
                                       · intro out hout
-                                        simp only [matchSeq, Bool.false_eq_true, if_false] at hout
+                                        simp only [matchSeq, Bool.false_eq_true, ite_false] at hout
                                         rw [List.mem_flatMap] at hout
                                         obtain ⟨⟨m, r⟩, hm, htail⟩ := hout
                                         exact headExcludesFrom_match g g.prods.length nextSym c

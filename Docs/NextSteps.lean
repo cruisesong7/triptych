@@ -50,20 +50,23 @@ Automation improves formats that Triptych already supports. Grammar work changes
 DSL itself, so it should proceed incrementally. Each step removes a different current
 restriction and asks more of the parser backend and proof generator:
 
-1. *Broader static certificates.* The conservative
+1. *A complete unambiguity check.* The conservative
    {name}`Triptych.Grammar.staticUnique` checker certifies deterministic fragments such as
-   Decimal. Shared-prefix alternatives, nullable sequences such as the lowered dependent-width
-   Graph payload, and more repetition shapes need broader capture-functionality certificates
-   before they can receive the same premise-free roundtrip theorems.
-2. *Character classes and repetition.* Inclusive ASCII ranges are now supported. General Base64
-   still needs arbitrary finite classes or unseparated repetition of a 64-way symbol, together
-   with quartet and padding constraints.
+   Decimal, but not DIMACS or LRAT, whose whitespace runs and leading-zero numerals need more
+   than one character of lookahead. Because the grammars are non-recursive, ambiguity is
+   decidable: compile the grammar to a capture-tagged automaton whose paths correspond to the
+   reference decoder's parses, and search its product with itself for two accepting paths on
+   one input. The certificate would give every unambiguous grammar premise-free roundtrip and
+   relational-parser theorems, and the same automaton supports a linear-time parser tier.
+2. *Character classes and repetition.* Inclusive ASCII ranges, {lit}`oneOf`/{lit}`noneOf`
+   character sets, and separator-free repetition are now supported. General Base64 still needs
+   quartet and padding constraints over a 64-way symbol.
 3. *Dependent field boundaries.* The public dependent-width form now generates the complete
-   artifact family for one delimiter-bounded final payload, as exercised by the sized
-   upper-triangular graph. The verified {name}`Triptych.scanDependent` architecture handles the
+   artifact family for multiple literal-delimited fields, including internal fields, as
+   exercised by BitRows. The verified {name}`Triptych.scanDependent` architecture handles the
    broader header-selected-tail model, and Graph6 exercises that path. The next step is lowering
-   delimiter-free and internal dependent fields to that staged engine while retaining the same
-   readable predicates, views, derivations, and parser contracts.
+   delimiter-free boundaries and header alternatives to that staged engine while retaining the
+   same readable predicates, views, derivations, and parser contracts.
 4. *Recursive productions.* JSON, s-expressions, and Cedar policies require recursive grammar
    support. Until it exists, these formats need a hand-written parser and a separately proved
    specification.

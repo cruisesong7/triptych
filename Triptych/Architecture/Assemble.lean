@@ -39,7 +39,7 @@ its `Env` view and collection entries retain repeated spans. Constraints of a no
 string are vacuously satisfied (decoding fails ⟹ the constraint list is checked against the
 empty map, matching "constraints only constrain well-formed strings").
 
-`scan` is the verified runtime capture extractor. The archived `decode` remains a transparent
+`scan` is the verified runtime capture extractor. The reference `decode` remains a transparent
 list semantics used by proofs and differential benchmarks. These remain definitions for
 *running*/bundling. The grammar-only `Triptych.IsWf` lives in `Denote`;
 generated equivalence theorems relate it to both the readable layout predicate and the
@@ -71,6 +71,12 @@ def component (g : Grammar) (s : String) (c : String) : String := (envOf g s c).
 def componentList (g : Grammar) (s : String) (c : String) : List String :=
   (captureMapOf g s).toEnvList c
 
+/-- Apply a structured capture reader to the selected capture map of `s`. Grouped `value'`
+    arguments such as `[Line ⟨Id, [Lit]⟩]` read through this, so the readable specification and
+    the engine evaluate the same reader. -/
+def componentWith {α : Type} (g : Grammar) (s : String) (read : CaptureMap → α) : α :=
+  read (captureMapOf g s)
+
 /-- Well-formedness: the grammar recognizes `s` AND every constraint that does not explicitly
     reference the final computed value holds on its capture environment. -/
 def isWf (g : Grammar) (cs : List ConstraintEntry) (s : String) : Prop :=
@@ -97,7 +103,7 @@ passed as an abstract `accepted : String → Prop` and the value function as
 `value : String → Option Int`. The generated command instantiates these with the READABLE
 `<Name>.IsValid` and `<Name>.computeValue` — so the human-facing contract says exactly
 "the real parser accepts iff the readable spec is valid, with matching value". The proof is
-still discharged operationally by using `scan_eq_decode` to reach the archived reference
+still discharged operationally by using `scan_eq_decode` to reach the reference
 semantics via `<Name>.IsWf_equiv`; i.e. the statement is surface-level, while the proof may
 drop to the reference semantics where its list structure is convenient.
 
@@ -136,8 +142,62 @@ def RejectStmt (accepted : String → Prop) (parse : String → Option α) : Pro
 
 /-! ## The generated single-scan parser -/
 
+/-- Validate and interpret a capture map supplied by an arbitrary verified decoder. Generated
+    specialized parsers use this after their direct cursor path has been reconciled with `scan`. -/
+def decodedParseMap {β δ : Type} (decodeCaptures : String → Option CaptureMap)
+    (constraints : List ConstraintEntry) (valueFn : CaptureMap → β)
+    (ofSpec : β → δ) (s : String) : Option δ :=
+  match decodeCaptures s with
+  | none => none
+  | some captures =>
+      if CaptureAccepts constraints captures then
+        some (ofSpec (valueFn captures))
+      else
+        none
+
+/-- Environment-reader specialization of `decodedParseMap`. -/
+def decodedParseF {β δ : Type} (decodeCaptures : String → Option CaptureMap)
+    (constraints : List ConstraintEntry) (valueFn : Env → β)
+    (ofSpec : β → δ) (s : String) : Option δ :=
+  decodedParseMap decodeCaptures constraints
+    (fun captures => valueFn captures.toEnv) ofSpec s
+
+/-- Analyzable `ValExpr` specialization of `decodedParseMap`. -/
+def decodedParse (decodeCaptures : String → Option CaptureMap)
+    (constraints : List ConstraintEntry) (valueExpr : ValExpr)
+    (ofSpec : Int → δ) (s : String) : Option δ :=
+  decodedParseF decodeCaptures constraints valueExpr.eval ofSpec s
+
+/-- Parse through a typed decoded view. Generated direct parsers use this specialization to avoid
+    interpreting constraints and values through string-keyed capture environments at runtime. -/
+def decodedViewParse {α β δ : Type} (decodeView : String → Option α)
+    (valid : α → Prop) [DecidablePred valid] (denotation : α → β)
+    (ofSpec : β → δ) (s : String) : Option δ :=
+  match decodeView s with
+  | none => none
+  | some view =>
+      if valid view then
+        some (ofSpec (denotation view))
+      else
+        none
+
+/-- Parse through a typed view while sharing its denotation with semantic constraint checks.
+    Generated DSL parsers use this to avoid reevaluating the value expression before returning
+    that same value. -/
+def decodedViewParseCached {α β δ : Type} (decodeView : String → Option α)
+    (accept : α → β → Bool) (denotation : α → β)
+    (ofSpec : β → δ) (s : String) : Option δ :=
+  match decodeView s with
+  | none => none
+  | some view =>
+      let computed := denotation view
+      if accept view computed then
+        some (ofSpec computed)
+      else
+        none
+
 /-- Scan once, validate every constraint against that capture map, and compute the converted
-    value. This is the runtime primitive used by generated parsers. -/
+    value. Generated staged parsers are proved extensionally equal to this generic engine. -/
 def scannerParseMap {β δ : Type} (g : Grammar) (constraints : List ConstraintEntry)
     (valueFn : CaptureMap → β) (ofSpec : β → δ) (s : String) : Option δ :=
   match scan g s with
@@ -158,6 +218,41 @@ def scannerParse (g : Grammar) (constraints : List ConstraintEntry)
     (valueExpr : ValExpr) (ofSpec : Int → δ) (s : String) : Option δ :=
   scannerParseF g constraints valueExpr.eval ofSpec s
 
+/-- Replacing `scan` by an extensionally equal capture decoder preserves the parser result. -/
+theorem decodedParseMap_eq_scannerParseMap {β δ : Type}
+    (decodeCaptures : String → Option CaptureMap)
+    (g : Grammar) (constraints : List ConstraintEntry)
+    (valueFn : CaptureMap → β) (ofSpec : β → δ)
+    (hdecode : ∀ input, decodeCaptures input = scan g input)
+    (s : String) :
+    decodedParseMap decodeCaptures constraints valueFn ofSpec s =
+      scannerParseMap g constraints valueFn ofSpec s := by
+  simp [decodedParseMap, scannerParseMap, hdecode]
+
+/-- Environment-reader specialization of `decodedParseMap_eq_scannerParseMap`. -/
+theorem decodedParseF_eq_scannerParseF {β δ : Type}
+    (decodeCaptures : String → Option CaptureMap)
+    (g : Grammar) (constraints : List ConstraintEntry)
+    (valueFn : Env → β) (ofSpec : β → δ)
+    (hdecode : ∀ input, decodeCaptures input = scan g input)
+    (s : String) :
+    decodedParseF decodeCaptures constraints valueFn ofSpec s =
+      scannerParseF g constraints valueFn ofSpec s :=
+  decodedParseMap_eq_scannerParseMap decodeCaptures g constraints
+    (fun captures => valueFn captures.toEnv) ofSpec hdecode s
+
+/-- Analyzable `ValExpr` specialization of `decodedParseMap_eq_scannerParseMap`. -/
+theorem decodedParse_eq_scannerParse
+    (decodeCaptures : String → Option CaptureMap)
+    (g : Grammar) (constraints : List ConstraintEntry)
+    (valueExpr : ValExpr) (ofSpec : Int → δ)
+    (hdecode : ∀ input, decodeCaptures input = scan g input)
+    (s : String) :
+    decodedParse decodeCaptures constraints valueExpr ofSpec s =
+      scannerParse g constraints valueExpr ofSpec s :=
+  decodedParseF_eq_scannerParseF decodeCaptures g constraints
+    valueExpr.eval ofSpec hdecode s
+
 /-- Once scanning succeeds, the two surface constraint phases are exactly the combined
     capture-level check used by the single-scan parser. -/
 theorem captureAccepts_iff_of_scan_eq_some (g : Grammar) (constraints : List ConstraintEntry)
@@ -167,7 +262,7 @@ theorem captureAccepts_iff_of_scan_eq_some (g : Grammar) (constraints : List Con
   unfold isWf satisfiesConstraints captureMapOf CaptureAccepts
   simp [hscan, forall_and]
 
-/-! ## Archived gated-parser presentation
+/-! ## Reference gated-parser presentation
 
 `gatedParse` is retained as a simple specification combinator and compatibility API. Generated
 parsers no longer execute it: `scannerParseMap` is proved equal to this presentation while
@@ -185,8 +280,8 @@ theorem gatedParse_sound (accepted : String → Prop) [DecidablePred accepted]
   unfold gatedParse at h
   simp only [decide_eq_true_eq] at h
   by_cases hv : accepted s
-  · rw [if_pos hv] at h; exact ⟨hv, h⟩
-  · rw [if_neg hv] at h; exact absurd h (by simp)
+  · rw [ite_eq_left hv] at h; exact ⟨hv, h⟩
+  · rw [ite_eq_right hv] at h; exact absurd h (by simp)
 
 theorem gatedParse_complete (accepted : String → Prop) [DecidablePred accepted]
     (val : String → Option β) :
@@ -194,7 +289,7 @@ theorem gatedParse_complete (accepted : String → Prop) [DecidablePred accepted
   intro s a hv hval
   unfold gatedParse
   simp only [decide_eq_true_eq]
-  rw [if_pos hv]; exact hval
+  rw [ite_eq_left hv]; exact hval
 
 theorem gatedParse_reject (accepted : String → Prop) [DecidablePred accepted]
     (val : String → Option β) (hsome : ∀ s, accepted s → (val s).isSome) :
@@ -203,11 +298,11 @@ theorem gatedParse_reject (accepted : String → Prop) [DecidablePred accepted]
   unfold gatedParse
   simp only [decide_eq_true_eq]
   by_cases hv : accepted s
-  · rw [if_pos hv]
+  · rw [ite_eq_left hv]
     constructor
     · intro h; exact absurd (hsome s hv) (by rw [h]; simp)
     · intro h; exact absurd hv h
-  · rw [if_neg hv]; simp [hv]
+  · rw [ite_eq_right hv]; simp [hv]
 
 /-! ## Soundness-by-checking for an arbitrary external parser
 
@@ -285,6 +380,71 @@ variable {δ : Type}
 def gatedParseOfSpec (accepted : String → Prop) [DecidablePred accepted]
     (val : String → Option β) (ofSpec : β → δ) (s : String) : Option δ :=
   (gatedParse accepted val s).map ofSpec
+
+/-- Replacing a specification view by an extensionally equal direct view preserves the readable
+    validity-gated parser. This is the generic correctness bridge for typed-view specialization. -/
+theorem decodedViewParse_eq_gatedParseOfSpec {α β δ : Type}
+    (directView specificationView : String → Option α)
+    (valid : α → Prop) [DecidablePred valid]
+    (denotation : α → β) (ofSpec : β → δ)
+    (accepted : String → Prop) [DecidablePred accepted]
+    (computeValue : String → Option β)
+    (hdirect : ∀ s, directView s = specificationView s)
+    (hvalid : ∀ s, accepted s ↔ ∃ view, specificationView s = some view ∧ valid view)
+    (hvalue : ∀ s, computeValue s = (specificationView s).map denotation)
+    (s : String) :
+    decodedViewParse directView valid denotation ofSpec s =
+      gatedParseOfSpec accepted computeValue ofSpec s := by
+  unfold decodedViewParse
+  rw [hdirect s]
+  unfold gatedParseOfSpec gatedParse
+  rw [hvalue s]
+  cases hview : specificationView s with
+  | none =>
+      have hinvalid : ¬accepted s := by
+        intro haccepted
+        obtain ⟨view, hsome, _⟩ := (hvalid s).mp haccepted
+        rw [hview] at hsome
+        contradiction
+      simp [hinvalid]
+  | some view =>
+      have haccepted : accepted s ↔ valid view := by
+        constructor
+        · intro h
+          obtain ⟨found, hfound, hfoundValid⟩ := (hvalid s).mp h
+          rw [hview] at hfound
+          cases hfound
+          exact hfoundValid
+        · intro h
+          exact (hvalid s).mpr ⟨view, hview, h⟩
+      by_cases hviewValid : valid view
+      · have haccepted := haccepted.mpr hviewValid
+        simp [hviewValid, haccepted]
+      · have hnotAccepted : ¬accepted s := fun h => hviewValid (haccepted.mp h)
+        simp [hviewValid, hnotAccepted]
+
+/-- A cached-value acceptance test preserves the ordinary typed-view parser whenever it agrees
+    with `valid` at the view's denotation. -/
+theorem decodedViewParseCached_eq_decodedViewParse {α β δ : Type}
+    (decodeView : String → Option α) (accept : α → β → Bool)
+    (valid : α → Prop) [DecidablePred valid]
+    (denotation : α → β) (ofSpec : β → δ)
+    (haccept : ∀ view, accept view (denotation view) = true ↔ valid view)
+    (s : String) :
+    decodedViewParseCached decodeView accept denotation ofSpec s =
+      decodedViewParse decodeView valid denotation ofSpec s := by
+  unfold decodedViewParseCached decodedViewParse
+  cases hdecode : decodeView s with
+  | none => rfl
+  | some view =>
+      by_cases hvalid : valid view
+      · have haccepted := (haccept view).mpr hvalid
+        simp [hvalid, haccepted]
+      · have hrejected : accept view (denotation view) = false := by
+          cases hvalue : accept view (denotation view) with
+          | false => rfl
+          | true => exact False.elim (hvalid ((haccept view).mp hvalue))
+        simp [hvalid, hrejected]
 
 /-- The single-scan parser is extensionally equal to the former gated implementation over the
     generic engine predicates. -/

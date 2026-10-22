@@ -1,0 +1,962 @@
+/// A scanner capture normalized for semantic evaluation.
+///
+/// Missing optional captures become an empty span. A malformed runtime span is rejected before
+/// any source indexing, while the returned span is proved equal to the capture selected by the
+/// scanner specification.
+#[derive(Structural, Copy, Clone, PartialEq, Eq)]
+pub struct SemanticSpan {
+    pub start: usize,
+    pub end: usize,
+    pub count: usize,
+    pub present: bool,
+}
+
+fn semantic_character_code_at(
+    input: &str,
+    input_ascii: bool,
+    index: usize,
+) -> (result: u32)
+    requires
+        input_ascii == input.is_ascii(),
+        index < input@.len(),
+    ensures
+        result as int == input@[index as int] as int,
+{
+    if input_ascii {
+        proof {
+            broadcast use is_ascii_spec_bytes;
+        }
+        input.get_ascii(index) as u32
+    } else {
+        input.get_char(index) as u32
+    }
+}
+
+pub open spec fn semantic_span_text(
+    input: Seq<char>,
+    span: SemanticSpan,
+) -> Seq<char> {
+    if span.present {
+        input.subrange(span.start as int, span.end as int)
+    } else {
+        seq![]
+    }
+}
+
+pub open spec fn semantic_candidate_capture_text(
+    input: Seq<char>,
+    candidate: CandidateSpec,
+    key: CaptureKey,
+) -> Seq<char> {
+    match first_runtime_capture(candidate.captures, key) {
+        Some(capture) => input.subrange(capture.start as int, capture.end as int),
+        None => seq![],
+    }
+}
+
+pub open spec fn semantic_candidate_capture_count(
+    candidate: CandidateSpec,
+    key: CaptureKey,
+) -> int {
+    match first_runtime_capture(candidate.captures, key) {
+        Some(capture) => capture.count as int,
+        None => 0,
+    }
+}
+
+pub open spec fn semantic_optional_capture_text(
+    input: Seq<char>,
+    capture: Option<RuntimeCapture>,
+) -> Seq<char> {
+    match capture {
+        Some(capture) => input.subrange(capture.start as int, capture.end as int),
+        None => seq![],
+    }
+}
+
+pub open spec fn semantic_optional_capture_count(
+    capture: Option<RuntimeCapture>,
+) -> int {
+    match capture {
+        Some(capture) => capture.count as int,
+        None => 0,
+    }
+}
+
+/// Normalize an already indexed capture without searching the scanner stack.
+#[inline(always)]
+pub fn semantic_indexed_capture_span(
+    capture: Option<RuntimeCapture>,
+    input: &str,
+    input_length: usize,
+) -> (result: Option<SemanticSpan>)
+    requires
+        input_length == input@.len(),
+    ensures
+        match result {
+            Some(span) => {
+                &&& span.start <= span.end <= input@.len()
+                &&& span.present || span.start == span.end
+                &&& semantic_span_text(input@, span)
+                    == semantic_optional_capture_text(input@, capture)
+                &&& span.count as int == semantic_optional_capture_count(capture)
+                &&& match capture {
+                    Some(capture) => {
+                        &&& span.present
+                        &&& span.start == capture.start
+                        &&& span.end == capture.end
+                        &&& span.count == capture.count
+                    },
+                    None => !span.present && span.start == 0 && span.end == 0
+                        && span.count == 0,
+                }
+            },
+            None => match capture {
+                Some(capture) =>
+                    capture.start > capture.end || capture.end > input@.len(),
+                None => false,
+            },
+        },
+{
+    match capture {
+        Some(capture) => {
+            if capture.start <= capture.end && capture.end <= input_length {
+                let result = SemanticSpan {
+                    start: capture.start,
+                    end: capture.end,
+                    count: capture.count,
+                    present: true,
+                };
+                proof {
+                    reveal(semantic_span_text);
+                    reveal(semantic_optional_capture_text);
+                    reveal(semantic_optional_capture_count);
+                }
+                Some(result)
+            } else {
+                None
+            }
+        },
+        None => {
+            let result = SemanticSpan {
+                start: 0,
+                end: 0,
+                count: 0,
+                present: false,
+            };
+            proof {
+                reveal(semantic_span_text);
+                reveal(semantic_optional_capture_text);
+                reveal(semantic_optional_capture_count);
+            }
+            Some(result)
+        },
+    }
+}
+
+pub fn semantic_capture_span(
+    candidate: &Candidate,
+    key: CaptureKey,
+    input: &str,
+    input_length: usize,
+) -> (result: Option<SemanticSpan>)
+    requires
+        input_length == input@.len(),
+    ensures
+        match result {
+            Some(span) => {
+                &&& span.start <= span.end <= input@.len()
+                &&& span.present || span.start == span.end
+                &&& semantic_span_text(input@, span)
+                    == semantic_candidate_capture_text(input@, candidate.deep_view(), key)
+                &&& span.count as int
+                    == semantic_candidate_capture_count(candidate.deep_view(), key)
+                &&& match first_runtime_capture(candidate.deep_view().captures, key) {
+                    Some(capture) => {
+                        &&& span.present
+                        &&& span.start == capture.start
+                        &&& span.end == capture.end
+                        &&& span.count == capture.count
+                    },
+                    None => !span.present && span.start == 0 && span.end == 0
+                        && span.count == 0,
+                }
+            },
+            None => match first_runtime_capture(candidate.deep_view().captures, key) {
+                Some(capture) =>
+                    capture.start > capture.end || capture.end > input@.len(),
+                None => false,
+            },
+        },
+{
+    match lookup_first_runtime_capture(&candidate.captures, key) {
+        Some(capture) => {
+            if capture.start <= capture.end && capture.end <= input_length {
+                let result = SemanticSpan {
+                    start: capture.start,
+                    end: capture.end,
+                    count: capture.count,
+                    present: true,
+                };
+                proof {
+                    reveal(semantic_span_text);
+                    reveal(semantic_candidate_capture_text);
+                    reveal(semantic_candidate_capture_count);
+                }
+                Some(result)
+            } else {
+                None
+            }
+        },
+        None => {
+            let result = SemanticSpan {
+                start: 0,
+                end: 0,
+                count: 0,
+                present: false,
+            };
+            proof {
+                reveal(semantic_span_text);
+                reveal(semantic_candidate_capture_text);
+                reveal(semantic_candidate_capture_count);
+            }
+            Some(result)
+        },
+    }
+}
+
+/// Read a semantic capture directly from the scanner's fixed-capacity state.
+///
+/// Its contract is stated through the same public `CandidateSpec` used by generated parser
+/// theorems, so removing candidate materialization is an implementation optimization only.
+pub fn semantic_search_capture_span(
+    state: &SearchState,
+    key: CaptureKey,
+    input: &str,
+    input_length: usize,
+) -> (result: Option<SemanticSpan>)
+    requires
+        state.storage_well_formed(),
+        input_length == input@.len(),
+    ensures
+        match result {
+            Some(span) => {
+                &&& span.start <= span.end <= input@.len()
+                &&& span.present || span.start == span.end
+                &&& semantic_span_text(input@, span)
+                    == semantic_candidate_capture_text(
+                        input@,
+                        search_candidate_of(state.deep_view()),
+                        key,
+                    )
+                &&& span.count as int
+                    == semantic_candidate_capture_count(
+                        search_candidate_of(state.deep_view()),
+                        key,
+                    )
+                &&& match first_runtime_capture(
+                    search_candidate_of(state.deep_view()).captures,
+                    key,
+                ) {
+                    Some(capture) => {
+                        &&& span.present
+                        &&& span.start == capture.start
+                        &&& span.end == capture.end
+                        &&& span.count == capture.count
+                    },
+                    None => !span.present && span.start == 0 && span.end == 0
+                        && span.count == 0,
+                }
+            },
+            None => match first_runtime_capture(
+                search_candidate_of(state.deep_view()).captures,
+                key,
+            ) {
+                Some(capture) =>
+                    capture.start > capture.end || capture.end > input@.len(),
+                None => false,
+            },
+        },
+{
+    match lookup_search_runtime_capture(&state.captures, key) {
+        Some(capture) => {
+            if capture.start <= capture.end && capture.end <= input_length {
+                let result = SemanticSpan {
+                    start: capture.start,
+                    end: capture.end,
+                    count: capture.count,
+                    present: true,
+                };
+                proof {
+                    reveal(search_candidate_of);
+                    reveal(semantic_span_text);
+                    reveal(semantic_candidate_capture_text);
+                    reveal(semantic_candidate_capture_count);
+                }
+                Some(result)
+            } else {
+                None
+            }
+        },
+        None => {
+            let result = SemanticSpan {
+                start: 0,
+                end: 0,
+                count: 0,
+                present: false,
+            };
+            proof {
+                reveal(search_candidate_of);
+                reveal(semantic_span_text);
+                reveal(semantic_candidate_capture_text);
+                reveal(semantic_candidate_capture_count);
+            }
+            Some(result)
+        },
+    }
+}
+
+/// Exact nonnegative arithmetic with an optional executable `u128` representation.
+///
+/// The ghost view remains the mathematical value after overflow. Generated parsers only unwrap
+/// this value after proving it fits the requested result type.
+#[derive(Copy, Clone)]
+pub struct SemanticNat {
+    exact: Ghost<nat>,
+    runtime: Option<u128>,
+}
+
+impl View for SemanticNat {
+    type V = nat;
+
+    closed spec fn view(&self) -> nat {
+        self.exact@
+    }
+}
+
+impl SemanticNat {
+    #[verifier::type_invariant]
+    spec fn well_formed(self) -> bool {
+        match self.runtime {
+            Some(value) => self.exact@ == value,
+            None => self.exact@ > u128::MAX,
+        }
+    }
+
+    pub open spec fn available(&self) -> bool {
+        self@ <= u128::MAX
+    }
+
+    #[inline(always)]
+    pub fn new(value: u128) -> (result: Self)
+        ensures
+            result@ == value,
+            result.available(),
+    {
+        Self {
+            exact: Ghost(value as nat),
+            runtime: Some(value),
+        }
+    }
+
+    #[inline(always)]
+    pub fn add(&self, right: &Self) -> (result: Self)
+        ensures
+            result@ == self@ + right@,
+    {
+        proof {
+            use_type_invariant(self);
+            use_type_invariant(right);
+        }
+        let exact = Ghost((self@ + right@) as nat);
+        let runtime = match (self.runtime, right.runtime) {
+            (Some(left), Some(right)) => left.checked_add(right),
+            _ => None,
+        };
+        Self { exact, runtime }
+    }
+
+    #[inline(always)]
+    pub fn mul(&self, right: &Self) -> (result: Self)
+        ensures
+            result@ == self@ * right@,
+    {
+        proof {
+            use_type_invariant(self);
+            use_type_invariant(right);
+        }
+        let exact = Ghost((self@ * right@) as nat);
+        let runtime = match (self.runtime, right.runtime) {
+            (Some(left), Some(right)) => left.checked_mul(right),
+            (Some(left), None) => {
+                if left == 0 {
+                    Some(0)
+                } else {
+                    proof {
+                        assert(self@ == left as nat);
+                        assert(1 <= self@);
+                        assert(self@ > 0);
+                        assert(right@ > u128::MAX);
+                        vstd::arithmetic::mul::lemma_mul_ordering(
+                            self@ as int,
+                            right@ as int,
+                        );
+                    }
+                    None
+                }
+            },
+            (None, Some(right)) => {
+                if right == 0 {
+                    Some(0)
+                } else {
+                    proof {
+                        assert(right@ == right as nat);
+                        assert(1 <= right@);
+                        assert(self@ > u128::MAX);
+                        assert(right@ > 0);
+                        vstd::arithmetic::mul::lemma_mul_ordering(
+                            self@ as int,
+                            right@ as int,
+                        );
+                    }
+                    None
+                }
+            },
+            (None, None) => {
+                proof {
+                    assert(self@ > u128::MAX);
+                    assert(right@ > u128::MAX);
+                    assert(1 <= right@);
+                    vstd::arithmetic::mul::lemma_mul_ordering(
+                        self@ as int,
+                        right@ as int,
+                    );
+                }
+                None
+            },
+        };
+        Self { exact, runtime }
+    }
+
+    #[inline(always)]
+    pub fn checked_sub(&self, right: &Self) -> (result: Option<Self>)
+        ensures
+            match result {
+                Some(value) => self@ >= right@ && value@ == self@ - right@,
+                None => !self.available() || !right.available() || self@ < right@,
+            },
+    {
+        proof {
+            use_type_invariant(self);
+            use_type_invariant(right);
+        }
+        match (self.runtime, right.runtime) {
+            (Some(left), Some(right)) => {
+                if left < right {
+                    None
+                } else {
+                    Some(Self {
+                        exact: Ghost((self@ - right@) as nat),
+                        runtime: Some(left - right),
+                    })
+                }
+            },
+            _ => None,
+        }
+    }
+
+    #[inline(always)]
+    pub fn to_option(&self) -> (result: Option<u128>)
+        ensures
+            match result {
+                Some(value) => self@ == value,
+                None => self@ > u128::MAX,
+            },
+    {
+        proof {
+            use_type_invariant(self);
+        }
+        self.runtime
+    }
+
+    #[inline(always)]
+    pub fn eq(&self, right: &Self) -> (result: Option<bool>)
+        ensures
+            match result {
+                Some(value) => value == (self@ == right@),
+                None => !self.available() || !right.available(),
+            },
+    {
+        proof {
+            use_type_invariant(self);
+            use_type_invariant(right);
+        }
+        match (self.runtime, right.runtime) {
+            (Some(left), Some(right)) => Some(left == right),
+            _ => None,
+        }
+    }
+
+    #[inline(always)]
+    pub fn lt(&self, right: &Self) -> (result: Option<bool>)
+        ensures
+            match result {
+                Some(value) => value == (self@ < right@),
+                None => !self.available() || !right.available(),
+            },
+    {
+        proof {
+            use_type_invariant(self);
+            use_type_invariant(right);
+        }
+        match (self.runtime, right.runtime) {
+            (Some(left), Some(right)) => Some(left < right),
+            _ => None,
+        }
+    }
+
+    #[inline(always)]
+    pub fn le(&self, right: &Self) -> (result: Option<bool>)
+        ensures
+            match result {
+                Some(value) => value == (self@ <= right@),
+                None => !self.available() || !right.available(),
+            },
+    {
+        proof {
+            use_type_invariant(self);
+            use_type_invariant(right);
+        }
+        match (self.runtime, right.runtime) {
+            (Some(left), Some(right)) => Some(left <= right),
+            _ => None,
+        }
+    }
+}
+
+/// Exact signed arithmetic with an optional executable `i128` representation.
+#[derive(Copy, Clone)]
+pub struct SemanticInt {
+    exact: Ghost<int>,
+    runtime: Option<i128>,
+}
+
+impl View for SemanticInt {
+    type V = int;
+
+    closed spec fn view(&self) -> int {
+        self.exact@
+    }
+}
+
+impl SemanticInt {
+    #[verifier::type_invariant]
+    spec fn well_formed(self) -> bool {
+        match self.runtime {
+            Some(value) => self.exact@ == value,
+            None => true,
+        }
+    }
+
+    pub closed spec fn available(&self) -> bool {
+        self.runtime.is_some()
+    }
+
+    pub fn new(value: i128) -> (result: Self)
+        ensures
+            result@ == value,
+            result.available(),
+    {
+        Self {
+            exact: Ghost(value as int),
+            runtime: Some(value),
+        }
+    }
+
+    pub fn from_nat(value: &SemanticNat) -> (result: Self)
+        ensures
+            result@ == value@,
+            value@ <= i128::MAX ==> result.available(),
+    {
+        proof {
+            use_type_invariant(value);
+        }
+        let runtime = match value.runtime {
+            Some(number) => {
+                if number <= i128::MAX as u128 {
+                    Some(number as i128)
+                } else {
+                    None
+                }
+            },
+            None => None,
+        };
+        Self {
+            exact: Ghost(value@ as int),
+            runtime,
+        }
+    }
+
+    pub fn add(&self, right: &Self) -> (result: Self)
+        ensures
+            result@ == self@ + right@,
+            self.available() && right.available()
+                && i128::MIN <= self@ + right@
+                && self@ + right@ <= i128::MAX
+                ==> result.available(),
+    {
+        proof {
+            use_type_invariant(self);
+            use_type_invariant(right);
+        }
+        let runtime = match (self.runtime, right.runtime) {
+            (Some(left), Some(right)) => left.checked_add(right),
+            _ => None,
+        };
+        Self {
+            exact: Ghost(self@ + right@),
+            runtime,
+        }
+    }
+
+    pub fn sub(&self, right: &Self) -> (result: Self)
+        ensures
+            result@ == self@ - right@,
+            self.available() && right.available()
+                && i128::MIN <= self@ - right@
+                && self@ - right@ <= i128::MAX
+                ==> result.available(),
+    {
+        proof {
+            use_type_invariant(self);
+            use_type_invariant(right);
+        }
+        let runtime = match (self.runtime, right.runtime) {
+            (Some(left), Some(right)) => left.checked_sub(right),
+            _ => None,
+        };
+        Self {
+            exact: Ghost(self@ - right@),
+            runtime,
+        }
+    }
+
+    pub fn mul(&self, right: &Self) -> (result: Self)
+        ensures
+            result@ == self@ * right@,
+            self.available() && right.available()
+                && i128::MIN <= self@ * right@
+                && self@ * right@ <= i128::MAX
+                ==> result.available(),
+    {
+        proof {
+            use_type_invariant(self);
+            use_type_invariant(right);
+        }
+        let runtime = match (self.runtime, right.runtime) {
+            (Some(left), Some(right)) => left.checked_mul(right),
+            _ => None,
+        };
+        Self {
+            exact: Ghost(self@ * right@),
+            runtime,
+        }
+    }
+
+    pub fn tdiv(&self, right: &Self) -> (result: Self)
+        ensures
+            right@ != 0 ==> result@ == rust_div(self@, right@),
+            self.available() && right.available() && right@ > 0
+                ==> result.available(),
+    {
+        proof {
+            use_type_invariant(self);
+            use_type_invariant(right);
+        }
+        match (self.runtime, right.runtime) {
+            (Some(left), Some(divisor)) => {
+                // The generated Cedar semantic plans divide only by positive constants.
+                // Keep the generic helper fail-closed for a nonpositive runtime divisor.
+                if divisor <= 0 {
+                    Self {
+                        exact: Ghost(if right@ == 0 {
+                            0
+                        } else {
+                            rust_div(self@, right@)
+                        }),
+                        runtime: None,
+                    }
+                } else {
+                    let value = left / divisor;
+                    proof {
+                        assert(self@ == left as int);
+                        assert(right@ == divisor as int);
+                        assert(value as int == rust_div(left as int, divisor as int));
+                    }
+                    Self {
+                        exact: Ghost(rust_div(self@, right@)),
+                        runtime: Some(value),
+                    }
+                }
+            },
+            _ => Self {
+                exact: Ghost(if right@ == 0 { 0 } else { rust_div(self@, right@) }),
+                runtime: None,
+            },
+        }
+    }
+
+    pub fn modulo(&self, right: &Self) -> (result: Self)
+        ensures
+            right@ != 0 ==> result@ == rust_rem(self@, right@),
+            self.available() && right.available() && right@ > 0
+                ==> result.available(),
+    {
+        proof {
+            use_type_invariant(self);
+            use_type_invariant(right);
+        }
+        match (self.runtime, right.runtime) {
+            (Some(left), Some(divisor)) => {
+                if divisor <= 0 {
+                    Self {
+                        exact: Ghost(if right@ == 0 {
+                            0
+                        } else {
+                            rust_rem(self@, right@)
+                        }),
+                        runtime: None,
+                    }
+                } else {
+                    let value = left % divisor;
+                    proof {
+                        assert(self@ == left as int);
+                        assert(right@ == divisor as int);
+                        assert(value as int == rust_rem(left as int, divisor as int));
+                    }
+                    Self {
+                        exact: Ghost(rust_rem(self@, right@)),
+                        runtime: Some(value),
+                    }
+                }
+            },
+            _ => Self {
+                exact: Ghost(if right@ == 0 { 0 } else { rust_rem(self@, right@) }),
+                runtime: None,
+            },
+        }
+    }
+
+    pub fn neg(&self) -> (result: Self)
+        ensures
+            result@ == -self@,
+            self.available() && self@ != i128::MIN ==> result.available(),
+    {
+        proof {
+            use_type_invariant(self);
+        }
+        let runtime = match self.runtime {
+            Some(value) => {
+                if value == i128::MIN {
+                    None
+                } else {
+                    Some(-value)
+                }
+            },
+            None => None,
+        };
+        Self {
+            exact: Ghost(-self@),
+            runtime,
+        }
+    }
+
+    pub fn to_option(&self) -> (result: Option<i128>)
+        ensures
+            match result {
+                Some(value) => self@ == value,
+                None => !self.available(),
+            },
+    {
+        proof {
+            use_type_invariant(self);
+        }
+        self.runtime
+    }
+
+    pub fn to_i64_option(&self) -> (result: Option<i64>)
+        ensures
+            match result {
+                Some(value) => self@ == value as int,
+                None =>
+                    !self.available() || self@ < i64::MIN || i64::MAX < self@,
+            },
+    {
+        proof {
+            use_type_invariant(self);
+        }
+        match self.runtime {
+            Some(value) => {
+                if i64::MIN as i128 <= value && value <= i64::MAX as i128 {
+                    Some(value as i64)
+                } else {
+                    None
+                }
+            },
+            None => None,
+        }
+    }
+
+    pub fn eq(&self, right: &Self) -> (result: Option<bool>)
+        ensures
+            match result {
+                Some(value) => value == (self@ == right@),
+                None => !self.available() || !right.available(),
+            },
+    {
+        proof {
+            use_type_invariant(self);
+            use_type_invariant(right);
+        }
+        match (self.runtime, right.runtime) {
+            (Some(left), Some(right)) => Some(left == right),
+            _ => None,
+        }
+    }
+
+    pub fn lt(&self, right: &Self) -> (result: Option<bool>)
+        ensures
+            match result {
+                Some(value) => value == (self@ < right@),
+                None => !self.available() || !right.available(),
+            },
+    {
+        proof {
+            use_type_invariant(self);
+            use_type_invariant(right);
+        }
+        match (self.runtime, right.runtime) {
+            (Some(left), Some(right)) => Some(left < right),
+            _ => None,
+        }
+    }
+
+    pub fn le(&self, right: &Self) -> (result: Option<bool>)
+        ensures
+            match result {
+                Some(value) => value == (self@ <= right@),
+                None => !self.available() || !right.available(),
+            },
+    {
+        proof {
+            use_type_invariant(self);
+            use_type_invariant(right);
+        }
+        match (self.runtime, right.runtime) {
+            (Some(left), Some(right)) => Some(left <= right),
+            _ => None,
+        }
+    }
+}
+
+/// Runtime predicates shared by signed and unsigned semantic plans.
+#[inline(always)]
+pub fn semantic_span_is_empty(
+    input: &str,
+    span: SemanticSpan,
+) -> (result: bool)
+    requires
+        span.start <= span.end <= input@.len(),
+        span.present || span.start == span.end,
+    ensures
+        result == (span.end == span.start),
+        result == (semantic_span_text(input@, span) == seq![]),
+{
+    let result = span.end == span.start;
+    proof {
+        reveal(semantic_span_text);
+        if result {
+            assert(span.start == span.end);
+            assert(input@.subrange(span.start as int, span.end as int) == seq![]);
+            assert(semantic_span_text(input@, span) == seq![]);
+        } else {
+            assert(span.start < span.end);
+            assert(span.present);
+            assert(input@.subrange(span.start as int, span.end as int).len()
+                == span.end - span.start);
+            assert(input@.subrange(span.start as int, span.end as int).len() > 0);
+            assert(input@.subrange(span.start as int, span.end as int) != seq![]);
+            assert(semantic_span_text(input@, span) != seq![]);
+        }
+        assert(result == (semantic_span_text(input@, span) == seq![]));
+    }
+    result
+}
+
+#[inline(always)]
+pub fn semantic_span_is_present(span: SemanticSpan) -> (result: bool)
+    requires
+        span.present || span.start == span.end,
+    ensures
+        result == (span.present && span.start < span.end),
+{
+    span.present && span.start < span.end
+}
+
+#[inline(always)]
+pub fn semantic_span_count(span: SemanticSpan) -> (result: SemanticNat)
+    ensures
+        result@ == span.count,
+{
+    SemanticNat::new(span.count as u128)
+}
+
+#[inline(always)]
+pub fn semantic_no_leading_zero(
+    input: &str,
+    input_ascii: bool,
+    span: SemanticSpan,
+) -> (result: bool)
+    requires
+        input_ascii == input.is_ascii(),
+        span.start <= span.end <= input@.len(),
+        span.present || span.start == span.end,
+    ensures
+        result == (
+            semantic_span_text(input@, span).len() == 0
+                || semantic_span_text(input@, span)[0] != '\u{30}'
+                || semantic_span_text(input@, span) == seq!['\u{30}']
+        ),
+{
+    if span.start == span.end {
+        proof {
+            assert(semantic_span_text(input@, span).len() == 0);
+        }
+        true
+    } else {
+        proof {
+            assert(span.present);
+            assert(semantic_span_text(input@, span)
+                == input@.subrange(span.start as int, span.end as int));
+            assert(semantic_span_text(input@, span).len()
+                == span.end as int - span.start as int);
+            assert(semantic_span_text(input@, span)[0]
+                == input@[span.start as int]);
+        }
+        let first = semantic_character_code_at(input, input_ascii, span.start);
+        if first != 48 {
+            true
+        } else {
+            proof {
+                if span.end == span.start + 1 {
+                    assert(semantic_span_text(input@, span) =~= seq!['\u{30}']) by {
+                        assert_seqs_equal!(
+                            semantic_span_text(input@, span) == seq!['\u{30}']
+                        );
+                    }
+                }
+            }
+            span.end == span.start + 1
+        }
+    }
+}

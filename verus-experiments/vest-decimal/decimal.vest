@@ -1,0 +1,20 @@
+digit = u8 | '0'..'9'
+
+fraction_one = Tail >>= [digit; 1]
+fraction_two = Tail >>= [digit; 2]
+fraction_three = Tail >>= [digit; 3]
+fraction_four = Tail >>= [digit; 4]
+
+fraction = choose {
+  One(fraction_one),
+  Two(fraction_two),
+  Three(fraction_three),
+  Four(fraction_four),
+}
+
+decimal = {
+  sign: Option<wrap(u8 = '-', Nothing)>,
+  natural_first: digit,
+  natural_following_digits: Vec<digit>,
+  fraction: wrap(u8 = '.', fraction),
+}

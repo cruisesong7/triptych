@@ -1,6 +1,6 @@
 import Triptych.Architecture.Derivation
 import Triptych.Theorems.Coherence
-import Triptych.Archive.DecodeLemmas
+import Triptych.Reference.DecodeLemmas
 import Triptych.Theorems.Roundtrip
 
 /-!
@@ -35,6 +35,21 @@ def SeqMatch (g : Grammar) (qual : String) (fuel : Nat) (seq : Seq)
 def ProdMatch (g : Grammar) (qual : String) (fuel : Nat) (prod : Production)
     (text : String) (captures : CaptureMap) : Prop :=
   ∀ suffix, (captures, suffix) ∈ matchProd g qual fuel prod (text.toList ++ suffix)
+
+/-- An exact match of a consuming symbol renders a non-empty string. Generated derivations use
+    this to justify separator-free repetitions. -/
+theorem ne_empty_of_symMatch {g : Grammar} {qual : String} {fuel : Nat} {item : Sym}
+    {text : String} {captures : CaptureMap} (hg : g.repOk = true)
+    (hok : item.repOkIn g g.prods.length = true)
+    (hconsumes : item.consumes g g.prods.length = true)
+    (hmatch : SymMatch g qual fuel item text captures) : text ≠ "" := by
+  have hmem := hmatch []
+  rw [List.append_nil] at hmem
+  obtain ⟨prefixChars, hchars, hdenote⟩ :=
+    (sym_iter g hg fuel qual item hok text.toList []).mp ⟨captures, hmem⟩
+  rw [List.append_nil] at hchars
+  rw [← hchars, String.ofList_toList] at hdenote
+  exact consumes_sound g g.prods.length fuel item text hconsumes hdenote
 
 theorem symMatch_lit (g : Grammar) (qual : String) (fuel : Nat) (lit : String) :
     SymMatch g qual fuel (.lit lit) lit [] := by
@@ -112,8 +127,9 @@ theorem seqMatch_optional (g : Grammar) (qual : String) (fuel : Nat)
 /-- Construct one `matchStar` result from exact matches for a list of following pieces. -/
 theorem mem_matchStar_of_pieces
     (matchItem : List Char → List (CaptureMap × List Char))
-    (sep : List Char) (hsep : sep ≠ [])
+    (sep : List Char)
     (pieces : List (List Char × CaptureMap))
+    (hstep : sep ≠ [] ∨ ∀ piece ∈ pieces, piece.1 ≠ [])
     (hpieces :
       ∀ piece ∈ pieces, ∀ suffix,
         (piece.2, suffix) ∈ matchItem (piece.1 ++ suffix)) :
@@ -130,10 +146,14 @@ theorem mem_matchStar_of_pieces
       intro fuel suffix hfuel
       cases fuel with
       | zero =>
-          have hsepLength : 1 ≤ sep.length := by
-            cases sep with
-            | nil => exact (hsep rfl).elim
-            | cons _ _ => simp
+          have hstepLength : 1 ≤ sep.length + piece.1.length := by
+            rcases hstep with hsep | hpiece
+            · cases sep with
+              | nil => exact (hsep rfl).elim
+              | cons _ _ => simp; omega
+            · cases hfirst : piece.1 with
+              | nil => exact absurd hfirst (hpiece piece (by simp))
+              | cons _ _ => simp only [List.length_cons]; omega
           simp only [List.flatMap_cons, List.length_append] at hfuel
           omega
       | succ fuel =>
@@ -146,7 +166,7 @@ theorem mem_matchStar_of_pieces
                     pieces.flatMap (fun next => sep ++ next.1) ++ suffix) =
                 true := by
             simp
-          simp only [hprefix, if_true]
+          simp only [hprefix, ite_true]
           have hdrop :
               List.drop sep.length
                   (sep ++ piece.1 ++
@@ -164,20 +184,28 @@ theorem mem_matchStar_of_pieces
           · apply List.mem_map.mpr
             refine ⟨(pieces.flatMap (·.2), suffix, pieces.length), ?_, rfl⟩
             apply ih
+            · rcases hstep with hsep | hpiece
+              · exact Or.inl hsep
+              · exact Or.inr fun next hnext => hpiece next (by simp [hnext])
             · intro next hnext
               exact hpieces next (by simp [hnext])
-            · have hsepLength : 1 ≤ sep.length := by
-                cases sep with
-                | nil => exact (hsep rfl).elim
-                | cons _ _ => simp
+            · have hstepLength : 1 ≤ sep.length + piece.1.length := by
+                rcases hstep with hsep | hpiece
+                · cases sep with
+                  | nil => exact (hsep rfl).elim
+                  | cons _ _ => simp; omega
+                · cases hfirst : piece.1 with
+                  | nil => exact absurd hfirst (hpiece piece (by simp))
+                  | cons _ _ => simp only [List.length_cons]; omega
               simp only [List.flatMap_cons, List.length_append] at hfuel ⊢
               omega
 
 /-- Construct one `matchRep` result from exact matches for a nonempty list of pieces. -/
 theorem mem_matchRep_of_pieces
     (matchItem : List Char → List (CaptureMap × List Char))
-    (sep : List Char) (hsep : sep ≠ [])
+    (sep : List Char)
     (pieces : List (List Char × CaptureMap)) (hne : pieces ≠ [])
+    (hstep : sep ≠ [] ∨ ∀ piece ∈ pieces, piece.1 ≠ [])
     (hpieces :
       ∀ piece ∈ pieces, ∀ suffix,
         (piece.2, suffix) ∈ matchItem (piece.1 ++ suffix))
@@ -197,7 +225,10 @@ theorem mem_matchRep_of_pieces
           hpieces piece (by simp) remainder
       · rw [List.mem_map]
         refine ⟨(pieces.flatMap (·.2), suffix, pieces.length), ?_, rfl⟩
-        apply mem_matchStar_of_pieces matchItem sep hsep pieces
+        apply mem_matchStar_of_pieces matchItem sep pieces
+        · rcases hstep with hsep | hpiece
+          · exact Or.inl hsep
+          · exact Or.inr fun next hnext => hpiece next (by simp [hnext])
         · intro next hnext
           exact hpieces next (by simp [hnext])
         · simp only [List.length_append]
@@ -206,7 +237,7 @@ theorem mem_matchRep_of_pieces
 theorem symMatch_rep (g : Grammar) (qual : String) (fuel : Nat)
     (sep : String) (item : Sym) (lo : Nat) (hi : Option Nat)
     (render : α → String) (captures : α → CaptureMap) (valid : α → Prop)
-    (values : List α) (hsep : sep ≠ "")
+    (values : List α) (hstep : sep ≠ "" ∨ ∀ x, valid x → render x ≠ "")
     (hvalid : RepetitionValid lo hi valid values)
     (hitem :
       ∀ x, valid x →
@@ -233,8 +264,15 @@ theorem symMatch_rep (g : Grammar) (qual : String) (fuel : Nat)
       (pieces.flatMap (·.2), suffix, pieces.length) ∈
         matchRep (fun cs => matchSym g qual fuel item cs) sep.toList
           (sep.toList.intercalate (pieces.map (·.1)) ++ suffix) :=
-    mem_matchRep_of_pieces _ sep.toList (toList_ne_nil_of_ne sep hsep)
-      pieces hpiecesNe hpieces suffix
+    mem_matchRep_of_pieces _ sep.toList pieces hpiecesNe (by
+        rcases hstep with hsep | hrender
+        · exact Or.inl (toList_ne_nil_of_ne sep hsep)
+        · refine Or.inr fun piece hpiece => ?_
+          rw [List.mem_map] at hpiece
+          obtain ⟨x, hx, rfl⟩ := hpiece
+          intro hnil
+          exact hrender x (hvalid.2.2.2 x hx) (String.toList_eq_nil_iff.mp hnil))
+      hpieces suffix
   refine ⟨(pieces.flatMap (·.2), suffix, pieces.length), ?_, ?_⟩
   · simpa [renderSeparated, pieces, String.toList_intercalate,
       List.map_map, Function.comp_def] using hrep

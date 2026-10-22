@@ -20,20 +20,19 @@ theorem IPv6.encode_view (i : IPv6Net) :
     ∃ v : IPv6.View,
       IPv6.decodeView (ipNetToStr i) = some v ∧
       IPv6.View.Valid v ∧
-      IPv6.View.denotation v = i := by
+      ipv6CodeToNet (IPv6.View.denotation v) = i := by
   triptych_encode [IPv6.RuleRegistrySoundness.parser_ipNetToStr,
     IPv6.RuleRegistrySoundness.parser_agrees, IPv6.IsValid_view,
-    IPv6.computeValue_view]
+    IPv6.computeValue_view, IPv6.RuleRegistrySoundness.ipv6CodeToNet_netToCode i]
 
 theorem IPv6.encode_accepted (i : IPv6Net) : IPv6.IsValid (ipNetToStr i) := by
   obtain ⟨v, hview, hvalidView, _⟩ := IPv6.encode_view i
   exact (IPv6.IsValid_view (ipNetToStr i)).mpr ⟨v, hview, hvalidView⟩
 
 theorem IPv6.encode_value (i : IPv6Net) :
-    IPv6.computeValue (ipNetToStr i) = some i := by
-  obtain ⟨v, hview, _, hresult⟩ := IPv6.encode_view i
-  rw [IPv6.computeValue_view, hview]
-  exact congrArg some hresult
+    IPv6.computeValue (ipNetToStr i) = some (ipv6NetToCode i) := by
+  exact ((IPv6.RuleRegistrySoundness.parser_agrees (ipNetToStr i) i).mp
+    (IPv6.RuleRegistrySoundness.parser_ipNetToStr i)).2
 
 theorem IPv6.parse_toString_roundtrip (i : IPv6Net) :
     IPv6.parse (ipNetToStr i) = some i :=
@@ -67,15 +66,16 @@ theorem IPv6.extparse_eq_none_iff_view (s : String) :
   simp only [IPv6.extparse_reject, IPv6.IsValid_view]
 
 theorem IPv6.extparse_sound (s : String) (i : IPv6Net) :
-    ipv6Only s = some i → IPv6.IsValid s ∧ IPv6.computeValue s = some (id i) := by
-  simpa only [id] using (IPv6.RuleRegistrySoundness.parser_agrees s i).mp
+    ipv6Only s = some i →
+      IPv6.IsValid s ∧ IPv6.computeValue s = some (ipv6NetToCode i) := by
+  exact (IPv6.RuleRegistrySoundness.parser_agrees s i).mp
 
 theorem IPv6.checkedExtParse_eq_extparse : IPv6.checkedExtParse = ipv6Only :=
   Triptych.checkedExternalParse_eq_of_sound
-    IPv6.IsValid IPv6.computeValue ipv6Only id IPv6.extparse_sound
+    IPv6.IsValid IPv6.computeValue ipv6Only ipv6NetToCode IPv6.extparse_sound
 
 theorem IPv6.extparse_complete (s : String) (i : IPv6Net) :
-    IPv6.IsValid s → IPv6.computeValue s = some (id i) → ipv6Only s = some i := by
+    IPv6.IsValid s → IPv6.computeValue s = some (ipv6NetToCode i) → ipv6Only s = some i := by
   intro hvalid hvalue
   exact (IPv6.RuleRegistrySoundness.parser_agrees s i).mpr ⟨hvalid, hvalue⟩
 
@@ -83,17 +83,19 @@ theorem IPv6.parse_eq_extparse (s : String) :
     IPv6.parse s = ipv6Only s :=
   by
   rw [IPv6.parse_eq_gated]
-  exact Triptych.gatedParse_eq_external
-    IPv6.IsValid IPv6.computeValue ipv6Only IPv6.extparse_sound IPv6.extparse_reject s
+  exact Triptych.gatedParseOfSpec_eq_external
+    IPv6.IsValid IPv6.computeValue ipv6CodeToNet ipv6NetToCode ipv6Only
+      IPv6.extparse_sound IPv6.extparse_reject
+      IPv6.RuleRegistrySoundness.ipv6CodeToNet_netToCode s
 
 theorem IPv6.extparse_eq_some_iff_view (s : String) (i : IPv6Net) :
     ipv6Only s = some i ↔
       ∃ v : IPv6.View,
         IPv6.decodeView s = some v ∧
         IPv6.View.Valid v ∧
-        IPv6.View.denotation v = id i := by
+        IPv6.View.denotation v = ipv6NetToCode i := by
   simp only [IPv6.RuleRegistrySoundness.parser_agrees, IPv6.IsValid_view,
-    IPv6.computeValue_view, Triptych.Automation.exists_valid_and_map_eq_some_iff, id]
+    IPv6.computeValue_view, Triptych.Automation.exists_valid_and_map_eq_some_iff]
 
 theorem IPv6.extparse_toString_roundtrip (i : IPv6Net) :
     ipv6Only (ipNetToStr i) = some i :=

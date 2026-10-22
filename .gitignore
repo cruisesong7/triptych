@@ -3,5 +3,7 @@
 /cedar-examples/.lake
 /_site
 /verso-sources.json
-/.DS_Store
+.DS_Store
 /.worktrees
+/.tools
+/verus-experiments/**/target

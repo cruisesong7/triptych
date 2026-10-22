@@ -39,7 +39,9 @@ def upperTriangleSize (order : String) : Nat :=
   let vertices := readNat order
   vertices * (vertices - 1) / 2
 
-private def upperTrianglePairs (order : Nat) : List (Nat × Nat) :=
+/-- Vertex pairs `(lower, upper)` of the upper triangle, in the order both the Graph cell string
+    and Graph6 bit stream list them. -/
+def upperTrianglePairs (order : Nat) : List (Nat × Nat) :=
   (List.range order).flatMap fun upper =>
     (List.range upper).map fun lower => (lower, upper)
 
