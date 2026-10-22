@@ -281,7 +281,7 @@ theorem executeOperation_toCore (input : List Char) (operation : CursorOp) (stat
       simp only [State.toCore_starts, State.toCore_position, State.toCore_captures,
         State.toCore_captureMap]
       cases hstart : ScanPlan.takeStart? name state.core.starts with
-      | none => simp [hstart]
+      | none => simp []
       | some result =>
           obtain ⟨frame, starts⟩ := result
           congr 1
@@ -291,24 +291,24 @@ theorem executeOperation_toCore (input : List Char) (operation : CursorOp) (stat
       unfold State.Consistent at hconsistent
       rw [hconsistent]
       cases hdrop : input.drop state.core.position with
-      | nil => simp [← List.head?_drop, hdrop]
+      | nil => simp [hdrop]
       | cons actual tail =>
           by_cases heq : actual == character
           · have htail := drop_succ_of_drop_eq_cons hdrop
-            simp [← List.head?_drop, hdrop, heq, State.toCore, htail]
-          · simp [← List.head?_drop, hdrop, heq]
+            simp [hdrop, heq, State.toCore]
+          · simp [hdrop, heq]
   | consumeOptional character =>
       unfold executeOperation consumeOptional LeanCursor.consumeOptional
         CursorProgram.executeOperation
       unfold State.Consistent at hconsistent
       rw [hconsistent]
       cases hdrop : input.drop state.core.position with
-      | nil => simp [← List.head?_drop, hdrop, State.toCore]
+      | nil => simp [hdrop, State.toCore]
       | cons actual tail =>
           by_cases heq : actual == character
           · have htail := drop_succ_of_drop_eq_cons hdrop
-            simp [← List.head?_drop, hdrop, heq, State.toCore, htail]
-          · simp [← List.head?_drop, hdrop, heq, State.toCore]
+            simp [hdrop, heq, State.toCore]
+          · simp [hdrop, heq, State.toCore]
   | consumeRun token run =>
       unfold executeOperation consumeRun LeanCursor.consumeRun CursorProgram.executeOperation
       unfold State.Consistent at hconsistent
@@ -473,13 +473,13 @@ theorem executeOperations_toCore (input : List Char) (operations : List CursorOp
         executeOperations_toCore source.toList program.operations
           (initial source.toList) (initial_consistent source.toList)
       simp [hrun] at hcore
-      simp [hrun, ← hcore]
+      simp [← hcore]
   | some state =>
       have hcore :=
         executeOperations_toCore source.toList program.operations
           (initial source.toList) (initial_consistent source.toList)
       simp [hrun] at hcore
-      simp [hrun, ← hcore, finishSpans, Result.toScanResult, State.toCore]
+      simp [← hcore, finishSpans, Result.toScanResult, State.toCore]
 
 @[simp] theorem decode_eq_cursorProgram (program : CursorProgram) (source : String) :
     decode program source = CursorProgram.decode program source := by

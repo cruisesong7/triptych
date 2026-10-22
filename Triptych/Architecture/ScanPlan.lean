@@ -554,11 +554,11 @@ theorem compileScanPlan_certifiedFor {grammar : Grammar} {plan : ScanPlan}
             Except.error "scan plan: internal certification failed") =
             Except.ok plan at hcompile
         by_cases hcertified : candidate.certifiedFor grammar = true
-        · rw [if_pos hcertified] at hcompile
+        · rw [ite_eq_left hcertified] at hcompile
           injection hcompile with heq
           subst candidate
           exact hcertified
-        · rw [if_neg hcertified] at hcompile
+        · rw [ite_eq_right hcertified] at hcompile
           contradiction
   · change
       Except.error "scan plan: the grammar must pass the static uniqueness checker" =

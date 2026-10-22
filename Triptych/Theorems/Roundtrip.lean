@@ -68,7 +68,7 @@ theorem lit_leaf (g : Grammar) (q : String) (fuel : Nat) (l : String) (cs r₂ :
     constructor
     · rintro ⟨m, hmem⟩
       by_cases h : l.toList.isPrefixOf cs = true
-      · simp only [h, if_true, List.mem_singleton] at hmem
+      · simp only [h, ite_true, List.mem_singleton] at hmem
         obtain ⟨t, ht⟩ := isPrefixOf_iff_prefix.mp h
         refine ⟨l.toList, ?_, (hden l.toList).mpr rfl⟩
         have hr₂ : r₂ = cs.drop l.toList.length := congrArg Prod.snd hmem
@@ -78,7 +78,7 @@ theorem lit_leaf (g : Grammar) (q : String) (fuel : Nat) (l : String) (cs r₂ :
       rw [(hden r₁).mp hden'] at hcs
       have h : l.toList.isPrefixOf cs = true := by
         rw [hcs]; exact isPrefixOf_iff_prefix.mpr ⟨r₂, rfl⟩
-      simp only [h, if_true]; exact ⟨[], by rw [hcs]; simp⟩)
+      simp only [h, ite_true]; exact ⟨[], by rw [hcs]; simp⟩)
 
 -- term leaf
 theorem term_leaf (g : Grammar) (q : String) (fuel : Nat) (tok : TokClass) (ls : LenSpec)
@@ -92,7 +92,7 @@ theorem term_leaf (g : Grammar) (q : String) (fuel : Nat) (tok : TokClass) (ls :
       rw [List.mem_filterMap] at hmem
       obtain ⟨k, hk, hval⟩ := hmem
       by_cases hok : termPrefixOk tok ls cs k = true
-      · rw [hok] at hval; simp only [if_true, Option.some.injEq, Prod.mk.injEq] at hval
+      · rw [hok] at hval; simp only [ite_true, Option.some.injEq, Prod.mk.injEq] at hval
         refine ⟨cs.take k, ?_, ?_⟩
         · rw [← hval.2, List.take_append_drop]
         · unfold termPrefixOk at hok
@@ -125,7 +125,7 @@ theorem str_leaf (g : Grammar) (q : String) (fuel : Nat) (cs r₂ : List Char) :
       obtain ⟨k, hk, hval⟩ := hmem
       by_cases hok : stringPrefixOk cs k = true
       · rw [hok] at hval
-        simp only [if_true, Option.some.injEq, Prod.mk.injEq] at hval
+        simp only [ite_true, Option.some.injEq, Prod.mk.injEq] at hval
         refine ⟨cs.take k, ?_, ?_⟩
         · rw [← hval.2, List.take_append_drop]
         · unfold stringPrefixOk at hok
@@ -219,7 +219,7 @@ theorem seq_iter (g : Grammar) (q : String) (fuel : Nat)
         · rw [ih]; exact ⟨r1', rfl, hden2⟩
     unfold matchSeq matchesSeq
     by_cases hopt : item.optional = true
-    · simp only [hopt, if_true]
+    · simp only [hopt, ite_true]
       constructor
       · rintro ⟨m, hmem⟩
         rw [List.mem_append] at hmem
@@ -247,7 +247,7 @@ theorem seq_iter (g : Grammar) (q : String) (fuel : Nat)
           obtain ⟨m, hm⟩ := (ih cs r₂).mpr ⟨r₁, hcs, h⟩
           exact ⟨m, by rw [List.mem_append]; exact Or.inr hm⟩
     · simp only [Bool.not_eq_true] at hopt
-      simp only [hopt, Bool.false_eq_true, if_false]
+      simp only [hopt, Bool.false_eq_true, ite_false]
       rw [hpresent]
       constructor
       · rintro ⟨r1, r1', hcs, hd1, hd2⟩
@@ -365,7 +365,7 @@ theorem matchStar_iter (matchItem : List Char → List (CaptureMap × List Char)
         exact ⟨[], heq.2.2.symm, by simp [heq.2.1], by simp⟩
       | inr hmore =>
         by_cases hpre : sepL.isPrefixOf cs = true
-        · rw [if_pos hpre] at hmore
+        · rw [ite_eq_left hpre] at hmore
           rw [List.mem_flatMap] at hmore
           obtain ⟨⟨m1, r1⟩, hm1, hm2⟩ := hmore
           rw [List.mem_map] at hm2
@@ -392,7 +392,7 @@ theorem matchStar_iter (matchItem : List Char → List (CaptureMap × List Char)
             rw [List.mem_cons] at hp
             cases hp with | inl h => subst h; exact hPhead | inr h => exact hPall p h
         · rw [Bool.not_eq_true] at hpre
-          rw [if_neg (by rw [hpre]; simp)] at hmore
+          rw [ite_eq_right (by rw [hpre]; simp)] at hmore
           simp at hmore
     · rintro ⟨parts, hlenk, hcs, hPall⟩
       cases parts with
@@ -421,7 +421,7 @@ theorem matchStar_iter (matchItem : List Char → List (CaptureMap × List Char)
           (ih (parts'.flatMap (fun p => sepL ++ p) ++ r₂) r₂ parts'.length hr1len).mpr
             ⟨parts', rfl, rfl, fun p hp => hPall p (by simp [hp])⟩
         refine ⟨m1 ++ m2, Or.inr ?_⟩
-        rw [if_pos hpre, List.mem_flatMap]
+        rw [ite_eq_left hpre, List.mem_flatMap]
         refine ⟨(m1, parts'.flatMap (fun p => sepL ++ p) ++ r₂), hm1, ?_⟩
         rw [List.mem_map]
         exact ⟨(m2, r₂, parts'.length), hm2, by simp [← hlenk]⟩
@@ -496,7 +496,7 @@ theorem ofList_intercalate (sep : String) (parts : List (List Char)) :
     String.ofList (sep.toList.intercalate parts)
       = String.intercalate sep (parts.map String.ofList) := by
   rw [← String.toList_inj, String.toList_ofList, String.toList_intercalate]
-  congr 1; rw [List.map_map]; simp [String.toList_ofList, Function.comp]
+  congr 1; rw [List.map_map]; simp []
 
 /-- The `matchSym` `rep` count `filterMap` reaches remainder `r₂` iff some in-bounds count `n`
     is reachable in the underlying `matchRep` list. Peels the count-key capture and the bound
@@ -513,15 +513,15 @@ theorem repFilter_mem (base : String) (lo : Nat) (hi : Option Nat) (r₂ : List 
     obtain ⟨⟨m', rem, n⟩, hIn, heq⟩ := hmem
     simp only at heq
     by_cases hc : inBounds lo hi n = true
-    · unfold inBounds at hc; rw [if_pos hc] at heq
+    · unfold inBounds at hc; rw [ite_eq_left hc] at heq
       simp only [Option.some.injEq, Prod.mk.injEq] at heq
       exact ⟨n, ⟨m', by rw [← heq.2]; exact hIn⟩, by unfold inBounds; exact hc⟩
-    · unfold inBounds at hc; rw [if_neg hc] at heq; simp at heq
+    · unfold inBounds at hc; rw [ite_eq_right hc] at heq; simp at heq
   · rintro ⟨n, ⟨m', hIn⟩, hb⟩
     refine ⟨(base ++ "#count", toString n) :: m', ?_⟩
     rw [List.mem_filterMap]
     refine ⟨(m', r₂, n), hIn, ?_⟩
-    unfold inBounds at hb; rw [if_pos hb]
+    unfold inBounds at hb; rw [ite_eq_left hb]
 
 /-- A `String` is `""` iff its char list is empty — packaged for extracting `sep.toList ≠ []`
     from the `sep ≠ ""` conjunct of `Sym.repOk`. -/

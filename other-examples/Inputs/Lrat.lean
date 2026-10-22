@@ -42,14 +42,6 @@ namespace LratExample
 open Triptych
 open Std.Tactic.BVDecide.LRAT
 
-/-- A decimal numeral of value at least one, possibly with leading zeros. -/
-def readPos (text : String) : Nat :=
-  text.foldl (fun acc c => acc * 10 + (c.toNat - '0'.toNat)) 0
-
-/-- A literal: a positive numeral or `-` followed by one. -/
-def readLit (text : String) : Int :=
-  if text.startsWith "-" then -(readPos (text.drop 1).toString : Int) else (readPos text : Int)
-
 /-- The RAT pivot: the first literal of the added clause, as `Std` selects it. -/
 def pivotOf (clause : Array Int) : Std.Sat.Literal Nat :=
   let lit := clause[0]!
@@ -63,18 +55,18 @@ abbrev LineFields :=
 /-- Build one action exactly as `Std.Tactic.BVDecide.LRAT.Parser.Text.parseAction` does. -/
 def toAction : LineFields → IntAction
   | (id, delete, deleted, lits, rup, rat) =>
-      let rupHints := (rup.map readPos).toArray
+      let rupHints := (rup.map readNat).toArray
       if !delete.isEmpty then
-        .del (deleted.map readPos).toArray
+        .del (deleted.map readNat).toArray
       else
-        let clause := (lits.map readLit).toArray
+        let clause := (lits.map readInt).toArray
         match clause.size, rat with
-        | 0, _ => .addEmpty (readPos id) rupHints
-        | _, [] => .addRup (readPos id) clause rupHints
+        | 0, _ => .addEmpty (readNat id) rupHints
+        | _, [] => .addRup (readNat id) clause rupHints
         | _, _ =>
-            .addRat (readPos id) clause (pivotOf clause) rupHints
+            .addRat (readNat id) clause (pivotOf clause) rupHints
               ((rat.map fun (pivot, hints) =>
-                ((readLit pivot).natAbs, (hints.map readPos).toArray)).toArray)
+                ((readInt pivot).natAbs, (hints.map readNat).toArray)).toArray)
 
 def toActions (lines : List LineFields) : Array IntAction :=
   (lines.map toAction).toArray

@@ -280,8 +280,8 @@ theorem gatedParse_sound (accepted : String → Prop) [DecidablePred accepted]
   unfold gatedParse at h
   simp only [decide_eq_true_eq] at h
   by_cases hv : accepted s
-  · rw [if_pos hv] at h; exact ⟨hv, h⟩
-  · rw [if_neg hv] at h; exact absurd h (by simp)
+  · rw [ite_eq_left hv] at h; exact ⟨hv, h⟩
+  · rw [ite_eq_right hv] at h; exact absurd h (by simp)
 
 theorem gatedParse_complete (accepted : String → Prop) [DecidablePred accepted]
     (val : String → Option β) :
@@ -289,7 +289,7 @@ theorem gatedParse_complete (accepted : String → Prop) [DecidablePred accepted
   intro s a hv hval
   unfold gatedParse
   simp only [decide_eq_true_eq]
-  rw [if_pos hv]; exact hval
+  rw [ite_eq_left hv]; exact hval
 
 theorem gatedParse_reject (accepted : String → Prop) [DecidablePred accepted]
     (val : String → Option β) (hsome : ∀ s, accepted s → (val s).isSome) :
@@ -298,11 +298,11 @@ theorem gatedParse_reject (accepted : String → Prop) [DecidablePred accepted]
   unfold gatedParse
   simp only [decide_eq_true_eq]
   by_cases hv : accepted s
-  · rw [if_pos hv]
+  · rw [ite_eq_left hv]
     constructor
     · intro h; exact absurd (hsome s hv) (by rw [h]; simp)
     · intro h; exact absurd hv h
-  · rw [if_neg hv]; simp [hv]
+  · rw [ite_eq_right hv]; simp [hv]
 
 /-! ## Soundness-by-checking for an arbitrary external parser
 
@@ -406,7 +406,7 @@ theorem decodedViewParse_eq_gatedParseOfSpec {α β δ : Type}
         obtain ⟨view, hsome, _⟩ := (hvalid s).mp haccepted
         rw [hview] at hsome
         contradiction
-      simp [hview, hinvalid]
+      simp [hinvalid]
   | some view =>
       have haccepted : accepted s ↔ valid view := by
         constructor
@@ -419,9 +419,9 @@ theorem decodedViewParse_eq_gatedParseOfSpec {α β δ : Type}
           exact (hvalid s).mpr ⟨view, hview, h⟩
       by_cases hviewValid : valid view
       · have haccepted := haccepted.mpr hviewValid
-        simp [hview, hviewValid, haccepted]
+        simp [hviewValid, haccepted]
       · have hnotAccepted : ¬accepted s := fun h => hviewValid (haccepted.mp h)
-        simp [hview, hviewValid, hnotAccepted]
+        simp [hviewValid, hnotAccepted]
 
 /-- A cached-value acceptance test preserves the ordinary typed-view parser whenever it agrees
     with `valid` at the view's denotation. -/

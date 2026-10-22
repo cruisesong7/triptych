@@ -183,13 +183,13 @@ theorem scanSeqK_eq_matchSeq (g : Grammar) (qual : String) (fuel : Nat) :
         rw [List.findSome?_map]
         congr 1
       by_cases hoptional : item.optional = true
-      · simp only [hoptional, if_true]
+      · simp only [hoptional, ite_true]
         rw [hpresent, scanSeqK_eq_matchSeq, List.findSome?_append]
         cases ((matchSym g qual fuel item.sym input).flatMap fun head =>
             (matchSeq g qual fuel rest head.2).map fun tail =>
               (head.1 ++ tail.1, tail.2)).findSome? fun result =>
                 k result.1 result.2 <;> rfl
-      · simp only [hoptional, Bool.false_eq_true, if_false]
+      · simp only [hoptional, Bool.false_eq_true, ite_false]
         exact hpresent
 
 /-- Scanning a production is ordered search over exactly the candidates from `matchProd`. -/
@@ -265,7 +265,7 @@ theorem fastScanSym_mem_matchSym (g : Grammar) (qual : String) :
       by_cases hprefix :
           termPrefixOk tok lengthSpec input
             (fastScanTokenLength tok lengthSpec input) = true
-      · simp only [hprefix, if_true, Option.some.injEq, Prod.mk.injEq] at h
+      · simp only [hprefix, ite_true, Option.some.injEq, Prod.mk.injEq] at h
         rcases h with ⟨rfl, rfl⟩
         simp only [matchSym, List.mem_filterMap]
         refine ⟨fastScanTokenLength tok lengthSpec input, ?_, ?_⟩
@@ -326,8 +326,8 @@ theorem fastScanSeq_mem_matchSeq (g : Grammar) (qual : String) (fuel : Nat) :
         exact ⟨tail, fastScanSeq_mem_matchSeq g qual fuel outerBoundary rest head.2
           tail.1 tail.2 htail, rfl⟩
       by_cases hoptional : optional = true
-      · simp only [matchSeq, hoptional, if_true]
-        simp only [fastScanSeq, hoptional, if_true] at h
+      · simp only [matchSeq, hoptional, ite_true]
+        simp only [fastScanSeq, hoptional, ite_true] at h
         change
           (fastScanPresent (fastScanSym g qual fuel itemBoundary sym input)
               (fastScanSeq g qual fuel outerBoundary rest)).orElse
@@ -346,11 +346,11 @@ theorem fastScanSeq_mem_matchSeq (g : Grammar) (qual : String) (fuel : Nat) :
             rcases h with rfl
             exact List.mem_append_left _ (present_mem _ hpresent)
       · rw [Bool.not_eq_true] at hoptional
-        simp only [matchSeq, hoptional, Bool.false_eq_true, if_false] at ⊢
+        simp only [matchSeq, hoptional, Bool.false_eq_true, ite_false] at ⊢
         apply present_mem
         unfold itemBoundary
         have h' := h
-        simp only [fastScanSeq, hoptional, Bool.false_eq_true, if_false] at h'
+        simp only [fastScanSeq, hoptional, Bool.false_eq_true, ite_false] at h'
         exact h'
 
 theorem fastScanProd_mem_matchProd (g : Grammar) (qual : String) (fuel : Nat) :
@@ -373,7 +373,7 @@ theorem fastScanProd_mem_matchProd (g : Grammar) (qual : String) (fuel : Nat) :
               obtain ⟨foundCaptures, foundRemaining⟩ := result
               simp only [hscan] at h
               by_cases haccepts : boundary.accepts foundRemaining = true
-              · simp only [haccepts, if_true, Option.some.injEq, Prod.mk.injEq] at h
+              · simp only [haccepts, ite_true, Option.some.injEq, Prod.mk.injEq] at h
                 rcases h with ⟨rfl, rfl⟩
                 rw [List.flatMap_cons]
                 exact List.mem_append_left _
@@ -430,7 +430,7 @@ theorem decode_eq_fastScan_of_staticUnique (g : Grammar) (input : String)
     scan g input = decode g input := by
   unfold scan
   by_cases hunique : g.staticUnique = true
-  · simp only [hunique, if_true]
+  · simp only [hunique, ite_true]
     cases hscan : fastScan g input with
     | none => simp [scanSearch_eq_decode]
     | some captures =>
@@ -497,7 +497,7 @@ theorem scanSearch_candidateChecks_le (g : Grammar) (input : String) :
     (scanProfile g input).result = scan g input := by
   unfold scanProfile scan
   by_cases hunique : g.staticUnique = true
-  · simp only [hunique, if_true]
+  · simp only [hunique, ite_true]
     cases hfast : fastScan g input with
     | none => simp
     | some captures => simp
@@ -509,7 +509,7 @@ theorem scannerCandidateChecks_le (g : Grammar) (input : String) :
     scannerCandidateChecks g input ≤ scannerCandidateBudget g input := by
   unfold scannerCandidateChecks scanProfile
   by_cases hunique : g.staticUnique = true
-  · simp only [hunique, if_true]
+  · simp only [hunique, ite_true]
     cases hfast : fastScan g input with
     | none =>
         simp only

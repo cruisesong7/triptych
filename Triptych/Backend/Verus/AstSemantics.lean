@@ -920,16 +920,16 @@ theorem evaluateHelper_hexDigitValue (byte : Nat) :
     ·
       simp [evaluateHelper, helperDeclaration, helperIntFunction, Ast.Expr.evaluate,
         bindingEnv, bindParams, helperConstants, hexDigitValueByte, hdigit, hlower,
-        Int.ofNat_eq_coe]
+        Int.ofNat_eq_natCast]
     · by_cases hupper : (65 : Int) ≤ (byte : Int) ∧ (byte : Int) ≤ 70
       ·
         simp [evaluateHelper, helperDeclaration, helperIntFunction, Ast.Expr.evaluate,
           bindingEnv, bindParams, helperConstants, hexDigitValueByte, hdigit, hlower, hupper,
-          Int.ofNat_eq_coe]
+          Int.ofNat_eq_natCast]
       ·
         simp [evaluateHelper, helperDeclaration, helperIntFunction, Ast.Expr.evaluate,
           bindingEnv, bindParams, helperConstants, hexDigitValueByte, hdigit, hlower, hupper,
-          Int.ofNat_eq_coe]
+          Int.ofNat_eq_natCast]
 
 @[simp]
 theorem evaluateHelper_hexOfFrom (bytes : List Nat) (index : Nat) (accumulator : Int)
@@ -939,7 +939,7 @@ theorem evaluateHelper_hexOfFrom (bytes : List Nat) (index : Nat) (accumulator :
   by_cases hlt : index < bytes.length
   · rw [hexOfBytesFrom_step bytes index accumulator hlt]
     simp [evaluateHelper, helperDeclaration, Ast.Expr.evaluate, bindingEnv, bindParams,
-      helperConstants, Ast.nonnegativeNat?, hlt, canonicalCalls_hexOfFrom_addOne]
+      helperConstants, Ast.nonnegativeNat?, hlt]
     exact canonicalCalls_hexOfFrom_addOne bytes index
       (accumulator * 16 + hexDigitValueByte bytes[index])
   · have heq : index = bytes.length := by omega
@@ -964,12 +964,12 @@ theorem evaluateHelper_hexSequenceFrom (bytes : List Nat) (index : Nat)
     by_cases hcolon : bytes[index] = 58
     · simp [evaluateHelper, helperDeclaration, Ast.Expr.evaluate, bindingEnv, bindParams,
         helperConstants, Ast.nonnegativeNat?, hlt, hcolon,
-        canonicalCalls_hexSequenceFrom_addOne]
+        ]
       exact canonicalCalls_hexSequenceFrom_addOne bytes index
         (accumulator * 65536 + current) 0
     · simp [evaluateHelper, helperDeclaration, Ast.Expr.evaluate, bindingEnv, bindParams,
         helperConstants, Ast.nonnegativeNat?, hlt, hcolon,
-        canonicalCalls_hexSequenceFrom_addOne]
+        ]
       exact canonicalCalls_hexSequenceFrom_addOne bytes index accumulator
         (current * 16 + hexDigitValueByte bytes[index])
   · have heq : index = bytes.length := by omega
@@ -994,11 +994,11 @@ theorem evaluateHelper_segmentsFrom (bytes : List Nat) (index : Nat) (countValue
     by_cases hcolon : bytes[index] = 58
     · simp [evaluateHelper, helperDeclaration, Ast.Expr.evaluate, bindingEnv, bindParams,
         helperConstants, Ast.nonnegativeNat?, hlt, hcolon,
-        canonicalCalls_segmentsFrom_addOne]
+        ]
       exact canonicalCalls_segmentsFrom_addOne bytes index (countValue + 1)
     · simp [evaluateHelper, helperDeclaration, Ast.Expr.evaluate, bindingEnv, bindParams,
         helperConstants, Ast.nonnegativeNat?, hlt, hcolon,
-        canonicalCalls_segmentsFrom_addOne]
+        ]
       exact canonicalCalls_segmentsFrom_addOne bytes index countValue
   · have heq : index = bytes.length := by omega
     subst index

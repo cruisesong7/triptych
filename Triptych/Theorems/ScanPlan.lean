@@ -176,7 +176,7 @@ theorem runPattern_matchCaptures {plan : ScanPlan} {source : String} {result : S
   obtain ⟨state, hexecute, hresult⟩ := Option.bind_eq_some_iff.mp hrun
   by_cases hcomplete :
       (state.position == source.toList.length && state.starts.isEmpty) = true
-  · rw [if_pos hcomplete] at hresult
+  · rw [ite_eq_left hcomplete] at hresult
     injection hresult with hresult
     subst result
     obtain ⟨captures, hmatch, _, hcaptures⟩ := executePattern_sound hexecute
@@ -185,7 +185,7 @@ theorem runPattern_matchCaptures {plan : ScanPlan} {source : String} {result : S
     simp at hcaptures
     subst captures
     simpa [hposition] using hmatch
-  · rw [if_neg hcomplete] at hresult
+  · rw [ite_eq_right hcomplete] at hresult
     contradiction
 
 /-- Successful structured decoding is exactly a complete proof-facing pattern match. -/
@@ -222,10 +222,10 @@ theorem matchCaptures_mem_matchSeq {grammar : Grammar} {qual : String} {fuel : N
           exact Or.inr (tailIH hmatch)
       | cons actual input =>
           by_cases heq : actual = character
-          · simp only [matchCaptures, heq, if_true] at hmatch
+          · simp only [matchCaptures, heq, ite_true] at hmatch
             refine Or.inl ⟨[], input, captures, ?_, tailIH hmatch, by simp⟩
             simp [matchSym, htext, heq]
-          · simp only [matchCaptures, heq, if_false] at hmatch
+          · simp only [matchCaptures, heq, ite_false] at hmatch
             exact Or.inr (tailIH hmatch)
   | literal htext tail tailIH =>
       rename_i character matchedQual matchedFuel rest tailPattern text
@@ -234,7 +234,7 @@ theorem matchCaptures_mem_matchSeq {grammar : Grammar} {qual : String} {fuel : N
       | nil => simp [matchCaptures] at hmatch
       | cons actual input =>
           by_cases heq : actual = character
-          · simp only [matchCaptures, heq, if_true] at hmatch
+          · simp only [matchCaptures, heq, ite_true] at hmatch
             refine ⟨[], input, captures, ?_, tailIH hmatch, by simp⟩
             simp [matchSym, htext, heq]
           · simp [matchCaptures, heq] at hmatch

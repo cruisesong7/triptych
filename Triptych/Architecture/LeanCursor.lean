@@ -109,7 +109,7 @@ theorem scanToken_eq (token : TokClass) (input : List Char) :
   | nil => rfl
   | cons character rest ih =>
       by_cases hmem : token.mem character
-      · simp only [scanToken, hmem, if_true, ih, decide_eq_true_eq, List.takeWhile_cons,
+      · simp only [scanToken, hmem, ite_true, ih, decide_eq_true_eq, List.takeWhile_cons,
           List.length_cons]
         rw [List.drop_succ_cons]
       · simp [scanToken, hmem]
@@ -203,17 +203,17 @@ theorem executeOperation_ofCore (input : List Char) (operation : CursorOp)
       | cons actual tail =>
           by_cases heq : actual == character
           · have htail := drop_succ_of_drop_eq_cons hdrop
-            simp [hdrop, heq, ofCore, htail]
-          · simp [hdrop, heq]
+            simp [heq, htail]
+          · simp [heq]
   | consumeOptional character =>
       unfold executeOperation consumeOptional ofCore CursorProgram.executeOperation
       cases hdrop : input.drop core.position with
-      | nil => simp [hdrop, ofCore]
+      | nil => simp [hdrop]
       | cons actual tail =>
           by_cases heq : actual == character
           · have htail := drop_succ_of_drop_eq_cons hdrop
-            simp [hdrop, heq, ofCore, htail]
-          · simp [hdrop, heq, ofCore]
+            simp [heq, htail]
+          · simp [hdrop, heq]
   | consumeRun token run =>
       cases run with
       | fixed width =>
@@ -221,7 +221,7 @@ theorem executeOperation_ofCore (input : List Char) (operation : CursorOp)
           by_cases hprefix :
               termPrefixOk token (CursorRun.fixed width).toLenSpec
                 (input.drop core.position) width = true
-          · simp only [CursorRun.width, hprefix, if_true, Option.map_some]
+          · simp only [CursorRun.width, hprefix, ite_true, Option.map_some]
             simp [ofCore, List.drop_drop]
           · simp [CursorRun.width, hprefix]
       | greedyBetween lower upper =>
@@ -232,7 +232,7 @@ theorem executeOperation_ofCore (input : List Char) (operation : CursorOp)
                 (input.drop core.position)
                 ((input.drop core.position).takeWhile
                   fun character => decide (token.mem character)).length = true
-          · simp only [CursorRun.width, hprefix, if_true, Option.map_some]
+          · simp only [CursorRun.width, hprefix, ite_true, Option.map_some]
             simp [ofCore, List.drop_drop]
           · simp [CursorRun.width, hprefix]
       | greedyAtLeastOne =>
@@ -243,7 +243,7 @@ theorem executeOperation_ofCore (input : List Char) (operation : CursorOp)
                 (input.drop core.position)
                 ((input.drop core.position).takeWhile
                   fun character => decide (token.mem character)).length = true
-          · simp only [CursorRun.width, hprefix, if_true, Option.map_some]
+          · simp only [CursorRun.width, hprefix, ite_true, Option.map_some]
             simp [ofCore, List.drop_drop]
           · simp [CursorRun.width, hprefix]
 
@@ -275,7 +275,7 @@ theorem executeOperations_ofCore (input : List Char) (operations : List CursorOp
       CursorProgram.executeOperations source.toList program.operations
         ({} : CursorProgram.ExecutionState) with
   | none => simp
-  | some state => simp [hrun, ofCore]
+  | some state => simp [ofCore]
 
 /-- Streaming decoding preserves the complete captured-string result. -/
 @[simp] theorem decode_eq_cursorProgram (program : CursorProgram) (source : String) :

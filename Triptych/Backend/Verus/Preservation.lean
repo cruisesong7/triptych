@@ -111,7 +111,7 @@ theorem lower_translateValExpr_preserves (sourceEnv : Env) (fieldName : FieldNam
       split <;> simp_all
   | iteEmpty source thenBranch elseBranch then_ih else_ih =>
       simp [translateValExpr, lowerExpr, captureExpr, Ast.Expr.evaluate, ValExpr.eval,
-        hagrees source, then_ih, else_ih, encodeString_inj_iff]
+        hagrees source, then_ih, else_ih]
       split <;> simp_all
 
 private theorem string_eq_of_toList_eq {a b : String} (h : a.toList = b.toList) : a = b :=

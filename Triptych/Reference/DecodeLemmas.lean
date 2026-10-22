@@ -81,7 +81,7 @@ theorem mem_matchSym_term_iff (g : Grammar) (q : String) (fuel : Nat)
     obtain ⟨k, hk, hval⟩ := hmem
     by_cases hok : termPrefixOk tok ls cs k = true
     · rw [hok] at hval
-      simp only [if_true, Option.some.injEq, Prod.mk.injEq] at hval
+      simp only [ite_true, Option.some.injEq, Prod.mk.injEq] at hval
       refine ⟨hval.1.symm, cs.take k, ?_, ?_⟩
       · rw [← hval.2, List.take_append_drop]
       · unfold termPrefixOk at hok
@@ -119,7 +119,7 @@ theorem mem_matchSym_str_iff (g : Grammar) (q : String) (fuel : Nat)
     obtain ⟨k, hk, hval⟩ := hmem
     by_cases hok : stringPrefixOk cs k = true
     · rw [hok] at hval
-      simp only [if_true, Option.some.injEq, Prod.mk.injEq] at hval
+      simp only [ite_true, Option.some.injEq, Prod.mk.injEq] at hval
       refine ⟨hval.1.symm, cs.take k, ?_, ?_⟩
       · rw [← hval.2, List.take_append_drop]
       · unfold stringPrefixOk at hok
@@ -152,7 +152,7 @@ theorem mem_matchSym_lit_iff (g : Grammar) (q : String) (fuel : Nat) (l : String
       m = [] ∧ cs = l.toList ++ r := by
   simp only [matchSym]
   by_cases h : l.toList.isPrefixOf cs = true
-  · simp only [h, if_true, List.mem_singleton, Prod.mk.injEq]
+  · simp only [h, ite_true, List.mem_singleton, Prod.mk.injEq]
     obtain ⟨t, rfl⟩ := List.isPrefixOf_iff_prefix.mp h
     simp
     intro
@@ -174,7 +174,7 @@ theorem mem_matchSeq_cons_required_iff (g : Grammar) (q : String) (fuel : Nat)
         (m₁, mid) ∈ matchSym g q fuel item.sym cs ∧
         (m₂, r) ∈ matchSeq g q fuel rest mid ∧
         m = m₁ ++ m₂ := by
-  simp only [matchSeq, hopt, Bool.false_eq_true, if_false]
+  simp only [matchSeq, hopt, Bool.false_eq_true, ite_false]
   constructor
   · intro hmem
     rw [List.mem_flatMap] at hmem
@@ -196,7 +196,7 @@ theorem mem_matchSeq_cons_optional_iff (g : Grammar) (q : String) (fuel : Nat)
         (m₂, r) ∈ matchSeq g q fuel rest mid ∧
         m = m₁ ++ m₂) ∨
       (m, r) ∈ matchSeq g q fuel rest cs := by
-  simp only [matchSeq, hopt, if_true, List.mem_append]
+  simp only [matchSeq, hopt, ite_true, List.mem_append]
   constructor
   · rintro (hmem | hrest)
     · rw [List.mem_flatMap] at hmem

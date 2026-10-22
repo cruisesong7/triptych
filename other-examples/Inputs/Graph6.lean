@@ -117,10 +117,6 @@ private def graph6Bits (payload : String) : Option (List Bool) := do
   return digits.flatMap fun sixBits =>
     (List.range 6).map fun shift => sixBits.testBit (5 - shift)
 
-private def upperTrianglePairs (order : Nat) : List (Nat × Nat) :=
-  (List.range order).flatMap fun upper =>
-    (List.range upper).map fun lower => (lower, upper)
-
 /-- Interpret a lossless Graph6 view as the structured graph used by the existing Graph example. -/
 def graphOfCaptures (captures : CaptureMap) : Option GraphExample.Graph := do
   let header ← captures.toEnv "Header"
@@ -130,7 +126,7 @@ def graphOfCaptures (captures : CaptureMap) : Option GraphExample.Graph := do
   let bitCount := order * (order - 1) / 2
   guard <| (bits.drop bitCount).all not
   let edges :=
-    ((upperTrianglePairs order).zip (bits.take bitCount)).filterMap fun (edge, present) =>
+    ((GraphExample.upperTrianglePairs order).zip (bits.take bitCount)).filterMap fun (edge, present) =>
       if present then some edge else none
   return { order, edges }
 

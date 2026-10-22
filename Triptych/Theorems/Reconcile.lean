@@ -59,7 +59,7 @@ theorem matchesSeq_opt_cons (g : Grammar) (fuel : Nat) (item : SymItem) (rest : 
     (hopt : item.optional = true) :
     matchesSeq g fuel (item :: rest) s ↔
     ∃ p r, s = p ++ r ∧ (p = "" ∨ matchesSym g fuel item.sym p) ∧ matchesSeq g fuel rest r := by
-  rw [matchesSeq.eq_2]; simp only [hopt, if_true]
+  rw [matchesSeq.eq_2]; simp only [hopt, ite_true]
   constructor
   · rintro (⟨s1, s2, hs, hP, hQ⟩ | hQ)
     · exact ⟨s1, s2, hs, Or.inr hP, hQ⟩
@@ -146,20 +146,20 @@ theorem readInt_empty : readInt "" = 0 := by unfold readInt; simp [readNat]
 @[simp] theorem hexOf_getD (env : Env) (f : String) : hexOf ((env f).getD "") = env.hexVal f := by
   unfold Env.hexVal
   cases h : env f with
-  | none => simp [hexOf, hexOfChars, h]
-  | some text => simp [h]
+  | none => simp [hexOf, hexOfChars]
+  | some text => simp []
 @[simp] theorem hexSeqOf_getD (env : Env) (f : String) :
     hexSeqOf ((env f).getD "") = env.hexSeqVal f := by
   unfold Env.hexSeqVal
   cases h : env f with
-  | none => simp [hexSeqOf, hexSeqOfChars, h]
-  | some text => simp [h]
+  | none => simp [hexSeqOf, hexSeqOfChars]
+  | some text => simp []
 @[simp] theorem segmentsOf_getD (env : Env) (f : String) :
     segmentsOf ((env f).getD "") = env.segmentVal f := by
   unfold Env.segmentVal
   cases h : env f with
-  | none => simp [segmentsOf, h]
-  | some text => simp [h]
+  | none => simp [segmentsOf]
+  | some text => simp []
 
 /-- Eliminate the split for a literal that follows earlier items in a sequence. The interpreter
     denotes a literal item as an existential split whose left part equals the literal; the

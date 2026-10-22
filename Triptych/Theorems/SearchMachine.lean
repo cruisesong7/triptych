@@ -500,7 +500,7 @@ private theorem runK_merge (first second : SearchMachineCode)
   | accept =>
       cases second <;>
         simp [SearchMachineCode.merge, SearchMachine.runK, scanOrElse_none_right,
-          scanOrElse_none_left]
+          ]
   | fail =>
       cases second <;>
         simp [SearchMachineCode.merge, SearchMachine.runK, scanOrElse_none_left]

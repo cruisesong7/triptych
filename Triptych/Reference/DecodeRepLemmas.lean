@@ -94,7 +94,7 @@ theorem matchStar_capture_iter
         · simp only [Prod.mk.injEq] at hstop
           exact ⟨[], hstop.2.2.symm, by simp [hstop.2.1], by simp, hstop.1⟩
         · by_cases hpre : sepL.isPrefixOf cs = true
-          · rw [if_pos hpre] at hmore
+          · rw [ite_eq_left hpre] at hmore
             rw [List.mem_flatMap] at hmore
             obtain ⟨⟨m₁, r₁⟩, hm₁, htail⟩ := hmore
             rw [List.mem_map] at htail
@@ -126,7 +126,7 @@ theorem matchStar_capture_iter
             · rw [← heq.1, hcaptures, hm₂']
               simp
           · rw [Bool.not_eq_true] at hpre
-            rw [if_neg (by rw [hpre]; simp)] at hmore
+            rw [ite_eq_right (by rw [hpre]; simp)] at hmore
             simp at hmore
       · rintro ⟨parts, hpartsLength, hcs, hall, hm⟩
         cases parts with
@@ -168,7 +168,7 @@ theorem matchStar_capture_iter
               (ih _ _ _ _ htailLength).mpr
                 ⟨parts, rfl, rfl, fun part hpart => hall part (by simp [hpart]), rfl⟩
             right
-            rw [if_pos hpre, List.mem_flatMap]
+            rw [ite_eq_left hpre, List.mem_flatMap]
             refine ⟨(captures piece, parts.flatMap (fun part => sepL ++ part) ++ r),
               hm₁, ?_⟩
             rw [List.mem_map]

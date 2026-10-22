@@ -166,7 +166,7 @@ theorem mem_matchStar_of_pieces
                     pieces.flatMap (fun next => sep ++ next.1) ++ suffix) =
                 true := by
             simp
-          simp only [hprefix, if_true]
+          simp only [hprefix, ite_true]
           have hdrop :
               List.drop sep.length
                   (sep ++ piece.1 ++

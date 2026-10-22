@@ -375,9 +375,9 @@ theorem decodeGatedMap_eq_some_iff_denotes {α : Type} (g : Grammar)
     | some m =>
       simp only [hd] at h
       by_cases ha : accept m
-      · rw [if_pos ha] at h
+      · rw [ite_eq_left ha] at h
         exact ⟨m, decode_mem_fullParses g s hd, ha, Option.some.inj h⟩
-      · rw [if_neg ha] at h
+      · rw [ite_eq_right ha] at h
         simp at h
   · rintro ⟨m, hm, ha, hval⟩
     have hne : fullParses g s ≠ [] := List.ne_nil_of_mem hm

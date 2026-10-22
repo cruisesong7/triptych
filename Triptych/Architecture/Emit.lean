@@ -2045,7 +2045,7 @@ private partial def emitSearchNodes (specName : Name) (code : SearchCode) :
         pure (← `(SearchCode.accept), ← `($k [] $input))
     | .fail =>
         pure (← `(SearchCode.fail), ← `(none))
-    | .literal text next => do
+    | .literal text _ => do
         let next := child 0
         let textTerm := Syntax.mkStrLit text
         pure (← `(SearchCode.literal $textTerm $(next.code)),
@@ -2139,7 +2139,7 @@ private def searchNodeCommands (state : SearchNodeState) (root : Nat) :
   let input := mkIdent `input
   let k := mkIdent `k
   let mut commands := #[]
-  for h : index in [0:state.assigned.size] do
+  for index in [0:state.assigned.size] do
     let names := state.assigned[index]!.2
     let (codeDef, body, nodeEq) := state.pieces[index]!
     let nodeDef ←
@@ -2329,7 +2329,6 @@ def directSearchParserCommands (specName : Name) (grammar : Grammar) (plan : Sea
   let programTerm ← searchProgramTerm program
   let programLoweredRw ←
     `(Lean.Parser.Tactic.rwRule| $programLoweredId:ident)
-  let input := mkIdent `input
   let captures := mkIdent `captures
   let remaining := mkIdent `remaining
   let rootContinuation ←
