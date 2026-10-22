@@ -2,7 +2,7 @@
 Triptych documentation -- Chapter 4: supported scope and current boundaries.
 -/
 import VersoManual
-import Triptych.Architecture.Syntax
+import Triptych.Elab.Syntax
 
 open Verso.Genre Manual
 open Verso.Genre.Manual.InlineLean

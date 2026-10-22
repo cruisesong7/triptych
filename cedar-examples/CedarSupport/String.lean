@@ -1,5 +1,5 @@
-import Triptych.Architecture.Denote
-import Triptych.Architecture.Value
+import Triptych.Core.Denote
+import Triptych.Core.Value
 import CedarSupport.StringInternals
 
 /-! Shared bridges between Triptych's digit reader and Cedar's string metatheory. -/

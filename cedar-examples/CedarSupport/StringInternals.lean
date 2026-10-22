@@ -2,7 +2,7 @@ module
 
 public import Cedar.Thm.Data.String
 public import Cedar.Spec.Ext.IPAddr
-public import Triptych.Theorems.String
+public import Triptych.Core.String
 
 import all Cedar.Thm.Data.String
 import all Cedar.Spec.Ext.IPAddr

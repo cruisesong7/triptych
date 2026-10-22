@@ -93,7 +93,7 @@ where it originated verifying Cedar's extension-type parsers. Now standalone.
   continuation-fused `SearchProgram`; Verus further lowers to `SearchMachine` states), or
   `.scanner reason` (a compile-time diagnostic, never a runtime fallback). Plan compilers are
   untrusted `partial` code; `MirrorsGrammar` witnesses plus the generic lowering theorems in
-  `Theorems/{ScanPlan,SearchPlan,SearchProgram,SearchMachine,ParsePlan}.lean` connect every
+  `Plan/*/Proofs.lean` connect every
   emitted parser to `scan`, and `scan_eq_decode` connects `scan` to the reference decoder.
 - `Roundtrip.lean` — `decodeSome_iff_IsWf` (decode ↔ IsWf), `rep_iter`/`matchStar_iter`,
   `decIsWf` (conditional `DecidablePred (IsWf g)`, needs `g.repOk = true`).

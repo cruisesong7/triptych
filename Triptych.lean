@@ -14,42 +14,42 @@
  limitations under the License.
 -/
 
-import Triptych.Architecture.Grammar
-import Triptych.Architecture.Classify
-import Triptych.Architecture.Denote
-import Triptych.Architecture.Value
-import Triptych.Architecture.Constraint
-import Triptych.Architecture.Scanner
-import Triptych.Architecture.ScanPlan
-import Triptych.Architecture.CursorProgram
-import Triptych.Architecture.SearchPlan
-import Triptych.Architecture.SearchProgram
-import Triptych.Architecture.SearchMachine
-import Triptych.Architecture.LeanCursor
-import Triptych.Architecture.LeanSpanCursor
-import Triptych.Architecture.ParsePlan
-import Triptych.Theorems.ScanPlan
-import Triptych.Theorems.SearchPlan
-import Triptych.Theorems.SearchProgram
-import Triptych.Theorems.SearchMachine
-import Triptych.Theorems.ParsePlan
-import Triptych.Architecture.Derivation
-import Triptych.Architecture.Dependent
-import Triptych.Architecture.Unambiguity
-import Triptych.Architecture.Assemble
-import Triptych.Theorems.Roundtrip
-import Triptych.Theorems.Scanner
-import Triptych.Theorems.Coherence
-import Triptych.Theorems.Derivation
-import Triptych.Theorems.Dependent
-import Triptych.Theorems.RelationalParser
-import Triptych.Theorems.Unambiguity
-import Triptych.Theorems.Reconcile
+import Triptych.Core.Grammar
+import Triptych.Core.Classify
+import Triptych.Core.Denote
+import Triptych.Core.Value
+import Triptych.Core.Constraint
+import Triptych.Runtime.Scanner
+import Triptych.Plan.ScanPlan
+import Triptych.Plan.CursorProgram
+import Triptych.Plan.SearchPlan
+import Triptych.Plan.SearchProgram
+import Triptych.Plan.SearchMachine
+import Triptych.Runtime.LeanCursor
+import Triptych.Runtime.LeanSpanCursor
+import Triptych.Plan.ParsePlan
+import Triptych.Plan.ScanPlan.Proofs
+import Triptych.Plan.SearchPlan.Proofs
+import Triptych.Plan.SearchProgram.Proofs
+import Triptych.Plan.SearchMachine.Proofs
+import Triptych.Plan.ParsePlan.Proofs
+import Triptych.Core.Derivation
+import Triptych.Runtime.Dependent
+import Triptych.Reference.Unambiguity
+import Triptych.Elab.Assemble
+import Triptych.Reference.Roundtrip
+import Triptych.Runtime.Scanner.Proofs
+import Triptych.Reference.Coherence
+import Triptych.Core.Derivation.Proofs
+import Triptych.Runtime.Dependent.Proofs
+import Triptych.Reference.RelationalParser
+import Triptych.Reference.Unambiguity.Proofs
+import Triptych.Elab.Reconcile
 import Triptych.Reference.DecodeLemmas
-import Triptych.Theorems.String
-import Triptych.Theorems.Value
+import Triptych.Core.String
+import Triptych.Core.Value.Proofs
 import Triptych.Automation.ExternalParser
-import Triptych.Architecture.Syntax
+import Triptych.Elab.Syntax
 
 /-!
 # Triptych
@@ -64,13 +64,19 @@ the grammar-generic obligations and delegating the non-affine parts via typed ho
 
 See `Docs/DESIGN.md` for the full design.
 
-Module layout:
-* `Triptych.Architecture.*` — grammar, classifier, denotation, scanner, value/constraint
-                                DSLs, assembly, emission, and `triptych` syntax
-* `Triptych.Reference.*`    — executable reference semantics that all parser theorems target
-* `Triptych.Theorems.*`     — reusable scanner, roundtrip, coherence, unambiguity, and
-                                reconciliation theorems
-* `Triptych.Automation.*`   — extensible static external-parser proof rules and tactics
+Module layout, by pipeline stage. A stage's theorems sit beside its definitions, as
+`<Module>.Proofs`:
+* `Triptych.Core.*`       — grammar AST, classifier, denotation, value and constraint DSLs,
+                              typed derivations, and consumption analysis
+* `Triptych.Reference.*`  — the reference decoder all parser theorems target, the decoder/denotation
+                              round trip, coherence, static unambiguity, and relational parsers
+* `Triptych.Runtime.*`    — the continuation scanner, dependent formats, and Lean cursor runtimes
+* `Triptych.Plan.*`       — `ParsePlan` and its cursor and ordered-search IRs, with lowering proofs
+* `Triptych.Elab.*`       — the `triptych` command: syntax, emission, assembly, and the
+                              reconciliation lemmas generated proofs use
+* `Triptych.Automation.*` — extensible static external-parser proof rules and tactics
+* `Triptych.Backend.*`    — the experimental Verus backend
+* `Triptych.Tests.*`      — elaboration and backend tests
 
 The Cedar-free Graph example lives in the separate `other-examples` package. Cedar-backed examples
 and validation proofs live in `cedar-examples`. The core library has no dependency on either.

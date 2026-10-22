@@ -15,7 +15,7 @@
 -/
 
 import Triptych.Reference.DecodeLemmas
-import Triptych.Theorems.Roundtrip
+import Triptych.Reference.Roundtrip
 
 /-!
 # Capture-preserving reference-decoder repetition lemmas

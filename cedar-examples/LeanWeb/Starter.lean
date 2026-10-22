@@ -1,4 +1,4 @@
-import Triptych.Architecture.Syntax
+import Triptych.Elab.Syntax
 
 namespace CedarExamples.LeanWeb
 

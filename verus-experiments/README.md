@@ -15,9 +15,9 @@ and never asks for a format-specific proof of the generated scanner.
 
 The Rust backend follows the three shared `ParsePlan` cases.
 
-`Architecture/ParsePlan.lean` makes one backend-neutral strategy decision for each elaborated
+`Plan/ParsePlan.lean` makes one backend-neutral strategy decision for each elaborated
 grammar. For eligible deterministic formats, its cursor case carries the certified
-`Architecture/ScanPlan.lean`; that plan is lowered to a linear `CursorProgram` and compiled away.
+`Plan/ScanPlan.lean`; that plan is lowered to a linear `CursorProgram` and compiled away.
 `parser.rs` then contains direct branches and loops, capture start/end indices, and no grammar
 tables or runtime interpreter. Decimal currently uses this path.
 
@@ -145,25 +145,25 @@ This contract is separate from the generated scanner certificate:
 The DSL is parsed once into `Grammar`, `ValExpr`, and `Constraint` values shared with Lean
 generation.
 
-1. `Architecture/ParsePlan.lean` selects a cursor plan or the complete scanner once. Lean and
+1. `Plan/ParsePlan.lean` selects a cursor plan or the complete scanner once. Lean and
    Verus consume this same value rather than repeating grammar capability analysis.
-2. `Architecture/ScanPlan.lean` attempts a fail-closed deterministic compilation. Capture nesting
+2. `Plan/ScanPlan.lean` attempts a fail-closed deterministic compilation. Capture nesting
    is retained in `ScanPattern`; `ScanPlan.decode_eq_decodePattern` proves that flattening it into
    operations preserves the complete captured result. Before lowering, an independent executable
    certificate checks source-grammar shape, unique capture slots, and deterministic local
    boundaries; `compileScanPlan_certifiedFor` proves every successful compilation passed it.
-3. `Architecture/SearchPlan.lean` resolves references and capture keys for the remaining
+3. `Plan/SearchPlan.lean` resolves references and capture keys for the remaining
    supported acyclic grammar surface. It retains source-ordered alternatives, optionals, and
    repetitions, and its continuation executor avoids candidate-list construction.
-4. `Architecture/SearchProgram.lean` fuses sequence tails and ordered alternatives into explicit
+4. `Plan/SearchProgram.lean` fuses sequence tails and ordered alternatives into explicit
    continuation control flow, then removes dead arms and shares certified literal, fixed-width
    token, and committed capture prefixes. `SearchCode.nodeCount_reduce_le` proves that this
    reduction cannot enlarge the staged control-flow tree, while
    `SearchProgram.lowerSearchPlan_decode` proves exact preservation of the selected capture map.
-5. `Architecture/SearchMachine.lean` totally lowers every search program into explicit capture,
+5. `Plan/SearchMachine.lean` totally lowers every search program into explicit capture,
    choice, and repetition states. `SearchMachine.lowerSearchPlan_decode_eq_scan` proves exact
    agreement with the complete scanner.
-6. `Architecture/CursorProgram.lean` lowers deterministic plans into fixed-width and greedy cursor
+6. `Plan/CursorProgram.lean` lowers deterministic plans into fixed-width and greedy cursor
    instructions. `CursorProgram.lowerScanPlan_run` and `lowerScanPlan_decodePattern` prove that
    the composed lowering preserves complete results and captured strings for every input.
 7. `ScanPlan.decode_eq_decode`, `SearchPlan.decode_eq_scanSearch`,
@@ -275,8 +275,8 @@ From the repository root:
 
 ```sh
 ./verus-experiments/setup-verus.sh
-lake build Triptych.Backend.VerusTests Triptych.Architecture.ScanPlanTests \
-  Triptych.Backend.Verus.RuntimeModelTests
+lake build Triptych.Tests.VerusTests Triptych.Tests.ScanPlanTests \
+  Triptych.Tests.RuntimeModelTests
 lake env lean verus-experiments/grammar-coverage/Input.lean
 lake env lean verus-experiments/direct-coverage/Input.lean
 lake env lean verus-experiments/search-order/Input.lean

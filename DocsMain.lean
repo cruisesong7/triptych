@@ -7,7 +7,7 @@ Render:  lake exe docs --output ../_site
 -/
 -- The book elaborates `triptych` blocks through `Syntax`; keep its code generator in the
 -- executable's direct link closure as well.
-import Triptych.Architecture.Emit
+import Triptych.Elab.Emit
 import VersoManual
 import Docs
 

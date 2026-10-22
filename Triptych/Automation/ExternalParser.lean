@@ -16,7 +16,7 @@
 
 import Lean.Elab.Tactic
 import Batteries.Data.List.Basic
-import Triptych.Architecture.Assemble
+import Triptych.Elab.Assemble
 import Triptych.Automation.Registry
 
 /-!

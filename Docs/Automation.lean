@@ -156,7 +156,7 @@ Use {lit}`triptych_encode_direct` when there is no external parser to reconcile.
 directly that the serializer output is accepted by the generated specification and computes the
 intended value:
 
-```anchor triptychEncodeDirectUse (module := Triptych.Automation.ExternalParserTests) (project := ".")
+```anchor triptychEncodeDirectUse (module := Triptych.Tests.ExternalParserTests) (project := ".")
 private theorem triptychEncodeDirect_identity (n : Nat) :
     ∃ view,
       encodeDecodeView (encodePrinter n) = some view ∧
@@ -176,7 +176,7 @@ Use {lit}`triptych_encode_derivation` when the serializer naturally constructs a
 derivation. The proof supplies a valid root tree for each domain value; the generated
 {lit}`decodeView_render` theorem projects that tree to the flat view:
 
-```anchor triptychEncodeDerivationUse (module := Triptych.Automation.ExternalParserTests) (project := ".")
+```anchor triptychEncodeDerivationUse (module := Triptych.Tests.ExternalParserTests) (project := ".")
 private theorem triptychEncodeDerivation_identity (n : Nat) :
     ∃ view,
       encodeDecodeView (encodePrinter n) = some view ∧
@@ -194,7 +194,7 @@ facts follow from the valid derivation and its rendering theorem.
 the serializer and its {name}`Triptych.DerivationPrinter` certificate together. The signed-integer
 syntax test checks both the emitted spelling and the generated roundtrip theorem:
 
-```anchor printerAutoUse (module := Triptych.Architecture.SyntaxTests) (project := ".")
+```anchor printerAutoUse (module := Triptych.Tests.DocExamples) (project := ".")
 triptych SignedInteger where
   grammar
     Root   ::= Sign Digits

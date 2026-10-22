@@ -14,8 +14,8 @@
  limitations under the License.
 -/
 
-import Triptych.Architecture.Syntax
-import Triptych.Theorems.Roundtrip
+import Triptych.Elab.Syntax
+import Triptych.Reference.Roundtrip
 import Cedar.Spec.Ext.Datetime
 
 /-!

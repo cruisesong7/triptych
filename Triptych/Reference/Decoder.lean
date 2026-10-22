@@ -14,8 +14,8 @@
  limitations under the License.
 -/
 
-import Triptych.Architecture.Prefix
-import Triptych.Architecture.Value
+import Triptych.Runtime.Prefix
+import Triptych.Core.Value
 
 /-!
 # Reference decoder and value computation
@@ -29,7 +29,7 @@ extraction.
 tries every way to split the string across a sequence's items, records each matched
 nonterminal's substring, and keeps assignments that consume the whole string. It is the
 *reference* decoder (simple, obviously-correct-by-inspection), not the generated runtime path.
-`Triptych.Architecture.Scanner` implements the same ordered search with continuations and proves
+`Triptych.Runtime.Scanner` implements the same ordered search with continuations and proves
 exact equality to this definition. Generated parsers do not use it as their runtime engine; it is
 kept as the specification that the scanner and every staged parser are proved equal to.
 
@@ -37,13 +37,13 @@ Status: a total `def` — fuel-bounded (fuel = #productions, a DAG-depth backsto
 needs no `partial`. It remains executable for proofs, `#eval` diagnostics, differential
 conformance, and performance comparison. Its recognition roundtrip vs `IsWf` —
 `decodeSome_iff_IsWf` (`(decode g s).isSome = IsWf g s`, under `g.repOk`) — is PROVED in
-`Triptych.Theorems.Roundtrip` and is what every emitted `IsWf_equiv` is built on.
+`Triptych.Reference.Roundtrip` and is what every emitted `IsWf_equiv` is built on.
 
 Caveat (decoder-selected values): `decode` returns the FIRST full-consumption assignment
 (`head?`), and the scalar `Env` view (`toEnv`) keeps the FIRST span per name. Recognition
 (`IsWf`) forgets captures, so an *ambiguous* grammar's several full parses need not agree on
 the capture map — in general the computed value is decoder-selected, not grammar-determined.
-`Triptych.Theorems.Coherence` makes this precise and supplies the theorems that erase it when
+`Triptych.Reference.Coherence` makes this precise and supplies the theorems that erase it when
 it can be erased: `computeValueF_coherent` covers scalar `Env` readers, while
 `computeValueMap_coherent` covers repeated-capture readers over the full map. `DecodeUnique`
 (≤ 1 full parse) is a decidable sufficient condition, with `#eval decide` as a per-string

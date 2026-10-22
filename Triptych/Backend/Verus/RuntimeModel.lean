@@ -14,7 +14,7 @@
  limitations under the License.
 -/
 
-import Triptych.Architecture.Classify
+import Triptych.Core.Classify
 
 /-!
 # Verus runtime grammar model

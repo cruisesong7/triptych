@@ -14,7 +14,7 @@
  limitations under the License.
 -/
 
-import Triptych.Architecture.Constraint
+import Triptych.Core.Constraint
 import Triptych.Backend.Verus.RuntimeModel
 
 /-!

@@ -3,7 +3,7 @@ import CedarSupport.IPAddrInternals
 import CedarSupport.String
 import CedarSupport.StringInternals
 import Triptych.Reference.DecodeLemmas
-import Triptych.Theorems.String
+import Triptych.Core.String
 
 /-!
 # IPv4 grammar capture view

@@ -14,14 +14,14 @@
  limitations under the License.
 -/
 
-import Triptych.Architecture.Classify
-import Triptych.Architecture.Unambiguity
+import Triptych.Core.Classify
+import Triptych.Reference.Unambiguity
 import Triptych.Backend.Verus.Translation
 import Triptych.Backend.Verus.Lowering
 import Triptych.Backend.Verus.Preservation
 import Triptych.Backend.Verus.PrettyPrint
-import Triptych.Architecture.ParsePlan
-import Triptych.Architecture.SearchMachine
+import Triptych.Plan.ParsePlan
+import Triptych.Plan.SearchMachine
 import Triptych.Backend.Verus.RuntimeModel
 import Triptych.Backend.Verus.SemanticPlan
 

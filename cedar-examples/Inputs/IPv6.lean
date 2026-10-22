@@ -14,9 +14,9 @@
  limitations under the License.
 -/
 
-import Triptych.Architecture.Syntax
-import Triptych.Theorems.Roundtrip
-import Triptych.Theorems.Coherence
+import Triptych.Elab.Syntax
+import Triptych.Reference.Roundtrip
+import Triptych.Reference.Coherence
 import Cedar.Spec.Ext.IPAddr
 
 /-!

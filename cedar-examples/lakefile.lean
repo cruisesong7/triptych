@@ -25,8 +25,8 @@ lean_lib ConformanceTests where
 def docsAnchorNeeds : Array PartialBuildKey := #[
   .packageModuleFacet `cedarExamples `Inputs.Decimal `highlighted,
   .packageModuleFacet `cedarExamples `Outputs.Decimal.soundness `highlighted,
-  .packageModuleFacet `triptych `Triptych.Automation.ExternalParserTests `highlighted,
-  .packageModuleFacet `triptych `Triptych.Architecture.SyntaxTests `highlighted
+  .packageModuleFacet `triptych `Triptych.Tests.ExternalParserTests `highlighted,
+  .packageModuleFacet `triptych `Triptych.Tests.DocExamples `highlighted
 ]
 
 -- The Verso book is an integration target: it checks the generated Cedar modules while its

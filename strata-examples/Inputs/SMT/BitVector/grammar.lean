@@ -14,7 +14,7 @@
  limitations under the License.
 -/
 
-import Triptych.Architecture.Syntax
+import Triptych.Elab.Syntax
 
 /-!
 # SMT-LIB bit-vector literals

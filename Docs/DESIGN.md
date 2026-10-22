@@ -78,7 +78,7 @@ reads. Syntactic unambiguity is sufficient but not necessary: several parses may
 value-coherent because the value function ignores their differences. Conversely, recognition
 correctness alone says nothing about capture/value coherence.
 
-The implementation makes this explicit in `Triptych.Theorems.Coherence`: `fullParses` names
+The implementation makes this explicit in `Triptych.Reference.Coherence`: `fullParses` names
 every operational full parse; `CaptureCoherent`/`EnvCoherent`/`ValueCoherent` separate map,
 scalar-view, and value agreement; `DecodesAs` is the grammar/value relation; and `Denotes`
 additionally relates per-parse acceptance constraints to the value. Under `FormatCoherent`,
@@ -618,7 +618,7 @@ conditional on the generated `*_runtime_safe` predicate.
 
 ## 16. The implemented `triptych` DSL
 
-`Triptych/Architecture/Syntax.lean` is the source of truth for this surface.
+`Triptych/Elab/Syntax.lean` is the source of truth for this surface.
 
 ### 16.1 Generated predicates and value function
 

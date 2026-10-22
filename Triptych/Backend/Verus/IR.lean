@@ -14,8 +14,8 @@
  limitations under the License.
 -/
 
-import Triptych.Architecture.Constraint
-import Triptych.Architecture.Grammar
+import Triptych.Core.Constraint
+import Triptych.Core.Grammar
 
 /-!
 # Verus specification IR

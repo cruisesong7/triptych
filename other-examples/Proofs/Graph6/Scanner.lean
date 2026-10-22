@@ -1,5 +1,5 @@
 import Inputs.Graph6
-import Triptych.Theorems.Dependent
+import Triptych.Runtime.Dependent.Proofs
 
 /-!
 # Graph6 dependent-scanner checks

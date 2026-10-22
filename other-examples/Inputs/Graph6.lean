@@ -15,7 +15,7 @@
 -/
 
 import Inputs.Graph
-import Triptych.Architecture.Dependent
+import Triptych.Runtime.Dependent
 
 /-!
 # Graph6 as a dependent format

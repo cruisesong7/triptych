@@ -1,11 +1,11 @@
-import Triptych.Architecture.Assemble
-import Triptych.Theorems.Scanner
+import Triptych.Elab.Assemble
+import Triptych.Runtime.Scanner.Proofs
 
 /-!
 # Exact reference-decoder membership lemmas
 
 Small structural facts about `matchSym` and `matchSeq` that preserve capture maps.
-`Triptych.Theorems.Roundtrip` intentionally quantifies captures away when proving recognition
+`Triptych.Reference.Roundtrip` intentionally quantifies captures away when proving recognition
 equivalence; external-parser bridges often need these stronger forms to recover the exact
 components selected by `decode`.
 -/

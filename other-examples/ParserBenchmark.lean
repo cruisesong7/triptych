@@ -1,5 +1,5 @@
 import Outputs.Graph.parser
-import Triptych.Architecture.Syntax
+import Triptych.Elab.Syntax
 
 namespace TriptychBenchmark
 

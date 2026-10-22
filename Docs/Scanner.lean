@@ -5,8 +5,8 @@ import VersoManual
 import Outputs.Decimal.parser
 import Outputs.IPv6.parser
 import Triptych.Backend.Verus.SemanticPlan
-import Triptych.Theorems.Dependent
-import Triptych.Theorems.SearchMachine
+import Triptych.Runtime.Dependent.Proofs
+import Triptych.Plan.SearchMachine.Proofs
 
 open Verso.Genre Manual
 open Verso.Genre.Manual.InlineLean
