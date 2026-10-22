@@ -556,18 +556,23 @@ scanning, and fixed-bound decoding for short natural fields, one warmed release 
 
 | Format | Scan | Full Triptych parser | Cedar production parser |
 | --- | ---: | ---: | ---: |
-| Decimal | {lit}`11.98 ns` | {lit}`25.20 ns` | {lit}`89.75 ns` |
-| Duration | {lit}`60.11 ns` | {lit}`49.37 ns` | {lit}`223.19 ns` |
-| Datetime | {lit}`83.50 ns` | {lit}`105.02 ns` | {lit}`292.21 ns` |
-| IPv4 | {lit}`26.41 ns` | {lit}`44.35 ns` | {lit}`24.47 ns` |
-| IPv6 | {lit}`100.07 ns` | {lit}`112.60 ns` | {lit}`99.05 ns` |
+| Decimal | {lit}`11.72 ns` | {lit}`24.24 ns` | {lit}`98.02 ns` |
+| Duration | {lit}`68.44 ns` | {lit}`54.00 ns` | {lit}`234.55 ns` |
+| Datetime | {lit}`94.65 ns` | {lit}`112.84 ns` | {lit}`300.86 ns` |
+| IPv4 | {lit}`27.39 ns` | {lit}`48.26 ns` | {lit}`26.77 ns` |
+| IPv6 | {lit}`145.32 ns` | {lit}`162.84 ns` | {lit}`105.17 ns` |
 
 The full Decimal, Duration, and Datetime parsers were faster than Cedar's production parsers in
-this run. IPv4 was {lit}`1.81x` slower and IPv6 {lit}`1.14x` slower. Bounded primitive lowering
-reduced the machinery emitted for IPv4 value arithmetic, but did not materially change its
-end-to-end time because capture lookup and decimal decoding still dominate. The isolated Duration scan
-is slower than its full parser because release inlining can combine recognition and semantic
-evaluation and eliminate intermediate candidate materialization. Timings still depend on the
+this run. IPv4 was {lit}`1.80x` slower and IPv6 {lit}`1.55x` slower. IPv6 slowed from
+{lit}`112.60 ns` when literal-guided dispatch stopped trying the compressed {lit}`::` form
+before the full form: that reordering could select a different parse than the Lean scanner for
+ambiguous grammars, so dispatch now only skips an arm whose required literal is absent. A
+verified disjointness certificate would make the faster order safe again for IPv6. Bounded
+primitive lowering reduced the machinery emitted for IPv4 value arithmetic, but did not
+materially change its end-to-end time because capture lookup and decimal decoding still
+dominate. The isolated Duration scan is slower than its full parser because release inlining can
+combine recognition and semantic evaluation and eliminate intermediate candidate
+materialization. Timings still depend on the
 format, input, machine, compiler, and build mode.
 
 Run the same comparisons locally:

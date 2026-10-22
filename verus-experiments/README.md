@@ -242,15 +242,18 @@ One warmed release run on the same development machine measured:
 
 | format | Triptych scan | Triptych full | Cedar production |
 | --- | ---: | ---: | ---: |
-| Decimal | 11.98 ns | 25.20 ns | 89.75 ns |
-| Duration | 60.11 ns | 49.37 ns | 223.19 ns |
-| Datetime | 83.50 ns | 105.02 ns | 292.21 ns |
-| IPv4 | 26.41 ns | 44.35 ns | 24.47 ns |
-| IPv6 | 100.07 ns | 112.60 ns | 99.05 ns |
+| Decimal | 11.72 ns | 24.24 ns | 98.02 ns |
+| Duration | 68.44 ns | 54.00 ns | 234.55 ns |
+| Datetime | 94.65 ns | 112.84 ns | 300.86 ns |
+| IPv4 | 27.39 ns | 48.26 ns | 26.77 ns |
+| IPv6 | 145.32 ns | 162.84 ns | 105.17 ns |
 
 Decimal uses the straight-line cursor plan; the other four use generated search-machine states.
-The generated full parsers were 3.56x, 4.52x, and 2.78x faster than Cedar's production Decimal,
-Duration, and Datetime parsers in this run. IPv4 remained 1.81x slower and IPv6 1.14x slower.
+The generated full parsers were 4.04x, 4.34x, and 2.67x faster than Cedar's production Decimal,
+Duration, and Datetime parsers in this run. IPv4 was 1.80x slower and IPv6 1.55x slower. IPv6
+slowed from 112.60 ns when literal-guided dispatch became order-preserving (see
+`search-order/`); a verified disjointness certificate would make trying the `::` form first
+safe again.
 Bounded primitive lowering reduced the machinery emitted for IPv4 value arithmetic, but capture
 lookup and decimal decoding still dominate its end-to-end time.
 The isolated Duration scan is slower than the full parser because release inlining can fuse the
